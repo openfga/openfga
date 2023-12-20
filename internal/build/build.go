@@ -16,4 +16,6 @@ var (
 	// MinimumSupportedDatastoreSchemaRevision refers to the minimum schema version that is required to run
 	// this specific build of OpenFGA. Refer to the `assets/migrations` artifacts for more information.
 	MinimumSupportedDatastoreSchemaRevision int64 = 4
+
+	ProjectName = "openfga"
 )

@@ -12,18 +12,19 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/cmd/run"
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/tests"
 )
 
 var tuples = []*openfgav1.TupleKey{
@@ -113,10 +114,13 @@ type document
 	})
 	require.NoError(t, err)
 
+	logs.TakeAll()
+
 	type test struct {
 		_name           string
 		grpcReq         *openfgav1.CheckRequest
 		httpReqBody     io.Reader
+		expectedError   bool
 		expectedContext map[string]interface{}
 	}
 
@@ -141,7 +145,7 @@ type document
 			},
 		},
 		{
-			_name: "check_http_success",
+			_name: "http_check_success",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -160,6 +164,46 @@ type document
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent",
+			},
+		},
+		{
+			_name: "grpc_check_error",
+			grpcReq: &openfgav1.CheckRequest{
+				AuthorizationModelId: authorizationModelID,
+				StoreId:              storeID,
+				TupleKey:             tuple.NewCheckRequestTupleKey("", "viewer", "user:anne"),
+			},
+			expectedError: true,
+			expectedContext: map[string]interface{}{
+				"grpc_service": "openfga.v1.OpenFGAService",
+				"grpc_method":  "Check",
+				"grpc_type":    "unary",
+				"grpc_code":    int32(2009),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_response": `{"code":"invalid_check_input","message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"store_id":     storeID,
+				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
+			},
+		},
+		{
+			_name: "http_check_error",
+			httpReqBody: bytes.NewBufferString(`{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "viewer"
+  },
+  "authorization_model_id": "` + authorizationModelID + `"
+}`),
+			expectedError: true,
+			expectedContext: map[string]interface{}{
+				"grpc_service": "openfga.v1.OpenFGAService",
+				"grpc_method":  "Check",
+				"grpc_type":    "unary",
+				"grpc_code":    int32(2009),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_response": `{"code":"invalid_check_input","message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"store_id":     storeID,
+				"user_agent":   "test-user-agent",
 			},
 		},
 	}
@@ -181,7 +225,11 @@ type document
 
 				_, err = client.Do(httpReq)
 			}
-			require.NoError(t, err)
+			if test.expectedError && test.grpcReq != nil {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 
 			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
 				if e.Message == "grpc_req_complete" {
@@ -208,11 +256,15 @@ type document
 			require.Equal(t, test.expectedContext["authorization_model_id"], fields["authorization_model_id"])
 			require.Equal(t, test.expectedContext["store_id"], fields["store_id"])
 			require.Equal(t, test.expectedContext["user_agent"], fields["user_agent"])
-			require.NotEmpty(t, fields["datastore_query_count"])
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
-			require.Len(t, fields, 13)
+			if !test.expectedError {
+				require.NotEmpty(t, fields["datastore_query_count"])
+				require.Len(t, fields, 13)
+			} else {
+				require.Len(t, fields, 12)
+			}
 		})
 	}
 }

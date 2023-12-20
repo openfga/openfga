@@ -26,15 +26,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -46,6 +37,16 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/logger"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestMain(m *testing.M) {
@@ -870,6 +871,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
 	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
 	require.Contains(t, stringBody, "go_sql_idle_connections")
+	require.Contains(t, stringBody, "condition_evaluation_cost")
 }
 
 func TestHTTPServerDisabled(t *testing.T) {

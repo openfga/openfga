@@ -8,11 +8,13 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/karlseguin/ccache/v3"
-	"github.com/openfga/openfga/internal/keys"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
+
+	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/keys"
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -23,13 +25,15 @@ const (
 
 var (
 	checkCacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "check_cache_total_count",
-		Help: "The total number of calls to ResolveCheck.",
+		Namespace: build.ProjectName,
+		Name:      "check_cache_total_count",
+		Help:      "The total number of calls to ResolveCheck.",
 	})
 
 	checkCacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "check_cache_hit_count",
-		Help: "The total number of cache hits for ResolveCheck.",
+		Namespace: build.ProjectName,
+		Name:      "check_cache_hit_count",
+		Help:      "The total number of cache hits for ResolveCheck.",
 	})
 )
 

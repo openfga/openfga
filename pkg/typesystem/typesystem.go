@@ -10,9 +10,11 @@ import (
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
+
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/typesystem")
@@ -24,8 +26,6 @@ const (
 	SchemaVersion1_1 string = "1.1"
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
-
-	defaultMaxEvaluationCost = 100
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -187,7 +187,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
 	for name, cond := range model.GetConditions() {
 		uncompiledConditions[name] = condition.NewUncompiled(cond).
-			WithMaxEvaluationCost(defaultMaxEvaluationCost). // care should be taken here - decreasing can cause API compatibility problems
+			WithMaxEvaluationCost(config.DefaultMaxConditionEvaluationCost). // care should be taken here - decreasing can cause API compatibility problems
 			WithTrackEvaluationCost()
 	}
 
