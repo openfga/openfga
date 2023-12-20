@@ -8,6 +8,12 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -17,11 +23,6 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/maps"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
