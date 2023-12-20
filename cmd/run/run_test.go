@@ -1216,39 +1216,39 @@ type document
 	var testCases = map[string]struct {
 		httpVerb      string
 		httpPath      string
-		httpJsonBody  string
+		httpJSONBody  string
 		expectedError bool
 	}{
 		`check`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, storeID),
-			httpJsonBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+			httpJSONBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
 		},
 		`listobjects`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-objects", cfg.HTTP.Addr, storeID),
-			httpJsonBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
 		`streamed-list-objects`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
-			httpJsonBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
 		`expand`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
-			httpJsonBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+			httpJSONBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
 		},
 		`write`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/write", cfg.HTTP.Addr, storeID),
-			httpJsonBody: `{"writes": { "tuple_keys": [{"user": "user:anne",  "relation": "viewer", "object": "document:1"}]}}`,
+			httpJSONBody: `{"writes": { "tuple_keys": [{"user": "user:anne",  "relation": "viewer", "object": "document:1"}]}}`,
 		},
 	}
 
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJsonBody))
+			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJSONBody))
 			require.NoError(t, err, "Failed to construct request")
 
 			httpResponse, err := httpClient.Do(req)
