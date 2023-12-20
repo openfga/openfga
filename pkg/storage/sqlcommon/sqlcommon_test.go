@@ -7,8 +7,9 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func TestHandleSQLError(t *testing.T) {

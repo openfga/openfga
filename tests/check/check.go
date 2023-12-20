@@ -10,16 +10,17 @@ import (
 	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
+	"sigs.k8s.io/yaml"
+
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/status"
-	"sigs.k8s.io/yaml"
 )
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size

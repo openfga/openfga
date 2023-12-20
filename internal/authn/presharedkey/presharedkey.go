@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+
 	"github.com/openfga/openfga/internal/authn"
 )
 
