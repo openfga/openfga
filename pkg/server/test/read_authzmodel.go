@@ -60,12 +60,14 @@ type document
 
 	ctx := context.Background()
 
+	typesystemResolver := typesystem.NewCachedTypesystemResolver(datastore)
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := datastore.WriteAuthorizationModel(ctx, test.storeID, test.model)
 			require.NoError(t, err)
 
-			resp, err := commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
+			resp, err := commands.NewReadAuthorizationModelQuery(typesystemResolver).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: test.storeID,
 				Id:      test.model.Id,
 			})
@@ -96,9 +98,11 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 
 	ctx := context.Background()
 
+	typesystemResolver := typesystem.NewCachedTypesystemResolver(datastore)
+
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			_, err := commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, test.request)
+			_, err := commands.NewReadAuthorizationModelQuery(typesystemResolver).Execute(ctx, test.request)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
@@ -108,6 +112,8 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 	require := require.New(t)
 	ctx := context.Background()
 	storeID := ulid.Make().String()
+
+	typesystemResolver := typesystem.NewCachedTypesystemResolver(datastore)
 
 	t.Run("writing_without_any_type_definitions_does_not_write_anything", func(t *testing.T) {
 		model := &openfgav1.AuthorizationModel{
@@ -119,7 +125,7 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
 		require.NoError(err)
 
-		_, err = commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
+		_, err = commands.NewReadAuthorizationModelQuery(typesystemResolver).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
 			StoreId: storeID,
 			Id:      model.Id,
 		})

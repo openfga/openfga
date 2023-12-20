@@ -22,6 +22,7 @@ import (
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
+	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
@@ -47,6 +48,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
@@ -127,8 +129,6 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
 
-	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
-
 	flags.Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
 
 	flags.Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections to the datastore in the idle connection pool")
@@ -138,6 +138,8 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 
 	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.Metrics.Enabled, "enable/disable sql metrics")
+
+	flags.Int("model-cache-max-size-bytes", defaultConfig.ModelCacheMaxSizeBytes, "the model cache maximum size (in bytes)")
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
@@ -367,7 +369,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
+	datastore = storagewrappers.NewContextWrapper(datastore)
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
@@ -504,6 +506,14 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithExperimentals(experimentals...),
+		server.WithTypesystemResolver(
+			typesystem.NewCachedTypesystemResolver(
+				datastore,
+				typesystem.WithTypesystemResolverCache(
+					ccache.New(ccache.Configure[*typesystem.TypeSystem]().MaxSize(int64(config.ModelCacheMaxSizeBytes))),
+				),
+			),
+		),
 	)
 
 	s.Logger.Info(

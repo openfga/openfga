@@ -53,11 +53,9 @@ type document
 			}, nil),
 	)
 
-	resolver := MemoizedTypesystemResolverFunc(
-		mockDatastore,
-	)
+	resolver := NewCachedTypesystemResolver(mockDatastore).ResolveTypesystem
 
-	typesys, err := resolver(context.Background(), storeID, modelID1)
+	typesys, err := resolver(context.Background(), storeID, modelID1, true)
 	require.NoError(t, err)
 	require.NotNil(t, typesys)
 
@@ -65,7 +63,7 @@ type document
 	require.NoError(t, err)
 	require.NotNil(t, relation)
 
-	typesys, err = resolver(context.Background(), storeID, "")
+	typesys, err = resolver(context.Background(), storeID, "", true)
 	require.NoError(t, err)
 	require.NotNil(t, typesys)
 	require.Equal(t, modelID2, typesys.GetAuthorizationModelID())
@@ -103,9 +101,7 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 			}, nil).MinTimes(1).MaxTimes(numGoroutines),
 	)
 
-	resolver := MemoizedTypesystemResolverFunc(
-		mockDatastore,
-	)
+	resolver := NewCachedTypesystemResolver(mockDatastore).ResolveTypesystem
 
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
@@ -113,7 +109,7 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			typesys, err := resolver(context.Background(), storeID, "")
+			typesys, err := resolver(context.Background(), storeID, "", true)
 			require.NoError(t, err)
 			require.Equal(t, modelID, typesys.GetAuthorizationModelID())
 		}()

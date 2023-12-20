@@ -77,9 +77,6 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("datastore.password", flags.Lookup("datastore-password"))
 		util.MustBindEnv("datastore.password", "OPENFGA_DATASTORE_PASSWORD")
 
-		util.MustBindPFlag("datastore.maxCacheSize", flags.Lookup("datastore-max-cache-size"))
-		util.MustBindEnv("datastore.maxCacheSize", "OPENFGA_DATASTORE_MAX_CACHE_SIZE", "OPENFGA_DATASTORE_MAXCACHESIZE")
-
 		util.MustBindPFlag("datastore.maxOpenConns", flags.Lookup("datastore-max-open-conns"))
 		util.MustBindEnv("datastore.maxOpenConns", "OPENFGA_DATASTORE_MAX_OPEN_CONNS", "OPENFGA_DATASTORE_MAXOPENCONNS")
 
@@ -160,6 +157,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("resolveNodeBreadthLimit", flags.Lookup("resolve-node-breadth-limit"))
 		util.MustBindEnv("resolveNodeBreadthLimit", "OPENFGA_RESOLVE_NODE_BREADTH_LIMIT", "OPENFGA_RESOLVENODEBREADTHLIMIT")
+
+		util.MustBindPFlag("modelCacheMaxSizeBytes", flags.Lookup("model-cache-max-size-bytes"))
+		util.MustBindEnv("modelCacheMaxSizeBytes", "OPENFGA_MODEL_CACHE_MAX_SIZE_BYTES", "OPENFGA_MODELCACHEMAXSIZEBYTES")
 
 		util.MustBindPFlag("listObjectsDeadline", flags.Lookup("listObjects-deadline"))
 		util.MustBindEnv("listObjectsDeadline", "OPENFGA_LIST_OBJECTS_DEADLINE", "OPENFGA_LISTOBJECTSDEADLINE")
