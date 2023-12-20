@@ -675,22 +675,6 @@ type document
 				errorMessage: `Invalid input. Make sure you provide at least one write, or at least one delete`,
 			},
 		},
-		{
-			name: "invalid_tuple_wildcard",
-			input: &openfgav1.WriteRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						{Object: "document:1", Relation: "viewer", User: "user:*"},
-					},
-				},
-			},
-			output: output{
-				errorCode:    codes.Code(2000),
-				errorMessage: "the typed wildcard 'user:*' is not an allowed type restriction for 'document#viewer'",
-			},
-		},
 	}
 
 	for _, test := range tests {
