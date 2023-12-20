@@ -9,8 +9,9 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 const (
