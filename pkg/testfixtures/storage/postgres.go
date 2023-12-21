@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"net"
 	"testing"
 	"time"
@@ -16,7 +18,7 @@ import (
 	testcontainerspostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/openfga/openfga/assets"
+	postgres "github.com/openfga/openfga/pkg/storage/postgres/migrations"
 )
 
 const (
@@ -76,28 +78,35 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", pgTestContainer.username, pgTestContainer.password, pgTestContainer.addr)
 
-	goose.SetLogger(goose.NopLogger())
-
-	db, err := goose.OpenDBWithDriver("pgx", uri)
-	require.NoError(t, err)
-	defer db.Close()
+	var db *sql.DB
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
 	err = backoff.Retry(
 		func() error {
+			db, err = sql.Open("pgx", uri)
+			if err != nil {
+				return err
+			}
 			return db.Ping()
 		},
 		backoffPolicy,
 	)
 	require.NoError(t, err, "failed to connect to postgres container")
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	err = goose.Up(db, assets.PostgresMigrationDir)
+	goose.SetLogger(goose.NopLogger())
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, nil,
+		goose.WithDisableGlobalRegistry(true),
+		goose.WithGoMigrations(postgres.Migrations...),
+	)
 	require.NoError(t, err)
 
-	version, err := goose.GetDBVersion(db)
+	results, err := provider.Up(ctx)
+	log.Println(results)
+	log.Println(err)
+	require.NoError(t, err)
+
+	version, err := provider.GetDBVersion(ctx)
 	require.NoError(t, err)
 	pgTestContainer.version = version
 
