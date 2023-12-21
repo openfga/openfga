@@ -6,7 +6,7 @@ contact_links:
   - name: 👽 Discord
     url: https://discord.gg/8naAwJfWN6
     about: Join OpenFGA's active Discord community
-  - name: 📝 RFC's
+  - name: 📝 RFCs
     url: https://github.com/openfga/rfcs
     about: Check existing RFCs to understand where the project is headed
   - name: 💬 Discussions
