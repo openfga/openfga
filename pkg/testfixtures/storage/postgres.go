@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
 	"strings"
 	"testing"
 	"time"
@@ -184,9 +183,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	)
 	require.NoError(t, err)
 
-	results, err := provider.Up(ctx)
-	log.Println(results)
-	log.Println(err)
+	_, err = provider.Up(ctx)
 	require.NoError(t, err)
 
 	version, err := provider.GetDBVersion(ctx)
