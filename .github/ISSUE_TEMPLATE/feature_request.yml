@@ -1,6 +1,6 @@
 name: 🚀 Feature Request
 description: Suggest an idea or a feature for this project
-labels: [ ":seedling: feature" ]
+labels: [ "enhancement" ]
 
 body:
   - type: markdown

@@ -1,6 +1,6 @@
 name: 🐛 Report a bug
 description: Have you found a bug or issue? Create a bug report for OpenFGA
-labels: [ ":beetle: bug" ]
+labels: [ "bug" ]
 
 body:
   - type: markdown
