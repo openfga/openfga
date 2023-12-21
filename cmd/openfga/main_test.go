@@ -570,7 +570,129 @@ func connect(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 }
 
 func GRPCWriteTest(t *testing.T, tester OpenFGATester) {
+	type output struct {
+		errorCode    codes.Code
+		errorMessage string
+	}
 
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+	resp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+	storeID := resp.GetId()
+
+	model := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define viewer: [user]
+`)
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+	require.NotPanics(t, func() { ulid.MustParse(writeModelResp.GetAuthorizationModelId()) })
+	modelID := writeModelResp.GetAuthorizationModelId()
+
+	tests := []struct {
+		name   string
+		input  *openfgav1.WriteRequest
+		output output
+	}{
+		{
+			name: "happy_path_writes",
+			input: &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						{Object: "document:1", Relation: "viewer", User: "user:jon"},
+					},
+				},
+			},
+			output: output{
+				errorCode: codes.OK,
+			},
+		},
+		{
+			name: "happy_path_deletes",
+			input: &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{
+							Object: "document:1", Relation: "viewer", User: "user:jon",
+						},
+					},
+				},
+			},
+			output: output{
+				errorCode: codes.OK,
+			},
+		},
+		{
+			name: "invalid_store_id",
+			input: &openfgav1.WriteRequest{
+				StoreId:              "invalid-store-id",
+				AuthorizationModelId: modelID,
+				Writes:               &openfgav1.WriteRequestWrites{},
+			},
+			output: output{
+				errorCode:    codes.InvalidArgument,
+				errorMessage: `value does not match regex pattern "^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$`,
+			},
+		},
+		{
+			name: "invalid_model_id",
+			input: &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: "invalid-model-id",
+				Writes:               &openfgav1.WriteRequestWrites{},
+			},
+			output: output{
+				errorCode:    codes.InvalidArgument,
+				errorMessage: `value does not match regex pattern "^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$`,
+			},
+		},
+		{
+			name: "nil_writes_and_deletes",
+			input: &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+			},
+			output: output{
+				errorCode:    codes.Code(2003),
+				errorMessage: `Invalid input. Make sure you provide at least one write, or at least one delete`,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := client.Write(context.Background(), test.input)
+			s, ok := status.FromError(err)
+
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Contains(t, err.Error(), test.output.errorMessage)
+			}
+		})
+	}
 }
 
 func GRPCReadTest(t *testing.T, tester OpenFGATester) {
