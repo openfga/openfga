@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: 📖 OpenFGA's Documentation
-    url: https://openfga.dev/docs/authorization-and-openfga
+    url: https://openfga.dev/docs
     about: Check OpenFGA's documentation for an in-depth overview
   - name: 👽 Discord
     url: https://discord.gg/8naAwJfWN6
