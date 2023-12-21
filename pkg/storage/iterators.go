@@ -10,7 +10,7 @@ import (
 var ErrIteratorDone = errors.New("iterator done")
 
 type Iterator[T any] interface {
-	// Next will return the next available item.
+	// Next will return the next available item or ErrIteratorDone if no more items are available
 	Next(ctx context.Context) (T, error)
 	// Stop terminates iteration over the underlying iterator.
 	Stop()

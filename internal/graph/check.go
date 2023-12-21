@@ -8,6 +8,12 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -17,11 +23,6 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/maps"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -544,7 +545,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
-				condEvalResult, err := eval.EvaluateTupleCondition(tupleKey, typesys, req.GetContext())
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 				if err != nil {
 					telemetry.TraceError(span, err)
 					return nil, err
@@ -614,7 +615,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, err
 				}
 
-				condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext())
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 				if err != nil {
 					errs = multierror.Append(errs, err)
 					continue
@@ -811,7 +812,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				return response, err
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext())
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 			if err != nil {
 				errs = multierror.Append(errs, err)
 

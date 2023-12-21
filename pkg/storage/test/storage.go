@@ -6,11 +6,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
+
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 var (

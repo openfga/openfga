@@ -10,6 +10,12 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/sourcegraph/conc/pool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -20,11 +26,6 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/sourcegraph/conc/pool"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
@@ -470,7 +471,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			return err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.Context)
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 			continue
