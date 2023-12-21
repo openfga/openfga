@@ -7,19 +7,20 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
+	"sigs.k8s.io/yaml"
+
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/status"
-	"gopkg.in/yaml.v3"
 )
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
@@ -42,7 +43,7 @@ type testParams struct {
 type stage struct {
 	Model           string
 	Tuples          []*openfgav1.TupleKey
-	CheckAssertions []*checktest.Assertion `yaml:"checkAssertions"`
+	CheckAssertions []*checktest.Assertion `json:"checkAssertions"`
 }
 
 // ClientInterface defines client interface for running check tests
@@ -78,24 +79,24 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 	require.NoError(t, err)
 
 	storeID := resp.GetId()
-	model := `
-	type user
+	model := `model
+	schema 1.1
+type user
 
-	type doc
-	  relations
-	    define viewer: [user] as self
-	    define can_view as viewer
-	`
+type doc
+  relations
+	define viewer: [user]
+	define can_view: viewer`
 	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(model),
+		TypeDefinitions: parser.MustTransformDSLToProto(model).TypeDefinitions,
 	})
 	require.NoError(t, err)
 	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
 	_, err = client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
-		TupleKey:             tuple.NewTupleKey("doc:x", "viewer", "user:y"),
+		TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:y"),
 		AuthorizationModelId: badModelID,
 	})
 
@@ -107,19 +108,30 @@ func runSchema1_1CheckTests(t *testing.T, client ClientInterface) {
 }
 
 func runTests(t *testing.T, params testParams) {
-	var b []byte
-	var err error
-	schemaVersion := params.schemaVersion
-	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
+	files := []string{
+		"tests/consolidated_1_1_tests.yaml",
+		"tests/abac_tests.yaml",
 	}
-	require.NoError(t, err)
 
-	var testCases checkTests
-	err = yaml.Unmarshal(b, &testCases)
-	require.NoError(t, err)
+	var allTestCases []individualTest
 
-	for _, test := range testCases.Tests {
+	for _, file := range files {
+		var b []byte
+		var err error
+		schemaVersion := params.schemaVersion
+		if schemaVersion == typesystem.SchemaVersion1_1 {
+			b, err = assets.EmbedTests.ReadFile(file)
+		}
+		require.NoError(t, err)
+
+		var testCases checkTests
+		err = yaml.Unmarshal(b, &testCases)
+		require.NoError(t, err)
+
+		allTestCases = append(allTestCases, testCases.Tests...)
+	}
+
+	for _, test := range allTestCases {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
@@ -151,17 +163,20 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
+			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
-			if schemaVersion == typesystem.SchemaVersion1_1 {
-				typedefs = parser.MustParse(stage.Model)
+			model, err := parser.TransformDSLToProto(stage.Model)
+			if err != nil {
+				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = v1parser.MustParse(stage.Model)
+				typedefs = model.TypeDefinitions
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
+				Conditions:      model.GetConditions(),
 			})
 			require.NoError(t, err)
 
@@ -175,12 +190,17 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-						Writes:               &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						Writes: &openfgav1.WriteRequestWrites{
+							TupleKeys: writeChunk,
+						},
 					})
 					require.NoError(t, err)
 				}
 			}
 
+			if len(stage.CheckAssertions) == 0 {
+				t.Skipf("no check assertions defined")
+			}
 			for _, assertion := range stage.CheckAssertions {
 				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
@@ -189,14 +209,23 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ctxTuples = append(ctxTuples, stage.Tuples...)
 				}
 
+				var tupleKey *openfgav1.CheckRequestTupleKey
+				if assertion.Tuple != nil {
+					tupleKey = &openfgav1.CheckRequestTupleKey{
+						User:     assertion.Tuple.User,
+						Relation: assertion.Tuple.Relation,
+						Object:   assertion.Tuple.Object,
+					}
+				}
 				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-					TupleKey:             assertion.Tuple,
+					TupleKey:             tupleKey,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
-					Trace: true,
+					Context: assertion.Context,
+					Trace:   true,
 				})
 
 				if assertion.ErrorCode == 0 {

@@ -5,10 +5,12 @@ import (
 	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -59,7 +61,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
-		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {
+		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.TupleKey)); err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
 	}

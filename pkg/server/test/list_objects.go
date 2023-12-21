@@ -7,18 +7,21 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 )
 
 type mockStreamServer struct {
@@ -36,10 +39,12 @@ type listObjectsTestCase struct {
 	schema                 string
 	tuples                 []*openfgav1.TupleKey
 	model                  string
+	authorizationModel     *openfgav1.AuthorizationModel
 	objectType             string
 	user                   string
 	relation               string
 	contextualTuples       *openfgav1.ContextualTupleKeys
+	context                *structpb.Struct
 	allResults             []string // all the results. the server may return less
 	maxResults             uint32
 	minimumResultsExpected uint32
@@ -48,17 +53,17 @@ type listObjectsTestCase struct {
 	useCheckCache          bool
 }
 
-func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
+func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 	testCases := []listObjectsTestCase{
 		{
 			name:   "max_results_equal_0_with_simple_model",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -77,12 +82,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_equal_2_with_simple_model",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -101,13 +106,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_with_model_that_uses_exclusion",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type org
-			  relations
-				define blocked: [user] as self
-				define admin: [user] as self but not blocked
-			`,
+			model: `model
+	schema 1.1
+type user
+type org
+  relations
+	define blocked: [user]
+	define admin: [user] but not blocked`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
 				tuple.NewTupleKey("org:2", "admin", "user:charlie"),
@@ -126,13 +131,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type org
-			  relations
-				define blocked: [user] as self
-				define admin: [user] as self but not blocked
-			`,
+			model: `model
+	schema 1.1
+type user
+type org
+  relations
+	define blocked: [user]
+	define admin: [user] but not blocked`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:2", "blocked", "user:charlie"),
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
@@ -151,13 +156,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define admin: [user] as self
-			`,
+type team
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("team:1", "admin", "user:bob"),
 			},
@@ -172,12 +177,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -196,12 +201,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "list_object_use_check_cache",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -218,6 +223,345 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			// when we use cache, the regular_endpoint should pick up the cached value from the streaming_endpoint run
 			useCheckCache: true,
 		},
+		{
+			name: "condition_with_tuples",
+			authorizationModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			tuples: []*openfgav1.TupleKey{
+				{
+					User:     "user:anne",
+					Relation: "viewer",
+					Object:   "document:1",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition1",
+						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+					},
+				},
+				{
+					User:     "user:anne",
+					Relation: "viewer",
+					Object:   "document:2",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition1",
+						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+					},
+				},
+			},
+			user:                   "user:anne",
+			objectType:             "document",
+			relation:               "viewer",
+			contextualTuples:       nil,
+			maxResults:             1,
+			minimumResultsExpected: 1,
+			allResults:             []string{"document:1"},
+			useCheckCache:          false,
+		},
+		{
+			name: "condition_with_contextual_tuples",
+			authorizationModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			tuples:     nil,
+			user:       "user:anne",
+			objectType: "document",
+			relation:   "viewer",
+			contextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						User:     "user:anne",
+						Relation: "viewer",
+						Object:   "document:1",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						},
+					},
+					{
+						User:     "user:anne",
+						Relation: "viewer",
+						Object:   "document:2",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+						},
+					},
+				},
+			},
+			maxResults:             1,
+			minimumResultsExpected: 1,
+			allResults:             []string{"document:1"},
+			useCheckCache:          false,
+		},
+		{
+			name: "condition_with_tuples_and_contextual_tuples",
+			authorizationModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			tuples: []*openfgav1.TupleKey{
+				{
+					User:     "user:anne",
+					Relation: "viewer",
+					Object:   "document:1",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition1",
+						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+					},
+				},
+				{
+					User:     "user:anne",
+					Relation: "viewer",
+					Object:   "document:2",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition1",
+						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "notok"}),
+					},
+				},
+			},
+			user:       "user:anne",
+			objectType: "document",
+			relation:   "viewer",
+			contextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						User:     "user:anne",
+						Relation: "viewer",
+						Object:   "document:1",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						},
+					},
+					{
+						User:     "user:anne",
+						Relation: "viewer",
+						Object:   "document:2",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						},
+					},
+				},
+			},
+			maxResults:             2,
+			minimumResultsExpected: 2,
+			allResults:             []string{"document:1", "document:2"},
+			useCheckCache:          false,
+		},
+		{
+			name: "condition_with_tuples_and_contextual_tuples_and_context",
+			authorizationModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok' && param2 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+							"param2": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			tuples: []*openfgav1.TupleKey{
+				{
+					User:     "user:anne",
+					Relation: "viewer",
+					Object:   "document:1",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition1",
+						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+					},
+				},
+				{
+					User:     "user:anne",
+					Relation: "viewer",
+					Object:   "document:2",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition1",
+						Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+					},
+				},
+			},
+			user:       "user:anne",
+			objectType: "document",
+			relation:   "viewer",
+			context:    testutils.MustNewStruct(t, map[string]interface{}{"param2": "ok"}),
+			contextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						User:     "user:anne",
+						Relation: "viewer",
+						Object:   "document:3",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						},
+					},
+					{
+						User:     "user:anne",
+						Relation: "viewer",
+						Object:   "document:4",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+						},
+					},
+				},
+			},
+			maxResults:             4,
+			minimumResultsExpected: 4,
+			allResults:             []string{"document:1", "document:2", "document:3", "document:4"},
+			useCheckCache:          false,
+		},
+		{
+			name: "condition_in_ttu_relationships",
+			authorizationModel: parser.MustTransformDSLToProto(`model
+  schema 1.1
+
+type user
+
+type folder
+  relations
+    define viewer: [user]
+
+type document
+  relations
+    define parent: [folder with condition1]
+	define viewer: viewer from parent
+
+condition condition1(x: int) {
+  x < 100
+}`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "condition1", nil),
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+			},
+			user:                   "user:jon",
+			objectType:             "document",
+			relation:               "viewer",
+			context:                testutils.MustNewStruct(t, map[string]interface{}{"x": 50}),
+			minimumResultsExpected: 1,
+			allResults:             []string{"document:1"},
+			useCheckCache:          false,
+		},
 	}
 
 	for _, test := range testCases {
@@ -228,11 +572,20 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			storeID := ulid.Make().String()
 
 			// arrange: write model
-			model := &openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				SchemaVersion:   test.schema,
-				TypeDefinitions: parser.MustParse(test.model),
+			model := test.authorizationModel
+
+			if model == nil {
+				model = &openfgav1.AuthorizationModel{
+					Id:              ulid.Make().String(),
+					SchemaVersion:   test.schema,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
+				}
 			}
+
+			if model.Id == "" {
+				model.Id = ulid.Make().String()
+			}
+
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
 
@@ -300,6 +653,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					Relation:         test.relation,
 					User:             test.user,
 					ContextualTuples: test.contextualTuples,
+					Context:          test.context,
 				}, server)
 				close(server.channel)
 				<-done
@@ -317,6 +671,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					Relation:         test.relation,
 					User:             test.user,
 					ContextualTuples: test.contextualTuples,
+					Context:          test.context,
 				})
 
 				require.NotNil(t, res)
@@ -341,14 +696,18 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	model := &openfgav1.AuthorizationModel{
 		Id:            modelID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`
-	type user
-
-	type document
-	  relations
-	    define viewer: [user] as self
-	    define can_view as viewer
-	`),
+		// this model exercises all possible execution paths: "direct" edge and "computed userset" edge and "TTU" edge
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type folder
+  relations
+    define viewer: [user]
+type document
+  relations
+	define viewer: [user]
+	define parent: [folder]
+	define can_view: viewer or viewer from parent`).TypeDefinitions,
 	}
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
 	require.NoError(b, err)

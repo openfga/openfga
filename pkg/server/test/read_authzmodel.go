@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -47,13 +48,13 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define reader: [user] as self
-				`),
+type document
+  relations
+	define reader: [user]`).TypeDefinitions,
 			},
 		},
 	}

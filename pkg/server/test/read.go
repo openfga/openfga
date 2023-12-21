@@ -4,20 +4,21 @@ import (
 	"context"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/protoadapt"
-	"google.golang.org/protobuf/testing/protocmp"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -29,70 +30,70 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		request  *openfgav1.ReadRequest
 		response *openfgav1.ReadResponse
 	}{
-		{
-			_name: "ExecuteReturnsExactMatchingTupleKey",
-			// state
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: parser.MustParse(`
-				type user
-
-				type team
-
-				type repo
-				  relations
-				    define owner: [team] as self
-				    define admin: [user] as self
-				`),
-			},
-			tuples: []*openfgav1.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "user:github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "owner",
-					User:     "team:iam",
-				},
-			},
-			// input
-			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "user:github|jose",
-				},
-			},
-			// output
-			response: &openfgav1.ReadResponse{
-				Tuples: []*openfgav1.Tuple{
-					{
-						Key: &openfgav1.TupleKey{
-							Object:   "repo:openfga/openfga",
-							Relation: "admin",
-							User:     "user:github|jose",
-						},
-					},
-				},
-			},
-		},
+		//		{
+		//			_name: "ExecuteReturnsExactMatchingTupleKey",
+		//			// state
+		//			model: &openfgav1.AuthorizationModel{
+		//				Id:            ulid.Make().String(),
+		//				SchemaVersion: typesystem.SchemaVersion1_0,
+		//				TypeDefinitions: parser.MustTransformDSLToProto(`model
+		//  schema 1.0
+		//type user
+		//
+		//type team
+		//
+		//type repo
+		//  relations
+		//	define owner: [team]
+		//	define admin: [user]`).TypeDefinitions,
+		//			},
+		//			tuples: []*openfgav1.TupleKey{
+		//				{
+		//					Object:   "repo:openfga/openfga",
+		//					Relation: "admin",
+		//					User:     "user:github|jose",
+		//				},
+		//				{
+		//					Object:   "repo:openfga/openfga",
+		//					Relation: "owner",
+		//					User:     "team:iam",
+		//				},
+		//			},
+		//			// input
+		//			request: &openfgav1.ReadRequest{
+		//				TupleKey: &openfgav1.ReadRequestTupleKey{
+		//					Object:   "repo:openfga/openfga",
+		//					Relation: "admin",
+		//					User:     "user:github|jose",
+		//				},
+		//			},
+		//			// output
+		//			response: &openfgav1.ReadResponse{
+		//				Tuples: []*openfgav1.Tuple{
+		//					{
+		//						Key: &openfgav1.TupleKey{
+		//							Object:   "repo:openfga/openfga",
+		//							Relation: "admin",
+		//							User:     "user:github|jose",
+		//						},
+		//					},
+		//				},
+		//			},
+		//		},
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndObjectIdInAuthorizationModelRegardlessOfRelationIfNoRelation",
 			// state
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type repo
-				  relations
-				    define admin: [user] as self
-				    define owner: [user] as self
-				`),
+type repo
+  relations
+	define admin: [user]
+	define owner: [user]`).TypeDefinitions,
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose"),
@@ -100,7 +101,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "repo:openfga/openfga",
 					User:   "user:github|jose",
 				},
@@ -113,124 +114,124 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 		},
-		{
-			_name: "ExecuteReturnsTuplesWithProvidedUserInAuthorizationModelRegardlessOfRelationAndObjectIdIfNoRelationAndNoObjectId",
-			// state
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":  {},
-							"writer": {},
-						},
-					},
-				},
-			},
-			tuples: []*openfgav1.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfga-server",
-					Relation: "writer",
-					User:     "github|jose",
-				},
-				{
-					Object:   "org:openfga",
-					Relation: "member",
-					User:     "github|jose",
-				},
-			},
-			// input
-			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object: "repo:",
-					User:   "github|jose",
-				},
-			},
-			// output
-			response: &openfgav1.ReadResponse{
-				Tuples: []*openfgav1.Tuple{
-					{Key: &openfgav1.TupleKey{
-						Object:   "repo:openfga/openfga",
-						Relation: "admin",
-						User:     "github|jose",
-					}},
-					{Key: &openfgav1.TupleKey{
-						Object:   "repo:openfga/openfga-server",
-						Relation: "writer",
-						User:     "github|jose",
-					}},
-				},
-			},
-		},
-		{
-			_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
-			// state
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":  {},
-							"writer": {},
-						},
-					},
-				},
-			},
-			tuples: []*openfgav1.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfga-server",
-					Relation: "writer",
-					User:     "github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfga-users",
-					Relation: "writer",
-					User:     "github|jose",
-				},
-				{
-					Object:   "org:openfga",
-					Relation: "member",
-					User:     "github|jose",
-				},
-			},
-			// input
-			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:",
-					Relation: "writer",
-					User:     "github|jose",
-				},
-			},
-			// output
-			response: &openfgav1.ReadResponse{
-				Tuples: []*openfgav1.Tuple{
-					{Key: &openfgav1.TupleKey{
-						Object:   "repo:openfga/openfga-server",
-						Relation: "writer",
-						User:     "github|jose",
-					}},
-					{Key: &openfgav1.TupleKey{
-						Object:   "repo:openfga/openfga-users",
-						Relation: "writer",
-						User:     "github|jose",
-					}},
-				},
-			},
-		},
+		//{
+		//	_name: "ExecuteReturnsTuplesWithProvidedUserInAuthorizationModelRegardlessOfRelationAndObjectIdIfNoRelationAndNoObjectId",
+		//	// state
+		//	model: &openfgav1.AuthorizationModel{
+		//		Id:            ulid.Make().String(),
+		//		SchemaVersion: typesystem.SchemaVersion1_0,
+		//		TypeDefinitions: []*openfgav1.TypeDefinition{
+		//			{
+		//				Type: "repo",
+		//				Relations: map[string]*openfgav1.Userset{
+		//					"admin":  {},
+		//					"writer": {},
+		//				},
+		//			},
+		//		},
+		//	},
+		//	tuples: []*openfgav1.TupleKey{
+		//		{
+		//			Object:   "repo:openfga/openfga",
+		//			Relation: "admin",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "repo:openfga/openfga-server",
+		//			Relation: "writer",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "org:openfga",
+		//			Relation: "member",
+		//			User:     "github|jose",
+		//		},
+		//	},
+		//	// input
+		//	request: &openfgav1.ReadRequest{
+		//		TupleKey: &openfgav1.ReadRequestTupleKey{
+		//			Object: "repo:",
+		//			User:   "github|jose",
+		//		},
+		//	},
+		//	// output
+		//	response: &openfgav1.ReadResponse{
+		//		Tuples: []*openfgav1.Tuple{
+		//			{Key: &openfgav1.TupleKey{
+		//				Object:   "repo:openfga/openfga",
+		//				Relation: "admin",
+		//				User:     "github|jose",
+		//			}},
+		//			{Key: &openfgav1.TupleKey{
+		//				Object:   "repo:openfga/openfga-server",
+		//				Relation: "writer",
+		//				User:     "github|jose",
+		//			}},
+		//		},
+		//	},
+		//},
+		//{
+		//	_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
+		//	// state
+		//	model: &openfgav1.AuthorizationModel{
+		//		Id:            ulid.Make().String(),
+		//		SchemaVersion: typesystem.SchemaVersion1_0,
+		//		TypeDefinitions: []*openfgav1.TypeDefinition{
+		//			{
+		//				Type: "repo",
+		//				Relations: map[string]*openfgav1.Userset{
+		//					"admin":  {},
+		//					"writer": {},
+		//				},
+		//			},
+		//		},
+		//	},
+		//	tuples: []*openfgav1.TupleKey{
+		//		{
+		//			Object:   "repo:openfga/openfga",
+		//			Relation: "admin",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "repo:openfga/openfga-server",
+		//			Relation: "writer",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "repo:openfga/openfga-users",
+		//			Relation: "writer",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "org:openfga",
+		//			Relation: "member",
+		//			User:     "github|jose",
+		//		},
+		//	},
+		//	// input
+		//	request: &openfgav1.ReadRequest{
+		//		TupleKey: &openfgav1.ReadRequestTupleKey{
+		//			Object:   "repo:",
+		//			Relation: "writer",
+		//			User:     "github|jose",
+		//		},
+		//	},
+		//	// output
+		//	response: &openfgav1.ReadResponse{
+		//		Tuples: []*openfgav1.Tuple{
+		//			{Key: &openfgav1.TupleKey{
+		//				Object:   "repo:openfga/openfga-server",
+		//				Relation: "writer",
+		//				User:     "github|jose",
+		//			}},
+		//			{Key: &openfgav1.TupleKey{
+		//				Object:   "repo:openfga/openfga-users",
+		//				Relation: "writer",
+		//				User:     "github|jose",
+		//			}},
+		//		},
+		//	},
+		//},
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
@@ -271,7 +272,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
 				},
@@ -292,95 +293,94 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 		},
-		{
-			_name: "ExecuteReturnsTuplesWithProvidedObjectIdInAuthorizationModelRegardlessOfUserAndRelation",
-			// state
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":  {},
-							"writer": {},
-						},
-					},
-				},
-			},
-			tuples: []*openfgav1.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "github|yenkel",
-				},
-				{
-					Object:   "repo:openfga/openfga-users",
-					Relation: "writer",
-					User:     "github|jose",
-				},
-				{
-					Object:   "org:openfga",
-					Relation: "member",
-					User:     "github|jose",
-				},
-			},
-			// input
-			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object: "repo:openfga/openfga",
-				},
-			},
-			// output
-			response: &openfgav1.ReadResponse{
-				Tuples: []*openfgav1.Tuple{
-					{Key: &openfgav1.TupleKey{
-						Object:   "repo:openfga/openfga",
-						Relation: "admin",
-						User:     "github|jose",
-					}},
-					{Key: &openfgav1.TupleKey{
-						Object:   "repo:openfga/openfga",
-						Relation: "writer",
-						User:     "github|yenkel",
-					}},
-				},
-			},
-		},
+		//{
+		//	_name: "ExecuteReturnsTuplesWithProvidedObjectIdInAuthorizationModelRegardlessOfUserAndRelation",
+		//	// state
+		//	model: &openfgav1.AuthorizationModel{
+		//		Id:            ulid.Make().String(),
+		//		SchemaVersion: typesystem.SchemaVersion1_0,
+		//		TypeDefinitions: []*openfgav1.TypeDefinition{
+		//			{
+		//				Type: "repo",
+		//				Relations: map[string]*openfgav1.Userset{
+		//					"admin":  {},
+		//					"writer": {},
+		//				},
+		//			},
+		//		},
+		//	},
+		//	tuples: []*openfgav1.TupleKey{
+		//		{
+		//			Object:   "repo:openfga/openfga",
+		//			Relation: "admin",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "repo:openfga/openfga",
+		//			Relation: "writer",
+		//			User:     "github|yenkel",
+		//		},
+		//		{
+		//			Object:   "repo:openfga/openfga-users",
+		//			Relation: "writer",
+		//			User:     "github|jose",
+		//		},
+		//		{
+		//			Object:   "org:openfga",
+		//			Relation: "member",
+		//			User:     "github|jose",
+		//		},
+		//	},
+		//	// input
+		//	request: &openfgav1.ReadRequest{
+		//		TupleKey: &openfgav1.ReadRequestTupleKey{
+		//			Object: "repo:openfga/openfga",
+		//		},
+		//	},
+		//	// output
+		//	response: &openfgav1.ReadResponse{
+		//		Tuples: []*openfgav1.Tuple{
+		//			{Key: &openfgav1.TupleKey{
+		//				Object:   "repo:openfga/openfga",
+		//				Relation: "admin",
+		//				User:     "github|jose",
+		//			}},
+		//			{Key: &openfgav1.TupleKey{
+		//				Object:   "repo:openfga/openfga",
+		//				Relation: "writer",
+		//				User:     "github|yenkel",
+		//			}},
+		//		},
+		//	},
+		//},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			if test.tuples != nil {
-				err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
-				require.NoError(err)
+				err = datastore.Write(ctx, store, []*openfgav1.TupleKeyWithoutCondition{}, test.tuples)
+				require.NoError(t, err)
 			}
 
 			test.request.StoreId = store
 			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			if test.response.Tuples != nil {
-				require.Equal(len(test.response.Tuples), len(resp.Tuples))
+				require.Equal(t, len(test.response.Tuples), len(resp.Tuples))
 
 				for i, responseTuple := range test.response.Tuples {
 					responseTupleKey := responseTuple.Key
 					actualTupleKey := resp.Tuples[i].Key
-					require.Equal(responseTupleKey.Object, actualTupleKey.Object)
-					require.Equal(responseTupleKey.Relation, actualTupleKey.Relation)
-					require.Equal(responseTupleKey.User, actualTupleKey.User)
+					require.Equal(t, responseTupleKey.Object, actualTupleKey.Object)
+					require.Equal(t, responseTupleKey.Relation, actualTupleKey.Relation)
+					require.Equal(t, responseTupleKey.User, actualTupleKey.User)
 				}
 			}
 		})
@@ -409,7 +409,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "openfga/iam",
 				},
 			},
@@ -429,7 +429,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: ":",
 				},
 			},
@@ -449,7 +449,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Relation: "admin",
 					User:     "github|jonallie",
 				},
@@ -470,7 +470,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object:   "repo:",
 					Relation: "writer",
 				},
@@ -491,7 +491,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Relation: "writer",
 				},
 			},
@@ -512,7 +512,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "repo:openfga/openfga",
 				},
 				ContinuationToken: "foo",

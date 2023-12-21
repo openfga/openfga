@@ -68,6 +68,17 @@ func sanitizedMessage(message string) string {
 // NewEncodedError returns the encoded error with the correct http status code etc.
 func NewEncodedError(errorCode int32, message string) *EncodedError {
 	if !IsValidEncodedError(errorCode) {
+		if errorCode == int32(codes.Aborted) {
+			return &EncodedError{
+				HTTPStatusCode: http.StatusConflict,
+				GRPCStatusCode: codes.Aborted,
+				ActualError: ErrorResponse{
+					Code:    codes.Aborted.String(),
+					Message: sanitizedMessage(message),
+					codeInt: errorCode,
+				},
+			}
+		}
 		return &EncodedError{
 			HTTPStatusCode: http.StatusInternalServerError,
 			GRPCStatusCode: codes.Internal,
@@ -228,7 +239,7 @@ func ConvertToEncodedErrorCode(statusError *status.Status) int32 {
 	case codes.FailedPrecondition:
 		return int32(openfgav1.InternalErrorCode_failed_precondition)
 	case codes.Aborted:
-		return int32(openfgav1.InternalErrorCode_aborted)
+		return int32(codes.Aborted)
 	case codes.OutOfRange:
 		return int32(openfgav1.InternalErrorCode_out_of_range)
 	case codes.Unimplemented:

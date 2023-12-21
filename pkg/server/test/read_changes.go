@@ -7,14 +7,15 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/server/commands"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	"github.com/openfga/openfga/pkg/server/commands"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 type testCase struct {
@@ -273,7 +274,12 @@ func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Cont
 	ctx := context.Background()
 
 	writes := []*openfgav1.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
-	err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, writes)
+	err := datastore.Write(
+		ctx,
+		store,
+		[]*openfgav1.TupleKeyWithoutCondition{},
+		writes,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -290,7 +296,12 @@ func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenF
 	wg.Add(2)
 
 	go func() {
-		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupOne)
+		err := datastore.Write(
+			ctx,
+			store,
+			[]*openfgav1.TupleKeyWithoutCondition{},
+			tupleGroupOne,
+		)
 		if err != nil {
 			t.Logf("failed to write tuples: %s", err)
 		}
@@ -298,7 +309,12 @@ func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenF
 	}()
 
 	go func() {
-		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupTwo)
+		err := datastore.Write(
+			ctx,
+			store,
+			[]*openfgav1.TupleKeyWithoutCondition{},
+			tupleGroupTwo,
+		)
 		if err != nil {
 			t.Logf("failed to write tuples: %s", err)
 		}

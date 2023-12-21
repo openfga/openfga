@@ -36,6 +36,8 @@ linters-settings:
     disable:
       - shadow
       - fieldalignment
+  goimports:
+    local-prefixes: "github.com/openfga/openfga"
   importas:
     # Do not allow unaliased imports of aliased packages.
     no-unaliased: true

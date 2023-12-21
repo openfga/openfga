@@ -1,3 +1,4 @@
+// Package graph contains code related to evaluation of authorization models through graph traversals.
 package graph
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -180,13 +182,13 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 	findEdgeOption findEdgeOption,
 ) ([]*RelationshipEdge, error) {
 	switch t := targetRewrite.GetUserset().(type) {
-	case *openfgav1.Userset_This: // e.g. define viewer:[user] as self
+	case *openfgav1.Userset_This: // e.g. define viewer:[user]
 		var res []*RelationshipEdge
 		directlyRelated, _ := g.typesystem.IsDirectlyRelated(target, source)
 		publiclyAssignable, _ := g.typesystem.IsPubliclyAssignable(target, source.GetType())
 
 		if directlyRelated || publiclyAssignable {
-			// if source=user, or define viewer:[user:*] as self
+			// if source=user, or define viewer:[user:*]
 			res = append(res, &RelationshipEdge{
 				Type:            DirectEdge,
 				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
@@ -197,7 +199,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		typeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), target.GetRelation())
 
 		for _, typeRestriction := range typeRestrictions {
-			if typeRestriction.GetRelation() != "" { // e.g. define viewer:[team#member] as self
+			if typeRestriction.GetRelation() != "" { // e.g. define viewer:[team#member]
 				// recursively sub-collect any edges for (team#member, source)
 				edges, err := g.getRelationshipEdges(typeRestriction, source, visited, findEdgeOption)
 				if err != nil {
@@ -209,7 +211,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		}
 
 		return res, nil
-	case *openfgav1.Userset_ComputedUserset: // e.g. target = define viewer as writer
+	case *openfgav1.Userset_ComputedUserset: // e.g. target = define viewer: writer
 
 		var edges []*RelationshipEdge
 
@@ -239,12 +241,12 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 			collected...,
 		)
 		return edges, nil
-	case *openfgav1.Userset_TupleToUserset: // e.g. type document, define viewer as writer from parent
+	case *openfgav1.Userset_TupleToUserset: // e.g. type document, define viewer: writer from parent
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()               // parent
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation() // writer
 
 		var res []*RelationshipEdge
-		// e.g. type document, define parent:[user, group] as self
+		// e.g. type document, define parent:[user, group]
 		tuplesetTypeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
 
 		for _, typeRestriction := range tuplesetTypeRestrictions {
@@ -290,7 +292,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		}
 
 		return res, nil
-	case *openfgav1.Userset_Union: // e.g. target = define viewer as self or writer
+	case *openfgav1.Userset_Union: // e.g. target = define viewer: self or writer
 		var res []*RelationshipEdge
 		for _, child := range t.Union.GetChild() {
 			// we recurse through each child rewrite

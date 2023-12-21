@@ -14,11 +14,14 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/pressly/goose/v3"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Config struct {
@@ -120,27 +123,6 @@ func NewConfig(opts ...DatastoreOption) *Config {
 	return cfg
 }
 
-type TupleRecord struct {
-	Store      string
-	ObjectType string
-	ObjectID   string
-	Relation   string
-	User       string
-	Ulid       string
-	InsertedAt time.Time
-}
-
-func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
-	return &openfgav1.Tuple{
-		Key: &openfgav1.TupleKey{
-			Object:   tupleUtils.BuildObject(t.ObjectType, t.ObjectID),
-			Relation: t.Relation,
-			User:     t.User,
-		},
-		Timestamp: timestamppb.New(t.InsertedAt),
-	}
-}
-
 type ContToken struct {
 	Ulid       string `json:"ulid"`
 	ObjectType string `json:"ObjectType"`
@@ -163,7 +145,7 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 
 type SQLTupleIterator struct {
 	rows     *sql.Rows
-	resultCh chan *TupleRecord
+	resultCh chan *storage.TupleRecord
 	errCh    chan error
 }
 
@@ -173,12 +155,12 @@ var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		rows:     rows,
-		resultCh: make(chan *TupleRecord, 1),
+		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
 	}
 }
 
-func (t *SQLTupleIterator) next() (*TupleRecord, error) {
+func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
 			return nil, err
@@ -186,10 +168,32 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
-	var record TupleRecord
-	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.Ulid, &record.InsertedAt)
+	var conditionName sql.NullString
+	var conditionContext []byte
+	var record storage.TupleRecord
+	err := t.rows.Scan(
+		&record.Store,
+		&record.ObjectType,
+		&record.ObjectID,
+		&record.Relation,
+		&record.User,
+		&conditionName,
+		&conditionContext,
+		&record.Ulid,
+		&record.InsertedAt,
+	)
 	if err != nil {
 		return nil, err
+	}
+
+	record.ConditionName = conditionName.String
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
 	}
 
 	return &record, nil
@@ -197,7 +201,9 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 
 // ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (t *SQLTupleIterator) ToArray(
+	opts storage.PaginationOptions,
+) ([]*openfgav1.Tuple, []byte, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
@@ -228,7 +234,11 @@ func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgav1
 	return res, contToken, nil
 }
 
-func (t *SQLTupleIterator) Next() (*openfgav1.Tuple, error) {
+func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	record, err := t.next()
 	if err != nil {
 		return nil, err
@@ -282,7 +292,14 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 }
 
 // Write provides the common method for writing to database across sql storage
-func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.Deletes, writes storage.Writes, now time.Time) error {
+func Write(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store string,
+	deletes storage.Deletes,
+	writes storage.Writes,
+	now time.Time,
+) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return HandleSQLError(err)
@@ -293,7 +310,10 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
+		Columns(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "operation", "ulid", "inserted_at",
+		)
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
@@ -322,29 +342,68 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 		}
 
 		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
+			return storage.InvalidWriteInputError(
+				tk,
+				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(
+			store, objectType, objectID,
+			tk.GetRelation(), tk.GetUser(),
+			"", nil, // redact condition info for deletes since we only need the base triplet (object, relation, user)
+			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			id, dbInfo.sqlTime,
+		)
 	}
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
+		Columns(
+			"store", "object_type", "object_id", "relation", "_user", "user_type",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		)
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
+		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
+		if err != nil {
+			return err
+		}
+
 		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, dbInfo.sqlTime).
+			Values(
+				store,
+				objectType,
+				objectID,
+				tk.GetRelation(),
+				tk.GetUser(),
+				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				conditionName,
+				conditionContext,
+				id,
+				dbInfo.sqlTime,
+			).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			tk.GetUser(),
+			conditionName,
+			conditionContext,
+			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			id,
+			dbInfo.sqlTime,
+		)
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
@@ -361,7 +420,12 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	return nil
 }
 
-func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, model *openfgav1.AuthorizationModel) error {
+func WriteAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store string,
+	model *openfgav1.AuthorizationModel,
+) error {
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
@@ -386,7 +450,11 @@ func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, 
 	return nil
 }
 
-func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID string) (*openfgav1.AuthorizationModel, error) {
+func ReadAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store, modelID string,
+) (*openfgav1.AuthorizationModel, error) {
 	rows, err := dbInfo.stbl.
 		Select("schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
@@ -445,13 +513,27 @@ func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID 
 }
 
 // IsReady returns true if the connection to the datastore is successful
-func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		return false, err
+		return storage.ReadinessStatus{}, err
 	}
 
-	return true, nil
+	revision, err := goose.GetDBVersion(db)
+	if err != nil {
+		return storage.ReadinessStatus{}, err
+	}
+
+	if revision < build.MinimumSupportedDatastoreSchemaRevision {
+		return storage.ReadinessStatus{
+			Message: fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'. Run 'openfga migrate'.", revision, build.MinimumSupportedDatastoreSchemaRevision),
+			IsReady: false,
+		}, nil
+	}
+
+	return storage.ReadinessStatus{
+		IsReady: true,
+	}, nil
 }

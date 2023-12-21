@@ -5,13 +5,14 @@ import (
 	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"golang.org/x/sync/errgroup"
 )
 
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
@@ -155,7 +156,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 
 	distinctUsers := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next()
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -266,7 +267,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 	var computed []*openfgav1.UsersetTree_Computed
 	seen := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next()
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break

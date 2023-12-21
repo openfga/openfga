@@ -6,10 +6,11 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/tuple"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const InternalServerErrorMsg = "Internal Server Error"
@@ -93,11 +94,7 @@ func ExceededEntityLimit(entity string, limit int) error {
 		fmt.Sprintf("The number of %s exceeds the allowed limit of %d", entity, limit))
 }
 
-func InvalidTuple(reason string, tuple *openfgav1.TupleKey) error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tuple.String(), reason))
-}
-
-func DuplicateTupleInWrite(tk *openfgav1.TupleKey) error {
+func DuplicateTupleInWrite(tk tuple.TupleWithoutCondition) error {
 	return status.Error(codes.Code(openfgav1.ErrorCode_cannot_allow_duplicate_tuples_in_one_request), fmt.Sprintf("duplicate tuple in write: user: '%s', relation: '%s', object: '%s'", tk.GetUser(), tk.GetRelation(), tk.GetObject()))
 }
 
@@ -121,6 +118,7 @@ func HandleError(public string, err error) error {
 	} else if errors.Is(err, storage.ErrCancelled) {
 		return RequestCancelled
 	}
+
 	return NewInternalError(public, err)
 }
 
@@ -128,7 +126,10 @@ func HandleError(public string, err error) error {
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:
-		return InvalidTuple(t.Cause.Error(), t.TupleKey)
+		return status.Error(
+			codes.Code(openfgav1.ErrorCode_invalid_tuple),
+			fmt.Sprintf("Invalid tuple '%s'. Reason: %s", t.TupleKey, t.Cause.Error()),
+		)
 	case *tuple.TypeNotFoundError:
 		return TypeNotFound(t.TypeName)
 	case *tuple.RelationNotFoundError:

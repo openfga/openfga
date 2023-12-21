@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -28,14 +29,14 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 
 	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: parser.MustParse(`
-		type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-		type repo
-		  relations
-		    define reader: [user] as self
-		    define can_read as reader
-		`),
+type repo
+  relations
+	define reader: [user]
+	define can_read: reader`).TypeDefinitions,
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 
@@ -43,14 +44,14 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 		{
 			_name: "writing_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{{
-				TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 				Expectation: false,
 			}},
 		},
 		{
 			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
 			assertions: []*openfgav1.Assertion{{
-				TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
+				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 				Expectation: false,
 			}},
 		},
@@ -58,19 +59,19 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 			_name: "writing_multiple_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:maria"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:maria"),
 					Expectation: true,
 				},
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:jon"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:jon"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:jose"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:jose"),
 					Expectation: true,
 				},
 			},
@@ -79,15 +80,15 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 			_name: "writing_multiple_assertions_succeeds_when_it_is_not_directly_assignable",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:maria"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:maria"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:jon"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:jon"),
 					Expectation: true,
 				},
 			},
@@ -144,14 +145,14 @@ func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore
 
 	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: parser.MustParse(`
-		type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-		type repo
-		  relations
-		    define reader: [user] as self
-		    define can_read as reader
-		`),
+type repo
+  relations
+	define reader: [user]
+	define can_read: reader`).TypeDefinitions,
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 	ctx := context.Background()
@@ -165,7 +166,7 @@ func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore
 			_name: "writing_assertion_with_invalid_relation_fails",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey: tuple.NewTupleKey(
+					TupleKey: tuple.NewAssertionTupleKey(
 						"repo:test",
 						"invalidrelation",
 						"user:elbuo",
@@ -182,7 +183,7 @@ func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore
 			_name: "writing_assertion_with_not_found_id",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				},
 			},

@@ -23,6 +23,22 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/cors"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"go.opentelemetry.io/otel/trace/noop"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
@@ -47,21 +63,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/cors"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.opentelemetry.io/otel/trace/noop"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -173,9 +174,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-authorization-model-size-in-bytes", defaultConfig.MaxAuthorizationModelSizeInBytes, "the maximum size in bytes allowed for persisting an Authorization Model.")
 
-	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects query. A high number means that you want ListObjects latency to be low, at the expense of other queries performance")
+	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects or StreamedListObjects query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
-	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number means that you want Check latency to be low, at the expense of other queries performance")
+	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
 	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 
@@ -183,7 +184,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("resolve-node-breadth-limit", defaultConfig.ResolveNodeBreadthLimit, "defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree")
 
-	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
+	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects and StreamedListObjects requests")
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
@@ -291,8 +292,6 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 }
 
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	otel.SetTracerProvider(noop.NewTracerProvider())
-
 	var tracerProviderCloser func()
 
 	if config.Trace.Enabled {
@@ -318,6 +317,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			_ = tp.ForceFlush(ctx)
 			_ = tp.Shutdown(ctx)
 		}
+	} else {
+		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -389,27 +390,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	var serverOpts []grpc.ServerOption
-
-	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
-		[]grpc.UnaryServerInterceptor{
-			requestid.NewUnaryInterceptor(),
-			validator.UnaryServerInterceptor(),
-			grpc_ctxtags.UnaryServerInterceptor(),
-		}...,
-	))
-
-	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(
-		[]grpc.StreamServerInterceptor{
-			requestid.NewStreamingInterceptor(),
-			validator.StreamServerInterceptor(),
-			grpc_ctxtags.StreamServerInterceptor(),
-		}...,
-	))
+	serverOpts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+		grpc.ChainUnaryInterceptor(
+			[]grpc.UnaryServerInterceptor{
+				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
+				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+				validator.UnaryServerInterceptor(),
+			}...,
+		),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				requestid.NewStreamingInterceptor(),
+				validator.StreamServerInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(),
+			}...,
+		),
+	}
 
 	if config.Metrics.Enabled {
-		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor))
-		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
+		serverOpts = append(serverOpts,
+			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
 
 		if config.Metrics.EnableRPCHistograms {
 			grpc_prometheus.EnableHandlingTimeHistogram()
@@ -422,21 +426,18 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
 		[]grpc.UnaryServerInterceptor{
-			storeid.NewUnaryInterceptor(),
-			logging.NewLoggingInterceptor(s.Logger),
 			grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
-		}...,
-	))
-
-	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(
-		[]grpc.StreamServerInterceptor{
-			grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
-			// The following interceptors wrap the server stream with our own
-			// wrapper and must come last.
-			storeid.NewStreamingInterceptor(),
-			logging.NewStreamingLoggingInterceptor(s.Logger),
-		}...,
-	))
+		}...),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+				// The following interceptors wrap the server stream with our own
+				// wrapper and must come last.
+				storeid.NewStreamingInterceptor(),
+				logging.NewStreamingLoggingInterceptor(s.Logger),
+			}...,
+		),
+	)
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {

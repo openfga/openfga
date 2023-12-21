@@ -9,18 +9,19 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
+	"sigs.k8s.io/yaml"
+
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/status"
-	"gopkg.in/yaml.v3"
 )
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
@@ -43,7 +44,7 @@ type testParams struct {
 type stage struct {
 	Model                string
 	Tuples               []*openfgav1.TupleKey
-	ListObjectAssertions []*listobjectstest.Assertion `yaml:"listObjectsAssertions"`
+	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
 // ClientInterface defines interface for running ListObjects and StreamedListObjects tests
@@ -75,19 +76,30 @@ func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
 }
 
 func runTests(t *testing.T, params testParams) {
-	var b []byte
-	var err error
-	schemaVersion := params.schemaVersion
-	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
+	files := []string{
+		"tests/consolidated_1_1_tests.yaml",
+		"tests/abac_tests.yaml",
 	}
-	require.NoError(t, err)
 
-	var testCases listObjectTests
-	err = yaml.Unmarshal(b, &testCases)
-	require.NoError(t, err)
+	var allTestCases []individualTest
 
-	for _, test := range testCases.Tests {
+	for _, file := range files {
+		var b []byte
+		var err error
+		schemaVersion := params.schemaVersion
+		if schemaVersion == typesystem.SchemaVersion1_1 {
+			b, err = assets.EmbedTests.ReadFile(file)
+		}
+		require.NoError(t, err)
+
+		var testCases listObjectTests
+		err = yaml.Unmarshal(b, &testCases)
+		require.NoError(t, err)
+
+		allTestCases = append(allTestCases, testCases.Tests...)
+	}
+
+	for _, test := range allTestCases {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
@@ -120,16 +132,18 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		for _, stage := range test.Stages {
 			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
-			if schemaVersion == typesystem.SchemaVersion1_1 {
-				typedefs = parser.MustParse(stage.Model)
+			model, err := parser.TransformDSLToProto(stage.Model)
+			if err != nil {
+				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = v1parser.MustParse(stage.Model)
+				typedefs = model.TypeDefinitions
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
+				Conditions:      model.GetConditions(),
 			})
 			require.NoError(t, err)
 
@@ -143,10 +157,16 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-						Writes:               &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						Writes: &openfgav1.WriteRequestWrites{
+							TupleKeys: writeChunk,
+						},
 					})
 					require.NoError(t, err)
 				}
+			}
+
+			if len(stage.ListObjectAssertions) == 0 {
+				t.Skipf("no list objects assertions defined")
 			}
 
 			for _, assertion := range stage.ListObjectAssertions {
@@ -167,6 +187,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
+					Context: assertion.Context,
 				})
 
 				if assertion.ErrorCode == 0 {
@@ -192,6 +213,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
+					Context: assertion.Context,
 				}, []grpc.CallOption{}...)
 				require.NoError(t, err)
 
@@ -228,11 +250,12 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					for _, object := range resp.Objects {
 						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 							StoreId:              storeID,
+							TupleKey:             tuple.NewCheckRequestTupleKey(object, assertion.Request.Relation, assertion.Request.User),
 							AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-							TupleKey:             tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
+							Context: assertion.Context,
 						})
 						require.NoError(t, err, detailedInfo)
 						require.True(t, checkResp.Allowed, detailedInfo)
