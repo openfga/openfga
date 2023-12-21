@@ -2,7 +2,6 @@
 package migrate
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -10,13 +9,14 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-sql-driver/mysql"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/openfga/openfga/assets"
+	mysql "github.com/openfga/openfga/pkg/storage/mysql/migrations"
+	postgres "github.com/openfga/openfga/pkg/storage/postgres/migrations"
 )
 
 const (
@@ -55,7 +55,15 @@ func NewMigrateCommand() *cobra.Command {
 	return cmd
 }
 
-func runMigration(_ *cobra.Command, _ []string) error {
+func runMigration(cmd *cobra.Command, _ []string) error {
+	var (
+		driver     string
+		dialect    goose.Dialect
+		migrations []*goose.Migration
+	)
+
+	ctx := cmd.Context()
+
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
@@ -64,21 +72,17 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	username := viper.GetString(datastoreUsernameFlag)
 	password := viper.GetString(datastorePasswordFlag)
 
-	goose.SetLogger(goose.NopLogger())
-	goose.SetVerbose(verbose)
-
-	var driver, dialect, migrationsPath string
 	switch engine {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
-		dialect = "mysql"
-		migrationsPath = assets.MySQLMigrationDir
+		dialect = goose.DialectMySQL
+		migrations = mysql.Migrations
 
 		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
-		dsn, err := mysql.ParseDSN(uri)
+		dsn, err := mysqldriver.ParseDSN(uri)
 		if err != nil {
 			log.Fatalf("invalid database uri: %v\n", err)
 		}
@@ -88,12 +92,13 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		if password != "" {
 			dsn.Passwd = password
 		}
+
 		uri = dsn.FormatDSN()
 
 	case "postgres":
 		driver = "pgx"
-		dialect = "postgres"
-		migrationsPath = assets.PostgresMigrationDir
+		dialect = goose.DialectPostgres
+		migrations = postgres.Migrations
 
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
 		dbURI, err := url.Parse(uri)
@@ -130,7 +135,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = timeout
 	err = backoff.Retry(func() error {
-		err = db.PingContext(context.Background())
+		err = db.PingContext(ctx)
 		if err != nil {
 			return err
 		}
@@ -141,13 +146,17 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		log.Fatalf("failed to initialize database connection: %v", err)
 	}
 
-	if err := goose.SetDialect(dialect); err != nil {
+	goose.SetLogger(goose.NopLogger())
+	provider, err := goose.NewProvider(dialect, db, nil,
+		goose.WithDisableGlobalRegistry(true),
+		goose.WithVerbose(verbose),
+		goose.WithGoMigrations(migrations...),
+	)
+	if err != nil {
 		log.Fatalf("failed to initialize the migrate command: %v", err)
 	}
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	currentVersion, err := goose.GetDBVersion(db)
+	currentVersion, err := provider.GetDBVersion(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -156,18 +165,18 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	if targetVersion == 0 {
 		log.Println("running all migrations")
-		if err := goose.Up(db, migrationsPath); err != nil {
+		if _, err := provider.Up(ctx); err != nil {
 			log.Fatal(err)
 		}
 	} else {
 		log.Printf("migrating to %d", targetVersion)
 		targetInt64Version := int64(targetVersion)
 		if targetInt64Version < currentVersion {
-			if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
+			if _, err := provider.DownTo(ctx, targetInt64Version); err != nil {
 				log.Fatal(err)
 			}
 		} else if targetInt64Version > currentVersion {
-			if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
+			if _, err := provider.UpTo(ctx, targetInt64Version); err != nil {
 				log.Fatal(err)
 			}
 		} else {

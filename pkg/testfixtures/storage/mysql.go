@@ -15,12 +15,12 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/go-sql-driver/mysql"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/assets"
+	mysql "github.com/openfga/openfga/pkg/storage/mysql/migrations"
 )
 
 const (
@@ -48,13 +48,15 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // MySQL datastore engine.
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
+	ctx := context.Background()
+
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
 
-	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
+	allImages, err := dockerClient.ImageList(ctx, types.ImageListOptions{
 		All: true,
 	})
 	require.NoError(t, err)
@@ -71,7 +73,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	if !foundMysqlImage {
 		t.Logf("Pulling image %s", mySQLImage)
-		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
+		reader, err := dockerClient.ImagePull(ctx, mySQLImage, types.ImagePullOptions{})
 		require.NoError(t, err)
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
@@ -97,14 +99,14 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	name := fmt.Sprintf("mysql-%s", ulid.Make().String())
 
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	cont, err := dockerClient.ContainerCreate(ctx, &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")
 
 	stopContainer := func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to stop mysql container: %v", err)
 		}
@@ -113,13 +115,13 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		t.Logf("stopped container %s", name)
 	}
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
+	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
 	if err != nil {
 		stopContainer()
 		t.Fatalf("failed to start mysql container: %v", err)
 	}
 
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 	require.NoError(t, err)
 
 	p, ok := containerJSON.NetworkSettings.Ports["3306/tcp"]
@@ -133,7 +135,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		timeoutSec := 0
 
 		t.Logf("expiring container %s", name)
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to expire mysql container: %v", err)
 		}
@@ -152,10 +154,8 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
 
-	err = mysql.SetLogger(log.New(io.Discard, "", 0))
+	err = mysqldriver.SetLogger(log.New(io.Discard, "", 0))
 	require.NoError(t, err)
-
-	goose.SetLogger(goose.NopLogger())
 
 	var db *sql.DB
 
@@ -163,7 +163,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	backoffPolicy.MaxElapsedTime = 2 * time.Minute
 	err = backoff.Retry(
 		func() error {
-			db, err = goose.OpenDBWithDriver("mysql", uri)
+			db, err = sql.Open("mysql", uri)
 			if err != nil {
 				return err
 			}
@@ -176,11 +176,17 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	err = goose.Up(db, assets.MySQLMigrationDir)
+	goose.SetLogger(goose.NopLogger())
+	provider, err := goose.NewProvider(goose.DialectMySQL, db, nil,
+		goose.WithDisableGlobalRegistry(true),
+		goose.WithGoMigrations(mysql.Migrations...),
+	)
 	require.NoError(t, err)
-	version, err := goose.GetDBVersion(db)
+
+	_, err = provider.Up(ctx)
+	require.NoError(t, err)
+
+	version, err := provider.GetDBVersion(ctx)
 	require.NoError(t, err)
 	mySQLTestContainer.version = version
 
