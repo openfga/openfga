@@ -1,3 +1,4 @@
+// Package graph contains code related to evaluation of authorization models through graph traversals.
 package graph
 
 import (
@@ -7,6 +8,7 @@ import (
 	"strings"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )

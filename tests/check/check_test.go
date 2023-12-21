@@ -12,18 +12,19 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/cmd/run"
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/tests"
 )
 
 var tuples = []*openfgav1.TupleKey{
