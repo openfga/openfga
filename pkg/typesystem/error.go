@@ -32,13 +32,17 @@ var (
 	// ErrReservedKeywords is returned when using reserved keywords "self" and "this".
 	ErrReservedKeywords = errors.New("self and this are reserved keywords")
 
-	// ErrCycle is returned when an authorization model contains a cycle.
+	// ErrCycle is returned when a cycle is detected in an authorization model.
+	// This occurs if an objectType and relation in the model define a rewrite
+	// rule that is self-referencing through computed relationships.
 	ErrCycle = errors.New("an authorization model cannot contain a cycle")
 
-	// ErrNoEntrypoints is returned when no entrypoints are defined in the authorization model.
+	// ErrNoEntrypoints is returned when a particular objectType and relation in an authorization
+	// model are not accessible via a direct edge, for example from another objectType.
 	ErrNoEntrypoints = errors.New("no entrypoints defined")
 
-	// ErrNoEntryPointsLoop is returned for a potential loop in the absence of defined entrypoints.
+	// ErrNoEntryPointsLoop is returned when an authorization model contains a cycle
+	// because at least one objectType and relation returned ErrNoEntrypoints.
 	ErrNoEntryPointsLoop = errors.New("potential loop")
 
 	// ErrNoConditionForRelation is returned when no condition is defined for a relation in the authorization model.

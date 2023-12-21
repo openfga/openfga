@@ -131,7 +131,7 @@ func Intersection(children ...*openfgav1.Userset) *openfgav1.Userset {
 	}
 }
 
-// Difference calculates the set difference between two Usersets 'base' and 'sub', and returns a new Userset.
+// Difference creates new Userset representing the difference between two Usersets 'base' and 'sub'.
 func Difference(base *openfgav1.Userset, sub *openfgav1.Userset) *openfgav1.Userset {
 	return &openfgav1.Userset{
 		Userset: &openfgav1.Userset_Difference{
