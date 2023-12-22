@@ -13,6 +13,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/internal/build"
@@ -444,6 +446,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			return resolutionMetadata, modelUsed, nil
 
 		case result, channelOpen := <-resultsChan:
+			// TODO send every error or object through channel and let server set this header for every object response
+			_ = grpc.SetHeader(ctx, metadata.Pairs("Openfga-Authorization-Model-Id", modelUsed))
 			if !channelOpen {
 				// Channel closed! No more results.
 				return resolutionMetadata, modelUsed, nil

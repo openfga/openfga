@@ -470,9 +470,8 @@ func (c *LocalChecker) ResolveCheck(
 		if err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	if err := validation.ValidateUserObjectRelation(typesys, req.GetTupleKey()); err != nil {
 		return nil, serverErrors.ValidationError(err)

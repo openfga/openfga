@@ -448,7 +448,8 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		telemetry.TraceError(span, err)
 		return err
 	}
-	s.logModelUsed(ctx, modelUsed)
+	trace.SpanFromContext(ctx).SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(modelUsed)})
+	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, modelUsed)
 	queryCount := float64(*resolutionMetadata.QueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
@@ -905,6 +906,7 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
+// logModelUsed sets the model ID in the context and in a response header.
 func (s *Server) logModelUsed(ctx context.Context, resolvedModelID string) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
 	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
