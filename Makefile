@@ -78,6 +78,17 @@ unit-test: go-generate ## Run unit tests
 	@cat coverageunit.tmp.out | grep -v "mocks" > coverageunit.out
 	@rm coverageunit.tmp.out
 
+build-functional-test-image: ## Build Docker image needed to run functional tests
+	docker build -t="openfga/openfga:functionaltest" .
+
+.PHONY: functional-test
+functional-test: ## Run functional tests (needs build-functional-test-image)
+	go test -race \
+			-count=1 \
+			-timeout=5m \
+			-tags=functional \
+			./cmd/openfga/...
+
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
