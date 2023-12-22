@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/pressly/goose/v3"
+	"github.com/openfga/openfga/pkg/storage/migrate"
 )
 
 func up001(ctx context.Context, tx *sql.Tx) error {
@@ -23,7 +23,6 @@ func up001(ctx context.Context, tx *sql.Tx) error {
 		`CREATE INDEX idx_tuple_partial_user ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user';`,
 		`CREATE INDEX idx_tuple_partial_userset ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset';`,
 		`CREATE UNIQUE INDEX idx_tuple_ulid ON tuple (ulid);`,
-
 		`CREATE TABLE authorization_model (
 			store TEXT NOT NULL,
 			authorization_model_id TEXT NOT NULL,
@@ -31,7 +30,6 @@ func up001(ctx context.Context, tx *sql.Tx) error {
 			type_definition BYTEA,
 			PRIMARY KEY (store, authorization_model_id, type)
 		);`,
-
 		`CREATE TABLE store (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -39,14 +37,12 @@ func up001(ctx context.Context, tx *sql.Tx) error {
 			updated_at TIMESTAMPTZ,
 			deleted_at TIMESTAMPTZ
 		);`,
-
 		`CREATE TABLE assertion (
 			store TEXT NOT NULL,
 			authorization_model_id TEXT NOT NULL,
 			assertions BYTEA,
 			PRIMARY KEY (store, authorization_model_id)
 		);`,
-
 		`CREATE TABLE changelog (
 			store TEXT NOT NULL,
 			object_type TEXT NOT NULL,
@@ -90,11 +86,11 @@ func down001(ctx context.Context, tx *sql.Tx) error {
 }
 
 func init() {
-	register(
-		goose.NewGoMigration(
-			1,
-			&goose.GoFunc{RunTx: up001},
-			&goose.GoFunc{RunTx: down001},
-		),
+	Migrations.Register(
+		&migrate.Migration{
+			Version:  1,
+			Forward:  up001,
+			Backward: down001,
+		},
 	)
 }

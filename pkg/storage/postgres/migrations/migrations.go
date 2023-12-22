@@ -1,11 +1,7 @@
 package migrations
 
-import (
-	"github.com/pressly/goose/v3"
+import "github.com/openfga/openfga/pkg/storage/migrate"
+
+var (
+	Migrations = migrate.NewRegistry("postgres")
 )
-
-var Migrations []*goose.Migration
-
-func register(migration *goose.Migration) {
-	Migrations = append(Migrations, migration)
-}

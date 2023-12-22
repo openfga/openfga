@@ -16,7 +16,6 @@ import (
 	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 
 	postgres "github.com/openfga/openfga/pkg/storage/postgres/migrations"
@@ -176,18 +175,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		t.Fatalf("failed to connect to postgres container: %v", err)
 	}
 
-	goose.SetLogger(goose.NopLogger())
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, nil,
-		goose.WithDisableGlobalRegistry(true),
-		goose.WithGoMigrations(postgres.Migrations...),
-	)
+	version, err := postgres.Migrations.Run(ctx, db)
 	require.NoError(t, err)
 
-	_, err = provider.Up(ctx)
-	require.NoError(t, err)
-
-	version, err := provider.GetDBVersion(ctx)
-	require.NoError(t, err)
 	pgTestContainer.version = version
 
 	err = db.Close()

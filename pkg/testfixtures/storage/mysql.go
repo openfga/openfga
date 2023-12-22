@@ -17,7 +17,6 @@ import (
 	"github.com/docker/go-connections/nat"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 
 	mysql "github.com/openfga/openfga/pkg/storage/mysql/migrations"
@@ -176,18 +175,9 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
 
-	goose.SetLogger(goose.NopLogger())
-	provider, err := goose.NewProvider(goose.DialectMySQL, db, nil,
-		goose.WithDisableGlobalRegistry(true),
-		goose.WithGoMigrations(mysql.Migrations...),
-	)
+	version, err := mysql.Migrations.Run(ctx, db)
 	require.NoError(t, err)
 
-	_, err = provider.Up(ctx)
-	require.NoError(t, err)
-
-	version, err := provider.GetDBVersion(ctx)
-	require.NoError(t, err)
 	mySQLTestContainer.version = version
 
 	err = db.Close()
