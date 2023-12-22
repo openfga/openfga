@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net"
 	"testing"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types/container"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainerspostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -94,20 +92,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	)
 	require.NoError(t, err, "failed to connect to postgres container")
 
-	goose.SetLogger(goose.NopLogger())
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, nil,
-		goose.WithDisableGlobalRegistry(true),
-		goose.WithGoMigrations(postgres.Migrations...),
-	)
+	version, err := postgres.Migrations.Run(ctx, db)
 	require.NoError(t, err)
 
-	results, err := provider.Up(ctx)
-	log.Println(results)
-	log.Println(err)
-	require.NoError(t, err)
-
-	version, err := provider.GetDBVersion(ctx)
-	require.NoError(t, err)
 	pgTestContainer.version = version
 
 	return pgTestContainer

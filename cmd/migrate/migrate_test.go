@@ -18,7 +18,9 @@ const defaultDuration = 1 * time.Minute
 func TestMigrateCommandRollbacks(t *testing.T) {
 	engines := []string{"postgres", "mysql"}
 
-	for _, engine := range engines {
+	for _, e := range engines {
+		engine := e
+
 		t.Run(engine, func(t *testing.T) {
 			container, _, uri := util.MustBootstrapDatastore(t, engine)
 

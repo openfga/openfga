@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/pressly/goose/v3"
+	"github.com/openfga/openfga/pkg/storage/migrate"
 )
 
 func up002(ctx context.Context, tx *sql.Tx) error {
@@ -20,11 +20,11 @@ func down002(ctx context.Context, tx *sql.Tx) error {
 }
 
 func init() {
-	register(
-		goose.NewGoMigration(
-			2,
-			&goose.GoFunc{RunTx: up002},
-			&goose.GoFunc{RunTx: down002},
-		),
+	Migrations.Register(
+		&migrate.Migration{
+			Version:  2,
+			Forward:  up002,
+			Backward: down002,
+		},
 	)
 }

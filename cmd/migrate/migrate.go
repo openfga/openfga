@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/openfga/openfga/pkg/storage/migrate"
 	mysql "github.com/openfga/openfga/pkg/storage/mysql/migrations"
 	postgres "github.com/openfga/openfga/pkg/storage/postgres/migrations"
 )
@@ -58,15 +59,14 @@ func NewMigrateCommand() *cobra.Command {
 func runMigration(cmd *cobra.Command, _ []string) error {
 	var (
 		driver     string
-		dialect    goose.Dialect
-		migrations []*goose.Migration
+		migrations *migrate.Registry
 	)
 
 	ctx := cmd.Context()
 
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
-	targetVersion := viper.GetUint(versionFlag)
+	targetVersion := viper.GetInt64(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
 	verbose := viper.GetBool(verboseMigrationFlag)
 	username := viper.GetString(datastoreUsernameFlag)
@@ -78,7 +78,6 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 		return nil
 	case "mysql":
 		driver = "mysql"
-		dialect = goose.DialectMySQL
 		migrations = mysql.Migrations
 
 		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
@@ -97,7 +96,6 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 
 	case "postgres":
 		driver = "pgx"
-		dialect = goose.DialectPostgres
 		migrations = postgres.Migrations
 
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
@@ -136,43 +134,12 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to initialize database connection: %w", err)
 	}
 
-	goose.SetLogger(goose.NopLogger())
-	provider, err := goose.NewProvider(dialect, db, nil,
-		goose.WithDisableGlobalRegistry(true),
-		goose.WithVerbose(verbose),
-		goose.WithGoMigrations(migrations...),
+	_, err = migrations.Run(ctx, db,
+		migrate.WithTargetVersion(targetVersion),
+		migrate.WithVerbose(verbose),
 	)
 	if err != nil {
-		log.Fatalf("failed to initialize the migrate command: %v", err)
-	}
-
-	currentVersion, err := provider.GetDBVersion(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get db version: %w", err)
-	}
-
-	log.Printf("current version %d", currentVersion)
-
-	if targetVersion == 0 {
-		log.Println("running all migrations")
-		if _, err := provider.Up(ctx); err != nil {
-			return fmt.Errorf("failed to run migrations: %w", err)
-		}
-	} else {
-		log.Printf("migrating to %d", targetVersion)
-		targetInt64Version := int64(targetVersion)
-		if targetInt64Version < currentVersion {
-			if _, err := provider.DownTo(ctx, targetInt64Version); err != nil {
-				return fmt.Errorf("failed to run migrations down to %v: %w", targetInt64Version, err)
-			}
-		} else if targetInt64Version > currentVersion {
-			if _, err := provider.UpTo(ctx, targetInt64Version); err != nil {
-				return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
-			}
-		} else {
-			log.Println("nothing to do")
-			return nil
-		}
+		return fmt.Errorf("failed to run migrations: %v", err)
 	}
 
 	log.Println("migration done")

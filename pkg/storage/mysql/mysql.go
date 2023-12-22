@@ -23,11 +23,16 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/migrate"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
-var tracer = otel.Tracer("openfga/pkg/storage/mysql")
+var (
+	Migrations = migrate.NewRegistry("mysql")
+
+	tracer = otel.Tracer("openfga/pkg/storage/mysql")
+)
 
 // MySQL provides a MySQL based implementation of [storage.OpenFGADatastore].
 type MySQL struct {
