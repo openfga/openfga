@@ -697,13 +697,18 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	model := &openfgav1.AuthorizationModel{
 		Id:            modelID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
+		// this model exercises all possible execution paths: "direct" edge and "computed userset" edge and "TTU" edge
 		TypeDefinitions: parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
-
+type folder
+  relations
+    define viewer: [user]
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
+	define viewer: [user]
+	define parent: [folder]
+	define can_view: viewer or viewer from parent`).TypeDefinitions,
 	}
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
 	require.NoError(b, err)
@@ -738,7 +743,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		StoreId:              store,
 		AuthorizationModelId: modelID,
 		Type:                 "document",
-		Relation:             "viewer",
+		Relation:             "can_view",
 		User:                 "user:maria",
 	}
 

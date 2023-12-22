@@ -375,17 +375,21 @@ type resource
 			name: "test_3",
 			model: `model
 	schema 1.1
+type user
+
 type resource
   relations
 	define x: y
 	define y: x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
-			errorMsg: "potential loop",
+			errorMsg: "a cycle has been detected",
 		},
 		{
 			name: "test_4",
 			model: `model
 	schema 1.1
+type user
+
 type resource
   relations
 	define parent: [resource]

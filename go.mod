@@ -25,8 +25,8 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20231208224251-d2c535d32f73
-	github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3
+	github.com/openfga/api/proto v0.0.0-20231222042535-3037910c90c0
+	github.com/openfga/language/pkg/go v0.0.0-20231220180656-9f0ec45883f3
 	github.com/pressly/goose/v3 v3.17.0
 	github.com/rs/cors v1.10.1
 	github.com/sourcegraph/conc v0.3.0
@@ -97,15 +97,15 @@ require (
 	go.opentelemetry.io/proto/otlp v1.0.0
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.17.0 // indirect
-	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.15.0 // indirect
-	google.golang.org/genproto v0.0.0-20231106174013-bbf56f31fb17 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20231106174013-bbf56f31fb17 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231120223509-83a465c0220f // indirect
+	golang.org/x/tools v0.16.0 // indirect
+	google.golang.org/genproto v0.0.0-20231127180814-3a041ad873d4 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231127180814-3a041ad873d4 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20231127180814-3a041ad873d4 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.4.0 // indirect

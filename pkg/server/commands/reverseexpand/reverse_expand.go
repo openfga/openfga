@@ -288,36 +288,39 @@ func (c *ReverseExpandQuery) execute(
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
-
-		pool.Go(func(ctx context.Context) error {
-			r := &ReverseExpandRequest{
-				StoreID:          req.StoreID,
-				ObjectType:       req.ObjectType,
-				Relation:         req.Relation,
-				User:             req.User,
-				ContextualTuples: req.ContextualTuples,
-				Context:          req.Context,
-				edge:             innerLoopEdge,
-			}
-
-			switch innerLoopEdge.Type {
-			case graph.DirectEdge:
+		r := &ReverseExpandRequest{
+			StoreID:          req.StoreID,
+			ObjectType:       req.ObjectType,
+			Relation:         req.Relation,
+			User:             req.User,
+			ContextualTuples: req.ContextualTuples,
+			Context:          req.Context,
+			edge:             innerLoopEdge,
+		}
+		switch innerLoopEdge.Type {
+		case graph.DirectEdge:
+			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			case graph.ComputedUsersetEdge:
-				// follow the computed_userset edge
-				r.User = &UserRefObjectRelation{
-					ObjectRelation: &openfgav1.ObjectRelation{
-						Object:   sourceUserObj,
-						Relation: innerLoopEdge.TargetReference.GetRelation(),
-					},
-				}
-				return c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			case graph.TupleToUsersetEdge:
-				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			default:
-				return fmt.Errorf("unsupported edge type")
+			})
+		case graph.ComputedUsersetEdge:
+			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
+			r.User = &UserRefObjectRelation{
+				ObjectRelation: &openfgav1.ObjectRelation{
+					Object:   sourceUserObj,
+					Relation: innerLoopEdge.TargetReference.GetRelation(),
+				},
 			}
-		})
+			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			if err != nil {
+				return err
+			}
+		case graph.TupleToUsersetEdge:
+			pool.Go(func(ctx context.Context) error {
+				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			})
+		default:
+			return fmt.Errorf("unsupported edge type")
+		}
 	}
 
 	err = pool.Wait()

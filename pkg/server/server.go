@@ -19,7 +19,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/build"
@@ -43,7 +45,7 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 )
 
@@ -906,5 +908,5 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 func (s *Server) logModelUsed(ctx context.Context, resolvedModelID string) {
 	trace.SpanFromContext(ctx).SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
 	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
-	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
+	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, resolvedModelID))
 }

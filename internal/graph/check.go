@@ -444,11 +444,6 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ctx.Err()
 	}
 
-	tk := req.GetTupleKey()
-	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
-		return nil, serverErrors.InvalidCheckInput
-	}
-
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 
@@ -471,12 +466,12 @@ func (c *LocalChecker) ResolveCheck(
 			}
 			return nil, serverErrors.HandleError("", err)
 		}
+		err = typesys.Validate()
+		if err != nil {
+			return nil, serverErrors.ValidationError(err)
+		}
 	}
 
-	err := typesys.Validate()
-	if err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	if err := validation.ValidateUserObjectRelation(typesys, req.GetTupleKey()); err != nil {
