@@ -1175,9 +1175,12 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 }
 
 func TestHTTPHeaders(t *testing.T) {
+	t.Parallel()
 	cfg := MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	t.Cleanup(func() {
+		cancel()
+	})
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -1189,7 +1192,9 @@ func TestHTTPHeaders(t *testing.T) {
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
-	defer conn.Close()
+	t.Cleanup(func() {
+		conn.Close()
+	})
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -1200,18 +1205,16 @@ func TestHTTPHeaders(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:       storeID,
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
-
-	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: typedefs,
+	define viewer: [user]`).TypeDefinitions,
 	})
 	require.NoError(t, err)
 
@@ -1253,7 +1256,9 @@ type document
 	}
 
 	for name, test := range testCases {
+		test := test
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJSONBody))
 			require.NoError(t, err, "Failed to construct request")
 
