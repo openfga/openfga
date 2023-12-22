@@ -1038,6 +1038,12 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
 		})
 	}
 }
@@ -1200,6 +1206,12 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
 		})
 	}
 }
@@ -1902,6 +1914,8 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			if test.output.errorCode == codes.OK {
 				_, err = ulid.Parse(response.AuthorizationModelId)
 				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
 			}
 		})
 	}
@@ -2098,6 +2112,7 @@ type document
 			if s.Code() == codes.OK {
 				require.NoError(t, err)
 			} else {
+				require.Error(t, err)
 				require.Contains(t, err.Error(), test.output.errorMessage)
 			}
 		})
