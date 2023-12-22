@@ -30,13 +30,19 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Datastore.Engine = engine
 
 	cancel := tests.StartServer(t, cfg)
-	defer cancel()
+	defer func() {
+		cancel()
+		t.Log("Stopping the server")
+	}()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithBlock(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		t.Log("Closing connection to server")
+	}()
 	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
 }
