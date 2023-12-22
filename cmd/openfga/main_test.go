@@ -266,6 +266,7 @@ condition conds(s: string) {
 	require.Nil(t, checkResp)
 }
 
+// TODO make a unit test from this
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	tester := newOpenFGATester(t, "--check-query-cache-enabled=true")
 	defer tester.Cleanup()
@@ -1034,7 +1035,6 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := client.Check(context.Background(), test.input)
 
-			fmt.Println(err)
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
@@ -1206,6 +1206,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 
 // TestCheckWorkflows are tests that involve workflows that define assertions for
 // Checks against multi-model stores etc..
+// TODO move to consolidated_1_1_tests.yaml
 func TestCheckWorkflows(t *testing.T) {
 	tester := newOpenFGATester(t)
 	defer tester.Cleanup()
@@ -1315,6 +1316,7 @@ func TestCheckWorkflows(t *testing.T) {
 
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
+// TODO move to consolidated_1_1_tests.yaml
 func TestExpandWorkflows(t *testing.T) {
 	tester := newOpenFGATester(t)
 	defer tester.Cleanup()
@@ -1816,6 +1818,16 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			name: "missing_type_definitions",
 			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "zero_type_definitions",
+			input: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:         ulid.Make().String(),
+				TypeDefinitions: []*openfgav1.TypeDefinition{},
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
