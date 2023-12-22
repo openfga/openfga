@@ -406,16 +406,41 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		}
 	}
 
-	// TODO: make this concurrent with a maximum of 5 goroutines. This may be helpful:
-	// https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
+	// Initialize channels and worker pool
+	modelIDChan := make(chan string, numModelIDs)
+	modelsChan := make(chan *openfgav1.AuthorizationModel, numModelIDs)
+	errChan := make(chan error, 1)
+
+	// Start a fixed number of goroutines
+	numWorkers := 5
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			for id := range modelIDChan {
+				model, err := p.ReadAuthorizationModel(ctx, store, id)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				modelsChan <- model
+			}
+		}()
+	}
+
+	// Send model IDs to the workers
+	for _, id := range modelIDs[:numModelIDs] {
+		modelIDChan <- id
+	}
+	close(modelIDChan)
+
+	// Collect results from the workers
 	models := make([]*openfgav1.AuthorizationModel, 0, numModelIDs)
-	// We use numModelIDs here to avoid retrieving possibly one extra model.
 	for i := 0; i < numModelIDs; i++ {
-		model, err := p.ReadAuthorizationModel(ctx, store, modelIDs[i])
-		if err != nil {
+		select {
+		case model := <-modelsChan:
+			models = append(models, model)
+		case err := <-errChan:
 			return nil, nil, err
 		}
-		models = append(models, model)
 	}
 
 	return models, token, nil
