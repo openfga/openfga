@@ -18,6 +18,7 @@ import (
 
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/server/config"
+	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -317,6 +318,218 @@ condition conds(s: string) {
 //	}
 //}
 
+// TODO make a unit test from this
+func TestCheckWithQueryCacheEnabled(t *testing.T) {
+	client := newOpenFGAServerAndClient(t)
+
+	tests := []struct {
+		name            string
+		typeDefinitions []*openfgav1.TypeDefinition
+		tuples          []*openfgav1.TupleKey
+		assertions      []checktest.Assertion
+	}{
+		{
+			name: "issue_1058",
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type fga_user
+
+type timeslot
+  relations
+	define user: [fga_user]
+
+type commerce_store
+  relations
+	define approved_hourly_access: user from approved_timeslot and hourly_employee
+	define approved_timeslot: [timeslot]
+	define hourly_employee: [fga_user]
+`).TypeDefinitions,
+			tuples: []*openfgav1.TupleKey{
+				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
+				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
+				{Object: "commerce_store:0", Relation: "approved_timeslot", User: "timeslot:11_12"},
+				{Object: "commerce_store:1", Relation: "approved_timeslot", User: "timeslot:12_13"},
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple: tuple.NewTupleKey("commerce_store:0", "approved_hourly_access", "fga_user:anne"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("timeslot:11_12", "user", "fga_user:anne"),
+					},
+					Expectation: true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("commerce_store:1", "approved_hourly_access", "fga_user:anne"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("timeslot:11_12", "user", "fga_user:anne"),
+					},
+					Expectation: false,
+				},
+				{
+					Tuple: tuple.NewTupleKey("commerce_store:1", "approved_hourly_access", "fga_user:anne"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("timeslot:12_13", "user", "fga_user:anne"),
+					},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			name: "cache_computed_userset_subproblem_with_contextual_tuple",
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define restricted: [user]
+	define viewer: [user] but not restricted
+`).TypeDefinitions,
+			tuples: []*openfgav1.TupleKey{
+				{Object: "document:1", Relation: "viewer", User: "user:jon"},
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "restricted", "user:jon"),
+					},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			name: "cached_direct_relationship_with_contextual_tuple",
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define viewer: [user]
+`).TypeDefinitions,
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      false,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			name: "cached_direct_userset_relationship_with_contextual_tuple",
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type group
+  relations
+	define restricted: [user]
+	define member: [user] but not restricted
+
+type document
+  relations
+	define viewer: [group#member]
+`).TypeDefinitions,
+			tuples: []*openfgav1.TupleKey{
+				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
+				{Object: "group:eng", Relation: "member", User: "user:jon"},
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:eng", "restricted", "user:jon"),
+					},
+					Expectation: false,
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			createResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+				Name: test.name,
+			})
+			require.NoError(t, err)
+			require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
+
+			storeID := createResp.GetId()
+
+			writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:         storeID,
+				TypeDefinitions: test.typeDefinitions,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+			})
+			require.NoError(t, err)
+			require.NotPanics(t, func() { ulid.MustParse(writeModelResp.GetAuthorizationModelId()) })
+
+			modelID := writeModelResp.GetAuthorizationModelId()
+
+			if len(test.tuples) > 0 {
+				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Writes: &openfgav1.WriteRequestWrites{
+						TupleKeys: test.tuples,
+					},
+				})
+				require.NoError(t, err)
+			}
+
+			for _, assertion := range test.assertions {
+				var tk *openfgav1.CheckRequestTupleKey
+				if assertion.Tuple != nil {
+					tk = tuple.NewCheckRequestTupleKey(
+						assertion.Tuple.GetObject(),
+						assertion.Tuple.GetRelation(),
+						assertion.Tuple.GetUser(),
+					)
+				}
+
+				checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey:             tk,
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: assertion.ContextualTuples,
+					},
+				})
+
+				if assertion.ErrorCode == 0 {
+					require.NoError(t, err)
+					require.Equal(t, assertion.Expectation, checkResp.GetAllowed())
+				} else {
+					require.Error(t, err)
+					e, ok := status.FromError(err)
+					require.True(t, ok)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+				}
+			}
+		})
+	}
+}
+
 func TestFunctionalGRPC(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)
 
@@ -330,6 +543,11 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, client) })
 	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, client) })
+
+	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
+	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
+	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
+	t.Run("TestWriteAssertions", func(t *testing.T) { GRPCWriteAssertionsTest(t, client) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
@@ -672,21 +890,14 @@ func GRPCDeleteStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 }
 
 func GRPCCheckTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
-	type testData struct {
-		tuples []*openfgav1.TupleKey
-		model  *openfgav1.AuthorizationModel
-	}
-
 	type output struct {
-		resp      *openfgav1.CheckResponse
 		errorCode codes.Code
 	}
 
 	tests := []struct {
-		name     string
-		input    *openfgav1.CheckRequest
-		output   output
-		testData *testData
+		name   string
+		input  *openfgav1.CheckRequest
+		output output
 	}{
 		{
 			name:  "empty_request",
@@ -760,61 +971,91 @@ func GRPCCheckTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 				errorCode: codes.InvalidArgument,
 			},
 		},
+		{
+			name: "missing_user",
+			input: &openfgav1.CheckRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Relation: "relation",
+					Object:   "obj:1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_relation",
+			input: &openfgav1.CheckRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:   "user:anne",
+					Object: "obj:1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_object",
+			input: &openfgav1.CheckRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:anne",
+					Relation: "relation",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "model_not_found",
+			input: &openfgav1.CheckRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:anne",
+					Object:   "obj:1",
+					Relation: "relation",
+				},
+			},
+			output: output{
+				errorCode: 2001, // ErrorCode_authorization_model_not_found
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			storeID := test.input.StoreId
-			if test.testData != nil {
-				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   test.testData.model.SchemaVersion,
-					TypeDefinitions: test.testData.model.TypeDefinitions,
-				})
-				require.NoError(t, err)
-
-				modelID := resp.GetAuthorizationModelId()
-
-				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-					StoreId:              storeID,
-					AuthorizationModelId: modelID,
-					Writes: &openfgav1.WriteRequestWrites{
-						TupleKeys: test.testData.tuples,
-					},
-				})
-				require.NoError(t, err)
-			}
-
-			response, err := client.Check(context.Background(), test.input)
+			_, err := client.Check(context.Background(), test.input)
 
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
-			if test.output.errorCode == codes.OK {
-				require.Equal(t, test.output.resp.Allowed, response.Allowed)
-				require.Equal(t, test.output.resp.Resolution, response.Resolution)
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
 			}
 		})
 	}
 }
 
 func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
-	type testData struct {
-		tuples []*openfgav1.TupleKey
-		model  string
-	}
-
 	type output struct {
-		resp      *openfgav1.ListObjectsResponse
 		errorCode codes.Code
 	}
 
 	tests := []struct {
-		name     string
-		input    *openfgav1.ListObjectsRequest
-		output   output
-		testData *testData
+		name   string
+		input  *openfgav1.ListObjectsRequest
+		output output
 	}{
 		{
 			name: "undefined_model_id_returns_error",
@@ -828,82 +1069,142 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			output: output{
 				errorCode: codes.Code(openfgav1.ErrorCode_authorization_model_not_found),
 			},
-			testData: &testData{
-				model: `model
-	schema 1.1
-type user
-
-type document
-  relations
-	define viewer: [user]`,
+		},
+		{
+			name:  "empty_request",
+			input: &openfgav1.ListObjectsRequest{},
+			output: output{
+				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
-			name: "direct_relationships_with_intersecton_returns_expected_objects",
+			name: "invalid_storeID_because_too_short",
 			input: &openfgav1.ListObjectsRequest{
-				StoreId:  ulid.Make().String(),
-				Type:     "document",
-				Relation: "viewer",
-				User:     "user:jon",
+				StoreId:              "1",
+				AuthorizationModelId: ulid.Make().String(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
 			},
 			output: output{
-				resp: &openfgav1.ListObjectsResponse{
-					Objects: []string{"document:1"},
-				},
+				errorCode: codes.InvalidArgument,
 			},
-			testData: &testData{
-				tuples: []*openfgav1.TupleKey{
-					{Object: "document:1", Relation: "viewer", User: "user:jon"},
-					{Object: "document:1", Relation: "allowed", User: "user:jon"},
-				},
-				model: `model
-	schema 1.1
-type user
-
-type document
-  relations
-	define allowed: [user]
-	define viewer: [user] and allowed`,
+		},
+		{
+			name: "invalid_storeID_because_extra_chars",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String() + "A",
+				AuthorizationModelId: ulid.Make().String(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_invalid_chars",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				AuthorizationModelId: ulid.Make().String(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_extra_chars",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String() + "A",
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_invalid_chars",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_user",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Type:                 "document",
+				Relation:             "viewer",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_relation",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Type:                 "document",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_type",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "model_not_found",
+			input: &openfgav1.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: 2001, // ErrorCode_authorization_model_not_found
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions
-
-			storeID := test.input.StoreId
-
-			if test.testData != nil {
-				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: typedefs,
-				})
-				require.NoError(t, err)
-
-				modelID := resp.GetAuthorizationModelId()
-
-				if len(test.testData.tuples) > 0 {
-					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-						StoreId:              storeID,
-						AuthorizationModelId: modelID,
-						Writes: &openfgav1.WriteRequestWrites{
-							TupleKeys: test.testData.tuples,
-						},
-					})
-					require.NoError(t, err)
-				}
-			}
-
-			response, err := client.ListObjects(context.Background(), test.input)
+			_, err := client.ListObjects(context.Background(), test.input)
 
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
-			if test.output.errorCode == codes.OK {
-				require.Equal(t, test.output.resp.Objects, response.Objects)
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
 			}
 		})
 	}
@@ -911,6 +1212,7 @@ type document
 
 // TestCheckWorkflows are tests that involve workflows that define assertions for
 // Checks against multi-model stores etc..
+// TODO move to consolidated_1_1_tests.yaml
 func TestCheckWorkflows(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)
 
@@ -1014,6 +1316,7 @@ func TestCheckWorkflows(t *testing.T) {
 
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
+// TODO move to consolidated_1_1_tests.yaml
 func TestExpandWorkflows(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)
 
@@ -1274,15 +1577,35 @@ func TestExpandWorkflows(t *testing.T) {
 }
 
 func GRPCReadAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	type testData struct {
+		model string
+	}
+
 	type output struct {
 		errorCode codes.Code
 	}
 
 	tests := []struct {
-		name   string
-		input  *openfgav1.ReadAuthorizationModelRequest
-		output output
+		name     string
+		input    *openfgav1.ReadAuthorizationModelRequest
+		output   output
+		testData *testData
 	}{
+		{
+			name: "happy_path",
+			testData: &testData{
+				model: `model
+	schema 1.1
+type user`,
+			},
+			input: &openfgav1.ReadAuthorizationModelRequest{
+				StoreId: ulid.Make().String(),
+				Id:      ulid.Make().String(),
+			},
+			output: output{
+				errorCode: codes.OK,
+			},
+		},
 		{
 			name:  "empty_request",
 			input: &openfgav1.ReadAuthorizationModelRequest{},
@@ -1311,6 +1634,16 @@ func GRPCReadAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServic
 			},
 		},
 		{
+			name: "invalid_authorization_model_ID_because_too_short",
+			input: &openfgav1.ReadAuthorizationModelRequest{
+				StoreId: ulid.Make().String(),
+				Id:      "1",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
 			name: "invalid_authorization_model_ID_because_extra_chars",
 			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
@@ -1320,19 +1653,36 @@ func GRPCReadAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServic
 				errorCode: codes.InvalidArgument,
 			},
 		},
+		{
+			name: "missing_authorization_id",
+			input: &openfgav1.ReadAuthorizationModelRequest{
+				StoreId: ulid.Make().String(),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response, err := client.ReadAuthorizationModel(context.Background(), test.input)
+			if test.testData != nil {
+				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         test.input.StoreId,
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions,
+				})
+				test.input.Id = modelResp.AuthorizationModelId
+				require.NoError(t, err)
+			}
+			_, err := client.ReadAuthorizationModel(context.Background(), test.input)
 
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
-			if test.output.errorCode == codes.OK {
-				_ = response // use response for assertions
-				// require.Equal(t, test.output.resp.Allowed, response.Allowed)
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -1458,6 +1808,16 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServi
 			},
 		},
 		{
+			name: "zero_type_definitions",
+			input: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:         ulid.Make().String(),
+				TypeDefinitions: []*openfgav1.TypeDefinition{},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
 			name: "invalid_type_definition_because_empty_type_name",
 			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
@@ -1521,6 +1881,201 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServi
 			if test.output.errorCode == codes.OK {
 				_, err = ulid.Parse(response.AuthorizationModelId)
 				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func GRPCWriteAssertionsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	type testData struct {
+		model string
+	}
+	type output struct {
+		statusCode   codes.Code
+		errorMessage string
+	}
+
+	tests := []struct {
+		name     string
+		input    *openfgav1.WriteAssertionsRequest
+		testData *testData
+		output   output
+	}{
+		{
+			name: "happy_path",
+			testData: &testData{
+				model: `model
+	schema 1.1
+type user
+
+type document
+  relations
+	define viewer: [user]`,
+			},
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Assertions: []*openfgav1.Assertion{
+					{Expectation: true, TupleKey: &openfgav1.AssertionTupleKey{
+						Object:   "document:1",
+						Relation: "viewer",
+						User:     "user:anne",
+					}},
+				},
+			},
+			output: output{
+				statusCode: codes.OK,
+			},
+		},
+		{
+			name:  "empty_request",
+			input: &openfgav1.WriteAssertionsRequest{},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_too_short",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              "1",
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_extra_chars",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String() + "A",
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_invalid_chars",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				AuthorizationModelId: ulid.Make().String(),
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_extra_chars",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String() + "A",
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_invalid_chars",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_user_in_assertion",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Assertions: []*openfgav1.Assertion{
+					{Expectation: true, TupleKey: &openfgav1.AssertionTupleKey{
+						Object:   "obj:1",
+						Relation: "viewer",
+					}},
+				},
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_relation_in_assertion",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Assertions: []*openfgav1.Assertion{
+					{Expectation: true, TupleKey: &openfgav1.AssertionTupleKey{
+						Object: "obj:1",
+						User:   "user:anne",
+					}},
+				},
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_object_in_assertion",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Assertions: []*openfgav1.Assertion{
+					{Expectation: true, TupleKey: &openfgav1.AssertionTupleKey{
+						Relation: "viewer",
+						User:     "user:anne",
+					}},
+				},
+			},
+			output: output{
+				statusCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "model_not_found",
+			input: &openfgav1.WriteAssertionsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Assertions: []*openfgav1.Assertion{
+					{Expectation: true, TupleKey: &openfgav1.AssertionTupleKey{
+						Object:   "obj:1",
+						Relation: "viewer",
+						User:     "user:anne",
+					}},
+				},
+			},
+			output: output{
+				statusCode: 2001, // ErrorCode_authorization_model_not_found
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.testData != nil {
+				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         test.input.StoreId,
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions,
+				})
+				test.input.AuthorizationModelId = modelResp.AuthorizationModelId
+				require.NoError(t, err)
+			}
+			_, err := client.WriteAssertions(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+
+			require.True(t, ok)
+			require.Equal(t, test.output.statusCode.String(), s.Code().String())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), test.output.errorMessage)
 			}
 		})
 	}

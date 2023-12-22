@@ -148,9 +148,6 @@ func getCustomizedErrorCode(field string, reason string) int32 {
 		if strings.HasPrefix(reason, "value length must be at most") {
 			return int32(openfgav1.ErrorCode_object_too_long)
 		}
-		if strings.HasPrefix(reason, "value does not match regex pattern") {
-			return int32(openfgav1.ErrorCode_object_invalid_pattern)
-		}
 	case "PageSize":
 		if strings.HasPrefix(reason, "value must be inside range") {
 			return int32(openfgav1.ErrorCode_page_size_invalid)
