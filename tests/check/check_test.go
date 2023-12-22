@@ -114,6 +114,7 @@ type document
 	})
 	require.NoError(t, err)
 
+	// clear all write logs
 	logs.TakeAll()
 
 	type test struct {
@@ -210,7 +211,7 @@ type document
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			// clear observed logs after each run
+			// clear observed logs after each run. We expect each test to log one line
 			defer logs.TakeAll()
 
 			if test.grpcReq != nil {
@@ -231,22 +232,10 @@ type document
 				require.NoError(t, err)
 			}
 
-			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
-				if e.Message == "grpc_req_complete" {
-					for _, ctxField := range e.Context {
-						if ctxField.Equals(zap.String("grpc_method", "Check")) {
-							return true
-						}
-					}
-				}
+			actualLogs := logs.All()
+			require.Len(t, actualLogs, 1)
 
-				return false
-			})
-
-			expectedLogs := filteredLogs.All()
-			require.Len(t, expectedLogs, 1)
-
-			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
+			fields := actualLogs[0].ContextMap()
 			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
 			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
 			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
