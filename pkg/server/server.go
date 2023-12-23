@@ -24,6 +24,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	internalCommands "github.com/openfga/openfga/internal/commands"
+	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/typesystem"
+
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/gateway"
@@ -373,7 +377,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 		return nil, err
 	}
-	s.logModelUsed(ctx, result.ModelIDUsed)
+	s.logModelUsed(ctx)
 	queryCount := float64(*result.ResolutionMetadata.QueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
@@ -439,7 +443,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
-	resolutionMetadata, modelUsed, err := q.ExecuteStreamed(
+	resolutionMetadata, err := q.ExecuteStreamed(
 		ctx,
 		req,
 		srv,
@@ -448,8 +452,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		telemetry.TraceError(span, err)
 		return err
 	}
-	trace.SpanFromContext(ctx).SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(modelUsed)})
-	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, modelUsed)
 	queryCount := float64(*resolutionMetadata.QueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
@@ -530,8 +532,8 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
-	s.logModelUsed(ctx, resp.ModelIDUsed)
-	return resp.WriteResponse, err
+	s.logModelUsed(ctx)
+	return resp, err
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -556,6 +558,27 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  "Check",
 	})
 
+	typesys, err := internalCommands.NewReadAuthorizationModelOrLatestQuery(s.datastore).Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+	err = typesys.Validate()
+	if err != nil {
+		return nil, serverErrors.ValidationError(err)
+	}
+
+	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)); err != nil {
+		return nil, serverErrors.ValidationError(err)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+	s.logModelUsed(ctx)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
 	checkResolver := graph.NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
 		s.checkOptions...,
@@ -564,7 +587,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
+		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		Context:              req.GetContext(),
@@ -583,10 +606,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		return nil, err
+		return nil, serverErrors.HandleError("", err)
 	}
 
-	s.logModelUsed(ctx, resp.ModelIDUsed)
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
 	const methodName = "check"
 
@@ -641,8 +663,8 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	if err != nil {
 		return nil, err
 	}
-	s.logModelUsed(ctx, resp.ModelIDUsed)
-	return &openfgav1.ExpandResponse{Tree: resp.Tree}, nil
+	s.logModelUsed(ctx)
+	return resp, nil
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
@@ -906,9 +928,11 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// logModelUsed sets the model ID in the context and in a response header.
-func (s *Server) logModelUsed(ctx context.Context, resolvedModelID string) {
-	trace.SpanFromContext(ctx).SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
-	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
-	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, resolvedModelID))
+// logModelUsed sets the model ID in the trace and in a response header.
+func (s *Server) logModelUsed(ctx context.Context) {
+	if ok := grpc_ctxtags.Extract(ctx).Has(authorizationModelIDKey); ok {
+		resolvedModelID := grpc_ctxtags.Extract(ctx).Values()[authorizationModelIDKey].(string)
+		trace.SpanFromContext(ctx).SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
+		_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, resolvedModelID))
+	}
 }

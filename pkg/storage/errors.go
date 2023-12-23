@@ -21,8 +21,6 @@ var (
 	// ErrMismatchObjectType if the request for ReadChanges API was for "type x" but the continuation token was for "type y"
 	ErrMismatchObjectType = errors.New("mismatched types in request and continuation token")
 
-	ErrLatestAuthorizationModelNotFound = errors.New("no authorization models found")
-
 	// Write errors
 
 	// ErrInvalidWriteInput if the tuple to be written already existed or the tuple to be deleted didn't exist

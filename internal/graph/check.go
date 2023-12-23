@@ -18,7 +18,6 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -43,7 +42,6 @@ type ResolveCheckRequest struct {
 }
 
 type ResolveCheckResponse struct {
-	ModelIDUsed        string
 	Allowed            bool
 	ResolutionMetadata *ResolutionMetadata
 }
@@ -433,7 +431,6 @@ func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) Che
 	}
 }
 
-// TODO the validation logic in this function only needs to run once per Check, not for each subproblem
 // ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
 // evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
 func (c *LocalChecker) ResolveCheck(
@@ -455,32 +452,7 @@ func (c *LocalChecker) ResolveCheck(
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		var err error
-		typesys, err = storage.ResolveAuthorizationModel(ctx, c.ds, req.GetStoreID(), req.GetAuthorizationModelID())
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelID())
-			}
-			if errors.Is(err, storage.ErrLatestAuthorizationModelNotFound) {
-				return nil, serverErrors.LatestAuthorizationModelNotFound(req.GetStoreID())
-			}
-			return nil, serverErrors.HandleError("", err)
-		}
-		err = typesys.Validate()
-		if err != nil {
-			return nil, serverErrors.ValidationError(err)
-		}
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-	}
-
-	if err := validation.ValidateUserObjectRelation(typesys, req.GetTupleKey()); err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
-
-	for _, ctxTuple := range req.GetContextualTuples() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return nil, serverErrors.HandleTupleValidateError(err)
-		}
+		panic("typesystem missing in context")
 	}
 
 	tupleKey := req.GetTupleKey()
@@ -510,8 +482,6 @@ func (c *LocalChecker) ResolveCheck(
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-
-	resp.ModelIDUsed = typesys.GetAuthorizationModelID()
 
 	return resp, nil
 }

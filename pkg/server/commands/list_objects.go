@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +17,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	internalCommands "github.com/openfga/openfga/internal/commands"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
@@ -62,7 +65,6 @@ type ListObjectsQuery struct {
 type ListObjectsResponse struct {
 	Objects            []string
 	ResolutionMetadata reverseexpand.ResolutionMetadata
-	ModelIDUsed        string
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -151,55 +153,43 @@ type listObjectsRequest interface {
 	GetContext() *structpb.Struct
 }
 
-func (q *ListObjectsQuery) evaluate(
-	ctx context.Context,
-	req listObjectsRequest,
-	resultsChan chan<- ListObjectsResult,
-	maxResults uint32,
-	resolutionMetadata *reverseexpand.ResolutionMetadata,
-) (string, error) {
+func (q *ListObjectsQuery) evaluate(ctx context.Context, req listObjectsRequest, resultsChan chan<- ListObjectsResult, maxResults uint32, resolutionMetadata *reverseexpand.ResolutionMetadata) error {
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
-	typesys, err := storage.ResolveAuthorizationModel(ctx, q.datastore, req.GetStoreId(), req.GetAuthorizationModelId())
+	typesys, err := internalCommands.NewReadAuthorizationModelOrLatestQuery(q.datastore).Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return "", serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
-		}
-		if errors.Is(err, storage.ErrLatestAuthorizationModelNotFound) {
-			return "", serverErrors.LatestAuthorizationModelNotFound(req.GetStoreId())
-		}
-		return "", serverErrors.HandleError("", err)
+		return err
 	}
 
 	err = typesys.Validate()
 	if err != nil {
-		return "", serverErrors.ValidationError(err)
+		return serverErrors.ValidationError(err)
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return "", serverErrors.HandleTupleValidateError(err)
+			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
 
 	_, err = typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return "", serverErrors.TypeNotFound(targetObjectType)
+			return serverErrors.TypeNotFound(targetObjectType)
 		}
 
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return "", serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
 		}
 
-		return "", serverErrors.NewInternalError("", err)
+		return serverErrors.NewInternalError("", err)
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return "", serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
 	handler := func() {
@@ -328,7 +318,7 @@ func (q *ListObjectsQuery) evaluate(
 
 	go handler()
 
-	return typesys.GetAuthorizationModelID(), nil
+	return nil
 }
 
 func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
@@ -361,7 +351,7 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
-	modelIDUsed, err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +368,6 @@ func (q *ListObjectsQuery) Execute(
 			return &ListObjectsResponse{
 				Objects:            objects,
 				ResolutionMetadata: *resolutionMetadata,
-				ModelIDUsed:        modelIDUsed,
 			}, nil
 
 		case result, channelOpen := <-resultsChan:
@@ -407,7 +396,6 @@ func (q *ListObjectsQuery) Execute(
 				return &ListObjectsResponse{
 					Objects:            objects,
 					ResolutionMetadata: *resolutionMetadata,
-					ModelIDUsed:        modelIDUsed,
 				}, nil
 			}
 			objects = append(objects, result.ObjectID)
@@ -418,7 +406,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
-func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, string, error) {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -432,9 +420,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
-	modelUsed, err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
-		return nil, modelUsed, err
+		return nil, err
 	}
 
 	for {
@@ -443,32 +431,35 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
-			return resolutionMetadata, modelUsed, nil
+			return resolutionMetadata, nil
 
 		case result, channelOpen := <-resultsChan:
 			// TODO send every error or object through channel and let server set this header for every object response
-			_ = grpc.SetHeader(ctx, metadata.Pairs("Openfga-Authorization-Model-Id", modelUsed))
+			if ok := grpc_ctxtags.Extract(ctx).Has("authorization_model_id"); ok {
+				resolvedModelID := grpc_ctxtags.Extract(ctx).Values()["authorization_model_id"].(string)
+				_ = grpc.SetHeader(ctx, metadata.Pairs("Openfga-Authorization-Model-Id", resolvedModelID))
+			}
 			if !channelOpen {
 				// Channel closed! No more results.
-				return resolutionMetadata, modelUsed, nil
+				return resolutionMetadata, nil
 			}
 
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return nil, modelUsed, result.Err
+					return nil, result.Err
 				}
 
 				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-					return nil, modelUsed, serverErrors.ValidationError(result.Err)
+					return nil, serverErrors.ValidationError(result.Err)
 				}
 
-				return nil, modelUsed, serverErrors.HandleError("", result.Err)
+				return nil, serverErrors.HandleError("", result.Err)
 			}
 
 			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
 				Object: result.ObjectID,
 			}); err != nil {
-				return nil, modelUsed, serverErrors.NewInternalError("", err)
+				return nil, serverErrors.NewInternalError("", err)
 			}
 		}
 	}

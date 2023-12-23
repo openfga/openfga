@@ -191,7 +191,7 @@ func TestValidateWriteRequest(t *testing.T) {
 				Deletes: test.deletes,
 			}
 
-			_, err := cmd.validateWriteRequest(ctx, req)
+			err := cmd.validateWriteRequest(ctx, req)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
@@ -484,7 +484,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			modelUsed, err := cmd.validateWriteRequest(context.Background(), &openfgav1.WriteRequest{
+			err := cmd.validateWriteRequest(context.Background(), &openfgav1.WriteRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: model.GetAuthorizationModelID(),
 				Writes: &openfgav1.WriteRequestWrites{
@@ -499,7 +499,6 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				require.ErrorContains(t, err, test.expectedError.Error())
 			} else {
 				require.NoError(t, err)
-				require.NotEmpty(t, modelUsed)
 			}
 		})
 	}

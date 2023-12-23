@@ -5,12 +5,9 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/pkg/errors"
 
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -134,30 +131,6 @@ type ReadUsersetTuplesFilter struct {
 	Object                      string                         // required
 	Relation                    string                         // required
 	AllowedUserTypeRestrictions []*openfgav1.RelationReference // optional
-}
-
-// ResolveAuthorizationModel is a helper function that validates a model ID, and tries to
-// fetch a specific store + model ID. If model ID is empty, it tries to fetch the latest model from that store.
-// TODO this could be a reusable command with unit tests that can return server errors directly
-var ResolveAuthorizationModel = func(ctx context.Context, ds AuthorizationModelReadBackend, storeID, modelID string) (*typesystem.TypeSystem, error) {
-	if modelID != "" {
-		if _, err := ulid.Parse(modelID); err != nil {
-			return nil, ErrNotFound
-		}
-	}
-	latestModelID := modelID
-	var err error
-	if modelID == "" {
-		latestModelID, err = ds.FindLatestAuthorizationModelID(ctx, storeID)
-		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, ErrLatestAuthorizationModelNotFound
-			}
-			return nil, fmt.Errorf("failed to FindLatestAuthorizationModelID: %w", err)
-		}
-	}
-
-	return ds.ReadAuthorizationModel(ctx, storeID, latestModelID)
 }
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.

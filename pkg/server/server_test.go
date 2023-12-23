@@ -634,61 +634,6 @@ func TestReadAssertionModelDSError(t *testing.T) {
 	require.ErrorIs(t, expectedError, err)
 }
 
-func TestResolveAuthorizationModel(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
-		store := ulid.Make().String()
-
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
-
-		expectedError := storage.ErrLatestAuthorizationModelNotFound
-
-		_, err := storage.ResolveAuthorizationModel(ctx, mockDatastore, store, "")
-		require.ErrorIs(t, err, expectedError)
-	})
-
-	t.Run("read_existing_authorization_model", func(t *testing.T) {
-		store := ulid.Make().String()
-		modelID := ulid.Make().String()
-
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
-			typesystem.New(&openfgav1.AuthorizationModel{
-				Id:            modelID,
-				SchemaVersion: typesystem.SchemaVersion1_1,
-			}),
-			nil,
-		)
-
-		typesys, err := storage.ResolveAuthorizationModel(ctx, mockDatastore, store, "")
-		require.NoError(t, err)
-		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
-	})
-
-	t.Run("non-valid_modelID_returns_error", func(t *testing.T) {
-		store := ulid.Make().String()
-		modelID := "foo"
-		want := storage.ErrNotFound
-
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
-
-		_, err := storage.ResolveAuthorizationModel(ctx, mockDatastore, store, modelID)
-		require.Equal(t, want, err)
-	})
-}
-
 type mockStreamServer struct {
 	grpc.ServerStream
 }
