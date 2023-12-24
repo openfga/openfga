@@ -150,34 +150,34 @@ func (c *CachedCheckResolver) Close() {
 }
 
 func (c *CachedCheckResolver) ResolveCheck(
-    ctx context.Context,
-    req *ResolveCheckRequest,
+	ctx context.Context,
+	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-    checkCacheTotalCounter.Inc()
+	checkCacheTotalCounter.Inc()
 
-    cacheKey, err := checkRequestCacheKey(req)
-    if err != nil {
-        c.logger.Error("cache key computation failed with error", zap.Error(err))
-        return nil, err
-    }
+	cacheKey, err := checkRequestCacheKey(req)
+	if err != nil {
+		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		return nil, err
+	}
 
-    cachedResp := c.cache.Get(cacheKey)
-    if cachedResp != nil && !cachedResp.Expired() {
-        checkCacheHitCounter.Inc()
+	cachedResp := c.cache.Get(cacheKey)
+	if cachedResp != nil && !cachedResp.Expired() {
+		checkCacheHitCounter.Inc()
 
-        // Increment the global total cache hits counter
-        totalCacheHits++
+		// Increment the global total cache hits counter
+		totalCacheHits++
 
-        return cachedResp.Value().convertToResolveCheckResponse(), nil
-    }
+		return cachedResp.Value().convertToResolveCheckResponse(), nil
+	}
 
-    resp, err := c.delegate.ResolveCheck(ctx, req)
-    if err != nil {
-        return nil, err
-    }
+	resp, err := c.delegate.ResolveCheck(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
-    c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
-    return resp, nil
+	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
+	return resp, nil
 }
 
 // checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
