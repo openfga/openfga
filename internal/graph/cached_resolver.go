@@ -37,6 +37,8 @@ var (
 	})
 )
 
+var totalCacheHits uint32
+
 // CachedResolveCheckResponse is very similar to ResolveCheckResponse except we
 // do not store the ResolutionData. This is due to the fact that the resolution metadata
 // will be incorrect as data is served from cache instead of actual database read.
@@ -50,6 +52,7 @@ func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveChe
 		ResolutionMetadata: &ResolutionMetadata{
 			Depth:               defaultResolveNodeLimit,
 			DatastoreQueryCount: 0,
+			TotalCacheHits:      totalCacheHits,
 		},
 	}
 }
@@ -147,30 +150,34 @@ func (c *CachedCheckResolver) Close() {
 }
 
 func (c *CachedCheckResolver) ResolveCheck(
-	ctx context.Context,
-	req *ResolveCheckRequest,
+    ctx context.Context,
+    req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	checkCacheTotalCounter.Inc()
+    checkCacheTotalCounter.Inc()
 
-	cacheKey, err := checkRequestCacheKey(req)
-	if err != nil {
-		c.logger.Error("cache key computation failed with error", zap.Error(err))
-		return nil, err
-	}
+    cacheKey, err := checkRequestCacheKey(req)
+    if err != nil {
+        c.logger.Error("cache key computation failed with error", zap.Error(err))
+        return nil, err
+    }
 
-	cachedResp := c.cache.Get(cacheKey)
-	if cachedResp != nil && !cachedResp.Expired() {
-		checkCacheHitCounter.Inc()
-		return cachedResp.Value().convertToResolveCheckResponse(), nil
-	}
+    cachedResp := c.cache.Get(cacheKey)
+    if cachedResp != nil && !cachedResp.Expired() {
+        checkCacheHitCounter.Inc()
 
-	resp, err := c.delegate.ResolveCheck(ctx, req)
-	if err != nil {
-		return nil, err
-	}
+        // Increment the global total cache hits counter
+        totalCacheHits++
 
-	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
-	return resp, nil
+        return cachedResp.Value().convertToResolveCheckResponse(), nil
+    }
+
+    resp, err := c.delegate.ResolveCheck(ctx, req)
+    if err != nil {
+        return nil, err
+    }
+
+    c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
+    return resp, nil
 }
 
 // checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
