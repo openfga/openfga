@@ -38,6 +38,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		subsequentReq       *ResolveCheckRequest
 		setInitialResult    func(mock *MockCheckResolver, request *ResolveCheckRequest)
 		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		expectCacheHit      bool
 	}{
 		{
 			name: "same_request_returns_results_from_cache",
@@ -52,6 +53,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(0).Return(result, nil)
 			},
+			expectCacheHit: true,
 		},
 		{
 			name: "request_for_different_store_does_not_return_results_from_cache",
@@ -366,6 +368,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
+			// Reset cache hits before each test
+			totalCacheHits = 0
+
 			mockResolver := NewMockCheckResolver(ctrl)
 			initialReq := req
 			if test.initialReq != nil {
@@ -386,7 +391,18 @@ func TestResolveCheckFromCache(t *testing.T) {
 			dut2 := NewCachedCheckResolver(dut, WithExistingCache(dut.cache))
 			defer dut2.Close()
 
+			// Capture the value of totalCacheHits before the second call
+			cacheHitsBefore := totalCacheHits
+
 			actualResult, err := dut2.ResolveCheck(ctx, test.subsequentReq)
+
+			// Verify cache hits
+			if test.expectCacheHit {
+				require.Equal(t, cacheHitsBefore+1, totalCacheHits, "Expected cache hit did not increment totalCacheHits")
+			} else {
+				require.Equal(t, cacheHitsBefore, totalCacheHits, "Unexpected cache hit incremented totalCacheHits")
+			}
+
 			require.Equal(t, result.Allowed, actualResult.Allowed)
 			require.NoError(t, err)
 		})
