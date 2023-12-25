@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=bind,target=. \
     CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
 
-FROM cgr.dev/chainguard/static@sha256:d3041c12f55d84bb1477e76cdbab3fce2ac93406671386dd36fc9120b39f4da9
+FROM cgr.dev/chainguard/static@sha256:296c640b19594bafcce3bb20ccf331b50998dc536dd9824c4684d819b7364615
 
 EXPOSE 8081
 EXPOSE 8080
