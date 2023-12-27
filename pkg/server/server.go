@@ -47,7 +47,7 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 )
 
@@ -572,10 +572,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Service: s.serviceName,
 		Method:  "Check",
 	})
-
-	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
-		return nil, serverErrors.InvalidCheckInput
-	}
 
 	storeID := req.GetStoreId()
 

@@ -18,7 +18,7 @@ type ctxKey string
 const (
 	storeIDCtxKey ctxKey = "store-id-context-key"
 	storeIDKey    string = "store_id"
-	storeIDHeader string = "openfga-store-id"
+	StoreIDHeader string = "Openfga-Store-Id"
 )
 
 type storeidHandle struct {
@@ -84,7 +84,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, err error, _ time.Duration) {
 
 		grpc_ctxtags.Extract(r.ctx).Set(storeIDKey, storeID)
 
-		_ = grpc.SetHeader(r.ctx, metadata.Pairs(storeIDHeader, storeID))
+		_ = grpc.SetHeader(r.ctx, metadata.Pairs(StoreIDHeader, storeID))
 	}
 }
 
