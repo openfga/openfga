@@ -26,7 +26,7 @@ func TestListObjectsMySQL(t *testing.T) {
 
 func testRunAll(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
 	cancel := tests.StartServer(t, cfg)
