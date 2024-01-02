@@ -445,7 +445,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -465,12 +465,13 @@ type document
 	define union_and_ttu: union and ttu
 	define union_or_ttu: union or ttu or union_rewrite
 	define intersection_of_ttus: union_or_ttu and union_and_ttu
-	define parent: [org]`).TypeDefinitions
+	define parent: [org]`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
+			TypeDefinitions: model.GetTypeDefinitions(),
+			Conditions:      model.GetConditions(),
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 		},
 	))

@@ -252,10 +252,11 @@ type organization
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := parser.MustTransformDSLToProto(test.model)
 			typesys := typesystem.New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: typedefs,
+				TypeDefinitions: model.GetTypeDefinitions(),
+				Conditions:      model.GetConditions(),
 			})
 
 			g := New(typesys)
@@ -278,7 +279,7 @@ func TestRelationshipEdges(t *testing.T) {
 	tests := []struct {
 		name      string
 		model     string
-		authModel *openfgav1.AuthorizationModel
+		authModel *openfgav1.AuthorizationModel // for models that have "self" or "this" at the end of the relation definition
 		target    *openfgav1.RelationReference
 		source    *openfgav1.RelationReference
 		expected  []*RelationshipEdge
@@ -1482,9 +1483,11 @@ type document
 			if test.model == "" {
 				typesys = typesystem.New(test.authModel)
 			} else {
+				model := parser.MustTransformDSLToProto(test.model)
 				typesys = typesystem.New(&openfgav1.AuthorizationModel{
 					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
+					TypeDefinitions: model.TypeDefinitions,
+					Conditions:      model.Conditions,
 				})
 			}
 

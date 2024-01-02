@@ -39,7 +39,6 @@ type listObjectsTestCase struct {
 	schema                 string
 	tuples                 []*openfgav1.TupleKey
 	model                  string
-	authorizationModel     *openfgav1.AuthorizationModel
 	objectType             string
 	user                   string
 	relation               string
@@ -225,40 +224,16 @@ type repo
 		},
 		{
 			name: "condition_with_tuples",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string) {
+  param1 == 'ok'
+}`,
 			tuples: []*openfgav1.TupleKey{
 				{
 					User:     "user:anne",
@@ -290,40 +265,16 @@ type repo
 		},
 		{
 			name: "condition_with_contextual_tuples",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string) {
+  param1 == 'ok'
+}`,
 			tuples:     nil,
 			user:       "user:anne",
 			objectType: "document",
@@ -357,40 +308,16 @@ type repo
 		},
 		{
 			name: "condition_with_tuples_and_contextual_tuples",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string) {
+  param1 == 'ok'
+}`,
 			tuples: []*openfgav1.TupleKey{
 				{
 					User:     "user:anne",
@@ -443,43 +370,16 @@ type repo
 		},
 		{
 			name: "condition_with_tuples_and_contextual_tuples_and_context",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok' && param2 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-							"param2": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string, param2: string) {
+  param1 == 'ok' && param2 == 'ok'
+}`,
 			tuples: []*openfgav1.TupleKey{
 				{
 					User:     "user:anne",
@@ -533,7 +433,7 @@ type repo
 		},
 		{
 			name: "condition_in_ttu_relationships",
-			authorizationModel: parser.MustTransformDSLToProto(`model
+			model: `model
   schema 1.1
 
 type user
@@ -549,7 +449,7 @@ type document
 
 condition condition1(x: int) {
   x < 100
-}`),
+}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "condition1", nil),
 				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
@@ -572,13 +472,14 @@ condition condition1(x: int) {
 			storeID := ulid.Make().String()
 
 			// arrange: write model
-			model := test.authorizationModel
+			model := parser.MustTransformDSLToProto(test.model)
 
 			if model == nil {
 				model = &openfgav1.AuthorizationModel{
 					Id:              ulid.Make().String(),
 					SchemaVersion:   test.schema,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
+					TypeDefinitions: model.GetTypeDefinitions(),
+					Conditions:      model.GetConditions(),
 				}
 			}
 

@@ -36,7 +36,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 	checker := NewLocalChecker(ds)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -48,12 +48,13 @@ type document
   relations
 	define allowed: [user]
 	define viewer: [group#member] or editor
-	define editor: [group#member] and allowed`).TypeDefinitions
+	define editor: [group#member] and allowed`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
+			TypeDefinitions: model.GetTypeDefinitions(),
+			Conditions:      model.GetConditions(),
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 		},
 	))
@@ -95,7 +96,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 
 	checker := NewLocalChecker(ds, WithResolveNodeBreadthLimit(concurrencyLimit))
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 type group
@@ -103,12 +104,13 @@ type group
 	define member: [user, group#member]
 type document
   relations
-	define viewer: [group#member]`).TypeDefinitions
+	define viewer: [group#member]`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
+			TypeDefinitions: model.GetTypeDefinitions(),
+			Conditions:      model.GetConditions(),
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 		},
 	))
@@ -137,7 +139,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -158,12 +160,13 @@ type document
 	define union_or_ttu: union or ttu or union_rewrite
 	define intersection_of_ttus: union_or_ttu and union_and_ttu
 	define parent: [org]
-`).TypeDefinitions
+`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
+			TypeDefinitions: model.GetTypeDefinitions(),
+			Conditions:      model.GetConditions(),
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 		},
 	))
@@ -394,12 +397,13 @@ type resource
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := parser.MustTransformDSLToProto(test.model)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 				&openfgav1.AuthorizationModel{
 					Id:              ulid.Make().String(),
-					TypeDefinitions: typedefs,
+					TypeDefinitions: model.GetTypeDefinitions(),
+					Conditions:      model.GetConditions(),
 					SchemaVersion:   typesystem.SchemaVersion1_1,
 				},
 			))
