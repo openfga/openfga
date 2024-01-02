@@ -40,7 +40,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		checker := NewLocalChecker(ds)
 
-		model := testutils.MustTransformDSLToProtoWithId(`model
+		model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 
@@ -86,7 +86,7 @@ type document
 		})
 		require.NoError(t, err)
 
-		model := testutils.MustTransformDSLToProtoWithId(`model
+		model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 
@@ -129,7 +129,7 @@ condition condX(x: int) {
 		})
 		require.NoError(t, err)
 
-		model := testutils.MustTransformDSLToProtoWithId(`model
+		model := testutils.MustTransformDSLToProtoWithID(`model
 			schema 1.1
 		type user
 
