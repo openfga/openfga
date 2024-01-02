@@ -7,31 +7,17 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/condition/metrics"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 var tracer = otel.Tracer("openfga/internal/condition/eval")
-
-var conditionEvaluationCostHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
-	Namespace:                       build.ProjectName,
-	Name:                            "condition_evaluation_cost",
-	Help:                            "A histogram of the CEL evaluation cost of a Condition in a Relationship Tuple",
-	Buckets:                         utils.LinearBuckets(0, config.DefaultMaxConditionEvaluationCost, 10),
-	NativeHistogramBucketFactor:     1.1,
-	NativeHistogramMaxBucketNumber:  config.DefaultMaxConditionEvaluationCost,
-	NativeHistogramMinResetDuration: time.Hour,
-})
 
 // EvaluateTupleCondition returns a bool indicating if the provided tupleKey's condition (if any) was met.
 func EvaluateTupleCondition(
@@ -48,6 +34,7 @@ func EvaluateTupleCondition(
 	tupleCondition := tupleKey.GetCondition()
 	conditionName := tupleCondition.GetName()
 	if conditionName != "" {
+		start := time.Now()
 		span.SetAttributes(attribute.String("condition_name", conditionName))
 
 		evaluableCondition, ok := typesys.GetCondition(conditionName)
@@ -78,7 +65,8 @@ func EvaluateTupleCondition(
 			return nil, err
 		}
 
-		conditionEvaluationCostHistogram.Observe(float64(conditionResult.Cost))
+		metrics.Metrics.ObserveEvaluationDuration(time.Since(start))
+		metrics.Metrics.ObserveEvaluationCost(conditionResult.Cost)
 
 		span.SetAttributes(attribute.Bool("condition_met", conditionResult.ConditionMet))
 		span.SetAttributes(attribute.String("condition_cost", strconv.FormatUint(conditionResult.Cost, 10)))
