@@ -415,7 +415,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		}
 	}
 
-	if errs != nil {
+	if errs.ErrorOrNil() != nil {
 		return response, errs
 	}
 
@@ -603,7 +603,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			var errs error
+			var errs *multierror.Error
 			var handlers []CheckHandlerFunc
 			for {
 				t, err := filteredIter.Next(ctx)
@@ -676,7 +676,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 			}
 
-			if len(handlers) == 0 && errs != nil {
+			if len(handlers) == 0 && errs.ErrorOrNil() != nil {
 				telemetry.TraceError(span, errs)
 				return nil, errs
 			}
@@ -800,7 +800,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		var errs error
+		var errs *multierror.Error
 		var handlers []CheckHandlerFunc
 		for {
 			t, err := filteredIter.Next(ctx)
@@ -868,7 +868,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}))
 		}
 
-		if len(handlers) == 0 && errs != nil {
+		if len(handlers) == 0 && errs.ErrorOrNil() != nil {
 			telemetry.TraceError(span, errs)
 			return nil, errs
 		}
