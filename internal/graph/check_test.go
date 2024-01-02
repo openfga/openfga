@@ -76,15 +76,14 @@ type document
 		require.Nil(t, resp)
 	})
 
-	t.Run("exclusion_resolves_deterministically", func(t *testing.T) {
+	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
 		ds := memory.New()
 
 		storeID := ulid.Make().String()
 
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "restricted", "user:*"),
-			tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "condX", nil),
-			tuple.NewTupleKeyWithCondition("document:2", "restricted", "user:*", "condX", nil),
+			tuple.NewTupleKey("document:budget", "admin", "user:*"),
+			tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:maria", "condX", nil),
 		})
 		require.NoError(t, err)
 
@@ -94,8 +93,8 @@ type user
 
 type document
   relations
-	define restricted: [user:*, user:* with condX]
-	define viewer: [user, user with condX] but not restricted
+	define admin: [user:*]
+	define viewer: [user with condX] but not admin
 
 condition condX(x: int) {
 	x < 100
@@ -117,21 +116,58 @@ condition condX(x: int) {
 			// results in an error. Outcome should be falsey, not an error.
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
-				TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
 				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 			})
 			require.NoError(t, err)
-			require.False(t, resp.Allowed)
+			require.False(t, resp.GetAllowed())
+		}
+	})
 
+	t.Run("exclusion_resolves_deterministically_2", func(t *testing.T) {
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:budget", "admin", "user:maria", "condX", nil),
+		})
+		require.NoError(t, err)
+
+		typedefs := parser.MustTransformDSLToProto(`model
+			schema 1.1
+		type user
+
+		type document
+		  relations
+			define admin: [user with condX]
+			define viewer: [user] but not admin
+
+		condition condX(x: int) {
+			x < 100
+		}
+		`).TypeDefinitions
+
+		checker := NewLocalChecker(ds)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+			&openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				TypeDefinitions: typedefs,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+			},
+		))
+
+		for i := 0; i < 2000; i++ {
 			// base should resolve to {allowed: false} even though the subtract branch
 			// results in an error. Outcome should be falsey, not an error.
-			resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
-				TupleKey:           tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
 				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 			})
 			require.NoError(t, err)
-			require.False(t, resp.Allowed)
+			require.False(t, resp.GetAllowed())
 		}
 	})
 }
