@@ -84,11 +84,11 @@ func MakeStringWithRuneset(n uint64, runeSet []rune) string {
 	return s
 }
 
-// MustTransformDSLToProtoWithId interprets the provided string s as an FGA model and
+// MustTransformDSLToProtoWithID interprets the provided string s as an FGA model and
 // attempts to parse it using the official OpenFGA language parser. The model returned
 // includes an auto-generated model id which assists with producing models for testing
 // purposes.
-func MustTransformDSLToProtoWithId(s string) *openfgav1.AuthorizationModel {
+func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 	model := parser.MustTransformDSLToProto(s)
 	model.Id = ulid.Make().String()
 
