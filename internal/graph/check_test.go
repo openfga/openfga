@@ -20,6 +20,8 @@ import (
 
 func TestResolveCheckDeterministic(t *testing.T) {
 	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
+		t.Parallel()
+
 		ds := memory.New()
 
 		storeID := ulid.Make().String()
@@ -72,6 +74,8 @@ type document
 	})
 
 	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
+		t.Parallel()
+
 		ds := memory.New()
 
 		storeID := ulid.Make().String()
@@ -114,6 +118,8 @@ condition condX(x: int) {
 	})
 
 	t.Run("exclusion_resolves_deterministically_2", func(t *testing.T) {
+		t.Parallel()
+
 		ds := memory.New()
 
 		storeID := ulid.Make().String()
