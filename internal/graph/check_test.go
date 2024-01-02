@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -37,7 +38,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		checker := NewLocalChecker(ds)
 
-		typedefs := parser.MustTransformDSLToProto(`model
+		model := testutils.MustTransformDSLToProtoWithId(`model
 	schema 1.1
 type user
 
@@ -49,15 +50,9 @@ type document
   relations
 	define allowed: [user]
 	define viewer: [group#member] or editor
-	define editor: [group#member] and allowed`).TypeDefinitions
+	define editor: [group#member] and allowed`)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-			&openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				TypeDefinitions: typedefs,
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-			},
-		))
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
@@ -87,7 +82,7 @@ type document
 		})
 		require.NoError(t, err)
 
-		typedefs := parser.MustTransformDSLToProto(`model
+		model := testutils.MustTransformDSLToProtoWithId(`model
 	schema 1.1
 type user
 
@@ -99,17 +94,11 @@ type document
 condition condX(x: int) {
 	x < 100
 }
-`).TypeDefinitions
+`)
 
 		checker := NewLocalChecker(ds)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-			&openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				TypeDefinitions: typedefs,
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-			},
-		))
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 		for i := 0; i < 2000; i++ {
 			// subtract branch resolves to {allowed: true} even though the base branch
@@ -134,7 +123,7 @@ condition condX(x: int) {
 		})
 		require.NoError(t, err)
 
-		typedefs := parser.MustTransformDSLToProto(`model
+		model := testutils.MustTransformDSLToProtoWithId(`model
 			schema 1.1
 		type user
 
@@ -146,17 +135,11 @@ condition condX(x: int) {
 		condition condX(x: int) {
 			x < 100
 		}
-		`).TypeDefinitions
+		`)
 
 		checker := NewLocalChecker(ds)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-			&openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				TypeDefinitions: typedefs,
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-			},
-		))
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 		for i := 0; i < 2000; i++ {
 			// base should resolve to {allowed: false} even though the subtract branch

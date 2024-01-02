@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -80,4 +82,15 @@ func MakeStringWithRuneset(n uint64, runeSet []rune) string {
 	}
 
 	return s
+}
+
+// MustTransformDSLToProtoWithId interprets the provided string s as an FGA model and
+// attempts to parse it using the official OpenFGA language parser. The model returned
+// includes an auto-generated model id which assists with producing models for testing
+// purposes.
+func MustTransformDSLToProtoWithId(s string) *openfgav1.AuthorizationModel {
+	model := parser.MustTransformDSLToProto(s)
+	model.Id = ulid.Make().String()
+
+	return model
 }
