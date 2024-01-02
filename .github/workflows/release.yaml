@@ -110,7 +110,7 @@ jobs:
           args: --file=Dockerfile
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@b374143c1149a9115d881581d29b8390bbcbb59c # pin@v2
+        uses: github/codeql-action/upload-sarif@012739e5082ff0c22ca6d6ab32e07c36df03c4a4 # pin@v2
         with:
           sarif_file: snyk.sarif
 
