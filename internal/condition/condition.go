@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/condition/metrics"
 	"github.com/openfga/openfga/internal/condition/types"
 )
 
@@ -75,6 +77,15 @@ func (e *EvaluableCondition) Compile() error {
 }
 
 func (e *EvaluableCondition) compile() error {
+	start := time.Now()
+
+	var err error
+	defer func() {
+		if err == nil {
+			metrics.Metrics.ObserveCompilationDuration(time.Since(start))
+		}
+	}()
+
 	var envOpts []cel.EnvOption
 	conditionParamTypes := map[string]*types.ParameterType{}
 	for paramName, paramTypeRef := range e.GetParameters() {
@@ -104,7 +115,7 @@ func (e *EvaluableCondition) compile() error {
 	source := common.NewStringSource(e.Expression, e.Name)
 	ast, issues := env.CompileSource(source)
 	if issues != nil {
-		if err := issues.Err(); err != nil {
+		if err = issues.Err(); err != nil {
 			return &CompilationError{
 				Condition: e.Name,
 				Cause:     err,

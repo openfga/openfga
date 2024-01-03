@@ -276,11 +276,6 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 			expectedErrorCode: int32(openfgav1.ErrorCode_object_too_long),
 		},
 		{
-			_name:             "invalid_argument_-_Object_invalid_pattern",
-			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Object: value does not match regex pattern"),
-			expectedErrorCode: int32(openfgav1.ErrorCode_object_invalid_pattern),
-		},
-		{
 			_name:             "invalid_argument_-_PageSize",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.PageSize: value must be inside range 1 to 100"),
 			expectedErrorCode: int32(openfgav1.ErrorCode_page_size_invalid),

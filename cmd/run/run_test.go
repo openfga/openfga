@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,20 +22,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"google.golang.org/grpc"
-	grpcbackoff "google.golang.org/grpc/backoff"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/protobuf/encoding/protojson"
+	parser "github.com/openfga/language/pkg/go/transformer"
+
+	"github.com/openfga/openfga/pkg/testutils"
+
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/server"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -47,6 +41,16 @@ import (
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestMain(m *testing.M) {
@@ -58,58 +62,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
-}
-
-func ensureServiceUp(t *testing.T, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
-	t.Helper()
-
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	creds := insecure.NewCredentials()
-	if transportCredentials != nil {
-		creds = transportCredentials
-	}
-
-	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(creds),
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-	}
-
-	conn, err := grpc.DialContext(
-		timeoutCtx,
-		grpcAddr,
-		dialOpts...,
-	)
-	require.NoError(t, err)
-	defer conn.Close()
-
-	client := healthv1pb.NewHealthClient(conn)
-
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 10 * time.Second
-
-	err = backoff.Retry(func() error {
-		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
-			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		})
-		if err != nil {
-			return err
-		}
-
-		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return errors.New("not serving")
-		}
-
-		return nil
-	}, policy)
-	require.NoError(t, err)
-
-	if httpHealthCheck {
-		_, err = retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
-		require.NoError(t, err)
-	}
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -255,7 +207,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -284,7 +236,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -349,7 +301,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
@@ -473,7 +425,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	type args struct {
 		origin string
@@ -579,7 +531,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{
 		{
@@ -639,7 +591,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
@@ -699,7 +651,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
@@ -729,7 +681,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
 }
 
@@ -768,7 +720,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -904,7 +856,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1166,4 +1118,108 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
 	require.NoError(t, rootCmd.Execute())
+}
+
+func TestHTTPHeaders(t *testing.T) {
+	t.Parallel()
+	cfg := MustDefaultConfigWithRandomPorts()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+	})
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		conn.Close()
+	})
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createStoreResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:       storeID,
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions,
+	})
+	require.NoError(t, err)
+
+	authorizationModelID := writeModelResp.GetAuthorizationModelId()
+
+	httpClient := retryablehttp.NewClient()
+
+	var testCases = map[string]struct {
+		httpVerb      string
+		httpPath      string
+		httpJSONBody  string
+		expectedError bool
+	}{
+		`check`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+		},
+		`listobjects`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-objects", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+		},
+		`streamed-list-objects`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+		},
+		`expand`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+		},
+		`write`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/write", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"writes": { "tuple_keys": [{"user": "user:anne",  "relation": "viewer", "object": "document:1"}]}}`,
+		},
+	}
+
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJSONBody))
+			require.NoError(t, err, "Failed to construct request")
+
+			httpResponse, err := httpClient.Do(req)
+			require.NoError(t, err)
+
+			// These are set in the server RPCs
+			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
+			require.Equal(t, authorizationModelID, httpResponse.Header[server.AuthorizationModelIDHeader][0])
+
+			// These are set in middlewares
+			require.Len(t, httpResponse.Header[storeid.StoreIDHeader], 1)
+			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
+			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
+			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
+		})
+	}
 }
