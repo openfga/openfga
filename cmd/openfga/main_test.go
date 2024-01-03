@@ -16,11 +16,10 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/openfga/openfga/pkg/testutils"
 )
 
 type OpenFGATester interface {
@@ -41,10 +40,10 @@ func (s *serverHandle) GetHTTPAddress() string {
 	return s.httpAddress
 }
 
-// newOpenFGAContainer spins up an openfga container with the default configuration
+// runOpenFGAContainerWithArgs spins up an openfga container with the default configuration
 // exposed for testing purposes. It is assumed that the openfga/dockertest image is available.
-// The container is automatically stopped after the test ends.
-func newOpenFGAContainer(t *testing.T) OpenFGATester {
+// The container is automatically stopped after the test ends. On stopping, it asserts that the exit code was 0.
+func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATester {
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(
@@ -61,7 +60,7 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 			nat.Port("3000/tcp"): {},
 		},
 		Image: "openfga/openfga:dockertest",
-		Cmd:   []string{"run"},
+		Cmd:   commandArgs,
 	}
 
 	hostCfg := container.HostConfig{
@@ -87,9 +86,14 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 
 	stopContainer := func() {
 		t.Logf("stopping container %s", name)
+
+		containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
+		require.NoError(t, err)
+		require.Zero(t, containerJSON.State.ExitCode)
+
 		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err = dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to stop openfga container: %v", err)
 		}
@@ -118,14 +122,9 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 	}
 	grpcPort := m[0].HostPort
 
-	grpcAddr := fmt.Sprintf("localhost:%s", grpcPort)
-	httpAddr := fmt.Sprintf("localhost:%s", httpPort)
-
-	testutils.EnsureServiceHealthy(t, grpcAddr, httpAddr, nil, true)
-
 	return &serverHandle{
-		grpcAddress: grpcAddr,
-		httpAddress: httpAddr,
+		grpcAddress: fmt.Sprintf("localhost:%s", grpcPort),
+		httpAddress: fmt.Sprintf("localhost:%s", httpPort),
 	}
 }
 
@@ -150,24 +149,37 @@ func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 // It is not meant to include functionality tests.
 // For that, go to the github.com/openfga/openfga/tests package.
 func TestDocker(t *testing.T) {
-	tester := newOpenFGAContainer(t)
+	t.Run("run_command", func(t *testing.T) {
+		tester := runOpenFGAContainerWithArgs(t, []string{"run"})
 
-	t.Run("grpc_endpoint_works", func(t *testing.T) {
-		conn := createGrpcConnection(t, tester)
-		defer conn.Close()
+		testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil, true)
 
-		grpcClient := openfgav1.NewOpenFGAServiceClient(conn)
+		t.Run("grpc_endpoint_works", func(t *testing.T) {
+			conn := createGrpcConnection(t, tester)
+			defer conn.Close()
 
-		createResp, err := grpcClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
-			Name: "grpc_endpoint_works",
+			grpcClient := openfgav1.NewOpenFGAServiceClient(conn)
+
+			createResp, err := grpcClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+				Name: "grpc_endpoint_works",
+			})
+			require.NoError(t, err)
+			require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
 		})
-		require.NoError(t, err)
-		require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
+
+		t.Run("http_endpoint_works", func(t *testing.T) {
+			resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", tester.GetHTTPAddress()))
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+		})
 	})
 
-	t.Run("http_endpoint_works", func(t *testing.T) {
-		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", tester.GetHTTPAddress()))
-		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+	t.Run("migrate_command", func(t *testing.T) {
+		// this will be a no-op
+		_ = runOpenFGAContainerWithArgs(t, []string{"migrate", "--datastore-engine", "memory"})
+	})
+
+	t.Run("version_command", func(t *testing.T) {
+		_ = runOpenFGAContainerWithArgs(t, []string{"version"})
 	})
 }
