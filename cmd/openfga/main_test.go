@@ -16,10 +16,11 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 type OpenFGATester interface {
@@ -165,7 +166,7 @@ func TestDocker(t *testing.T) {
 	})
 
 	t.Run("http_endpoint_works", func(t *testing.T) {
-		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", tester.GetHTTPAddress()))
+		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", tester.GetHTTPAddress()))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
