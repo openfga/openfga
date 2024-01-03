@@ -10,9 +10,10 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -445,7 +446,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	model := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 
@@ -467,14 +468,7 @@ type document
 	define intersection_of_ttus: union_or_ttu and union_and_ttu
 	define parent: [org]`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: model.GetTypeDefinitions(),
-			Conditions:      model.GetConditions(),
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	checkCache := ccache.New(
 		ccache.Configure[*CachedResolveCheckResponse]().MaxSize(100),

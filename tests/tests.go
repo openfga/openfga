@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/openfga/openfga/pkg/testutils"
+
 	"github.com/openfga/openfga/cmd/run"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
@@ -23,12 +25,15 @@ type TestClientBootstrapper interface {
 	Write(ctx context.Context, in *openfgav1.WriteRequest, opts ...grpc.CallOption) (*openfgav1.WriteResponse, error)
 }
 
+// StartServer calls StartServerWithContext. See the docs for that.
 func StartServer(t testing.TB, cfg *serverconfig.Config) context.CancelFunc {
 	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
 	serverCtx := &run.ServerContext{Logger: logger}
 	return StartServerWithContext(t, cfg, serverCtx)
 }
 
+// StartServerWithContext starts a server with a specific ServerContext, waits until it is healthy, and returns a cancel function
+// that callers must call when they want to stop the server.
 func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
@@ -39,6 +44,8 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 		err := serverCtx.Run(ctx, cfg)
 		require.NoError(t, err)
 	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	return cancel
 }

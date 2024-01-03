@@ -588,7 +588,7 @@ tests:
             errorCode: 2000
   - name: prior_conditions_ignored
     stages:
-      - model: | 
+      - model: |
           model
             schema 1.1
           type user
@@ -596,7 +596,7 @@ tests:
           type document
             relations
               define viewer: [user with oldcondition]
-          
+
           condition oldcondition(x: int) {
             x > 100
           }
@@ -631,7 +631,7 @@ tests:
           type document
             relations
               define viewer: [user with newcondition]
-          
+
           condition newcondition(x: int) {
             x > 200
           }
@@ -669,11 +669,11 @@ tests:
           model
             schema 1.1
           type user
-          
+
           type document
             relations
               define viewer: [user with oldcondition]
-          
+
           condition oldcondition(x: int) {
             x > 200
           }

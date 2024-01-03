@@ -11,6 +11,8 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/testutils"
+
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -252,12 +254,8 @@ type organization
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			model := parser.MustTransformDSLToProto(test.model)
-			typesys := typesystem.New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: model.GetTypeDefinitions(),
-				Conditions:      model.GetConditions(),
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys := typesystem.New(model)
 
 			g := New(typesys)
 

@@ -8,6 +8,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 func TestHasCycle(t *testing.T) {
@@ -154,10 +156,9 @@ type document
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+			typesys := New(model)
 
 			hasCycle, err := typesys.HasCycle(test.objectType, test.relation)
 			require.Equal(t, test.expected, hasCycle)
@@ -1624,11 +1625,9 @@ type document
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(&openfgav1.AuthorizationModel{
-				TypeDefinitions: typedefs,
-			})
+			typesys := New(model)
 
 			objectType := test.rr.GetType()
 			relationStr := test.rr.GetRelation()
@@ -1781,11 +1780,9 @@ type node
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(&openfgav1.AuthorizationModel{
-				TypeDefinitions: typedefs,
-			})
+			typesys := New(model)
 
 			objectType := test.rr.GetType()
 			relationStr := test.rr.GetRelation()
@@ -2088,11 +2085,8 @@ type document
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
-			typesys := New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys := New(model)
 
 			ok, err := typesys.IsDirectlyRelated(test.target, test.source)
 			require.NoError(t, err)
@@ -2170,11 +2164,8 @@ type document
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
-			typesys := New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys := New(model)
 
 			ok, err := typesys.IsPubliclyAssignable(test.target, test.objectType)
 			require.NoError(t, err)
@@ -2396,11 +2387,9 @@ type folder
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(&openfgav1.AuthorizationModel{
-				TypeDefinitions: typedefs,
-			})
+			typesys := New(model)
 			result, err := typesys.DirectlyRelatedUsersets(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
@@ -2554,15 +2543,13 @@ func TestConditions(t *testing.T) {
 func TestHasTypeInfo(t *testing.T) {
 	tests := []struct {
 		name       string
-		schema     string
 		model      string
 		objectType string
 		relation   string
 		expected   bool
 	}{
 		{
-			name:   "has_type_info_true",
-			schema: SchemaVersion1_1,
+			name: "has_type_info_true",
 			model: `model
 	schema 1.1
 type user
@@ -2574,26 +2561,11 @@ type folder
 			relation:   "allowed",
 			expected:   true,
 		},
-		//		{
-		//			name:   "has_type_info_false",
-		//			schema: SchemaVersion1_0,
-		//			model: `model
-		//	schema 1.0
-		//type user
-		//type folder
-		//  relations
-		//	define allowed: self`,
-		//			objectType: "folder",
-		//			relation:   "allowed",
-		//			expected:   false,
-		//		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   test.schema,
-				TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys := New(model)
 			result, err := typesys.HasTypeInfo(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)

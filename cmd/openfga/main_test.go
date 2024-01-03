@@ -223,7 +223,7 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 
 	storeID := createResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
   schema 1.1
 
 type user
