@@ -15,7 +15,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/testutils"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -376,7 +375,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			// expect first call to result in actual resolve call
 			dut := NewCachedCheckResolver(mockResolver,
-				WithLogger(logger.NewNoopLogger()),
 				WithMaxCacheSize(10))
 			defer dut.Close()
 
