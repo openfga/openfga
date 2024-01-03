@@ -8,7 +8,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
@@ -1481,12 +1480,8 @@ type document
 			if test.model == "" {
 				typesys = typesystem.New(test.authModel)
 			} else {
-				model := parser.MustTransformDSLToProto(test.model)
-				typesys = typesystem.New(&openfgav1.AuthorizationModel{
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: model.TypeDefinitions,
-					Conditions:      model.Conditions,
-				})
+				model := testutils.MustTransformDSLToProtoWithID(test.model)
+				typesys = typesystem.New(model)
 			}
 
 			g := New(typesys)

@@ -293,10 +293,8 @@ type document
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(context.Background(), &openfgav1.AuthorizationModel{
-				SchemaVersion:   SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			_, err := NewAndValidate(context.Background(), model)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}

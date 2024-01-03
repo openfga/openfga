@@ -36,7 +36,6 @@ func (x *mockStreamServer) Send(m *openfgav1.StreamedListObjectsResponse) error 
 
 type listObjectsTestCase struct {
 	name                   string
-	schema                 string
 	tuples                 []*openfgav1.TupleKey
 	model                  string
 	objectType             string
@@ -55,8 +54,7 @@ type listObjectsTestCase struct {
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 	testCases := []listObjectsTestCase{
 		{
-			name:   "max_results_equal_0_with_simple_model",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_equal_0_with_simple_model",
 			model: `model
 	schema 1.1
 type user
@@ -79,8 +77,7 @@ type repo
 			useCheckCache:          false,
 		},
 		{
-			name:   "max_results_equal_2_with_simple_model",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_equal_2_with_simple_model",
 			model: `model
 	schema 1.1
 type user
@@ -103,8 +100,7 @@ type repo
 			useCheckCache:          false,
 		},
 		{
-			name:   "max_results_with_model_that_uses_exclusion",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_with_model_that_uses_exclusion",
 			model: `model
 	schema 1.1
 type user
@@ -128,8 +124,7 @@ type org
 			useCheckCache:          false,
 		},
 		{
-			name:   "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
 			model: `model
 	schema 1.1
 type user
@@ -153,8 +148,7 @@ type org
 			useCheckCache:          false,
 		},
 		{
-			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
-			schema: typesystem.SchemaVersion1_1,
+			name: "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
 			model: `model
 	schema 1.1
 type user
@@ -174,8 +168,7 @@ type team
 			useCheckCache:          false,
 		},
 		{
-			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
-			schema: typesystem.SchemaVersion1_1,
+			name: "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
 			model: `model
 	schema 1.1
 type user
@@ -198,8 +191,7 @@ type repo
 			useCheckCache:       false,
 		},
 		{
-			name:   "list_object_use_check_cache",
-			schema: typesystem.SchemaVersion1_1,
+			name: "list_object_use_check_cache",
 			model: `model
 	schema 1.1
 type user
@@ -472,20 +464,7 @@ condition condition1(x: int) {
 			storeID := ulid.Make().String()
 
 			// arrange: write model
-			model := parser.MustTransformDSLToProto(test.model)
-
-			if model == nil {
-				model = &openfgav1.AuthorizationModel{
-					Id:              ulid.Make().String(),
-					SchemaVersion:   test.schema,
-					TypeDefinitions: model.GetTypeDefinitions(),
-					Conditions:      model.GetConditions(),
-				}
-			}
-
-			if model.Id == "" {
-				model.Id = ulid.Make().String()
-			}
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)

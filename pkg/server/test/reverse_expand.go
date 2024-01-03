@@ -7,8 +7,9 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -1221,11 +1222,7 @@ type document
 			store := ulid.Make().String()
 			test.request.StoreID = store
 
-			model := &openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
-			}
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			err := ds.WriteAuthorizationModel(ctx, store, model)
 			require.NoError(err)
 
