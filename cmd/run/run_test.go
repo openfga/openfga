@@ -207,7 +207,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -236,7 +236,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -301,7 +301,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
@@ -425,7 +425,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	type args struct {
 		origin string
@@ -531,7 +531,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{
 		{
@@ -591,7 +591,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
@@ -651,7 +651,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
@@ -681,7 +681,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
 }
 
@@ -720,7 +720,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -856,7 +856,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1134,7 +1134,7 @@ func TestHTTPHeaders(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)

@@ -93,9 +93,9 @@ func MakeStringWithRuneset(n uint64, runeSet []rune) string {
 	return s
 }
 
-// EnsureServiceUp is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
+// EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
 // ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
-func EnsureServiceUp(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
