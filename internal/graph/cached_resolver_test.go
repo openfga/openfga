@@ -552,14 +552,14 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
 	})
 	require.NoError(t, err)
 
-	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
@@ -574,7 +574,7 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key3, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key3, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
@@ -604,7 +604,7 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 	}
 
-	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
@@ -612,7 +612,7 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
@@ -651,7 +651,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -659,7 +659,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -667,7 +667,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key3, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key3, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -675,7 +675,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key4, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key4, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -698,7 +698,7 @@ func BenchmarkCheckRequestCacheKey(b *testing.B) {
 	var err error
 
 	for n := 0; n < b.N; n++ {
-		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+		checkCacheKey, err = CheckRequestCacheKey(&ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -720,7 +720,7 @@ func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+		checkCacheKey, err = CheckRequestCacheKey(&ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -749,7 +749,7 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 	require.NoError(b, err)
 
 	for n := 0; n < b.N; n++ {
-		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+		checkCacheKey, err = CheckRequestCacheKey(&ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
