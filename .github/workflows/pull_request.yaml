@@ -46,7 +46,7 @@ jobs:
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
-      - name: Unit Tests
+      - name: Tests
         run: make test
 
       - name: upload coverage to codecov
