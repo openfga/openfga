@@ -14,7 +14,9 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
@@ -91,6 +93,17 @@ func MakeStringWithRuneset(n uint64, runeSet []rune) string {
 	}
 
 	return s
+}
+
+// MustTransformDSLToProtoWithID interprets the provided string s as an FGA model and
+// attempts to parse it using the official OpenFGA language parser. The model returned
+// includes an auto-generated model id which assists with producing models for testing
+// purposes.
+func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
+	model := parser.MustTransformDSLToProto(s)
+	model.Id = ulid.Make().String()
+
+	return model
 }
 
 // EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
