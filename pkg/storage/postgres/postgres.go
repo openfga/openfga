@@ -1,4 +1,3 @@
-// Package postgres contains an implementation of the storage interface that works with Postgres.
 package postgres
 
 import (
@@ -31,6 +30,7 @@ import (
 
 var tracer = otel.Tracer("openfga/pkg/storage/postgres")
 
+// Postgres provides a Postgres based implementation of storage.OpenFGADatastore.
 type Postgres struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
@@ -40,8 +40,10 @@ type Postgres struct {
 	maxTypesPerModelField  int
 }
 
+// Ensures that Postgres implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
+// New creates a new Postgres storage.
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
@@ -135,6 +137,7 @@ func (p *Postgres) Close() {
 	p.db.Close()
 }
 
+// Read reads the set of tuples associated with store and TupleKey and returns a TupleIterator.
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
@@ -142,6 +145,9 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 	return p.read(ctx, store, tupleKey, nil)
 }
 
+// ReadPage functions similarly to Read but includes support for pagination. It takes additional
+// pagination parameters and returns a slice of tuples along with a continuation token, which may
+// not be empty. This token can be used for retrieving subsequent pages of data.
 func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
@@ -202,6 +208,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// Write updates data in the Postgres storage, performing all delete operations in `deletes` before adding new values in `writes`.
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
 	ctx, span := tracer.Start(ctx, "postgres.Write")
 	defer span.End()
@@ -214,6 +221,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, deletes, writes, now)
 }
 
+// ReadUserTuple retrieves a specific tuple identified by the provided TupleKey from the Postgres storage.
 func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadUserTuple")
 	defer span.End()
@@ -266,6 +274,8 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	return record.AsTuple(), nil
 }
 
+// ReadUsersetTuples performs a retrieval operation for tuples
+// matching a specific userset filter in the given store.
 func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
@@ -309,6 +319,8 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// ReadStartingWithUser retrieves tuples from the specified store
+// that match the criteria defined in the provided filter.
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadStartingWithUser")
 	defer span.End()
@@ -341,10 +353,12 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// MaxTuplesPerWrite returns the maximum number of tuples allowed in one write operation.
 func (p *Postgres) MaxTuplesPerWrite() int {
 	return p.maxTuplesPerWriteField
 }
 
+// ReadAuthorizationModel reads the model corresponding to store and model ID.
 func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
@@ -352,6 +366,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, modelID)
 }
 
+// ReadAuthorizationModels reads all type definitions ids for the given store.
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
@@ -421,6 +436,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	return models, token, nil
 }
 
+// FindLatestAuthorizationModelID returns the last model `id` written within the given store.
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
 	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
 	defer span.End()
@@ -441,10 +457,12 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 	return modelID, nil
 }
 
+// MaxTypesPerAuthorizationModel returns the maximum number of types allowed in a type definition.
 func (p *Postgres) MaxTypesPerAuthorizationModel() int {
 	return p.maxTypesPerModelField
 }
 
+// WriteAuthorizationModel writes an authorization model for the given store.
 func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
 	ctx, span := tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
@@ -458,7 +476,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, model)
 }
 
-// CreateStore is slightly different between Postgres and MySQL
+// CreateStore adds a new store to the Postgres storage.
 func (p *Postgres) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "postgres.CreateStore")
 	defer span.End()
@@ -484,6 +502,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgav1.Store) (*op
 	}, nil
 }
 
+// GetStore retrieves the details of a specific store from the Postgres using its storeID.
 func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "postgres.GetStore")
 	defer span.End()
@@ -515,6 +534,7 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgav1.Store, e
 	}, nil
 }
 
+// ListStores provides a paginated list of all stores present in the Postgres storage.
 func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
@@ -575,6 +595,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	return stores, nil, nil
 }
 
+// DeleteStore removes a store from the Postgres storage.
 func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "postgres.DeleteStore")
 	defer span.End()
@@ -591,7 +612,7 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
-// WriteAssertions is slightly different between Postgres and MySQL
+// WriteAssertions records a set of assertions related to an authorization model in a specific store within the Postgres storage.
 func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	ctx, span := tracer.Start(ctx, "postgres.WriteAssertions")
 	defer span.End()
@@ -614,6 +635,7 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 	return nil
 }
 
+// ReadAssertions retrieves a list of assertions for a specific authorization model from a given store within the Postgres storage.
 func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAssertions")
 	defer span.End()
@@ -644,6 +666,9 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 	return assertions.Assertions, nil
 }
 
+// ReadChanges fetches a paginated list of tuple changes from the Postgres storage.
+// The horizonOffset parameter allows specifying how far back in time
+// to look for changes, adding flexibility to the data retrieval.
 func (p *Postgres) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
@@ -675,10 +700,10 @@ func (p *Postgres) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token
+		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
 	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token
+		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -747,8 +772,7 @@ func (p *Postgres) ReadChanges(
 	return changes, contToken, nil
 }
 
-// IsReady reports whether this Postgres datastore instance is ready
-// to accept connections.
+// IsReady reports whether this Postgres datastore instance is ready to accept connections.
 func (p *Postgres) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, p.db)
 }

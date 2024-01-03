@@ -1,6 +1,5 @@
-// Package storage contains storage interfaces and implementations
-//
 //go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
+
 package storage
 
 import (
@@ -11,16 +10,35 @@ import (
 )
 
 const (
-	DefaultMaxTuplesPerWrite             = 100
+	// DefaultMaxTuplesPerWrite specifies the default maximum number of tuples that can be written
+	// in a single write operation. This constant is used to limit the batch size in write operations
+	// to maintain performance and avoid overloading the system. The value is set to 100 tuples,
+	// which is a balance between efficiency and resource usage.
+	DefaultMaxTuplesPerWrite = 100
+
+	// DefaultMaxTypesPerAuthorizationModel defines the default upper limit on the number of distinct
+	// types that can be included in a single authorization model. This constraint helps in managing
+	// the complexity and ensuring the maintainability of the authorization models. The limit is
+	// set to 100 types, providing ample flexibility while keeping the model manageable.
 	DefaultMaxTypesPerAuthorizationModel = 100
-	DefaultPageSize                      = 50
+
+	// DefaultPageSize sets the default number of items to be returned in a single page when paginating
+	// through a set of results. This constant is used to standardize the pagination size across various
+	// parts of the system, ensuring a consistent and manageable volume of data per page. The default
+	// value is set to 50, balancing detail per page with the overall number of pages.
+	DefaultPageSize = 50
 )
 
+// PaginationOptions holds the settings for pagination in data retrieval operations. It defines
+// the number of items to be included on each page (PageSize) and a marker from where to start
+// the page (From).
 type PaginationOptions struct {
 	PageSize int
 	From     string
 }
 
+// NewPaginationOptions creates a new PaginationOptions instance
+// with a specified page size and continuation token.
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
 	if ps != 0 {
@@ -33,8 +51,10 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
-// Writes and Deletes are typesafe aliases for Write arguments.
+// Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
+
+// Deletes is a typesafe alias for Delete arguments.
 type Deletes = []*openfgav1.TupleKeyWithoutCondition
 
 // A TupleBackend provides an R/W interface for managing tuples.
@@ -43,6 +63,8 @@ type TupleBackend interface {
 	RelationshipTupleWriter
 }
 
+// RelationshipTupleReader is an interface that defines the set of
+// methods required to read relationship tuples from a data store.
 type RelationshipTupleReader interface {
 	// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled. If nil,
 	// Read will return an iterator over all the `Tuple`s in the given store. If the `TupleKey` is partially filled,
@@ -53,8 +75,9 @@ type RelationshipTupleReader interface {
 	// There is NO guarantee on the order returned on the iterator.
 	Read(context.Context, string, *openfgav1.TupleKey) (TupleIterator, error)
 
-	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
-	// returns a page of tuples and a possibly non-empty continuation token.
+	// ReadPage functions similarly to Read but includes support for pagination. It takes additional
+	// pagination parameters and returns a slice of tuples along with a continuation token, which may
+	// not be empty. This token can be used for retrieving subsequent pages of data.
 	// The tuples returned are ordered by ULID.
 	ReadPage(
 		ctx context.Context,
@@ -104,8 +127,9 @@ type RelationshipTupleReader interface {
 	) (TupleIterator, error)
 }
 
+// RelationshipTupleWriter is an interface that defines the set of methods
+// required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
-
 	// Write updates data in the tuple backend, performing all delete operations in
 	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
 	// If there are more than MaxTuplesPerWrite, it must return ErrExceededWriteBatchLimit.
@@ -113,35 +137,38 @@ type RelationshipTupleWriter interface {
 	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput.
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
-	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined) allowed in a single write transaction
+	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
+	// allowed in a single write transaction.
 	MaxTuplesPerWrite() int
 }
 
-// ReadStartingWithUserFilter specifies the filter options that will be used to constrain the ReadStartingWithUser
-// query.
+// ReadStartingWithUserFilter specifies the filter options that
+// will be used to constrain the ReadStartingWithUser query.
 type ReadStartingWithUserFilter struct {
 	ObjectType string
 	Relation   string
 	UserFilter []*openfgav1.ObjectRelation
 }
 
+// ReadUsersetTuplesFilter specifies the filter options that
+// will be used to constrain the UserType query.
 type ReadUsersetTuplesFilter struct {
-	Object                      string                         // required
-	Relation                    string                         // required
-	AllowedUserTypeRestrictions []*openfgav1.RelationReference // optional
+	Object                      string                         // Required.
+	Relation                    string                         // Required.
+	AllowedUserTypeRestrictions []*openfgav1.RelationReference // Optional.
 }
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
-	// ReadAuthorizationModel Read the model corresponding to store and model id
-	// If it's not found, it must return ErrNotFound
+	// ReadAuthorizationModel reads the model corresponding to store and model ID.
+	// If it's not found, it must return ErrNotFound.
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
-	// ReadAuthorizationModels Read all type definitions ids for the supplied store.
+	// ReadAuthorizationModels reads all type definitions ids for the supplied store.
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
-	// FindLatestAuthorizationModelID Returns the last model `id` written for a store.
-	// If none were ever written, it must return ErrNotFound
+	// FindLatestAuthorizationModelID returns the last model `id` written for a store.
+	// If none were ever written, it must return ErrNotFound.
 	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
 }
 
@@ -154,12 +181,14 @@ type TypeDefinitionWriteBackend interface {
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
-// AuthorizationModelBackend provides an R/W interface for managing models and their type definitions
+// AuthorizationModelBackend provides an R/W interface for managing models and their type definitions.
 type AuthorizationModelBackend interface {
 	AuthorizationModelReadBackend
 	TypeDefinitionWriteBackend
 }
 
+// StoresBackend is an interface that defines the set of methods required
+// for interacting with and managing different types of storage backends.
 type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
@@ -167,23 +196,27 @@ type StoresBackend interface {
 	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgav1.Store, []byte, error)
 }
 
+// AssertionsBackend is an interface that defines the set of methods for managing and handling assertions.
 type AssertionsBackend interface {
 	// WriteAssertions overwrites the assertions for a store and modelID.
 	WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error
 
-	// ReadAssertions returns the assertions for a store and modelId.
+	// ReadAssertions returns the assertions for a store and modelID.
 	// If no assertions were ever written, it must return an empty list.
 	ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error)
 }
 
+// ChangelogBackend is an interface that defines the set of methods
+// required for interacting with and managing a changelog.
 type ChangelogBackend interface {
-
 	// ReadChanges returns the writes and deletes that have occurred for tuples of a given object type within a store.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond and should be interpreted
 	// as a millisecond duration.
 	ReadChanges(ctx context.Context, store, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
 }
 
+// OpenFGADatastore is an interface that defines a set of methods for interacting
+// with and managing data in an OpenFGA (Fine-Grained Authorization) system.
 type OpenFGADatastore interface {
 	TupleBackend
 	AuthorizationModelBackend

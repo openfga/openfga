@@ -7,20 +7,29 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+// ErrIteratorDone is returned when the iterator has finished iterating through all the items.
 var ErrIteratorDone = errors.New("iterator done")
 
+// Iterator is a generic interface defining methods for
+// iterating over a collection of items of type T.
 type Iterator[T any] interface {
-	// Next will return the next available item or ErrIteratorDone if no more items are available
+	// Next will return the next available
+	// item or ErrIteratorDone if no more
+	// items are available.
 	Next(ctx context.Context) (T, error)
-	// Stop terminates iteration over the underlying iterator.
+
+	// Stop terminates iteration over
+	// the underlying iterator.
 	Stop()
 }
 
-// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next(ctx) until it
-// returns an ErrIteratorDone error.
+// TupleIterator is an iterator for Tuples. It is closed
+// by explicitly calling Stop() or by calling Next(ctx)
+// until it returns an ErrIteratorDone error.
 type TupleIterator = Iterator[*openfgav1.Tuple]
 
-// TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next(ctx) until it
+// TupleKeyIterator is an iterator for TupleKeys. It is closed by
+// explicitly calling Stop() or by calling Next(ctx) until it
 // returns an ErrIteratorDone error.
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
@@ -51,14 +60,14 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 			if !errors.Is(err, ErrIteratorDone) {
 				return val, err
 			}
-			c.iters[i] = nil // end of this iterator
+			c.iters[i] = nil // End of this iterator.
 			continue
 		}
 
 		return val, nil
 	}
 
-	// all iterators ended
+	// All iterators ended.
 	var val T
 	return val, ErrIteratorDone
 }
