@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -26,9 +25,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// newOpenFGAServerAndClient starts an OpenFGA server, waits until its is healthy, and returns a grpc client to it.
 func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
 	cancel := StartServer(t, cfg)
@@ -44,6 +44,8 @@ func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
 		conn.Close()
 	})
 	require.NoError(t, err)
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 	return client
@@ -375,14 +377,9 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
-	healthClient := healthv1pb.NewHealthClient(conn)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
-	resp, err := healthClient.Check(context.Background(), &healthv1pb.HealthCheckRequest{
-		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-	})
-	require.NoError(t, err)
-	require.Equal(t, healthv1pb.HealthCheckResponse_SERVING, resp.Status)
+	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 
 	_, err = openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",

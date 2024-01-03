@@ -1,54 +1,48 @@
-//go:build functional
-// +build functional
+//go:build docker
+// +build docker
 
 package main
 
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type OpenFGATester interface {
-	GetGRPCPort() string
-	GetHTTPPort() string
-	Cleanup() func()
+	GetGRPCAddress() string
+	GetHTTPAddress() string
 }
 
 type serverHandle struct {
-	grpcPort string
-	httpPort string
-	cleanup  func()
+	grpcAddress string
+	httpAddress string
 }
 
-func (s *serverHandle) GetGRPCPort() string {
-	return s.grpcPort
+func (s *serverHandle) GetGRPCAddress() string {
+	return s.grpcAddress
 }
 
-func (s *serverHandle) GetHTTPPort() string {
-	return s.httpPort
-}
-
-func (s *serverHandle) Cleanup() func() {
-	return s.cleanup
+func (s *serverHandle) GetHTTPAddress() string {
+	return s.httpAddress
 }
 
 // newOpenFGAContainer spins up an openfga container with the default configuration
-// exposed for testing purposes. It is assumed that the openfga/functionaltest image is available
+// exposed for testing purposes. It is assumed that the openfga/dockertest image is available.
+// The container is automatically stopped after the test ends.
 func newOpenFGAContainer(t *testing.T) OpenFGATester {
 	t.Helper()
 
@@ -65,7 +59,7 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 			nat.Port("8081/tcp"): {},
 			nat.Port("3000/tcp"): {},
 		},
-		Image: "openfga/openfga:functionaltest",
+		Image: "openfga/openfga:dockertest",
 		Cmd:   []string{"run"},
 	}
 
@@ -87,6 +81,9 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 	cont, err := dockerClient.ContainerCreate(ctx, &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create openfga docker container")
 
+	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
+	require.NoError(t, err)
+
 	stopContainer := func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
@@ -99,25 +96,9 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 		dockerClient.Close()
 		t.Logf("stopped container %s", name)
 	}
-
-	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
-	require.NoError(t, err)
-
 	t.Cleanup(func() {
 		stopContainer()
 	})
-
-	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container
-	go func() {
-		time.Sleep(2 * time.Minute)
-		timeoutSec := 0
-
-		t.Logf("expiring container %s", name)
-		// swallow the error because by this point we've terminated
-		_ = dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
-
-		t.Logf("expired container %s", name)
-	}()
 
 	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 	require.NoError(t, err)
@@ -136,55 +117,14 @@ func newOpenFGAContainer(t *testing.T) OpenFGATester {
 	}
 	grpcPort := m[0].HostPort
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+	grpcAddr := fmt.Sprintf("localhost:%s", grpcPort)
+	httpAddr := fmt.Sprintf("localhost:%s", httpPort)
 
-	creds := insecure.NewCredentials()
-
-	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(creds),
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-	}
-
-	conn, err := grpc.DialContext(
-		timeoutCtx,
-		fmt.Sprintf("localhost:%s", grpcPort),
-		dialOpts...,
-	)
-	require.NoError(t, err)
-	defer conn.Close()
-
-	client := healthv1pb.NewHealthClient(conn)
-
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 30 * time.Second
-
-	err = backoff.Retry(func() error {
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
-			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		})
-		if err != nil {
-			return err
-		}
-
-		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return fmt.Errorf("not serving")
-		}
-
-		return nil
-	},
-		backoffPolicy,
-	)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, grpcAddr, httpAddr, nil, true)
 
 	return &serverHandle{
-		grpcPort: grpcPort,
-		httpPort: httpPort,
-		cleanup:  stopContainer,
+		grpcAddress: grpcAddr,
+		httpAddress: httpAddr,
 	}
 }
 
@@ -194,7 +134,7 @@ func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 	t.Helper()
 
 	conn, err := grpc.Dial(
-		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
+		tester.GetGRPCAddress(),
 		[]grpc.DialOption{
 			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -210,7 +150,6 @@ func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 // For that, go to the github.com/openfga/openfga/tests package.
 func TestDocker(t *testing.T) {
 	tester := newOpenFGAContainer(t)
-	defer tester.Cleanup()
 
 	t.Run("grpc_endpoint_works", func(t *testing.T) {
 		conn := createGrpcConnection(t, tester)
@@ -219,13 +158,15 @@ func TestDocker(t *testing.T) {
 		grpcClient := openfgav1.NewOpenFGAServiceClient(conn)
 
 		createResp, err := grpcClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
-			Name: "max_message_size",
+			Name: "grpc_endpoint_works",
 		})
 		require.NoError(t, err)
 		require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
 	})
 
 	t.Run("http_endpoint_works", func(t *testing.T) {
-		// TODO
+		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", tester.GetHTTPAddress()))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }

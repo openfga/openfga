@@ -66,8 +66,8 @@ install-tools: download ## Install developer tooling
 go-generate: install-tools
 	go generate ./...
 
-.PHONY: unit-test
-unit-test: go-generate ## Run unit tests
+.PHONY: test
+test: go-generate ## Run all tests
 	go test -race \
 			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
@@ -78,15 +78,15 @@ unit-test: go-generate ## Run unit tests
 	@cat coverageunit.tmp.out | grep -v "mocks" > coverageunit.out
 	@rm coverageunit.tmp.out
 
-build-functional-test-image: ## Build Docker image needed to run functional tests
-	docker build -t="openfga/openfga:functionaltest" .
+build-docker-test-image: ## Build Docker image needed to run Docker tests
+	docker build -t="openfga/openfga:dockertest" .
 
-.PHONY: functional-test
-functional-test: ## Run functional tests (needs build-functional-test-image)
+.PHONY: test-docker
+test-docker: ## Run Docker tests (needs build-docker-test-image)
 	go test -race \
 			-count=1 \
 			-timeout=5m \
-			-tags=functional \
+			-tags=docker \
 			./cmd/openfga/...
 
 .PHONY: bench

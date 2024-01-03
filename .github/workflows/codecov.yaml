@@ -20,7 +20,7 @@ jobs:
           cache-dependency-path: './go.sum'
 
       - name: Unit Tests
-        run: make unit-test
+        run: make test
 
       - name: upload coverage to codecov
         uses: codecov/codecov-action@eaaf4bedf32dbdc6b720b63067d99c4d77d6047d # v3.1.4
