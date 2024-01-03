@@ -87,18 +87,19 @@ func TestCheckLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
+	define viewer: [user]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: typedefs,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(t, err)
 
@@ -347,10 +348,12 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -385,10 +388,12 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -424,10 +429,12 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 
@@ -492,10 +499,12 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 

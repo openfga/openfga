@@ -181,7 +181,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 
 	checker := NewLocalChecker(ds, WithResolveNodeBreadthLimit(concurrencyLimit))
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 type group
@@ -189,15 +189,9 @@ type group
 	define member: [user, group#member]
 type document
   relations
-	define viewer: [group#member]`).TypeDefinitions
+	define viewer: [group#member]`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
@@ -223,7 +217,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -244,15 +238,9 @@ type document
 	define union_or_ttu: union or ttu or union_rewrite
 	define intersection_of_ttus: union_or_ttu and union_and_ttu
 	define parent: [org]
-`).TypeDefinitions
+`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	tests := []struct {
 		name             string
@@ -480,15 +468,9 @@ type resource
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-				&openfgav1.AuthorizationModel{
-					Id:              ulid.Make().String(),
-					TypeDefinitions: typedefs,
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-				},
-			))
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,

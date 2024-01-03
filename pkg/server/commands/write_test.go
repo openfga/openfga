@@ -8,7 +8,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -203,16 +202,13 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
-			&openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
+			testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
-			}, nil)
+	define viewer: [user]`), nil)
 
 	mockDatastore.EXPECT().
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

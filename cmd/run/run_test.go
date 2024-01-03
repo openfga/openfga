@@ -839,9 +839,11 @@ func TestHTTPServerDisabled(t *testing.T) {
 		}
 	}()
 
-	_, err := http.Get("http://localhost:8080/healthz")
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
+
+	_, err := http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.Error(t, err)
-	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
+	require.ErrorContains(t, err, "connect: connection refused")
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
