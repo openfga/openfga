@@ -9,6 +9,11 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -16,8 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
@@ -229,14 +232,8 @@ type document
 			},
 		},
 	})
-	require.ErrorIs(
-		t,
-		err,
-		serverErrors.NewInternalError(
-			"concurrent write conflict",
-			storage.ErrTransactionalWriteFailed,
-		),
-	)
+
+	require.ErrorIs(t, err, status.Error(codes.Aborted, storage.ErrTransactionalWriteFailed.Error()))
 	require.Nil(t, resp)
 }
 
@@ -490,7 +487,12 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				},
 			})
 
-			require.ErrorIs(t, err, test.expectedError)
+			if test.expectedError != nil {
+				require.ErrorIs(t, err, test.expectedError)
+				require.ErrorContains(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

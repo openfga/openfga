@@ -14,13 +14,14 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/pressly/goose/v3"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/pressly/goose/v3"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type Config struct {
@@ -167,6 +168,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
+	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 	err := t.rows.Scan(
@@ -175,7 +177,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		&record.ObjectID,
 		&record.Relation,
 		&record.User,
-		&record.ConditionName,
+		&conditionName,
 		&conditionContext,
 		&record.Ulid,
 		&record.InsertedAt,
@@ -183,6 +185,8 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	record.ConditionName = conditionName.String
 
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
@@ -355,7 +359,10 @@ func Write(
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "condition_name", "condition_context", "ulid", "inserted_at")
+		Columns(
+			"store", "object_type", "object_id", "relation", "_user", "user_type",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		)
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -505,7 +512,7 @@ func ReadAuthorizationModel(
 	}, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful
+// IsReady returns true if the connection to the datastore is successful and the datastore has the latest migration applied.
 func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

@@ -8,14 +8,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/require"
 )
 
 // MustBindPFlag attempts to bind a specific key to a pflag (as used by cobra) and panics

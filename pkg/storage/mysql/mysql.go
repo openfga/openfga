@@ -14,10 +14,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
@@ -25,6 +21,11 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/mysql")
@@ -145,7 +146,10 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	defer span.End()
 
 	sb := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -203,10 +207,14 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
+	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 	err := m.stbl.
-		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
+		Select(
+			"object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context",
+		).
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -217,17 +225,28 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 			"user_type":   userType,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.ConditionName, &conditionContext)
+		Scan(
+			&record.ObjectType,
+			&record.ObjectID,
+			&record.Relation,
+			&record.User,
+			&conditionName,
+			&conditionContext,
+		)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if conditionContext != nil {
-		var conditionContextStruct structpb.Struct
-		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
-			return nil, err
+	if conditionName.String != "" {
+		record.ConditionName = conditionName.String
+
+		if conditionContext != nil {
+			var conditionContextStruct structpb.Struct
+			if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+				return nil, err
+			}
+			record.ConditionContext = &conditionContextStruct
 		}
-		record.ConditionContext = &conditionContextStruct
 	}
 
 	return record.AsTuple(), nil
@@ -237,7 +256,11 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
 
-	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
+	sb := m.stbl.
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -286,7 +309,10 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 	}
 
 	rows, err := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -501,7 +527,8 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
 
-	sb := m.stbl.Select("id", "name", "created_at", "updated_at").
+	sb := m.stbl.
+		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
@@ -634,7 +661,11 @@ func (m *MySQL) ReadChanges(
 	ctx, span := tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
 
-	sb := m.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "condition_name", "condition_context", "inserted_at").
+	sb := m.stbl.
+		Select(
+			"ulid", "object_type", "object_id", "relation", "_user", "operation",
+			"condition_name", "condition_context", "inserted_at",
+		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
@@ -667,9 +698,10 @@ func (m *MySQL) ReadChanges(
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, conditionName, user string
+		var objectType, objectID, relation, user string
 		var operation int
 		var insertedAt time.Time
+		var conditionName sql.NullString
 		var conditionContext []byte
 
 		err = rows.Scan(
@@ -688,7 +720,7 @@ func (m *MySQL) ReadChanges(
 		}
 
 		var conditionContextStruct structpb.Struct
-		if conditionName != "" {
+		if conditionName.String != "" {
 			if conditionContext != nil {
 				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
 					return nil, nil, err
@@ -700,7 +732,7 @@ func (m *MySQL) ReadChanges(
 			tupleUtils.BuildObject(objectType, objectID),
 			relation,
 			user,
-			conditionName,
+			conditionName.String,
 			&conditionContextStruct,
 		)
 

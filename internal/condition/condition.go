@@ -1,18 +1,25 @@
 package condition
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
 	celtypes "github.com/google/cel-go/common/types"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/condition/types"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/condition/metrics"
+	"github.com/openfga/openfga/internal/condition/types"
 )
+
+var tracer = otel.Tracer("openfga/internal/condition")
 
 var celBaseEnv *cel.Env
 
@@ -70,6 +77,15 @@ func (e *EvaluableCondition) Compile() error {
 }
 
 func (e *EvaluableCondition) compile() error {
+	start := time.Now()
+
+	var err error
+	defer func() {
+		if err == nil {
+			metrics.Metrics.ObserveCompilationDuration(time.Since(start))
+		}
+	}()
+
 	var envOpts []cel.EnvOption
 	conditionParamTypes := map[string]*types.ParameterType{}
 	for paramName, paramTypeRef := range e.GetParameters() {
@@ -99,7 +115,7 @@ func (e *EvaluableCondition) compile() error {
 	source := common.NewStringSource(e.Expression, e.Name)
 	ast, issues := env.CompileSource(source)
 	if issues != nil {
-		if err := issues.Err(); err != nil {
+		if err = issues.Err(); err != nil {
 			return &CompilationError{
 				Condition: e.Name,
 				Cause:     err,
@@ -176,12 +192,17 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 	return converted, nil
 }
 
-// Evaluate evalutes the provided CEL condition expression with a CEL environment
-// constructed from the condition's parameter type definitions and using the
-// context provided. If more than one source of context is provided, and if the
-// keys provided in those context(s) are overlapping, then the overlapping key
-// for the last most context wins.
-func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
+// EvaluateWithContext evaluates the provided CEL condition expression with a CEL environment
+// constructed from the condition's parameter type definitions and using the context maps provided.
+// If more than one source map of context is provided, and if the keys provided in those map
+// context(s) are overlapping, then the overlapping key for the last most context wins.
+func (e *EvaluableCondition) EvaluateWithContext(
+	ctx context.Context,
+	contextMaps ...map[string]*structpb.Value,
+) (EvaluationResult, error) {
+	_, span := tracer.Start(ctx, "EvaluateWithContext")
+	defer span.End()
+
 	if err := e.Compile(); err != nil {
 		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}
@@ -262,6 +283,15 @@ func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value)
 		MissingParameters: missingParameters,
 		Cost:              evaluationCost,
 	}, nil
+}
+
+// Evaluate evaluates the provided CEL condition expression with a CEL environment
+// constructed from the condition's parameter type definitions and using the
+// context/struct maps provided. Evaluate is just meant to be a helper method for
+// EvaluateWithContext with an empty background context. See EvaluateWithContext
+// for more info.
+func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
+	return e.EvaluateWithContext(context.Background(), contextMaps...)
 }
 
 // WithTrackEvaluationCost enables CEL evaluation cost on the EvaluableCondition and returns the

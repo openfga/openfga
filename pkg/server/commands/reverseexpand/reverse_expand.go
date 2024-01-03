@@ -10,6 +10,12 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/sourcegraph/conc/pool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -17,13 +23,9 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/sourcegraph/conc/pool"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
@@ -286,39 +288,46 @@ func (c *ReverseExpandQuery) execute(
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
-
-		pool.Go(func(ctx context.Context) error {
-			r := &ReverseExpandRequest{
-				StoreID:          req.StoreID,
-				ObjectType:       req.ObjectType,
-				Relation:         req.Relation,
-				User:             req.User,
-				ContextualTuples: req.ContextualTuples,
-				Context:          req.Context,
-				edge:             innerLoopEdge,
-			}
-
-			switch innerLoopEdge.Type {
-			case graph.DirectEdge:
+		r := &ReverseExpandRequest{
+			StoreID:          req.StoreID,
+			ObjectType:       req.ObjectType,
+			Relation:         req.Relation,
+			User:             req.User,
+			ContextualTuples: req.ContextualTuples,
+			Context:          req.Context,
+			edge:             innerLoopEdge,
+		}
+		switch innerLoopEdge.Type {
+		case graph.DirectEdge:
+			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			case graph.ComputedUsersetEdge:
-				// follow the computed_userset edge
-				r.User = &UserRefObjectRelation{
-					ObjectRelation: &openfgav1.ObjectRelation{
-						Object:   sourceUserObj,
-						Relation: innerLoopEdge.TargetReference.GetRelation(),
-					},
-				}
-				return c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			case graph.TupleToUsersetEdge:
-				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			default:
-				return fmt.Errorf("unsupported edge type")
+			})
+		case graph.ComputedUsersetEdge:
+			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
+			r.User = &UserRefObjectRelation{
+				ObjectRelation: &openfgav1.ObjectRelation{
+					Object:   sourceUserObj,
+					Relation: innerLoopEdge.TargetReference.GetRelation(),
+				},
 			}
-		})
+			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			if err != nil {
+				return err
+			}
+		case graph.TupleToUsersetEdge:
+			pool.Go(func(ctx context.Context) error {
+				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			})
+		default:
+			return fmt.Errorf("unsupported edge type")
+		}
 	}
 
-	return pool.Wait()
+	err = pool.Wait()
+	if err != nil {
+		telemetry.TraceError(span, err)
+	}
+	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
@@ -332,9 +341,16 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
-	defer span.End()
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		span.End()
+	}()
 
-	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
@@ -348,9 +364,16 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
-	defer span.End()
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		span.End()
+	}()
 
-	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
@@ -363,6 +386,9 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+
+	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
+	defer span.End()
 
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
@@ -448,7 +474,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			return err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.Context)
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 			continue
@@ -500,6 +526,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	errs = multierror.Append(errs, pool.Wait())
 	if errs.ErrorOrNil() != nil {
+		telemetry.TraceError(span, errs.ErrorOrNil())
 		return errs
 	}
 

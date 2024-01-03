@@ -2,19 +2,19 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // WriteAuthorizationModelCommand performs updates of the store authorization model.
@@ -22,7 +22,6 @@ type WriteAuthorizationModelCommand struct {
 	backend                          storage.TypeDefinitionWriteBackend
 	logger                           logger.Logger
 	maxAuthorizationModelSizeInBytes int
-	enableConditions                 bool
 }
 
 type WriteAuthModelOption func(*WriteAuthorizationModelCommand)
@@ -39,18 +38,11 @@ func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
 	}
 }
 
-func WithWriteAuthModelEnableConditions(enable bool) WriteAuthModelOption {
-	return func(m *WriteAuthorizationModelCommand) {
-		m.enableConditions = enable
-	}
-}
-
 func NewWriteAuthorizationModelCommand(backend storage.TypeDefinitionWriteBackend, opts ...WriteAuthModelOption) *WriteAuthorizationModelCommand {
 	model := &WriteAuthorizationModelCommand{
 		backend:                          backend,
 		logger:                           logger.NewNoopLogger(),
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
-		enableConditions:                 true,
 	}
 
 	for _, opt := range opts {
@@ -78,12 +70,6 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Conditions:      req.GetConditions(),
 	}
 
-	if !w.enableConditions {
-		if conditions := model.GetConditions(); conditions != nil || len(conditions) > 0 {
-			return nil, status.Error(codes.InvalidArgument, "conditions not supported")
-		}
-	}
-
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
 	modelSize := proto.Size(model)
 	if modelSize > w.maxAuthorizationModelSizeInBytes {
@@ -95,10 +81,6 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	_, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
-		if !w.enableConditions && errors.Is(err, typesystem.ErrNoConditionForRelation) {
-			return nil, status.Error(codes.InvalidArgument, "conditions not supported")
-		}
-
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 

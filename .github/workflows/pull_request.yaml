@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -25,6 +25,7 @@ jobs:
         uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
         with:
           version: latest
+          args: -v -c .golangci.yaml
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -33,7 +34,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -73,7 +74,7 @@ jobs:
         - name: Checkout code
           uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
         - name: Set up Go
-          uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+          uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
           with:
             go-version-file: './go.mod'
             cache-dependency-path: './go.sum'
@@ -110,7 +111,7 @@ jobs:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Set up Go
-        uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'

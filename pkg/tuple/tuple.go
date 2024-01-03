@@ -46,6 +46,14 @@ func ConvertCheckRequestTupleKeyToTupleKey(tk *openfgav1.CheckRequestTupleKey) *
 	}
 }
 
+func ConvertAssertionTupleKeyToTupleKey(tk *openfgav1.AssertionTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
 func ConvertReadRequestTupleKeyToTupleKey(tk *openfgav1.ReadRequestTupleKey) *openfgav1.TupleKey {
 	return &openfgav1.TupleKey{
 		Object:   tk.GetObject(),
@@ -114,6 +122,14 @@ func NewRelationshipCondition(name string, context *structpb.Struct) *openfgav1.
 	return &openfgav1.RelationshipCondition{
 		Name:    name,
 		Context: context,
+	}
+}
+
+func NewAssertionTupleKey(object, relation, user string) *openfgav1.AssertionTupleKey {
+	return &openfgav1.AssertionTupleKey{
+		Object:   object,
+		Relation: relation,
+		User:     user,
 	}
 }
 

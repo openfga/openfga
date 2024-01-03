@@ -8,6 +8,40 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.4.0] - 2023-12-11
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.10...v1.4.0)
+
+### Changed
+* Enable support for Conditional Relationship Tuples by default. ([#1220](https://github.com/openfga/openfga/pull/1220))
+
+* Added stricter gRPC server max message size constraints ([#1222](https://github.com/openfga/openfga/pull/1222))
+
+  We changed the default gRPC max message size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max message size should be much smaller than 512KB given our other input constraints.
+
+## [v1.3.10] - 2023-12-08
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.9...v1.3.10)
+
+### Changed
+* Bumped up to Go 1.21.5 ([#1219](https://github.com/openfga/openfga/pull/1219))
+
+### Fixed
+* Reorder protobuf fields for persisted Assertions ([#1217](https://github.com/openfga/openfga/pull/1217))
+
+  Assertions written on or after v1.3.8 should be re-written to resolve some binary encoding issues that were introduced.
+
+* Handle floating point conversion errors in conditions ([#1200](https://github.com/openfga/openfga/pull/1200))
+
+## [v1.3.9] - 2023-12-05
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.8...v1.3.9)
+
+### Fixed
+* Avoid panic when processing a nil set of writes ([#1208](https://github.com/openfga/openfga/pull/1208)) - thanks @stgraber!
+
+* Decoding of null conditions in SQL storage implementations ([#1212](https://github.com/openfga/openfga/pull/1212))
+
 ## [v1.3.8] - 2023-12-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.7...v1.3.8)
@@ -809,7 +843,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.8...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/openfga/openfga/releases/tag/v1.4.0
+[1.3.10]: https://github.com/openfga/openfga/releases/tag/v1.3.10
+[1.3.9]: https://github.com/openfga/openfga/releases/tag/v1.3.9
 [1.3.8]: https://github.com/openfga/openfga/releases/tag/v1.3.8
 [1.3.7]: https://github.com/openfga/openfga/releases/tag/v1.3.7
 [1.3.6]: https://github.com/openfga/openfga/releases/tag/v1.3.6

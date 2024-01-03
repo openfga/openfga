@@ -8,14 +8,15 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -798,8 +799,6 @@ type other
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
-
-		// conditions
 		{
 			name: "condition_fails_undefined",
 			request: &openfgav1.WriteAuthorizationModelRequest{

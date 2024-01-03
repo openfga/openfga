@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	DefaultMaxRPCMessageSizeInBytes         = 512 * 1_204 // 512 KB
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
@@ -22,10 +23,11 @@ const (
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
 
-	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
-	DefaultCheckQueryCacheLimit  = 10000
-	DefaultCheckQueryCacheTTL    = 10 * time.Second
-	DefaultCheckQueryCacheEnable = false
+	DefaultWriteContextByteLimit      = 32 * 1_024 // 32KB
+	DefaultCheckQueryCacheLimit       = 10000
+	DefaultCheckQueryCacheTTL         = 10 * time.Second
+	DefaultCheckQueryCacheEnable      = false
+	DefaultMaxConditionEvaluationCost = 100 // care should be taken here - decreasing can cause API compatibility problems with Conditions
 )
 
 type DatastoreMetricsConfig struct {

@@ -6,6 +6,10 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -13,16 +17,12 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger                    logger.Logger
 	datastore                 storage.OpenFGADatastore
-	enableConditions          bool
 	conditionContextByteLimit int
 }
 
@@ -34,24 +34,17 @@ func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
 	}
 }
 
-func WithWriteCmdEnableConditions(enable bool) WriteCommandOption {
-	return func(m *WriteCommand) {
-		m.enableConditions = enable
-	}
-}
-
 func WithConditionContextByteLimit(limit int) WriteCommandOption {
 	return func(wc *WriteCommand) {
 		wc.conditionContextByteLimit = limit
 	}
 }
 
-// NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
+// NewWriteCommand creates a WriteCommand with specified storage.OpenFGADatastore to use for storage.
 func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOption) *WriteCommand {
 	cmd := &WriteCommand{
 		datastore:                 datastore,
 		logger:                    logger.NewNoopLogger(),
-		enableConditions:          true,
 		conditionContextByteLimit: config.DefaultWriteContextByteLimit,
 	}
 
@@ -63,15 +56,6 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	if !c.enableConditions {
-		tks := req.GetWrites()
-		for _, tk := range tks.TupleKeys {
-			if tk.Condition != nil {
-				return nil, status.Error(codes.InvalidArgument, "conditions not supported")
-			}
-		}
-	}
-
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
@@ -182,7 +166,7 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return serverErrors.NewInternalError("concurrent write conflict", err)
+		return status.Error(codes.Aborted, err.Error())
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}
