@@ -317,7 +317,7 @@ type DBInfo struct {
 	sqlTime interface{}
 }
 
-// NewDBInfo constructs a DBInfo objet.
+// NewDBInfo constructs a [DBInfo] object.
 func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *DBInfo {
 	return &DBInfo{
 		db:      db,

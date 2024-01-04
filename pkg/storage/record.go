@@ -24,7 +24,7 @@ type TupleRecord struct {
 	InsertedAt       time.Time
 }
 
-// AsTuple converts a TupleRecord into a Tuple.
+// AsTuple converts a [TupleRecord] into a [*openfgav1.Tuple].
 func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
 	return &openfgav1.Tuple{
 		Key: tupleutils.NewTupleKeyWithCondition(

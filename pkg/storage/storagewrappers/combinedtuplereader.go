@@ -63,11 +63,10 @@ func (c *combinedTupleReader) ReadPage(
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	// No reading from contextual tuples.
-
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, opts)
 }
 
-// ReadUserTuple tries to return one tuple that matches the provided key exactly.
+// ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
 func (c *combinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,

@@ -26,8 +26,8 @@ func NewContextWrapper(inner storage.OpenFGADatastore) *ContextTracerWrapper {
 	return &ContextTracerWrapper{inner}
 }
 
-// queryContext generates a new context, independent of the provided context,
-// with a timeout, and inherits the span data from the given context.
+// queryContext generates a new context that is independent of the provided
+// context and its timeout with the exception of the trace context.
 func queryContext(ctx context.Context) context.Context {
 	span := trace.SpanFromContext(ctx)
 	return trace.ContextWithSpan(context.Background(), span)
@@ -38,7 +38,7 @@ func (c *ContextTracerWrapper) Close() {
 	c.OpenFGADatastore.Close()
 }
 
-// Read reads data from the underlying OpenFGADatastore.
+// Read see [storage.RelationshipTupleReader.ReadUserTuple].
 func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
