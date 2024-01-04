@@ -24,6 +24,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Record span errors correctly in Check, ListObjects, and StreamedListObjects ([#1231](https://github.com/openfga/openfga/pull/1231))
 
+* Log request validation errors correctly ([#1236](https://github.com/openfga/openfga/pull/1236))
+
 ## [v1.4.0] - 2023-12-11
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.10...v1.4.0)
