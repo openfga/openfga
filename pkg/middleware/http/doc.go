@@ -1,2 +1,2 @@
-// Package http contains utility functions to modify HTTP requests and responses.
+// Package http contains middleware and utility functions to modify HTTP requests and responses.
 package http
