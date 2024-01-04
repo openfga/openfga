@@ -512,7 +512,7 @@ func ReadAuthorizationModel(
 	}, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful
+// IsReady returns true if the connection to the datastore is successful and the datastore has the latest migration applied.
 func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

@@ -200,8 +200,9 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
 	for name, cond := range model.GetConditions() {
 		uncompiledConditions[name] = condition.NewUncompiled(cond).
-			WithMaxEvaluationCost(config.DefaultMaxConditionEvaluationCost). // Care should be taken here - decreasing can cause API compatibility problems.
-			WithTrackEvaluationCost()
+			WithTrackEvaluationCost().
+			WithMaxEvaluationCost(config.DefaultMaxConditionEvaluationCost).
+			WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency)
 	}
 
 	return &TypeSystem{

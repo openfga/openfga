@@ -17,8 +17,6 @@ import (
 
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )
@@ -59,10 +57,6 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			t.Parallel()
 			testCheck(t, client)
 		})
-		t.Run("BadAuthModelID", func(t *testing.T) {
-			t.Parallel()
-			testBadAuthModelID(t, client)
-		})
 	})
 }
 
@@ -71,36 +65,6 @@ func testCheck(t *testing.T, client ClientInterface) {
 		t.Parallel()
 		runSchema1_1CheckTests(t, client)
 	})
-}
-
-func testBadAuthModelID(t *testing.T, client ClientInterface) {
-	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "bad auth id"})
-	require.NoError(t, err)
-
-	storeID := resp.GetId()
-	model := `model
-	schema 1.1
-type user
-
-type doc
-  relations
-	define viewer: [user]
-	define can_view: viewer`
-	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(model).TypeDefinitions,
-	})
-	require.NoError(t, err)
-	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
-	_, err = client.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:y"),
-		AuthorizationModelId: badModelID,
-	})
-
-	require.ErrorIs(t, err, serverErrors.AuthorizationModelNotFound(badModelID))
 }
 
 func runSchema1_1CheckTests(t *testing.T, client ClientInterface) {

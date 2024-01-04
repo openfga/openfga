@@ -14,7 +14,7 @@ import (
 
 func TestWriteAuthorizationModel(t *testing.T) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
 	cancel := tests.StartServer(t, cfg)
