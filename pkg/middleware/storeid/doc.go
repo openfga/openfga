@@ -1,2 +1,2 @@
-// Package storeid contains middleware to log the store ID.
+// Package storeid contains middleware to inject and manage the store ID context.
 package storeid

@@ -15,8 +15,8 @@ const (
 	requestIDCtxKey   = "request-id-context-key"
 	requestIDTraceKey = "request_id"
 
-	// RequestIDHeader represents the HTTP header name used for
-	// passing a unique request identifier in API calls.
+	// RequestIDHeader defines the HTTP header that is set in each HTTP response
+	// for a given request. The value of the header is unique per request.
 	RequestIDHeader = "X-Request-Id"
 )
 
@@ -48,13 +48,10 @@ func reportable() interceptors.CommonReportableFunc {
 		id, _ := uuid.NewRandom()
 		requestID := id.String()
 
-		// Add the requestID to the context.
 		ctx = metadata.AppendToOutgoingContext(ctx, requestIDCtxKey, requestID)
 
-		// Add the requestID to the span.
 		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
 
-		// Add the requestID to the response headers.
 		_ = grpc.SetHeader(ctx, metadata.Pairs(RequestIDHeader, requestID))
 
 		return interceptors.NoopReporter{}, ctx

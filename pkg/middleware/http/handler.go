@@ -17,7 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/errors"
 )
 
-// XHttpCode is used for overriding the standard HTTP code.
+// XHttpCode is used to set the header for the response HTTP code.
 const XHttpCode = "x-http-code"
 
 // HTTPResponseModifier is a helper function designed to modify the status code in the context of HTTP responses.

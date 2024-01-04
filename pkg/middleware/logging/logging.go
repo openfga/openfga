@@ -78,7 +78,8 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 	r.logger.Info(grpcReqCompleteKey, r.fields...)
 }
 
-// PostMsgSend is invoked once in unary requests and multiple times in streaming requests after message sending.
+// PostMsgSend is invoked once after a unary response or multiple times in
+// streaming requests after each message has been sent.
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 	if err != nil {
 		// This is the actual error that customers see.
