@@ -1,4 +1,3 @@
-// Package validator contains middleware that validates API input parameters.
 package validator
 
 import (
@@ -18,12 +17,14 @@ func contextWithRequestIsValidated(ctx context.Context) context.Context {
 	return context.WithValue(ctx, requestIsValidatedCtxKey, true)
 }
 
+// RequestIsValidatedFromContext checks if the request in the provided context has been validated.
 func RequestIsValidatedFromContext(ctx context.Context) bool {
 	validated, ok := ctx.Value(requestIsValidatedCtxKey).(bool)
 	return validated && ok
 }
 
-// UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
+// UnaryServerInterceptor returns a new unary server interceptor that runs request validations
+// and injects a bool in the context indicating that validation has been run.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	validator := grpcvalidator.UnaryServerInterceptor()
 
@@ -34,7 +35,8 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// StreamServerInterceptor returns a new streaming server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
+// StreamServerInterceptor returns a new streaming server interceptor that runs request validations
+// and injects a bool in the context indicating that validation has been run.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	validator := grpcvalidator.StreamServerInterceptor()
 
@@ -53,6 +55,7 @@ type recvWrapper struct {
 	grpc.ServerStream
 }
 
+// Context returns the context associated with the recvWrapper.
 func (r *recvWrapper) Context() context.Context {
 	return r.ctx
 }

@@ -1,4 +1,3 @@
-// Package requestid contains middleware to log the request ID.
 package requestid
 
 import (
@@ -15,10 +14,13 @@ import (
 const (
 	requestIDCtxKey   = "request-id-context-key"
 	requestIDTraceKey = "request_id"
-	RequestIDHeader   = "X-Request-Id"
+
+	// RequestIDHeader represents the HTTP header name used for
+	// passing a unique request identifier in API calls.
+	RequestIDHeader = "X-Request-Id"
 )
 
-// FromContext extracts the requestid from the context, if it exists.
+// FromContext extracts the request-id from the context, if it exists.
 func FromContext(ctx context.Context) (string, bool) {
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
 		if vals := md.Get(requestIDCtxKey); len(vals) > 0 {
@@ -46,13 +48,13 @@ func reportable() interceptors.CommonReportableFunc {
 		id, _ := uuid.NewRandom()
 		requestID := id.String()
 
-		// Add the requestID to the context
+		// Add the requestID to the context.
 		ctx = metadata.AppendToOutgoingContext(ctx, requestIDCtxKey, requestID)
 
-		// Add the requestID to the span
+		// Add the requestID to the span.
 		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
 
-		// Add the requestID to the response headers
+		// Add the requestID to the response headers.
 		_ = grpc.SetHeader(ctx, metadata.Pairs(RequestIDHeader, requestID))
 
 		return interceptors.NoopReporter{}, ctx
