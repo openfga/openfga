@@ -312,14 +312,29 @@ func (c *ReverseExpandQuery) execute(
 			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
-				return err
+				var returnedErrors *multierror.Error
+				returnedErrors = multierror.Append(returnedErrors, err)
+				poolError := pool.Wait()
+				if poolError != nil {
+					returnedErrors = multierror.Append(returnedErrors, poolError)
+				}
+				telemetry.TraceError(span, returnedErrors)
+				span.End()
+				return returnedErrors
 			}
 		case graph.TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		default:
-			return fmt.Errorf("unsupported edge type")
+			var returnedErrors *multierror.Error
+			returnedErrors = multierror.Append(returnedErrors, fmt.Errorf("unsupported edge type"))
+			poolError := pool.Wait()
+			if poolError != nil {
+				returnedErrors = multierror.Append(returnedErrors, poolError)
+			}
+			telemetry.TraceError(span, returnedErrors)
+			return returnedErrors
 		}
 	}
 
