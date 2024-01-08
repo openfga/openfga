@@ -144,6 +144,14 @@ type document
 	case <-done:
 		// OK!
 	}
+
+	select {
+	case <-done:
+		t.Log("OK!")
+		return
+	case <-time.After(30 * time.Millisecond):
+		require.FailNow(t, "timed out")
+	}
 }
 
 // errorIterator is a mock iterator that returns error when calling next on the second Next call
