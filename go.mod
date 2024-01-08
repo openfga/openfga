@@ -47,7 +47,10 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
-require github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
+require (
+	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
+	go.uber.org/goleak v1.3.0 // indirect
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect

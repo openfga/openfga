@@ -470,8 +470,13 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-
-			return err
+			var returnedErrors *multierror.Error
+			returnedErrors = multierror.Append(returnedErrors, err)
+			poolError := pool.Wait()
+			if poolError != nil {
+				returnedErrors = multierror.Append(returnedErrors, poolError)
+			}
+			return returnedErrors
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
@@ -502,7 +507,13 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		case graph.TupleToUsersetEdge:
 			newRelation = req.edge.TargetReference.GetRelation()
 		default:
-			return fmt.Errorf("unsupported edge type")
+			var returnedErrors *multierror.Error
+			returnedErrors = multierror.Append(returnedErrors, fmt.Errorf("unsupported edge type"))
+			poolError := pool.Wait()
+			if poolError != nil {
+				returnedErrors = multierror.Append(returnedErrors, poolError)
+			}
+			return returnedErrors
 		}
 
 		pool.Go(func(ctx context.Context) error {
