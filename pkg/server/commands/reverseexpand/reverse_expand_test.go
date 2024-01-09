@@ -160,6 +160,7 @@ func (s *errorIterator[T]) Next(ctx context.Context) (T, error) {
 		return val, ctx.Err()
 	}
 
+	// we want to simulate returning error after the first read
 	if len(s.items) != s.originalLength {
 		return val, fmt.Errorf("simulated errors")
 	}
@@ -211,7 +212,6 @@ type document
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 			iterator := newErrorIterator(tuples)
-			t.Logf("returning tuple iterator")
 			return iterator, nil
 		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -223,7 +223,6 @@ type document
 	// process query in one goroutine, but it will be cancelled almost right away
 	go func() {
 		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
-		t.Logf("before execute reverse expand")
 		reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 			StoreID:    store,
 			ObjectType: "document",
@@ -236,19 +235,18 @@ type document
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
 		}, resultChan, NewResolutionMetadata())
-		t.Logf("after execute reverse expand")
 		done <- struct{}{}
 	}()
 
 	go func() {
 		<-resultChan
+		// We want to read resultChan twice because Next() will fail after first read
 		<-resultChan
 		cancelFunc()
 	}()
 
 	select {
 	case <-done:
-		t.Log("OK!")
 		return
 	case <-time.After(30 * time.Millisecond):
 		require.FailNow(t, "timed out")
