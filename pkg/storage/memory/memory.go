@@ -480,29 +480,25 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	return &staticIterator{records: matches}, nil
 }
 
-func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*openfgav1.AuthorizationModel, bool) {
-	var nsc *openfgav1.AuthorizationModel
-
-	if id == "" {
-		// find latest
-		for _, entry := range configurations {
-			if entry.latest {
-				nsc = entry.model
-				break
-			}
+func findAuthorizationModelByID(
+	id string,
+	configurations map[string]*AuthorizationModelEntry,
+) (*openfgav1.AuthorizationModel, bool) {
+	if id != "" {
+		if entry, ok := configurations[id]; ok {
+			return entry.model, true
 		}
 
-		if nsc == nil {
-			return nil, false
-		}
-	} else {
-		if entry, ok := configurations[id]; !ok {
-			return nil, false
-		} else {
-			nsc = entry.model
+		return nil, false
+	}
+
+	for _, entry := range configurations {
+		if entry.latest {
+			return entry.model, true
 		}
 	}
-	return nsc, true
+
+	return nil, false
 }
 
 // ReadAuthorizationModel See storage.AuthorizationModelBackend.ReadAuthorizationModel

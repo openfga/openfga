@@ -87,18 +87,19 @@ func TestCheckLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
+	define viewer: [user]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: typedefs,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(t, err)
 
@@ -114,6 +115,7 @@ type document
 	})
 	require.NoError(t, err)
 
+	// clear all write logs
 	logs.TakeAll()
 
 	type test struct {
@@ -178,9 +180,9 @@ type document
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
-				"grpc_code":    int32(2009),
+				"grpc_code":    int32(2000),
 				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
-				"raw_response": `{"code":"invalid_check_input","message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"raw_response": `{"code":"validation_error", "message":"invalid CheckRequestTupleKey.Object: value does not match regex pattern \"^[^\\\\s]{2,256}$\""}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
 			},
@@ -199,9 +201,9 @@ type document
 				"grpc_service": "openfga.v1.OpenFGAService",
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
-				"grpc_code":    int32(2009),
+				"grpc_code":    int32(2000),
 				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
-				"raw_response": `{"code":"invalid_check_input","message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"raw_response": `{"code":"validation_error", "message":"invalid CheckRequestTupleKey.Object: value does not match regex pattern \"^[^\\\\s]{2,256}$\""}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",
 			},
@@ -210,7 +212,7 @@ type document
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			// clear observed logs after each run
+			// clear observed logs after each run. We expect each test to log one line
 			defer logs.TakeAll()
 
 			if test.grpcReq != nil {
@@ -231,22 +233,10 @@ type document
 				require.NoError(t, err)
 			}
 
-			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
-				if e.Message == "grpc_req_complete" {
-					for _, ctxField := range e.Context {
-						if ctxField.Equals(zap.String("grpc_method", "Check")) {
-							return true
-						}
-					}
-				}
+			actualLogs := logs.All()
+			require.Len(t, actualLogs, 1)
 
-				return false
-			})
-
-			expectedLogs := filteredLogs.All()
-			require.Len(t, expectedLogs, 1)
-
-			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
+			fields := actualLogs[0].ContextMap()
 			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
 			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
 			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
@@ -271,7 +261,7 @@ type document
 
 func testRunAll(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
 	cancel := tests.StartServer(t, cfg)
@@ -358,10 +348,12 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -396,10 +388,12 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -435,10 +429,12 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 
@@ -503,10 +499,12 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 

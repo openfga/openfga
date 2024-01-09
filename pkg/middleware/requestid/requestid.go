@@ -15,7 +15,7 @@ import (
 const (
 	requestIDCtxKey   = "request-id-context-key"
 	requestIDTraceKey = "request_id"
-	requestIDHeader   = "x-request-id"
+	RequestIDHeader   = "X-Request-Id"
 )
 
 // FromContext extracts the requestid from the context, if it exists.
@@ -53,7 +53,7 @@ func reportable() interceptors.CommonReportableFunc {
 		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
 
 		// Add the requestID to the response headers
-		_ = grpc.SetHeader(ctx, metadata.Pairs(requestIDHeader, requestID))
+		_ = grpc.SetHeader(ctx, metadata.Pairs(RequestIDHeader, requestID))
 
 		return interceptors.NoopReporter{}, ctx
 	}
