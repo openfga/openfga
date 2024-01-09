@@ -23,7 +23,6 @@ func init() {
 	m := &ConditionMetrics{
 		compilationTime: promauto.NewHistogram(prometheus.HistogramOpts{
 			Namespace: build.ProjectName,
-			Subsystem: subsystem,
 			Name:      "condition_compilation_duration_ms",
 			Help:      "A histogram measuring the compilation time (in milliseconds) of a Condition.",
 			Buckets:   []float64{1, 5, 15, 50, 100, 250, 500, 1000},
@@ -31,7 +30,6 @@ func init() {
 
 		evaluationTime: promauto.NewHistogram(prometheus.HistogramOpts{
 			Namespace: build.ProjectName,
-			Subsystem: subsystem,
 			Name:      "condition_evaluation_duration_ms",
 			Help:      "A histogram measuring the evaluation time (in milliseconds) of a Condition.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 5, 15, 50, 100, 250, 500},
