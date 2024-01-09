@@ -46,15 +46,15 @@ func (t tupleKeysHasher) Append(h hasher) error {
 
 	sort.SliceStable(sortedTupleKeys, func(i, j int) bool {
 		if sortedTupleKeys[i].Object != sortedTupleKeys[j].Object {
-			return sortedTupleKeys[i].Object > sortedTupleKeys[j].Object
+			return sortedTupleKeys[i].Object < sortedTupleKeys[j].Object
 		}
 
 		if sortedTupleKeys[i].Relation != sortedTupleKeys[j].Relation {
-			return sortedTupleKeys[i].Relation > sortedTupleKeys[j].Relation
+			return sortedTupleKeys[i].Relation < sortedTupleKeys[j].Relation
 		}
 
 		if sortedTupleKeys[i].User != sortedTupleKeys[j].User {
-			return sortedTupleKeys[i].User > sortedTupleKeys[j].User
+			return sortedTupleKeys[i].User < sortedTupleKeys[j].User
 		}
 
 		return true
