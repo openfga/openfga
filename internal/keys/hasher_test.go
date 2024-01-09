@@ -19,12 +19,12 @@ func TestTupleKeysHasherSortsFirst(t *testing.T) {
 		`unordered_users`: {
 			tuplesReversed: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
-				tuple.NewTupleKey("document:B", "relationB", "user:B"),
-				tuple.NewTupleKey("document:C", "relationC", "user:C"),
+				tuple.NewTupleKey("document:A", "relationA", "user:B"),
+				tuple.NewTupleKey("document:A", "relationA", "user:C"),
 			},
 			tuplesOriginal: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:C", "relationC", "user:C"),
-				tuple.NewTupleKey("document:B", "relationB", "user:B"),
+				tuple.NewTupleKey("document:A", "relationA", "user:C"),
+				tuple.NewTupleKey("document:A", "relationA", "user:B"),
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
 			},
 		},
