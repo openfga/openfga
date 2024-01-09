@@ -147,45 +147,6 @@ type document
 	}
 }
 
-// errorIterator is a mock iterator that returns error when calling next on the second Next call
-type errorIterator[T any] struct {
-	items          []T
-	originalLength int
-}
-
-func (s *errorIterator[T]) Next(ctx context.Context) (T, error) {
-	var val T
-
-	if ctx.Err() != nil {
-		return val, ctx.Err()
-	}
-
-	// we want to simulate returning error after the first read
-	if len(s.items) != s.originalLength {
-		return val, fmt.Errorf("simulated errors")
-	}
-
-	if len(s.items) == 0 {
-		return val, nil
-	}
-
-	next, rest := s.items[0], s.items[1:]
-	s.items = rest
-
-	return next, nil
-}
-
-func (s *errorIterator[T]) Stop() {}
-
-func newErrorIterator(tuples []*openfgav1.Tuple) storage.TupleIterator {
-	iter := &errorIterator[*openfgav1.Tuple]{
-		items:          tuples,
-		originalLength: len(tuples),
-	}
-
-	return iter
-}
-
 func TestReverseExpandErrorInTuples(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
@@ -211,7 +172,7 @@ type document
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-			iterator := newErrorIterator(tuples)
+			iterator := mocks.NewErrorIterator(tuples)
 			return iterator, nil
 		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
