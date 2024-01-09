@@ -595,13 +595,13 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	tuples1 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+		tuple.NewTupleKey("document:2", "admin", "user:jon"),
 	}
 
 	tuples2 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:2", "admin", "user:jon"),
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
 	}
 
 	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
