@@ -599,10 +599,12 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
 	}
 
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
 	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		TupleKey:             tupleKey,
 		ContextualTuples:     tuples1,
 	})
 	require.NoError(t, err)
@@ -610,7 +612,44 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		TupleKey:             tupleKey,
+		ContextualTuples:     tuples2,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, key1, key2)
+}
+
+func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	tuples1 := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
+	}
+
+	tuples2 := []*openfgav1.TupleKey{
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+	}
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     tuples1,
+	})
+	require.NoError(t, err)
+
+	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
 		ContextualTuples:     tuples2,
 	})
 	require.NoError(t, err)
