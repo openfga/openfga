@@ -12,10 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -141,7 +142,75 @@ type document
 		} else {
 			require.Nil(t, res)
 		}
+		<-done
 	case <-done:
 		// OK!
+	}
+}
+
+func TestReverseExpandErrorInTuples(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	store := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+  schema 1.1
+type user
+type document
+  relations
+	define viewer: [user]`)
+
+	typeSystem := typesystem.New(model)
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	var tuples []*openfgav1.Tuple
+	for i := 0; i < 100; i++ {
+		obj := fmt.Sprintf("document:%s", strconv.Itoa(i))
+		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
+	}
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			iterator := mocks.NewErrorIterator(tuples)
+			return iterator, nil
+		})
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	resultChan := make(chan *ReverseExpandResult)
+
+	done := make(chan struct{})
+
+	// process query in one goroutine, but it will be cancelled almost right away
+	go func() {
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
+		reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
+			StoreID:    store,
+			ObjectType: "document",
+			Relation:   "viewer",
+			User: &UserRefObject{
+				Object: &openfgav1.Object{
+					Type: "user",
+					Id:   "maria",
+				},
+			},
+			ContextualTuples: []*openfgav1.TupleKey{},
+		}, resultChan, NewResolutionMetadata())
+		done <- struct{}{}
+	}()
+
+	go func() {
+		<-resultChan
+		// We want to read resultChan twice because Next() will fail after first read
+		<-resultChan
+		cancelFunc()
+	}()
+
+	select {
+	case <-done:
+		return
+	case <-time.After(30 * time.Millisecond):
+		require.FailNow(t, "timed out")
 	}
 }

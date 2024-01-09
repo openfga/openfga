@@ -284,7 +284,9 @@ func (c *ReverseExpandQuery) execute(
 	pool.WithCancelOnError()
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
+	var errs *multierror.Error
 
+LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
@@ -312,22 +314,29 @@ func (c *ReverseExpandQuery) execute(
 			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
-				return err
+				errs = multierror.Append(errs, err)
+				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		default:
-			return fmt.Errorf("unsupported edge type")
+			errs = multierror.Append(errs, fmt.Errorf("unsupported edge type"))
+			break LoopOnEdges
 		}
 	}
 
 	err = pool.Wait()
 	if err != nil {
-		telemetry.TraceError(span, err)
+		errs = multierror.Append(errs, err)
 	}
-	return err
+	if errs.ErrorOrNil() != nil {
+		telemetry.TraceError(span, errs.ErrorOrNil())
+		return errs.ErrorOrNil()
+	}
+
+	return nil
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
@@ -464,14 +473,16 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	var errs *multierror.Error
+
+LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-
-			return err
+			errs = multierror.Append(errs, err)
+			break LoopOnIterator
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
@@ -502,7 +513,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		case graph.TupleToUsersetEdge:
 			newRelation = req.edge.TargetReference.GetRelation()
 		default:
-			return fmt.Errorf("unsupported edge type")
+			errs = multierror.Append(errs, fmt.Errorf("unsupported edge type"))
+			break LoopOnIterator
 		}
 
 		pool.Go(func(ctx context.Context) error {
