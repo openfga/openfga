@@ -8,7 +8,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1
 	github.com/docker/docker v24.0.7+incompatible
-	github.com/docker/go-connections v0.4.0
+	github.com/docker/go-connections v0.5.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/golang/mock v1.6.0
@@ -17,7 +17,7 @@ require (
 	github.com/google/uuid v1.5.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.1
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.1
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.19.0
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/go-retryablehttp v0.7.5
 	github.com/jackc/pgx/v5 v5.5.1
@@ -25,8 +25,8 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20231208224251-d2c535d32f73
-	github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3
+	github.com/openfga/api/proto v0.0.0-20231222042535-3037910c90c0
+	github.com/openfga/language/pkg/go v0.0.0-20231220180656-9f0ec45883f3
 	github.com/pressly/goose/v3 v3.17.0
 	github.com/rs/cors v1.10.1
 	github.com/sourcegraph/conc v0.3.0
@@ -40,12 +40,15 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.21.0
 	go.opentelemetry.io/otel/sdk v1.21.0
 	go.opentelemetry.io/otel/trace v1.21.0
+	go.uber.org/goleak v1.3.0
 	go.uber.org/zap v1.26.0
-	golang.org/x/sync v0.5.0
-	google.golang.org/grpc v1.60.0
-	google.golang.org/protobuf v1.31.0
+	golang.org/x/sync v0.6.0
+	google.golang.org/grpc v1.60.1
+	google.golang.org/protobuf v1.32.0
 	sigs.k8s.io/yaml v1.4.0
 )
+
+require github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
@@ -71,7 +74,6 @@ require (
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
-	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
@@ -79,9 +81,9 @@ require (
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.17.0
-	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
-	github.com/prometheus/common v0.44.0 // indirect
+	github.com/prometheus/client_golang v1.18.0
+	github.com/prometheus/client_model v0.5.0 // indirect
+	github.com/prometheus/common v0.45.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
@@ -97,15 +99,15 @@ require (
 	go.opentelemetry.io/proto/otlp v1.0.0
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.17.0 // indirect
-	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.15.0 // indirect
-	google.golang.org/genproto v0.0.0-20231106174013-bbf56f31fb17 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20231106174013-bbf56f31fb17 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231120223509-83a465c0220f // indirect
+	golang.org/x/tools v0.16.0 // indirect
+	google.golang.org/genproto v0.0.0-20231212172506-995d672761c0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240102182953-50ed04b92917 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240102182953-50ed04b92917 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.4.0 // indirect

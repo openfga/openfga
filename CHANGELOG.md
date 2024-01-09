@@ -8,6 +8,30 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.4.1] - 2024-01-04
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.0...v1.4.1)
+
+### Changed
+* Reduce goroutine overhead in ListObjects ([#1173](https://github.com/openfga/openfga/pull/1173))
+
+* Added `openfga` prefix to custom exported Prometheus metrics
+
+   > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
+
+   Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
+
+### Added
+* Support for cancellation/timeouts when evaluating Conditions ([#1237](https://github.com/openfga/openfga/pull/1237))
+* Tracing span info for Condition evaluation ([#1251](https://github.com/openfga/openfga/pull/1251))
+
+### Fixed
+* Resolve rewrites involving exclusion (e.g. `but not`) more deterministically in Check ([#1239](https://github.com/openfga/openfga/pull/1239))
+
+* Record span errors correctly in Check, ListObjects, and StreamedListObjects ([#1231](https://github.com/openfga/openfga/pull/1231))
+
+* Log request validation errors correctly ([#1236](https://github.com/openfga/openfga/pull/1236))
+
 ## [v1.4.0] - 2023-12-11
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.10...v1.4.0)
@@ -843,7 +867,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/openfga/openfga/releases/tag/v1.4.1
 [1.4.0]: https://github.com/openfga/openfga/releases/tag/v1.4.0
 [1.3.10]: https://github.com/openfga/openfga/releases/tag/v1.3.10
 [1.3.9]: https://github.com/openfga/openfga/releases/tag/v1.3.9

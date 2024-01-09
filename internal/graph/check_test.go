@@ -13,30 +13,34 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestResolveCheckDeterministic(t *testing.T) {
-	ds := memory.New()
+	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
+		t.Parallel()
 
-	storeID := ulid.Make().String()
+		ds := memory.New()
 
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-		tuple.NewTupleKey("document:1", "editor", "group:other1#member"),
-		tuple.NewTupleKey("document:2", "editor", "group:eng#member"),
-		tuple.NewTupleKey("document:2", "allowed", "user:jon"),
-		tuple.NewTupleKey("document:2", "allowed", "user:x"),
-		tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
-		tuple.NewTupleKey("group:eng", "member", "user:jon"),
-		tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
-	})
-	require.NoError(t, err)
+		storeID := ulid.Make().String()
 
-	checker := NewLocalChecker(ds)
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "editor", "group:other1#member"),
+			tuple.NewTupleKey("document:2", "editor", "group:eng#member"),
+			tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+			tuple.NewTupleKey("document:2", "allowed", "user:x"),
+			tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
+			tuple.NewTupleKey("group:eng", "member", "user:jon"),
+			tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
+		})
+		require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+		checker := NewLocalChecker(ds)
+
+		model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 
@@ -48,31 +52,113 @@ type document
   relations
 	define allowed: [user]
 	define viewer: [group#member] or editor
-	define editor: [group#member] and allowed`).TypeDefinitions
+	define editor: [group#member] and allowed`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Allowed)
+
+		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
+			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+		})
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
 	})
-	require.NoError(t, err)
-	require.True(t, resp.Allowed)
 
-	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
-		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
+		t.Parallel()
+
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:budget", "admin", "user:*"),
+			tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:maria", "condX", nil),
+		})
+		require.NoError(t, err)
+
+		model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define admin: [user:*]
+	define viewer: [user with condX] but not admin
+
+condition condX(x: int) {
+	x < 100
+}
+`)
+
+		checker := NewLocalChecker(ds)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+
+		for i := 0; i < 2000; i++ {
+			// subtract branch resolves to {allowed: true} even though the base branch
+			// results in an error. Outcome should be falsey, not an error.
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:            storeID,
+				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
+				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			})
+			require.NoError(t, err)
+			require.False(t, resp.GetAllowed())
+		}
 	})
-	require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-	require.Nil(t, resp)
+
+	t.Run("exclusion_resolves_deterministically_2", func(t *testing.T) {
+		t.Parallel()
+
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:budget", "admin", "user:maria", "condX", nil),
+		})
+		require.NoError(t, err)
+
+		model := testutils.MustTransformDSLToProtoWithID(`model
+			schema 1.1
+		type user
+
+		type document
+		  relations
+			define admin: [user with condX]
+			define viewer: [user] but not admin
+
+		condition condX(x: int) {
+			x < 100
+		}
+		`)
+
+		checker := NewLocalChecker(ds)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+
+		for i := 0; i < 2000; i++ {
+			// base should resolve to {allowed: false} even though the subtract branch
+			// results in an error. Outcome should be falsey, not an error.
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:            storeID,
+				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
+				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			})
+			require.NoError(t, err)
+			require.False(t, resp.GetAllowed())
+		}
+	})
 }
 
 func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
@@ -95,7 +181,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 
 	checker := NewLocalChecker(ds, WithResolveNodeBreadthLimit(concurrencyLimit))
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 type group
@@ -103,15 +189,9 @@ type group
 	define member: [user, group#member]
 type document
   relations
-	define viewer: [group#member]`).TypeDefinitions
+	define viewer: [group#member]`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
@@ -137,7 +217,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -158,15 +238,9 @@ type document
 	define union_or_ttu: union or ttu or union_rewrite
 	define intersection_of_ttus: union_or_ttu and union_and_ttu
 	define parent: [org]
-`).TypeDefinitions
+`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	tests := []struct {
 		name             string
@@ -394,15 +468,9 @@ type resource
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-				&openfgav1.AuthorizationModel{
-					Id:              ulid.Make().String(),
-					TypeDefinitions: typedefs,
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-				},
-			))
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
