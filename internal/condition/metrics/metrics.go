@@ -12,10 +12,6 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 )
 
-const (
-	subsystem = "conditions"
-)
-
 // Metrics provides access to Condition metrics.
 var Metrics *ConditionMetrics
 
