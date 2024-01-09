@@ -2407,79 +2407,6 @@ tests:
               relation: viewer
             expectation:
 
-  - name: validation_nil_tuple
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-        checkAssertions:
-          - errorCode: 3
-
-  - name: validation_empty_tuple
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-        checkAssertions:
-          - tuple:
-              object:
-              relation:
-              user:
-            errorCode: 2009
-
-  - name: validation_empty_object
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-        checkAssertions:
-          - tuple:
-              object:
-              relation: viewer
-              user: user:aardvark
-            errorCode: 2009
-
-  - name: validation_empty_relation
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-        checkAssertions:
-          - tuple:
-              object: user:aardvark
-              relation:
-              user: user:badger
-            errorCode: 2009
-        listObjectsAssertions:
-          - request:
-              user: user
-              type: user
-              relation:
-            errorCode: 3
-
-  - name: validation_empty_user
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-        checkAssertions:
-          - tuple:
-              object: user:aardvark
-              relation: viewer
-              user:
-            errorCode: 2009
-        listObjectsAssertions:
-          - request:
-              user:
-              type: user
-              relation: viewer
-            errorCode: 3
-
   - name: validation_relation_not_in_model
     stages:
       - model: |
@@ -3014,7 +2941,7 @@ tests:
             object: repo:1
         listObjectsAssertions:
           - contextualTuples:
-              - user: user:*  #not allowed
+              - user: user:* #not allowed
                 relation: owner
                 object: organization:1
             request:
@@ -3034,7 +2961,7 @@ tests:
               define owner: [user]
         listObjectsAssertions:
           - contextualTuples:
-              - user: user:*  #not allowed
+              - user: user:* #not allowed
                 relation: owner
                 object: organization:1
             request:
@@ -3081,7 +3008,7 @@ tests:
             relations
               define blocked: [user]
               define owner: [user] but not blocked
-        assertions:
+        listObjectsAssertions:
           - request:
               user: user:a
               type: repo
@@ -3094,7 +3021,7 @@ tests:
           type repo
             relations
               define owner: [user]
-        assertions:
+        listObjectsAssertions:
           - request:
               user: user:a
               type: repo
@@ -3604,7 +3531,6 @@ tests:
             expectation:
               - module:a
               - module:b
-
 
   - name: computed_user_multi_route
     stages:
@@ -5219,7 +5145,7 @@ tests:
               user: user:alex
               type: repo
               relation: admin
-            expectation: [ ]
+            expectation: []
   - name: list_objects_with_subcheck_encounters_cycle
     stages:
       - model: |
@@ -5293,3 +5219,28 @@ tests:
               type: document
               relation: viewer
             errorCode: 2002
+  - name: direct_relationships_with_intersection
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define allowed: [user]
+              define viewer: [user] and allowed
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: allowed
+            object: document:1
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1

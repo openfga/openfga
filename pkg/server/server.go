@@ -47,7 +47,7 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 )
 
@@ -573,10 +573,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  "Check",
 	})
 
-	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
-		return nil, serverErrors.InvalidCheckInput
-	}
-
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -935,8 +931,8 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	return q.Execute(ctx, req)
 }
 
-// IsReady reports whether this OpenFGA server instance is ready to accept
-// traffic.
+// IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
+// for your datastore.
 func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	// for now we only depend on the datastore being ready, but in the future
 	// server readiness may also depend on other criteria in addition to the
