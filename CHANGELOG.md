@@ -15,6 +15,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 * Reduce goroutine overhead in ListObjects ([#1173](https://github.com/openfga/openfga/pull/1173))
 
+* Added `openfga` prefix to custom exported Prometheus metrics
+
+   > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
+
+   Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
+
 ### Added
 * Support for cancellation/timeouts when evaluating Conditions ([#1237](https://github.com/openfga/openfga/pull/1237))
 * Tracing span info for Condition evaluation ([#1251](https://github.com/openfga/openfga/pull/1251))
