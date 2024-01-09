@@ -10,7 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [v1.4.2] - 2024-01-09
 
-[Full changelog](https://github.com/openfga/openfga/compare/v1.4.0...v1.4.1)
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.1...v1.4.2)
 
 ### Fixed
 
