@@ -8,15 +8,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [v1.4.2] - 2024-01-09
+## [1.4.2] - 2024-01-10
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.1...v1.4.2)
 
 ### Fixed
 
-* Goroutine leak in reverse expand command ([#1297](https://github.com/openfga/openfga/pull/1297))
+* Goroutine leak in ListObjects because of a leak in ReverseExpand ([#1297](https://github.com/openfga/openfga/pull/1297))
 
-## [v1.4.1] - 2024-01-04
+## [1.4.1] - 2024-01-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.0...v1.4.1)
 
@@ -40,7 +40,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Log request validation errors correctly ([#1236](https://github.com/openfga/openfga/pull/1236))
 
-## [v1.4.0] - 2023-12-11
+## [1.4.0] - 2023-12-11
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.10...v1.4.0)
 
@@ -51,7 +51,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   We changed the default gRPC max message size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max message size should be much smaller than 512KB given our other input constraints.
 
-## [v1.3.10] - 2023-12-08
+## [1.3.10] - 2023-12-08
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.9...v1.3.10)
 
@@ -65,7 +65,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Handle floating point conversion errors in conditions ([#1200](https://github.com/openfga/openfga/pull/1200))
 
-## [v1.3.9] - 2023-12-05
+## [1.3.9] - 2023-12-05
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.8...v1.3.9)
 
@@ -74,7 +74,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Decoding of null conditions in SQL storage implementations ([#1212](https://github.com/openfga/openfga/pull/1212))
 
-## [v1.3.8] - 2023-12-04
+## [1.3.8] - 2023-12-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.7...v1.3.8)
 
@@ -149,14 +149,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Use `NoOp` TracerProvider if tracing is disabled ([#1139](https://github.com/openfga/openfga/pull/1139) and [#1196](https://github.com/openfga/openfga/pull/1196))
 
-## [v1.3.7] - 2023-11-06
+## [1.3.7] - 2023-11-06
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.6...v1.3.7)
 
 ### Security
 * Bumped up the `grpc-health-probe` dependency to the latest release which fixed some vulnerabilities.
 
-## [v1.3.6] - 2023-11-06
+## [1.3.6] - 2023-11-06
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.5...v1.3.6)
 
