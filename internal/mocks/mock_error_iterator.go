@@ -40,7 +40,7 @@ func (s *errorTupleIterator) Stop() {}
 var _ storage.TupleIterator = (*errorTupleIterator)(nil)
 
 // NewErrorTupleIterator mocks case where Next will return error after the first Next()
-// This TupleIterator is designed to be used in tests bre used in test
+// This TupleIterator is designed to be used in tests
 func NewErrorTupleIterator(tuples []*openfgav1.Tuple) storage.TupleIterator {
 	iter := &errorTupleIterator{
 		items:          tuples,
