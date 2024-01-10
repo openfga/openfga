@@ -17,7 +17,8 @@ func contextWithRequestIsValidated(ctx context.Context) context.Context {
 	return context.WithValue(ctx, requestIsValidatedCtxKey, true)
 }
 
-// RequestIsValidatedFromContext checks if the request in the provided context has been validated.
+// RequestIsValidatedFromContext returns true if the provided context object has the flag
+// indicating that the request has been validated and if its value is set to true.
 func RequestIsValidatedFromContext(ctx context.Context) bool {
 	validated, ok := ctx.Value(requestIsValidatedCtxKey).(bool)
 	return validated && ok
