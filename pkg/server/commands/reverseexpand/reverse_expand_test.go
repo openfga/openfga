@@ -22,6 +22,8 @@ import (
 )
 
 func TestReverseExpandRespectsContextCancellation(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
@@ -96,6 +98,8 @@ type document
 }
 
 func TestReverseExpandRespectsContextTimeout(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
@@ -173,7 +177,7 @@ type document
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-			iterator := mocks.NewErrorIterator(tuples)
+			iterator := mocks.NewErrorTupleIterator(tuples)
 			return iterator, nil
 		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
