@@ -322,8 +322,7 @@ LoopOnEdges:
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		default:
-			errs = multierror.Append(errs, fmt.Errorf("unsupported edge type"))
-			break LoopOnEdges
+			panic("unsupported edge type")
 		}
 	}
 
@@ -442,7 +441,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
 	default:
-		return fmt.Errorf("unsupported edge type")
+		panic("unsupported edge type")
 	}
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
@@ -513,8 +512,7 @@ LoopOnIterator:
 		case graph.TupleToUsersetEdge:
 			newRelation = req.edge.TargetReference.GetRelation()
 		default:
-			errs = multierror.Append(errs, fmt.Errorf("unsupported edge type"))
-			break LoopOnIterator
+			panic("unsupported edge type")
 		}
 
 		pool.Go(func(ctx context.Context) error {
