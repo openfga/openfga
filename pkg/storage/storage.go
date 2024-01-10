@@ -151,7 +151,7 @@ type ReadStartingWithUserFilter struct {
 }
 
 // ReadUsersetTuplesFilter specifies the filter options that
-// will be used to constrain the UserType query.
+// will be used to constrain the ReadUsersetTuples query.
 type ReadUsersetTuplesFilter struct {
 	Object                      string                         // Required.
 	Relation                    string                         // Required.
@@ -164,7 +164,7 @@ type AuthorizationModelReadBackend interface {
 	// If it's not found, it must return ErrNotFound.
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
-	// ReadAuthorizationModels reads all type definitions ids for the supplied store.
+	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	// FindLatestAuthorizationModelID returns the last model `id` written for a store.
@@ -196,7 +196,7 @@ type StoresBackend interface {
 	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgav1.Store, []byte, error)
 }
 
-// AssertionsBackend is an interface that defines the set of methods for managing and handling assertions.
+// AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
 type AssertionsBackend interface {
 	// WriteAssertions overwrites the assertions for a store and modelID.
 	WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error
@@ -206,12 +206,13 @@ type AssertionsBackend interface {
 	ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error)
 }
 
-// ChangelogBackend is an interface that defines the set of methods
-// required for interacting with and managing a changelog.
+// ChangelogBackend is an interface for interacting with and managing changelogs.
 type ChangelogBackend interface {
-	// ReadChanges returns the writes and deletes that have occurred for tuples of a given object type within a store.
-	// The horizonOffset should be specified using a unit no more granular than a millisecond and should be interpreted
-	// as a millisecond duration.
+	// ReadChanges returns the writes and deletes that have occurred for tuples within a store,
+	// in the order that they occurred.
+	// You can optionally provide a filter to filter out changes for objects of a specific type.
+	// The horizonOffset should be specified using a unit no more granular than a millisecond
+	// and should be interpreted as a millisecond duration.
 	ReadChanges(
 		ctx context.Context,
 		store,

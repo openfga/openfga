@@ -9,10 +9,16 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// NewCombinedTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
-// tuples specified in the request.
-func NewCombinedTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey) storage.RelationshipTupleReader {
-	return &combinedTupleReader{RelationshipTupleReader: ds, contextualTuples: contextualTuples}
+// NewCombinedTupleReader returns a [storage.RelationshipTupleReader] that reads from
+// a persistent datastore and from the contextual tuples specified in the request.
+func NewCombinedTupleReader(
+	ds storage.RelationshipTupleReader,
+	contextualTuples []*openfgav1.TupleKey,
+) storage.RelationshipTupleReader {
+	return &combinedTupleReader{
+		RelationshipTupleReader: ds,
+		contextualTuples:        contextualTuples,
+	}
 }
 
 type combinedTupleReader struct {
@@ -37,7 +43,7 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 	return filtered
 }
 
-// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
+// Read see [storage.RelationshipTupleReader.ReadUserTuple].
 func (c *combinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
@@ -53,9 +59,7 @@ func (c *combinedTupleReader) Read(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-// ReadPage functions similarly to Read but includes support for pagination. It takes additional
-// pagination parameters and returns a slice of tuples along with a continuation token, which may
-// not be empty. This token can be used for retrieving subsequent pages of data.
+// ReadPage see [storage.RelationshipTupleReader.ReadPage].
 func (c *combinedTupleReader) ReadPage(
 	ctx context.Context,
 	store string,
@@ -83,7 +87,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk)
 }
 
-// ReadUsersetTuples returns all userset tuples for a specified object and relation.
+// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (c *combinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
@@ -107,8 +111,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
-// more user(s) or userset(s) and filtered by object type and relation.
+// ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
 func (c *combinedTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,

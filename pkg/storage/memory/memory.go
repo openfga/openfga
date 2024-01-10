@@ -111,17 +111,17 @@ type MemoryBackend struct {
 
 	// ChangelogBackend
 	// map: store => set of changes
-	changes map[string][]*openfgav1.TupleChange
+	changes map[string][]*openfgav1.TupleChange // GUARDED_BY(mu_).
 
 	// AuthorizationModelBackend
 	// map: store = > map: type definition id => type definition
 	authorizationModels map[string]map[string]*AuthorizationModelEntry // GUARDED_BY(mu_).
 
 	// map: store id => store data
-	stores map[string]*openfgav1.Store
+	stores map[string]*openfgav1.Store // GUARDED_BY(mu_).
 
 	// map: store id | authz model id => assertions
-	assertions map[string][]*openfgav1.Assertion
+	assertions map[string][]*openfgav1.Assertion // GUARDED_BY(mu_).
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.

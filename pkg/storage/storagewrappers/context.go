@@ -13,15 +13,14 @@ import (
 // Its purpose is to prevent the closure of the underlying database connection in case the original context is cancelled,
 // such as when a client cancels the context. This ensures that ongoing queries are allowed to complete even if the
 // original context is cancelled, helping to avoid unnecessary database connection churn.
-//
-// It is crucial for ContextTracerWrapper to be the first wrapper around the datastore for traces to function correctly.
 type ContextTracerWrapper struct {
 	storage.OpenFGADatastore
 }
 
 var _ storage.OpenFGADatastore = (*ContextTracerWrapper)(nil)
 
-// NewContextWrapper creates a new instance of ContextTracerWrapper, wrapping the specified datastore.
+// NewContextWrapper creates a new instance of [ContextTracerWrapper], wrapping the specified datastore. It is crucial
+// for [ContextTracerWrapper] to be the first wrapper around the datastore for traces to function correctly.
 func NewContextWrapper(inner storage.OpenFGADatastore) *ContextTracerWrapper {
 	return &ContextTracerWrapper{inner}
 }
@@ -45,31 +44,28 @@ func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey 
 	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey)
 }
 
-// ReadPage functions similarly to Read but includes support for pagination. It takes additional
-// pagination parameters and returns a slice of tuples along with a continuation token, which may
-// not be empty. This token can be used for retrieving subsequent pages of data.
+// ReadPage see [storage.RelationshipTupleReader.ReadPage].
 func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadPage(queryCtx, store, tupleKey, opts)
 }
 
-// ReadUserTuple tries to return one tuple that matches the provided key exactly.
+// ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadUserTuple(queryCtx, store, tupleKey)
 }
 
-// ReadUsersetTuples returns all userset tuples for a specified object and relation.
+// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, filter)
 }
 
-// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
-// more user(s) or userset(s) and filtered by object type and relation.
+// ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
 func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
