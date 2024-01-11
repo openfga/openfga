@@ -9,26 +9,24 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// errorIterator is a mock iterator that returns error when calling next on the second Next call
-type errorIterator[T any] struct {
-	items          []T
+// errorTupleIterator is a mock iterator that returns error when calling next on the second Next call
+type errorTupleIterator struct {
+	items          []*openfgav1.Tuple
 	originalLength int
 }
 
-func (s *errorIterator[T]) Next(ctx context.Context) (T, error) {
-	var val T
-
+func (s *errorTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if ctx.Err() != nil {
-		return val, ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	// we want to simulate returning error after the first read
 	if len(s.items) != s.originalLength {
-		return val, fmt.Errorf("simulated errors")
+		return nil, fmt.Errorf("simulated errors")
 	}
 
 	if len(s.items) == 0 {
-		return val, nil
+		return nil, nil
 	}
 
 	next, rest := s.items[0], s.items[1:]
@@ -37,11 +35,14 @@ func (s *errorIterator[T]) Next(ctx context.Context) (T, error) {
 	return next, nil
 }
 
-func (s *errorIterator[T]) Stop() {}
+func (s *errorTupleIterator) Stop() {}
 
-// NewErrorIterator mocks case where Next will return error after the first Next()
-func NewErrorIterator(tuples []*openfgav1.Tuple) storage.TupleIterator {
-	iter := &errorIterator[*openfgav1.Tuple]{
+var _ storage.TupleIterator = (*errorTupleIterator)(nil)
+
+// NewErrorTupleIterator mocks case where Next will return error after the first Next()
+// This TupleIterator is designed to be used in tests
+func NewErrorTupleIterator(tuples []*openfgav1.Tuple) storage.TupleIterator {
+	iter := &errorTupleIterator{
 		items:          tuples,
 		originalLength: len(tuples),
 	}
