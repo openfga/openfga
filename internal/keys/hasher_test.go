@@ -52,6 +52,28 @@ func TestTupleKeysHasherSortsFirst(t *testing.T) {
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
 			},
 		},
+		`unordered_relations_users_and_objects`: {
+			tuplesReversed: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:A", "relationA", "user:A"),
+				tuple.NewTupleKey("document:A", "relationA", "user:B"),
+				tuple.NewTupleKey("document:A", "relationB", "user:A"),
+				tuple.NewTupleKey("document:A", "relationB", "user:B"),
+				tuple.NewTupleKey("document:B", "relationA", "user:A"),
+				tuple.NewTupleKey("document:B", "relationA", "user:B"),
+				tuple.NewTupleKey("document:B", "relationB", "user:A"),
+				tuple.NewTupleKey("document:B", "relationB", "user:B"),
+			},
+			tuplesOriginal: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:B", "relationB", "user:B"),
+				tuple.NewTupleKey("document:B", "relationB", "user:A"),
+				tuple.NewTupleKey("document:B", "relationA", "user:B"),
+				tuple.NewTupleKey("document:B", "relationA", "user:A"),
+				tuple.NewTupleKey("document:A", "relationB", "user:B"),
+				tuple.NewTupleKey("document:A", "relationB", "user:A"),
+				tuple.NewTupleKey("document:A", "relationA", "user:B"),
+				tuple.NewTupleKey("document:A", "relationA", "user:A"),
+			},
+		},
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {

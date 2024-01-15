@@ -45,16 +45,16 @@ func (t tupleKeysHasher) Append(h hasher) error {
 	sortedTupleKeys := append([]*openfgav1.TupleKey(nil), t.tupleKeys...) // Copy input to avoid mutating it
 
 	sort.SliceStable(sortedTupleKeys, func(i, j int) bool {
-		if sortedTupleKeys[i].Object > sortedTupleKeys[j].Object {
-			return false
+		if sortedTupleKeys[i].Object != sortedTupleKeys[j].Object {
+			return sortedTupleKeys[i].Object < sortedTupleKeys[j].Object
 		}
 
-		if sortedTupleKeys[i].Relation > sortedTupleKeys[j].Relation {
-			return false
+		if sortedTupleKeys[i].Relation != sortedTupleKeys[j].Relation {
+			return sortedTupleKeys[i].Relation < sortedTupleKeys[j].Relation
 		}
 
-		if sortedTupleKeys[i].User > sortedTupleKeys[j].User {
-			return false
+		if sortedTupleKeys[i].User != sortedTupleKeys[j].User {
+			return sortedTupleKeys[i].User < sortedTupleKeys[j].User
 		}
 
 		return true
