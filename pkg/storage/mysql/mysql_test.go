@@ -41,7 +41,7 @@ func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
 	require.False(t, status.IsReady)
 }
 
-// TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
+// TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
 func TestReadEnsureNoOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
@@ -63,7 +63,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 		time.Now())
 	require.NoError(t, err)
 
-	// tweak time so that ULID is smaller
+	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")),
 		store,
@@ -79,7 +79,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// we expect that objectID1 will return first because it is inserted first
+	// We expect that objectID1 will return first because it is inserted first.
 	curTuple, err := iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, firstTuple, curTuple.Key)
@@ -89,7 +89,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	require.Equal(t, secondTuple, curTuple.Key)
 }
 
-// TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid
+// TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid.
 func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
@@ -112,7 +112,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		time.Now())
 	require.NoError(t, err)
 
-	// tweak time so that ULID is smaller
+	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")),
 		store,
@@ -128,7 +128,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, tuples, 2)
-	// we expect that objectID2 will return first because it has a smaller ulid
+	// We expect that objectID2 will return first because it has a smaller ulid.
 	require.Equal(t, secondTuple, tuples[0].Key)
 	require.Equal(t, firstTuple, tuples[1].Key)
 }
@@ -267,7 +267,7 @@ func TestMarshalledAssertions(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	// Note: this represents an assertion written on v1.3.7
+	// Note: this represents an assertion written on v1.3.7.
 	stmt := `
 		INSERT INTO assertion (
 			store, authorization_model_id, assertions

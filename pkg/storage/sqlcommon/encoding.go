@@ -9,7 +9,7 @@ func marshalRelationshipCondition(
 	rel *openfgav1.RelationshipCondition,
 ) (name string, context []byte, err error) {
 	if rel != nil {
-		// normalize empty context to nil
+		// Normalize empty context to nil.
 		if rel.Context != nil && len(rel.Context.GetFields()) > 0 {
 			context, err = proto.Marshal(rel.Context)
 			if err != nil {

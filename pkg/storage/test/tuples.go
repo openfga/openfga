@@ -264,8 +264,8 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 			{
-				// tuples with a condition that are deleted don't include the condition info
-				// in the changelog entry
+				// Tuples with a condition that are deleted don't include the condition info
+				// in the changelog entry.
 				TupleKey:  tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			},
@@ -301,7 +301,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 		expectedError := storage.InvalidWriteInputError(tks[2], openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 
-		// Write tks
+		// Write tks.
 		err := datastore.Write(ctx, storeID, nil, tks)
 		require.NoError(t, err)
 
@@ -341,11 +341,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		// Write
+		// Write.
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
 		require.NoError(t, err)
 
-		// Then delete
+		// Then delete.
 		err = datastore.Write(
 			ctx,
 			storeID,
@@ -356,7 +356,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		)
 		require.NoError(t, err)
 
-		// Ensure it is not there
+		// Ensure it is not there.
 		_, err = datastore.ReadUserTuple(ctx, storeID, tk)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -534,7 +534,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			gotTupleKeys = append(gotTupleKeys, tk)
 		}
 
-		// Then the iterator should run out
+		// Then the iterator should run out.
 		_, err = gotTuples.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 
@@ -713,7 +713,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 
 	t.Run("tuples_with_nil_condition", func(t *testing.T) {
-		// this test ensures we don't normalize nil conditions to an empty value
+		// This test ensures we don't normalize nil conditions to an empty value.
 		storeID := ulid.Make().String()
 
 		tupleKey1 := tuple.NewTupleKey("document:1", "viewer", "user:jon")
@@ -790,7 +790,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 
 	t.Run("normalize_empty_context", func(t *testing.T) {
-		// this test ensures we normalize nil or empty context as empty context in all reads
+		// This test ensures we normalize nil or empty context as empty context in all reads.
 		storeID := ulid.Make().String()
 
 		tupleKey1 := tuple.NewTupleKey("document:1", "viewer", "user:jon")
