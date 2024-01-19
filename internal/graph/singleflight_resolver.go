@@ -1,4 +1,4 @@
-package singleflight
+package graph
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -23,25 +22,16 @@ var (
 )
 
 type singleflightCheckResolver struct {
-	delegate graph.CheckResolver
+	delegate CheckResolver
 	group    singleflight.Group
 	logger   logger.Logger
 }
-
-var _ graph.CheckResolver = (*singleflightCheckResolver)(nil)
 
 // SingleflightCheckResolverOpt defines an option that can be used to change the behavior of singleflightCheckResolver
 // instance.
 type SingleflightCheckResolverOpt func(*singleflightCheckResolver)
 
-// WithLogger sets the logger for the singleflight check resolver
-func WithLogger(logger logger.Logger) SingleflightCheckResolverOpt {
-	return func(s *singleflightCheckResolver) {
-		s.logger = logger
-	}
-}
-
-func NewSingleflightCheckResolver(delegate graph.CheckResolver, opts ...SingleflightCheckResolverOpt) *singleflightCheckResolver {
+func NewSingleflightCheckResolver(delegate CheckResolver, opts ...SingleflightCheckResolverOpt) *singleflightCheckResolver {
 	s := &singleflightCheckResolver{
 		delegate: delegate,
 	}
@@ -53,28 +43,34 @@ func NewSingleflightCheckResolver(delegate graph.CheckResolver, opts ...Singlefl
 	return s
 }
 
-// Close implements graph.CheckResolver.
+// Close implements CheckResolver.
 func (s *singleflightCheckResolver) Close() {}
 
-// ResolveCheck implements graph.CheckResolver.
+// ResolveCheck implements CheckResolver.
 func (s *singleflightCheckResolver) ResolveCheck(
 	ctx context.Context,
-	req *graph.ResolveCheckRequest,
-) (*graph.ResolveCheckResponse, error) {
+	req *ResolveCheckRequest,
+) (*ResolveCheckResponse, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	key, err := graph.CheckRequestCacheKey(req)
+	key, err := CheckRequestCacheKey(req)
 	if err != nil {
 		s.logger.Error("singleflight cache key computation failed with error", zap.Error(err))
 		return nil, err
 	}
 
-	resp, err, shared := s.group.Do(key, func() (interface{}, error) {
+	r, err, shared := s.group.Do(key, func() (interface{}, error) {
 		return s.delegate.ResolveCheck(ctx, req)
 	})
 
+	resp := r.(*ResolveCheckResponse)
+
 	if shared {
+		cancel()
 		deduplicatedDispatchesounter.Inc()
+		resp.ResolutionMetadata.WasSharedRequest = true
 	}
 
-	return resp.(*graph.ResolveCheckResponse), err
+	return resp, err
 }

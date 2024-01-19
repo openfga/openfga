@@ -152,6 +152,13 @@ func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 	}
 }
 
+func WithSingleflightResolver(opts ...SingleflightCheckResolverOpt) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		singleflightResolver := NewSingleflightCheckResolver(d, opts...)
+		d.delegate = singleflightResolver
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
@@ -420,8 +427,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 }
 
 // Close is a noop
-func (c *LocalChecker) Close() {
-}
+func (c *LocalChecker) Close() {}
 
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
