@@ -24,9 +24,10 @@ func TestSingleflightResolver(t *testing.T) {
 	var tuples = []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
 	}
-	for i := 1; i <= 25; i++ {
+	for i := 1; i <= 5; i++ {
 		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent", fmt.Sprintf("folder:%d", i)))
 		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_parent", fmt.Sprintf("folder:%d", i)))
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_other_parent", fmt.Sprintf("folder:%d", i)))
 	}
 
 	err := ds.Write(context.Background(), storeID, nil, tuples)
@@ -41,7 +42,7 @@ func TestSingleflightResolver(t *testing.T) {
 	relations
 	  define parent: [folder]
 	  define other_parent: [folder]
-	  define viewer: [user] or viewer from parent or viewer from other_parent`).TypeDefinitions
+	  define viewer: [user] or viewer from parent or viewer from other_parent or viewer from other_other_parent`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
@@ -51,78 +52,44 @@ func TestSingleflightResolver(t *testing.T) {
 		},
 	))
 
-	checker := NewLocalChecker(
+	checkReq := ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("folder:5", "viewer", "user:jon"),
+		ContextualTuples:   nil,
+		ResolutionMetadata: &ResolutionMetadata{Depth: 5},
+	}
+
+	//--------------------------------------
+
+	checkerWithoutSingleflight := NewLocalChecker(
+		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+	)
+	defer checkerWithoutSingleflight.Close()
+
+	req := checkReq
+	respWithoutSingleflight, err := checkerWithoutSingleflight.ResolveCheck(ctx, &req)
+
+	require.NoError(t, err)
+	require.False(t, respWithoutSingleflight.GetResolutionMetadata().TMP_Singleflight.HadSharedRequest)
+	require.True(t, respWithoutSingleflight.GetAllowed())
+
+	fmt.Println("Without singleflight:")
+	fmt.Println(fmt.Sprintf("%+v", respWithoutSingleflight.GetResolutionMetadata()))
+
+	//--------------------------------------
+
+	checkerWithSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 		WithSingleflightResolver(),
 	)
-	defer checker.Close()
+	defer checkerWithSingleflight.Close()
 
-	res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("folder:25", "viewer", "user:jon"),
-		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-	})
+	req = checkReq
+	resWithSingleflight, err := checkerWithSingleflight.ResolveCheck(ctx, &req)
 
+	fmt.Println("With singleflight:")
+	fmt.Println(fmt.Sprintf("%+v", resWithSingleflight.GetResolutionMetadata()))
 	require.NoError(t, err)
-	require.True(t, res.GetResolutionMetadata().WasSharedRequest)
-	require.True(t, res.GetAllowed())
-
-	res, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
-		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-	})
-
-	require.NoError(t, err)
-	require.False(t, res.GetResolutionMetadata().WasSharedRequest)
-	require.True(t, res.GetAllowed())
-
-	// Second time running the check will result in datastore query count being 0
-
-	// secondLocalChecker := NewLocalChecker(
-	// 	storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-	// 	WithMaxConcurrentReads(1),
-	// 	WithSingleflightResolver(),
-	// 	WithCachedResolver(
-	// 		WithExistingCache(checkCache),
-	// 		WithCacheTTL(10*time.Hour),
-	// 	),
-	// )
-
-	// res, err = secondLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
-	// 	StoreID:            storeID,
-	// 	TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
-	// 	ContextualTuples:   nil,
-	// 	ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-	// })
-
-	// secondLocalChecker.Close()
-
-	// require.NoError(t, err)
-	// require.Equal(t, uint32(0), res.GetResolutionMetadata().DatastoreQueryCount)
-
-	// // The ttuLocalChecker will use partial result from the cache and partial result from the local checker
-
-	// ttuLocalChecker := NewLocalChecker(
-	// 	storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-	// 	WithMaxConcurrentReads(1),
-	// 	WithSingleflightResolver(),
-	// 	WithCachedResolver(
-	// 		WithExistingCache(checkCache),
-	// 		WithCacheTTL(10*time.Hour),
-	// 	),
-	// )
-	// res, err = ttuLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
-	// 	StoreID:            storeID,
-	// 	TupleKey:           tuple.NewTupleKey("document:x", "ttu", "user:maria"),
-	// 	ContextualTuples:   nil,
-	// 	ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-	// })
-
-	// ttuLocalChecker.Close()
-
-	// require.NoError(t, err)
-	// require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
+	require.True(t, resWithSingleflight.GetResolutionMetadata().TMP_Singleflight.HadSharedRequest)
+	require.True(t, resWithSingleflight.GetAllowed())
 }

@@ -51,9 +51,6 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	key, err := CheckRequestCacheKey(req)
 	if err != nil {
 		s.logger.Error("singleflight cache key computation failed with error", zap.Error(err))
@@ -67,9 +64,14 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	resp := r.(*ResolveCheckResponse)
 
 	if shared {
-		cancel()
 		deduplicatedDispatchesounter.Inc()
-		resp.ResolutionMetadata.WasSharedRequest = true
+		resp.ResolutionMetadata.TMP_Singleflight.HadSharedRequest = true
+	}
+
+	//Temporary for testing PR
+	resp.ResolutionMetadata.TMP_Singleflight.NumOuterCalls++
+	if !shared {
+		resp.ResolutionMetadata.TMP_Singleflight.NumInnerCalls++
 	}
 
 	return resp, err
