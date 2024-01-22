@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	deduplicatedDispatchesounter = promauto.NewCounter(prometheus.CounterOpts{
+	deduplicatedDispatchesCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "deduplicated_dispatches_counter",
 		Help:      "The total number of calls to ResolveCheck that were deduplicated.",
@@ -64,14 +64,7 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	resp := r.(*ResolveCheckResponse)
 
 	if shared {
-		deduplicatedDispatchesounter.Inc()
-		resp.ResolutionMetadata.TMP_Singleflight.HadSharedRequest = true
-	}
-
-	//Temporary for testing PR
-	resp.ResolutionMetadata.TMP_Singleflight.NumOuterCalls++
-	if !shared {
-		resp.ResolutionMetadata.TMP_Singleflight.NumInnerCalls++
+		deduplicatedDispatchesCounter.Inc()
 	}
 
 	return resp, err

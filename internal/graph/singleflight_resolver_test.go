@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	reflect "reflect"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -35,9 +36,9 @@ func TestSingleflightResolver(t *testing.T) {
 
 	typedefs := parser.MustTransformDSLToProto(`model
 	schema 1.1
-	
+
 	type user
-	
+
 	type folder
 	relations
 	  define parent: [folder]
@@ -70,11 +71,14 @@ func TestSingleflightResolver(t *testing.T) {
 	respWithoutSingleflight, err := checkerWithoutSingleflight.ResolveCheck(ctx, &req)
 
 	require.NoError(t, err)
-	require.False(t, respWithoutSingleflight.GetResolutionMetadata().TMP_Singleflight.HadSharedRequest)
 	require.True(t, respWithoutSingleflight.GetAllowed())
 
-	fmt.Println("Without singleflight:")
-	fmt.Println(fmt.Sprintf("%+v", respWithoutSingleflight.GetResolutionMetadata()))
+	fmt.Printf("Without singleflight:\n")
+	fmt.Printf("%+v\n", respWithoutSingleflight.GetResolutionMetadata())
+
+	r := reflect.ValueOf(deduplicatedDispatchesCounter)
+	count := reflect.Indirect(r).FieldByName("valInt").Uint()
+	require.Zero(t, count)
 
 	//--------------------------------------
 
@@ -87,9 +91,11 @@ func TestSingleflightResolver(t *testing.T) {
 	req = checkReq
 	resWithSingleflight, err := checkerWithSingleflight.ResolveCheck(ctx, &req)
 
-	fmt.Println("With singleflight:")
-	fmt.Println(fmt.Sprintf("%+v", resWithSingleflight.GetResolutionMetadata()))
+	fmt.Printf("With singleflight:\n")
+	fmt.Printf("%+v\n", resWithSingleflight.GetResolutionMetadata())
 	require.NoError(t, err)
-	require.True(t, resWithSingleflight.GetResolutionMetadata().TMP_Singleflight.HadSharedRequest)
 	require.True(t, resWithSingleflight.GetAllowed())
+
+	count = reflect.Indirect(r).FieldByName("valInt").Uint()
+	require.Equal(t, uint64(8), count)
 }
