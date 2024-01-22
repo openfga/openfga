@@ -638,7 +638,7 @@ func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
@@ -646,7 +646,7 @@ func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
