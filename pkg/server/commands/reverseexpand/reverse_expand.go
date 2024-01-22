@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/logger"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -107,6 +109,7 @@ type UserRef struct {
 }
 
 type ReverseExpandQuery struct {
+	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
@@ -132,8 +135,15 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
+func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.logger = logger
+	}
+}
+
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
+		logger:                  logger.NewNoopLogger(),
 		datastore:               ds,
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
@@ -173,36 +183,38 @@ func NewResolutionMetadata() *ResolutionMetadata {
 }
 
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
-// and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
+// and sends those objects to the input channel. It MUST guarantee no duplicate objects sent.
+// The input channel can be buffered or not. If it's not buffered, this function will block when it finds either a candidate object or an error.
 //
-// If an error is encountered before resolving all objects: the provided channel will NOT be closed and
+// If an error is encountered before resolving all objects:
 // - if the error is context cancellation or deadline: Execute may send the error through the channel
 // - otherwise: Execute will send the error through the channel
-// If no errors, Execute will yield all of the objects on the provided channel and then close the channel
-// to signal that it is done.
+// If no errors, Execute will yield all of the objects on the provided channel.
+// In all cases, at the end, the input channel is closed.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
+	reverseExpandResultsChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) {
-	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
+	err := c.execute(ctx, req, reverseExpandResultsChan, false, resolutionMetadata)
 	if err != nil {
 		select {
 		case <-ctx.Done():
-			return
-		case resultChan <- &ReverseExpandResult{Err: err}:
-			return
+			// this case is a safeguard for when the channel is full, we don't send the context error through the channel or we will block forever
+		case reverseExpandResultsChan <- &ReverseExpandResult{Err: err}:
 		}
 	}
 
-	close(resultChan)
+	// by this time, all goroutines launched by execute() should have finished, so nobody should be trying to write to the channel
+	// it's safe to close the channel
+	close(reverseExpandResultsChan)
 }
 
 func (c *ReverseExpandQuery) execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
+	reverseExpandResultsChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
@@ -264,7 +276,7 @@ func (c *ReverseExpandQuery) execute(
 			sourceUserRel := val.ObjectRelation.GetRelation()
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
+				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, reverseExpandResultsChan); err != nil {
 					return err
 				}
 			}
@@ -302,7 +314,7 @@ LoopOnEdges:
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.reverseExpandDirect(ctx, r, reverseExpandResultsChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		case graph.ComputedUsersetEdge:
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
@@ -312,14 +324,14 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			err = c.execute(ctx, r, reverseExpandResultsChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = multierror.Append(errs, err)
 				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.reverseExpandTupleToUserset(ctx, r, reverseExpandResultsChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		default:
 			panic("unsupported edge type")
@@ -341,7 +353,7 @@ LoopOnEdges:
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
+	reverseExpandResultsChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
@@ -357,14 +369,14 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, reverseExpandResultsChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
+	reverseExpandResultsChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
@@ -380,14 +392,14 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, reverseExpandResultsChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 	return err
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
+	reverseExpandResultsChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
@@ -530,7 +542,7 @@ LoopOnIterator:
 				ContextualTuples: req.ContextualTuples,
 				Context:          req.Context,
 				edge:             req.edge,
-			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			}, reverseExpandResultsChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
 
@@ -543,7 +555,7 @@ LoopOnIterator:
 	return nil
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
+func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, reverseExpandResultsChan chan<- *ReverseExpandResult) error {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -560,7 +572,7 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case candidateChan <- &ReverseExpandResult{
+		case reverseExpandResultsChan <- &ReverseExpandResult{
 			Object:       candidateObject,
 			ResultStatus: resultStatus,
 		}:
