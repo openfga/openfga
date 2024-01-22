@@ -21,6 +21,78 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+func TestReverseExpandHasNoGoroutineLeak(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	store := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+  schema 1.1
+type user
+type document
+  relations
+	define viewer: [user]`)
+
+	typeSystem := typesystem.New(model)
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	var tuples []*openfgav1.Tuple
+	for i := 0; i < 100; i++ {
+		obj := fmt.Sprintf("document:%s", strconv.Itoa(i))
+		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
+	}
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+		Times(1).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			// the first call will succeed but the second will fail
+			return mocks.NewErrorTupleIterator(tuples), nil
+		})
+
+	// we will write one object, read it in the second goroutine here, and the second write (the error) should not block
+	resultChan := make(chan *ReverseExpandResult)
+	doneConsuming := make(chan struct{})
+	doneProducing := make(chan struct{})
+
+	go func() {
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
+		t.Logf("before execute reverse expand")
+		reverseExpandQuery.Execute(context.Background(), &ReverseExpandRequest{
+			StoreID:    store,
+			ObjectType: "document",
+			Relation:   "viewer",
+			User: &UserRefObject{
+				Object: &openfgav1.Object{
+					Type: "user",
+					Id:   "maria",
+				},
+			},
+			ContextualTuples: []*openfgav1.TupleKey{},
+		}, resultChan, NewResolutionMetadata())
+		t.Logf("after execute reverse expand")
+		doneProducing <- struct{}{}
+	}()
+	go func() {
+		// simulate max_results=1
+		t.Logf("before receive one result")
+		<-resultChan
+		t.Logf("after receive one result")
+		doneConsuming <- struct{}{}
+		// we don't cancel the context
+	}()
+
+	select {
+	case <-doneProducing:
+		<-doneConsuming
+		return
+	case <-doneConsuming:
+		<-doneProducing
+		return
+	}
+}
+
 func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	defer goleak.VerifyNone(t)
 

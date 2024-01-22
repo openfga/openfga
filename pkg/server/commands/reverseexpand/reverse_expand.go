@@ -200,9 +200,9 @@ func (c *ReverseExpandQuery) Execute(
 	err := c.execute(ctx, req, reverseExpandResultsChan, false, resolutionMetadata)
 	if err != nil {
 		select {
-		case <-ctx.Done():
-			// this case is a safeguard for when the channel is full, we don't send the context error through the channel or we will block forever
 		case reverseExpandResultsChan <- &ReverseExpandResult{Err: err}:
+		default:
+			// this case is a safeguard for when the channel is full
 		}
 	}
 
