@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"strings"
@@ -15,10 +16,9 @@ import (
 	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/assets"
+	postgres "github.com/openfga/openfga/pkg/storage/postgres/migrations"
 )
 
 const (
@@ -50,13 +50,15 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // Postgres datastore engine.
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
+	ctx := context.Background()
+
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
 
-	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
+	allImages, err := dockerClient.ImageList(ctx, types.ImageListOptions{
 		All: true,
 	})
 	require.NoError(t, err)
@@ -73,7 +75,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	if !foundPostgresImage {
 		t.Logf("Pulling image %s", postgresImage)
-		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, types.ImagePullOptions{})
+		reader, err := dockerClient.ImagePull(ctx, postgresImage, types.ImagePullOptions{})
 		require.NoError(t, err)
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
@@ -99,14 +101,14 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	name := fmt.Sprintf("postgres-%s", ulid.Make().String())
 
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	cont, err := dockerClient.ContainerCreate(ctx, &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
 
 	stopContainer := func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to stop postgres container: %v", err)
 		}
@@ -115,13 +117,13 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		t.Logf("stopped container %s", name)
 	}
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
+	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
 	if err != nil {
 		stopContainer()
 		t.Fatalf("failed to start postgres container: %v", err)
 	}
 
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 	require.NoError(t, err)
 
 	m, ok := containerJSON.NetworkSettings.Ports["5432/tcp"]
@@ -135,7 +137,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		timeoutSec := 0
 
 		t.Logf("expiring container %s", name)
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to expire postgres container: %v", err)
 		}
@@ -154,15 +156,16 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", pgTestContainer.username, pgTestContainer.password, pgTestContainer.addr)
 
-	goose.SetLogger(goose.NopLogger())
-
-	db, err := goose.OpenDBWithDriver("pgx", uri)
-	require.NoError(t, err)
+	var db *sql.DB
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
 	err = backoff.Retry(
 		func() error {
+			db, err = sql.Open("pgx", uri)
+			if err != nil {
+				return err
+			}
 			return db.Ping()
 		},
 		backoffPolicy,
@@ -172,13 +175,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		t.Fatalf("failed to connect to postgres container: %v", err)
 	}
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-
-	err = goose.Up(db, assets.PostgresMigrationDir)
+	version, err := postgres.Migrations.Run(ctx, db)
 	require.NoError(t, err)
 
-	version, err := goose.GetDBVersion(db)
-	require.NoError(t, err)
 	pgTestContainer.version = version
 
 	err = db.Close()
