@@ -223,7 +223,7 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 
 	storeID := createResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
   schema 1.1
 
 type user
@@ -277,14 +277,14 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	tests := []struct {
-		name            string
-		typeDefinitions []*openfgav1.TypeDefinition
-		tuples          []*openfgav1.TupleKey
-		assertions      []checktest.Assertion
+		name       string
+		model      string
+		tuples     []*openfgav1.TupleKey
+		assertions []checktest.Assertion
 	}{
 		{
 			name: "issue_1058",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
+			model: `model
 	schema 1.1
 type fga_user
 
@@ -297,7 +297,7 @@ type commerce_store
 	define approved_hourly_access: user from approved_timeslot and hourly_employee
 	define approved_timeslot: [timeslot]
 	define hourly_employee: [fga_user]
-`).TypeDefinitions,
+`,
 			tuples: []*openfgav1.TupleKey{
 				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
 				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
@@ -330,7 +330,7 @@ type commerce_store
 		},
 		{
 			name: "cache_computed_userset_subproblem_with_contextual_tuple",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
+			model: `model
 	schema 1.1
 type user
 
@@ -338,7 +338,7 @@ type document
   relations
 	define restricted: [user]
 	define viewer: [user] but not restricted
-`).TypeDefinitions,
+`,
 			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
@@ -359,14 +359,14 @@ type document
 		},
 		{
 			name: "cached_direct_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
+			model: `model
 	schema 1.1
 type user
 
 type document
   relations
 	define viewer: [user]
-`).TypeDefinitions,
+`,
 			assertions: []checktest.Assertion{
 				{
 					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -384,7 +384,7 @@ type document
 		},
 		{
 			name: "cached_direct_userset_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
+			model: `model
 	schema 1.1
 type user
 
@@ -396,7 +396,7 @@ type group
 type document
   relations
 	define viewer: [group#member]
-`).TypeDefinitions,
+`,
 			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
 				{Object: "group:eng", Relation: "member", User: "user:jon"},
@@ -430,9 +430,11 @@ type document
 
 			storeID := createResp.GetId()
 
+			model := parser.MustTransformDSLToProto(test.model)
 			writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
-				TypeDefinitions: test.typeDefinitions,
+				TypeDefinitions: model.GetTypeDefinitions(),
+				Conditions:      model.GetConditions(),
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 			})
 			require.NoError(t, err)
@@ -1690,10 +1692,12 @@ type user`,
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.testData != nil {
+				model := parser.MustTransformDSLToProto(test.testData.model)
 				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         test.input.StoreId,
 					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions,
+					TypeDefinitions: model.GetTypeDefinitions(),
+					Conditions:      model.GetConditions(),
 				})
 				test.input.Id = modelResp.AuthorizationModelId
 				require.NoError(t, err)
@@ -2094,10 +2098,12 @@ type document
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.testData != nil {
+				model := parser.MustTransformDSLToProto(test.testData.model)
 				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         test.input.StoreId,
 					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions,
+					TypeDefinitions: model.TypeDefinitions,
+					Conditions:      model.Conditions,
 				})
 				test.input.AuthorizationModelId = modelResp.AuthorizationModelId
 				require.NoError(t, err)

@@ -1,9 +1,11 @@
 package condition_test
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -249,13 +251,14 @@ func TestEvaluate(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
 			compiledCondition, err := condition.NewCompiled(test.condition)
 			require.NoError(t, err)
 
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			result, err := compiledCondition.Evaluate(contextStruct.GetFields())
+			result, err := compiledCondition.Evaluate(ctx, contextStruct.GetFields())
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
@@ -395,6 +398,7 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
 			condition := condition.NewUncompiled(test.condition).WithMaxEvaluationCost(test.maxCost)
 
 			err := condition.Compile()
@@ -403,7 +407,7 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			result, err := condition.Evaluate(contextStruct.GetFields())
+			result, err := condition.Evaluate(ctx, contextStruct.GetFields())
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
@@ -495,6 +499,142 @@ func TestCastContextToTypedParameters(t *testing.T) {
 
 			if !reflect.DeepEqual(typedParams, test.expectedParams) {
 				t.Errorf("expected %v, got %v", test.expectedParams, typedParams)
+			}
+		})
+	}
+}
+
+func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
+	makeItems := func(size int) []interface{} {
+		items := make([]interface{}, size)
+		for i := int(0); i < size; i++ {
+			items[i] = i
+		}
+		return items
+	}
+
+	var tests = []struct {
+		name           string
+		condition      *openfgav1.Condition
+		context        map[string]any
+		checkFrequency uint
+		result         condition.EvaluationResult
+		err            error
+	}{
+		{
+			name: "operation_interrupted_one_comprehension",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "items.map(i, i * 2).size() > 0",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"items": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+							},
+						},
+					},
+				},
+			},
+			checkFrequency: 100,
+			context: map[string]interface{}{
+				"items": makeItems(100),
+			},
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+		},
+		{
+			name: "operation_not_interrupted_one_comprehension",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "items.map(i, i * 2).size() > 0",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"items": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+							},
+						},
+					},
+				},
+			},
+			checkFrequency: 100,
+			context: map[string]interface{}{
+				"items": makeItems(99),
+			},
+			result: condition.EvaluationResult{
+				ConditionMet: true,
+			},
+		},
+		{
+			name: "operation_interrupted_two_comprehensions",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "items.map(i, i * 2).map(i, i * i).size() > 0",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"items": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+							},
+						},
+					},
+				},
+			},
+			checkFrequency: 100,
+			context: map[string]interface{}{
+				"items": makeItems(100),
+			},
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+		},
+		{
+			name: "operation_not_interrupted_two_comprehensions",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "items.map(i, i * 2).map(i, i * i).size() > 0",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"items": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+							},
+						},
+					},
+				},
+			},
+			checkFrequency: 100,
+			context: map[string]interface{}{
+				"items": makeItems(99),
+			},
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			condition := condition.NewUncompiled(test.condition).
+				WithInterruptCheckFrequency(test.checkFrequency)
+
+			err := condition.Compile()
+			require.NoError(t, err)
+
+			contextStruct, err := structpb.NewStruct(test.context)
+			require.NoError(t, err)
+
+			evalCtx, cancel := context.WithTimeout(ctx, time.Microsecond)
+			defer cancel()
+
+			result, err := condition.Evaluate(evalCtx, contextStruct.GetFields())
+
+			require.Equal(t, test.result, result)
+			if test.err != nil {
+				require.ErrorContains(t, err, test.err.Error())
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}

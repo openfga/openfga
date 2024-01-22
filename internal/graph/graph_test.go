@@ -8,8 +8,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -252,11 +253,8 @@ type organization
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
-			typesys := typesystem.New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-			})
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys := typesystem.New(model)
 
 			g := New(typesys)
 
@@ -278,7 +276,7 @@ func TestRelationshipEdges(t *testing.T) {
 	tests := []struct {
 		name      string
 		model     string
-		authModel *openfgav1.AuthorizationModel
+		authModel *openfgav1.AuthorizationModel // for models that have "self" or "this" at the end of the relation definition
 		target    *openfgav1.RelationReference
 		source    *openfgav1.RelationReference
 		expected  []*RelationshipEdge
@@ -1482,10 +1480,8 @@ type document
 			if test.model == "" {
 				typesys = typesystem.New(test.authModel)
 			} else {
-				typesys = typesystem.New(&openfgav1.AuthorizationModel{
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
-				})
+				model := testutils.MustTransformDSLToProtoWithID(test.model)
+				typesys = typesystem.New(model)
 			}
 
 			g := New(typesys)
