@@ -19,7 +19,8 @@ import (
 )
 
 func TestPostgresDatastore(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -29,7 +30,8 @@ func TestPostgresDatastore(t *testing.T) {
 }
 
 func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -42,7 +44,8 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
 func TestReadEnsureNoOrder(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -90,7 +93,8 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid.
 func TestReadPageEnsureOrder(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -133,7 +137,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 }
 
 func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -161,7 +166,8 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 // migration 005_add_conditions_to_tuples can be successfully read.
 func TestAllowNullCondition(t *testing.T) {
 	ctx := context.Background()
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -259,7 +265,8 @@ func TestAllowNullCondition(t *testing.T) {
 // needs to change, we'll likely need to introduce a series of data migrations.
 func TestMarshalledAssertions(t *testing.T) {
 	ctx := context.Background()
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
