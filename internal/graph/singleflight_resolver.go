@@ -17,7 +17,7 @@ var (
 	deduplicatedDispatchesCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "deduplicated_dispatches_counter",
-		Help:      "The total number of calls to ResolveCheck that were deduplicated.",
+		Help:      "The total number of calls to ResolveCheck that were deduplicated because of singleflight resolver.",
 	})
 )
 
@@ -57,14 +57,18 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
+	isUnique := false
 	r, err, shared := s.group.Do(key, func() (interface{}, error) {
+		isUnique = true
 		return s.delegate.ResolveCheck(ctx, req)
 	})
 
 	resp := r.(*ResolveCheckResponse)
 
-	if shared {
-		deduplicatedDispatchesCounter.Inc()
+	if shared && !isUnique {
+		deduplicatedDispatchesCounter.Add(float64(resp.ResolutionMetadata.DatastoreQueryCount))
+		resp.ResolutionMetadata.DatastoreQueryCount = 0
+		resp.ResolutionMetadata.Depth = req.ResolutionMetadata.Depth
 	}
 
 	return resp, err

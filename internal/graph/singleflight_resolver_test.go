@@ -25,7 +25,7 @@ func TestSingleflightResolver(t *testing.T) {
 	var tuples = []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
 	}
-	for i := 1; i <= 5; i++ {
+	for i := 1; i <= 10; i++ {
 		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent", fmt.Sprintf("folder:%d", i)))
 		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_parent", fmt.Sprintf("folder:%d", i)))
 		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_other_parent", fmt.Sprintf("folder:%d", i)))
@@ -55,12 +55,10 @@ func TestSingleflightResolver(t *testing.T) {
 
 	checkReq := ResolveCheckRequest{
 		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("folder:5", "viewer", "user:jon"),
+		TupleKey:           tuple.NewTupleKey("folder:10", "viewer", "user:jon"),
 		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 5},
+		ResolutionMetadata: &ResolutionMetadata{Depth: 10},
 	}
-
-	//--------------------------------------
 
 	checkerWithoutSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
@@ -73,14 +71,8 @@ func TestSingleflightResolver(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, respWithoutSingleflight.GetAllowed())
 
-	fmt.Printf("Without singleflight:\n")
-	fmt.Printf("%+v\n", respWithoutSingleflight.GetResolutionMetadata())
-
-	r := reflect.ValueOf(deduplicatedDispatchesCounter)
-	count := reflect.Indirect(r).FieldByName("valInt").Uint()
+	count := reflect.Indirect(reflect.ValueOf(deduplicatedDispatchesCounter)).FieldByName("valInt").Uint()
 	require.Zero(t, count)
-
-	//--------------------------------------
 
 	checkerWithSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
@@ -91,11 +83,11 @@ func TestSingleflightResolver(t *testing.T) {
 	req = checkReq
 	resWithSingleflight, err := checkerWithSingleflight.ResolveCheck(ctx, &req)
 
-	fmt.Printf("With singleflight:\n")
-	fmt.Printf("%+v\n", resWithSingleflight.GetResolutionMetadata())
 	require.NoError(t, err)
 	require.True(t, resWithSingleflight.GetAllowed())
 
-	count = reflect.Indirect(r).FieldByName("valInt").Uint()
-	require.Equal(t, uint64(8), count)
+	count = reflect.Indirect(reflect.ValueOf(deduplicatedDispatchesCounter)).FieldByName("valInt").Uint()
+	require.GreaterOrEqual(t, count, uint64(5))
+
+	require.Less(t, resWithSingleflight.GetResolutionMetadata().DatastoreQueryCount, respWithoutSingleflight.GetResolutionMetadata().DatastoreQueryCount)
 }
