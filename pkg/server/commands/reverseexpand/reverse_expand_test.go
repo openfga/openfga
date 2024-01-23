@@ -9,6 +9,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 
@@ -21,7 +23,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestReverseExpandHasNoGoroutineLeak(t *testing.T) {
+func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
 	store := ulid.Make().String()
@@ -31,65 +33,49 @@ func TestReverseExpandHasNoGoroutineLeak(t *testing.T) {
 type user
 type document
   relations
-	define viewer: [user]`)
+    define viewer: [user]`)
 
-	typeSystem := typesystem.New(model)
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 
-	var tuples []*openfgav1.Tuple
-	for i := 0; i < 100; i++ {
-		obj := fmt.Sprintf("document:%s", strconv.Itoa(i))
-		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
-	}
-
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
-		Times(1).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-			// the first call will succeed but the second will fail
-			return mocks.NewErrorTupleIterator(tuples), nil
+	// if the error can be sent through the channel, this test should pass
+	// if the error is caught by `<-ctx.Done()`, this test should also pass
+	// we do many iterations to try and hit both cases in the select in ReverseExpand
+	for i := 0; i < 50; i++ {
+		t.Logf("iteration %d", i)
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Nanosecond))
+		t.Cleanup(func() {
+			cancel()
 		})
 
-	// we will write one object, read it in the second goroutine here, and the second write (the error) should not block
-	resultChan := make(chan *ReverseExpandResult)
-	doneConsuming := make(chan struct{})
-	doneProducing := make(chan struct{})
-
-	go func() {
-		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
-		t.Logf("before execute reverse expand")
-		reverseExpandQuery.Execute(context.Background(), &ReverseExpandRequest{
-			StoreID:    store,
-			ObjectType: "document",
-			Relation:   "viewer",
-			User: &UserRefObject{
-				Object: &openfgav1.Object{
-					Type: "user",
-					Id:   "maria",
+		resultChan := make(chan *ReverseExpandResult, 1)
+		go func() {
+			reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typesystem.New(model), WithLogger(logger.MustNewLogger("json", "debug")))
+			t.Logf("before produce")
+			reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
+				StoreID:    store,
+				ObjectType: "document",
+				Relation:   "viewer",
+				User: &UserRefObject{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "maria",
+					},
 				},
-			},
-			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata())
-		t.Logf("after execute reverse expand")
-		doneProducing <- struct{}{}
-	}()
-	go func() {
-		// simulate max_results=1
-		t.Logf("before receive one result")
-		<-resultChan
-		t.Logf("after receive one result")
-		doneConsuming <- struct{}{}
-		// we don't cancel the context
-	}()
+				ContextualTuples: []*openfgav1.TupleKey{},
+			}, resultChan, NewResolutionMetadata())
+			t.Logf("after produce")
+		}()
 
-	select {
-	case <-doneProducing:
-		<-doneConsuming
-		return
-	case <-doneConsuming:
-		<-doneProducing
-		return
+		select {
+		case res, channelOpen := <-resultChan:
+			if !channelOpen {
+				require.FailNow(t, "channel closed but we should have received ctx deadline error through channel")
+			} else {
+				require.Error(t, res.Err)
+			}
+		case <-time.After(3 * time.Second):
+			require.FailNow(t, "timed out but we should have received ctx deadline error through channel")
+		}
 	}
 }
 

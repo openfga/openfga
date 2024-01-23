@@ -183,14 +183,13 @@ func NewResolutionMetadata() *ResolutionMetadata {
 }
 
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
-// and sends those objects to the input channel. It MUST guarantee no duplicate objects sent.
-// The input channel can be buffered or not. If it's not buffered, this function will block when it finds either a candidate object or an error.
+// and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
+// If the input channel is unbuffered then you better be consuming from that channel or this will block!
 //
-// If an error is encountered before resolving all objects:
-// - if the error is context cancellation or deadline: Execute may send the error through the channel
-// - otherwise: Execute will send the error through the channel
-// If no errors, Execute will yield all of the objects on the provided channel.
-// In all cases, at the end, the input channel is closed.
+// If there is a non-nil error, the provided channel will NOT be closed and
+// the error will be sent through the channel.
+// If no errors, Execute will yield all of the objects on the provided channel (or none if it didn't find any)
+// and then close the channel.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -200,13 +199,15 @@ func (c *ReverseExpandQuery) Execute(
 	err := c.execute(ctx, req, reverseExpandResultsChan, false, resolutionMetadata)
 	if err != nil {
 		select {
+		case <-ctx.Done():
+			reverseExpandResultsChan <- &ReverseExpandResult{Err: ctx.Err()}
+			return
 		case reverseExpandResultsChan <- &ReverseExpandResult{Err: err}:
-		default:
-			// this case is a safeguard for when the channel is full
+			return
 		}
 	}
 
-	// by this time, all goroutines launched by execute() should have finished, so nobody should be trying to write to the channel
+	// if we get here, we saw no errors and we're done exploring everything
 	// it's safe to close the channel
 	close(reverseExpandResultsChan)
 }
