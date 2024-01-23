@@ -74,6 +74,8 @@ func TestSingleflightResolver(t *testing.T) {
 
 	count := reflect.Indirect(reflect.ValueOf(deduplicatedDispatchesCounter)).FieldByName("valInt").Uint()
 	require.Zero(t, count)
+	count = reflect.Indirect(reflect.ValueOf(deduplicatedDBQueriesCounter)).FieldByName("valInt").Uint()
+	require.Zero(t, count)
 
 	checkerWithSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
@@ -88,7 +90,9 @@ func TestSingleflightResolver(t *testing.T) {
 	require.True(t, resWithSingleflight.GetAllowed())
 
 	count = reflect.Indirect(reflect.ValueOf(deduplicatedDispatchesCounter)).FieldByName("valInt").Uint()
-	require.GreaterOrEqual(t, count, uint64(5))
+	require.GreaterOrEqual(t, count, uint64(15))
+	count = reflect.Indirect(reflect.ValueOf(deduplicatedDBQueriesCounter)).FieldByName("valInt").Uint()
+	require.GreaterOrEqual(t, count, uint64(10))
 
 	require.Less(t, resWithSingleflight.GetResolutionMetadata().DatastoreQueryCount, respWithoutSingleflight.GetResolutionMetadata().DatastoreQueryCount)
 }
