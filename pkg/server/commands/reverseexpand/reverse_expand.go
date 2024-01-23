@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/logger"
@@ -138,6 +137,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
+		logger:                  logger.NewNoopLogger(),
 		datastore:               ds,
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
@@ -200,15 +200,12 @@ func (c *ReverseExpandQuery) Execute(
 	if err != nil {
 		select {
 		case <-ctx.Done():
-			c.logger.Error("ctx err", zap.Error(ctx.Err()))
 			return
 		case resultChan <- &ReverseExpandResult{Err: err}:
-			c.logger.Error("sent err thru channel", zap.Error(err))
 			return
 		}
 	}
 
-	c.logger.Info("closed chan")
 	close(resultChan)
 }
 
