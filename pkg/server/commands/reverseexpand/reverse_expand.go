@@ -10,10 +10,12 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/internal/condition"
@@ -107,6 +109,7 @@ type UserRef struct {
 }
 
 type ReverseExpandQuery struct {
+	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
@@ -172,6 +175,12 @@ func NewResolutionMetadata() *ResolutionMetadata {
 	}
 }
 
+func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.logger = logger
+	}
+}
+
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
 // and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
 //
@@ -190,12 +199,15 @@ func (c *ReverseExpandQuery) Execute(
 	if err != nil {
 		select {
 		case <-ctx.Done():
+			c.logger.Error("ctx err", zap.Error(ctx.Err()))
 			return
 		case resultChan <- &ReverseExpandResult{Err: err}:
+			c.logger.Error("sent err thru channel", zap.Error(err))
 			return
 		}
 	}
 
+	c.logger.Info("closed chan")
 	close(resultChan)
 }
 

@@ -221,6 +221,7 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+			reverseexpand.WithLogger(q.logger),
 		)
 
 		cancelCtx, cancel := context.WithCancel(ctx)
@@ -258,16 +259,19 @@ func (q *ListObjectsQuery) evaluate(
 				}
 
 				resultsChan <- ListObjectsResult{Err: err}
+				q.logger.Info("--break1")
 				break
 			}
 
 			if !(maxResults == 0) && objectsFound.Load() >= maxResults {
+				q.logger.Info("--break2")
 				break
 			}
 
 			if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 				trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+				q.logger.Info("--cont")
 				continue
 			}
 
@@ -309,6 +313,7 @@ func (q *ListObjectsQuery) evaluate(
 			}(res)
 		}
 
+		q.logger.Info("before cancelling")
 		cancel()
 		wg.Wait()
 		close(resultsChan)
@@ -380,6 +385,7 @@ func (q *ListObjectsQuery) Execute(
 				}
 
 				if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+					q.logger.Info("Here??")
 					continue
 				}
 
