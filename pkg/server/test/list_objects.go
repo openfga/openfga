@@ -494,6 +494,7 @@ condition condition1(x: int) {
 			checkOptions := []graph.LocalCheckerOption{
 				graph.WithResolveNodeBreadthLimit(100),
 				graph.WithMaxConcurrentReads(30),
+				graph.WithSingleflightResolver(),
 			}
 
 			if test.useCheckCache {

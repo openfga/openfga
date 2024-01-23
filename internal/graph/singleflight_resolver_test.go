@@ -43,6 +43,7 @@ func TestSingleflightResolver(t *testing.T) {
 	relations
 	  define parent: [folder]
 	  define other_parent: [folder]
+	  define other_other_parent: [folder]
 	  define viewer: [user] or viewer from parent or viewer from other_parent or viewer from other_other_parent`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(

@@ -517,6 +517,75 @@ type repo
 	require.True(t, checkResponse.Allowed)
 }
 
+func TestCheckWithSingleflightResolution(t *testing.T) {
+	ctx := context.Background()
+
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+
+type user
+
+type folder
+	relations
+	  define parent: [folder]
+	  define other_parent: [folder]
+	  define other_other_parent: [folder]
+	  define viewer: [user] or viewer from parent or viewer from other_parent or viewer from other_other_parent`).TypeDefinitions
+
+	s := MustNewServerWithOpts(
+		WithDatastore(memory.New()),
+		WithCheckQueryCacheEnabled(true),
+	)
+
+	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+		Name: "singleflight-test",
+	})
+	require.NoError(t, err)
+
+	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		TypeDefinitions: typedefs,
+		StoreId:         createStoreResp.Id,
+		SchemaVersion:   "1.1",
+	})
+	require.NoError(t, err)
+
+	var tuples = []*openfgav1.TupleKey{
+		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
+	}
+	for i := 1; i <= 10; i++ {
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent", fmt.Sprintf("folder:%d", i)))
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_parent", fmt.Sprintf("folder:%d", i)))
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_other_parent", fmt.Sprintf("folder:%d", i)))
+	}
+	_, err = s.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              createStoreResp.Id,
+		AuthorizationModelId: writeModelResp.AuthorizationModelId,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tuples,
+		},
+	})
+	require.NoError(t, err)
+
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              createStoreResp.Id,
+		TupleKey:             tuple.NewCheckRequestTupleKey("folder:10", "viewer", "user:jon"),
+		AuthorizationModelId: writeModelResp.AuthorizationModelId,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.Allowed)
+
+	// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              createStoreResp.Id,
+		TupleKey:             tuple.NewCheckRequestTupleKey("folder:10", "viewer", "user:jon"),
+		AuthorizationModelId: writeModelResp.AuthorizationModelId,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.Allowed)
+}
+
 func TestWriteAssertionModelDSError(t *testing.T) {
 	ctx := context.Background()
 
