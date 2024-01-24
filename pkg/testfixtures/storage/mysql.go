@@ -47,7 +47,7 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 // RunMySQLTestContainer runs a MySQL container, connects to it, and returns a
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // MySQL datastore engine.
-func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
+func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestContainer, func()) {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
@@ -127,23 +127,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		t.Fatalf("failed to get host port mapping from mysql container")
 	}
 
-	// spin up a goroutine to survive any test panics to expire/stop the running container
-	go func() {
-		time.Sleep(expireTimeout)
-		timeoutSec := 0
-
-		t.Logf("expiring container %s", name)
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
-		if err != nil && !client.IsErrNotFound(err) {
-			t.Logf("failed to expire mysql container: %v", err)
-		}
-		t.Logf("expired container %s", name)
-	}()
-
-	t.Cleanup(func() {
-		stopContainer()
-	})
-
 	mySQLTestContainer := &mySQLTestContainer{
 		addr:     fmt.Sprintf("localhost:%s", p[0].HostPort),
 		username: "root",
@@ -187,7 +170,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	err = db.Close()
 	require.NoError(t, err)
 
-	return mySQLTestContainer
+	return mySQLTestContainer, stopContainer
 }
 
 // GetConnectionURI returns the mysql connection uri for the running mysql test container.

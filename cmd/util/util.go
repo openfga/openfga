@@ -46,8 +46,8 @@ func Index[E comparable](s []E, v E) int {
 	return -1
 }
 
-func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, string, error) {
-	container := storagefixtures.RunDatastoreTestContainer(t, engine)
+func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, func(), string, error) {
+	container, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	uri := container.GetConnectionURI(true)
 
@@ -60,11 +60,14 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
 	default:
-		return nil, nil, "", fmt.Errorf("'%s' is not a supported datastore engine", engine)
+		return nil, nil, func() {}, "", fmt.Errorf("'%s' is not a supported datastore engine", engine)
 	}
 	require.NoError(t, err)
 
-	return container, ds, uri, nil
+	return container, ds, func() {
+		defer ds.Close()
+		stopFunc()
+	}, uri, nil
 }
 
 func PrepareTempConfigDir(t *testing.T) string {

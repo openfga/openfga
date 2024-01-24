@@ -20,7 +20,8 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			container, _, uri, err := util.MustBootstrapDatastore(t, engine)
+			container, _, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
+			defer stopFunc()
 			require.NoError(t, err)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
