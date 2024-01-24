@@ -716,6 +716,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	grpcServer.GracefulStop()
 
+	svr.Close()
+
 	authenticator.Close()
 
 	datastore.Close()
