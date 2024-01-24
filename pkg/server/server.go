@@ -351,6 +351,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithLogger(s.logger),
 		))
 	}
 
@@ -443,6 +444,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithLogger(s.logger),
 		))
 	}
 
