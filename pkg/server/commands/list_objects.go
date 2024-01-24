@@ -218,7 +218,9 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
+		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
+			q.datastore,
+			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
@@ -228,11 +230,13 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg := sync.WaitGroup{}
 
+		errChan := make(chan error, 1)
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
+			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
@@ -240,6 +244,9 @@ func (q *ListObjectsQuery) evaluate(
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 				Context:          req.GetContext(),
 			}, reverseExpandResultsChan, resolutionMetadata)
+			if err != nil {
+				errChan <- err
+			}
 		}()
 
 		checkResolver := graph.NewLocalChecker(
@@ -250,64 +257,69 @@ func (q *ListObjectsQuery) evaluate(
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
-		for res := range reverseExpandResultsChan {
-			if res.Err != nil {
-				err := res.Err
+	ConsumerReadLoop:
+		for {
+			select {
+			case res, channelOpen := <-reverseExpandResultsChan:
+				if !channelOpen {
+					break ConsumerReadLoop
+				}
 
+				if !(maxResults == 0) && objectsFound.Load() >= maxResults {
+					break ConsumerReadLoop
+				}
+
+				if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
+					noFurtherEvalRequiredCounter.Inc()
+					trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+					continue
+				}
+
+				furtherEvalRequiredCounter.Inc()
+
+				wg.Add(1)
+				go func(res *reverseexpand.ReverseExpandResult) {
+					defer func() {
+						<-concurrencyLimiterCh
+						wg.Done()
+					}()
+
+					concurrencyLimiterCh <- struct{}{}
+
+					resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+						StoreID:              req.GetStoreId(),
+						AuthorizationModelID: req.GetAuthorizationModelId(),
+						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
+						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+						Context:              req.GetContext(),
+						ResolutionMetadata: &graph.ResolutionMetadata{
+							Depth: q.resolveNodeLimit,
+						},
+					})
+					if err != nil {
+						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
+							return
+						}
+
+						resultsChan <- ListObjectsResult{Err: err}
+						return
+					}
+					atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
+
+					if resp.Allowed {
+						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+					}
+				}(res)
+
+			case err := <-errChan:
 				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 					err = serverErrors.AuthorizationModelResolutionTooComplex
 				}
 
 				resultsChan <- ListObjectsResult{Err: err}
-				break
+				break ConsumerReadLoop
 			}
-
-			if !(maxResults == 0) && objectsFound.Load() >= maxResults {
-				break
-			}
-
-			if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
-				noFurtherEvalRequiredCounter.Inc()
-				trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
-				continue
-			}
-
-			furtherEvalRequiredCounter.Inc()
-
-			wg.Add(1)
-			go func(res *reverseexpand.ReverseExpandResult) {
-				defer func() {
-					<-concurrencyLimiterCh
-					wg.Done()
-				}()
-
-				concurrencyLimiterCh <- struct{}{}
-
-				resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-					StoreID:              req.GetStoreId(),
-					AuthorizationModelID: req.GetAuthorizationModelId(),
-					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-					ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-					Context:              req.GetContext(),
-					ResolutionMetadata: &graph.ResolutionMetadata{
-						Depth: q.resolveNodeLimit,
-					},
-				})
-				if err != nil {
-					if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
-						resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
-						return
-					}
-
-					resultsChan <- ListObjectsResult{Err: err}
-					return
-				}
-				atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-
-				if resp.Allowed {
-					trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
-				}
-			}(res)
 		}
 
 		cancel()

@@ -16,6 +16,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -127,7 +128,7 @@ func TestServerWithMemoryDatastore(t *testing.T) {
 	ds, stopFunc := MustBootstrapDatastore(t, "memory")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	test.RunAllTests(t, ds)

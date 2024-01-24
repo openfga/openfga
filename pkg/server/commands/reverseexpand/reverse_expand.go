@@ -161,7 +161,6 @@ const (
 )
 
 type ReverseExpandResult struct {
-	Err          error
 	Object       string
 	ResultStatus ConditionalResultStatus
 }
@@ -195,18 +194,14 @@ func (c *ReverseExpandQuery) Execute(
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
-) {
+) error {
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return
-		case resultChan <- &ReverseExpandResult{Err: err}:
-			return
-		}
+		return err
 	}
 
 	close(resultChan)
+	return nil
 }
 
 func (c *ReverseExpandQuery) execute(
