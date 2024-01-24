@@ -68,6 +68,9 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		isUnique = true
 		return s.delegate.ResolveCheck(ctx, req)
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	resp := r.(*ResolveCheckResponse)
 

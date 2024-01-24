@@ -348,7 +348,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	checkOptions := []graph.LocalCheckerOption{
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		graph.WithSingleflightResolver(),
 	}
 	if s.checkCache != nil {
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
