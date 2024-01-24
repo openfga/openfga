@@ -97,7 +97,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	ds, stopFunc := MustBootstrapDatastore(t, "postgres")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	test.RunAllTests(t, ds)
@@ -107,7 +107,7 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	uri := testDatastore.GetConnectionURI(false)
@@ -138,7 +138,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	ds, stopFunc := MustBootstrapDatastore(t, "mysql")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	test.RunAllTests(t, ds)
@@ -148,7 +148,7 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	uri := testDatastore.GetConnectionURI(false)
