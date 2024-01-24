@@ -383,7 +383,6 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 
 		require.NoError(b, err)
 	}
-
 }
 
 func benchmarkCheckWithTrace(b *testing.B, engine string) {
