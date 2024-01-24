@@ -28,7 +28,7 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 // the earlier constructed TypeSystem will be used.
 //
 // The memoized resolver function is designed for concurrent use.
-func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
+func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) (TypesystemResolverFunc, func()) {
 	lookupGroup := singleflight.Group{}
 
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
@@ -88,5 +88,5 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		cache.Set(key, typesys, typesystemCacheTTL)
 
 		return typesys, nil
-	}
+	}, cache.Stop
 }

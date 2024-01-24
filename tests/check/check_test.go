@@ -45,6 +45,9 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
+	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
+	// defer goleak.VerifyNone(t)
+
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
