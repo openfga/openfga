@@ -293,11 +293,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.checkCache = ccache.New(
 			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
 		)
-		s.checkOptions = append(s.checkOptions,
-			graph.WithCachedResolver(
-				graph.WithExistingCache(s.checkCache),
-				graph.WithCacheTTL(s.checkQueryCacheTTL),
-			))
+		s.checkOptions = append(s.checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
 	}
 
 	if s.datastore == nil {
@@ -442,11 +441,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	}
 	if s.checkCache != nil {
-		checkOptions = append(checkOptions, graph.WithSingleflightResolver(),
-			graph.WithCachedResolver(
-				graph.WithExistingCache(s.checkCache),
-				graph.WithCacheTTL(s.checkQueryCacheTTL),
-			))
+		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
 	}
 
 	q := commands.NewListObjectsQuery(s.datastore,
