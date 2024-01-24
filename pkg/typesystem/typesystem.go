@@ -770,7 +770,7 @@ func hasEntrypoints(
 
 		loop := false
 		for _, child := range rw.Union.Child {
-			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
+			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return false, false, err
 			}
@@ -786,7 +786,7 @@ func hasEntrypoints(
 
 		for _, child := range rw.Intersection.Child {
 			// All the children must have an entrypoint.
-			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
+			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return false, false, err
 			}
@@ -799,9 +799,7 @@ func hasEntrypoints(
 		return true, false, nil
 	case *openfgav1.Userset_Difference:
 
-		v := maps.Clone(visitedRelations)
-
-		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), v)
+		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), visitedRelations)
 		if err != nil {
 			return false, false, err
 		}
@@ -810,7 +808,7 @@ func hasEntrypoints(
 			return false, loop, nil
 		}
 
-		hasEntrypoint, loop, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), v)
+		hasEntrypoint, loop, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), visitedRelations)
 		if err != nil {
 			return false, false, err
 		}
