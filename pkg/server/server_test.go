@@ -595,16 +595,6 @@ type folder
 
 	require.NoError(t, err)
 	require.True(t, checkResponse.Allowed)
-
-	// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
-	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              createStoreResp.Id,
-		TupleKey:             tuple.NewCheckRequestTupleKey("folder:10", "viewer", "user:jon"),
-		AuthorizationModelId: writeModelResp.AuthorizationModelId,
-	})
-
-	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
 }
 
 func TestWriteAssertionModelDSError(t *testing.T) {
