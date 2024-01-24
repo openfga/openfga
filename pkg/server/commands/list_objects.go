@@ -221,6 +221,7 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+			reverseexpand.WithLogger(q.logger),
 		)
 
 		cancelCtx, cancel := context.WithCancel(ctx)

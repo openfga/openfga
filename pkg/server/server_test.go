@@ -60,7 +60,8 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, uri, err := util.MustBootstrapDatastore(t, engine)
+			_, ds, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
+			defer stopFunc()
 			require.NoError(t, err)
 
 			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
@@ -92,14 +93,21 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	ds := MustBootstrapDatastore(t, "postgres")
-	defer ds.Close()
+	ds, stopFunc := MustBootstrapDatastore(t, "postgres")
+	defer func() {
+		stopFunc()
+		//goleak.VerifyNone(t)
+	}()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer func() {
+		stopFunc()
+		//goleak.VerifyNone(t)
+	}()
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := postgres.New(
@@ -116,21 +124,31 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := MustBootstrapDatastore(t, "memory")
-	defer ds.Close()
+	ds, stopFunc := MustBootstrapDatastore(t, "memory")
+	defer func() {
+		stopFunc()
+		//goleak.VerifyNone(t)
+	}()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
-	ds := MustBootstrapDatastore(t, "mysql")
-	defer ds.Close()
+	ds, stopFunc := MustBootstrapDatastore(t, "mysql")
+	defer func() {
+		stopFunc()
+		//goleak.VerifyNone(t)
+	}()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	defer func() {
+		stopFunc()
+		//goleak.VerifyNone(t)
+	}()
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := mysql.New(
@@ -148,7 +166,8 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
+		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "postgres")
+		defer stopFunc()
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
@@ -164,7 +183,8 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+		defer stopFunc()
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
@@ -233,7 +253,8 @@ type repo
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := postgres.New(uri, sqlcommon.NewConfig(
@@ -1101,8 +1122,8 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
-func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+func MustBootstrapDatastore(t testing.TB, engine string) (storage.OpenFGADatastore, func()) {
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	uri := testDatastore.GetConnectionURI(true)
 
@@ -1121,5 +1142,8 @@ func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastor
 	}
 	require.NoError(t, err)
 
-	return ds
+	return ds, func() {
+		ds.Close()
+		stopFunc()
+	}
 }

@@ -697,7 +697,8 @@ func TestServerMetricsReporting(t *testing.T) {
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
+	defer stopFunc()
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine

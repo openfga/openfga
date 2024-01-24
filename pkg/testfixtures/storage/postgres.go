@@ -25,10 +25,6 @@ const (
 	postgresImage = "postgres:14"
 )
 
-var (
-	expireTimeout = 10 * time.Minute // benchmarks take a while to run
-)
-
 type postgresTestContainer struct {
 	addr     string
 	version  int64
@@ -49,7 +45,7 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 // RunPostgresTestContainer runs a Postgres container, connects to it, and returns a
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // Postgres datastore engine.
-func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
+func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (DatastoreTestContainer, func()) {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
@@ -129,23 +125,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		t.Fatalf("failed to get host port mapping from postgres container")
 	}
 
-	// spin up a goroutine to survive any test panics to expire/stop the running container
-	go func() {
-		time.Sleep(expireTimeout)
-		timeoutSec := 0
-
-		t.Logf("expiring container %s", name)
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
-		if err != nil && !client.IsErrNotFound(err) {
-			t.Logf("failed to expire postgres container: %v", err)
-		}
-		t.Logf("expired container %s", name)
-	}()
-
-	t.Cleanup(func() {
-		stopContainer()
-	})
-
 	pgTestContainer := &postgresTestContainer{
 		addr:     fmt.Sprintf("localhost:%s", m[0].HostPort),
 		username: "postgres",
@@ -184,7 +163,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	err = db.Close()
 	require.NoError(t, err)
 
-	return pgTestContainer
+	return pgTestContainer, stopContainer
 }
 
 // GetConnectionURI returns the postgres connection uri for the running postgres test container.

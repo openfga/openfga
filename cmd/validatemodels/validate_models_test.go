@@ -25,7 +25,8 @@ func TestValidationResult(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, _, err := util.MustBootstrapDatastore(t, engine)
+			_, ds, stopFunc, _, err := util.MustBootstrapDatastore(t, engine)
+			defer stopFunc()
 			require.NoError(t, err)
 
 			ctx := context.Background()

@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/logger"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -107,6 +109,7 @@ type UserRef struct {
 }
 
 type ReverseExpandQuery struct {
+	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
@@ -134,6 +137,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
+		logger:                  logger.NewNoopLogger(),
 		datastore:               ds,
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
@@ -169,6 +173,12 @@ type ResolutionMetadata struct {
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		QueryCount: new(uint32),
+	}
+}
+
+func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.logger = logger
 	}
 }
 
