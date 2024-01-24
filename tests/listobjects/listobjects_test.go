@@ -30,7 +30,10 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Datastore.Engine = engine
 
 	cancel := tests.StartServer(t, cfg)
-	defer cancel()
+	t.Cleanup(func() {
+		cancel()
+		//goleak.VerifyNone(t)
+	})
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithBlock(),

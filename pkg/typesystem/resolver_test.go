@@ -54,9 +54,10 @@ type document
 			}, nil),
 	)
 
-	resolver := MemoizedTypesystemResolverFunc(
+	resolver, resolverStop := MemoizedTypesystemResolverFunc(
 		mockDatastore,
 	)
+	defer resolverStop()
 
 	typesys, err := resolver(context.Background(), storeID, modelID1)
 	require.NoError(t, err)
@@ -104,9 +105,10 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 			}, nil).MinTimes(1).MaxTimes(numGoroutines),
 	)
 
-	resolver := MemoizedTypesystemResolverFunc(
+	resolver, resolverStop := MemoizedTypesystemResolverFunc(
 		mockDatastore,
 	)
+	defer resolverStop()
 
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)

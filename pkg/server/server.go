@@ -99,7 +99,8 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
-	typesystemResolver typesystem.TypesystemResolverFunc
+	typesystemResolver     typesystem.TypesystemResolverFunc
+	typesystemResolverStop func()
 
 	checkOptions           []graph.LocalCheckerOption
 	checkQueryCacheEnabled bool
@@ -306,9 +307,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
 
-	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
 	return s, nil
+}
+
+func (s *Server) Close() {
+	if s.checkCache != nil {
+		s.checkCache.Stop()
+	}
+	s.datastore.Close()
+	s.typesystemResolverStop()
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {

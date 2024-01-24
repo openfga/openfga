@@ -50,7 +50,6 @@ func TestCheckLogs(t *testing.T) {
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
 	_, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
 	require.NoError(t, err)
 
 	cfg := run.MustDefaultConfigWithRandomPorts()
@@ -68,7 +67,6 @@ func TestCheckLogs(t *testing.T) {
 	// We're starting a full fledged server because the logs we
 	// want to observe are emitted on the interceptors/middleware layer.
 	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
-	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithBlock(),
@@ -76,7 +74,13 @@ func TestCheckLogs(t *testing.T) {
 		grpc.WithUserAgent("test-user-agent"),
 	)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		cancel()
+		serverStopFunc()
+		// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
+		//goleak.VerifyNone(t)
+	}()
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
