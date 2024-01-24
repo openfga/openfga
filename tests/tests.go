@@ -33,7 +33,7 @@ func StartServer(t testing.TB, cfg *serverconfig.Config) context.CancelFunc {
 }
 
 // StartServerWithContext starts a server with a specific ServerContext, waits until it is healthy, and returns a cancel function
-// that callers must call when they want to stop the server.
+// that callers must call when they want to stop the server and the backing datastore.
 func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) context.CancelFunc {
 	container, stopFunc := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
