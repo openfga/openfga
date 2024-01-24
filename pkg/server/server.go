@@ -113,6 +113,8 @@ type Server struct {
 
 type OpenFGAServiceV1Option func(s *Server)
 
+// WithDatastore passes a datastore to the Server.
+// You must call [storage.OpenFGADatastore.Close] on it after you have stopped using it.
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
@@ -244,6 +246,7 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
+// MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -253,6 +256,8 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	return s
 }
 
+// NewServerWithOpts returns a new server.
+// You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
 		logger:                           logger.NewNoopLogger(),
@@ -312,11 +317,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	return s, nil
 }
 
+// Close releases the server resources.
 func (s *Server) Close() {
 	if s.checkCache != nil {
 		s.checkCache.Stop()
 	}
-	s.datastore.Close()
 	s.typesystemResolverStop()
 }
 

@@ -720,6 +720,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	authenticator.Close()
 
+	datastore.Close()
+
 	if tracerProviderCloser != nil {
 		tracerProviderCloser()
 	}
