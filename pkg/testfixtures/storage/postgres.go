@@ -137,6 +137,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 
 	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
+	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
@@ -159,9 +160,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 	version, err := goose.GetDBVersion(db)
 	require.NoError(t, err)
 	pgTestContainer.version = version
-
-	err = db.Close()
-	require.NoError(t, err)
 
 	return pgTestContainer, stopContainer
 }

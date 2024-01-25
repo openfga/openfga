@@ -161,7 +161,6 @@ const (
 )
 
 type ReverseExpandResult struct {
-	Err          error
 	Object       string
 	ResultStatus ConditionalResultStatus
 }
@@ -182,31 +181,31 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 	}
 }
 
-// Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
-// and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
+// Execute yields all the objects of the provided objectType that the
+// given user possibly has, a specific relation with and sends those
+// objects to resultChan. It MUST guarantee no duplicate objects sent.
 //
-// If an error is encountered before resolving all objects: the provided channel will NOT be closed and
-// - if the error is context cancellation or deadline: Execute may send the error through the channel
-// - otherwise: Execute will send the error through the channel
-// If no errors, Execute will yield all of the objects on the provided channel and then close the channel
-// to signal that it is done.
+// This function respects context timeouts and cancellations. If an
+// error is encountered (e.g. context timeout) before resolving all
+// objects, then the provided channel will NOT be closed, and it will
+// send the error through the channel.
+//
+// If no errors occur, then Execute will yield all of the objects on
+// the provided channel and then close the channel to signal that it
+// is done.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
-) {
+) error {
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return
-		case resultChan <- &ReverseExpandResult{Err: err}:
-			return
-		}
+		return err
 	}
 
 	close(resultChan)
+	return nil
 }
 
 func (c *ReverseExpandQuery) execute(

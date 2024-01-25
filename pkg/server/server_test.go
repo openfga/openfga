@@ -16,6 +16,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -96,7 +97,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	ds, stopFunc := MustBootstrapDatastore(t, "postgres")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	test.RunAllTests(t, ds)
@@ -106,7 +107,7 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	uri := testDatastore.GetConnectionURI(false)
@@ -127,7 +128,7 @@ func TestServerWithMemoryDatastore(t *testing.T) {
 	ds, stopFunc := MustBootstrapDatastore(t, "memory")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	test.RunAllTests(t, ds)
@@ -137,7 +138,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	ds, stopFunc := MustBootstrapDatastore(t, "mysql")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	test.RunAllTests(t, ds)
@@ -147,7 +148,7 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 	defer func() {
 		stopFunc()
-		//goleak.VerifyNone(t)
+		goleak.VerifyNone(t)
 	}()
 
 	uri := testDatastore.GetConnectionURI(false)
