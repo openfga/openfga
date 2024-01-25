@@ -520,11 +520,22 @@ condition condition1(x: int) {
 				done := make(chan struct{})
 				var streamedObjectIds []string
 				go func() {
-					for x := range server.channel {
-						streamedObjectIds = append(streamedObjectIds, x)
-					}
+					for {
+						select {
+						case objectId, open := <-server.channel:
+							if !open {
+								done <- struct{}{}
+								return
+							}
 
-					done <- struct{}{}
+							streamedObjectIds = append(streamedObjectIds, objectId)
+
+						// for tests whose deadline is sooner than the latency of the storage layer
+						case <-time.After(test.readTuplesDelay + 1*time.Second):
+							done <- struct{}{}
+							return
+						}
+					}
 				}()
 
 				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
