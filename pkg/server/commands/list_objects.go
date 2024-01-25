@@ -260,6 +260,8 @@ func (q *ListObjectsQuery) evaluate(
 	ConsumerReadLoop:
 		for {
 			select {
+			case <-ctx.Done():
+				break ConsumerReadLoop
 			case res, channelOpen := <-reverseExpandResultsChan:
 				if !channelOpen {
 					break ConsumerReadLoop
@@ -372,15 +374,6 @@ func (q *ListObjectsQuery) Execute(
 	var errs *multierror.Error
 	for {
 		select {
-		case <-timeoutCtx.Done():
-			q.logger.WarnWithContext(
-				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
-			)
-			return &ListObjectsResponse{
-				Objects:            objects,
-				ResolutionMetadata: *resolutionMetadata,
-			}, nil
-
 		case result, channelOpen := <-resultsChan:
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
@@ -438,12 +431,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	for {
 		select {
-		case <-timeoutCtx.Done():
-			q.logger.WarnWithContext(
-				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
-			)
-			return resolutionMetadata, nil
-
 		case result, channelOpen := <-resultsChan:
 			if !channelOpen {
 				// Channel closed! No more results.
