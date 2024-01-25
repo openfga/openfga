@@ -66,20 +66,39 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	isUnique := false
 	r, err, shared := s.group.Do(key, func() (interface{}, error) {
 		isUnique = true
-		return s.delegate.ResolveCheck(ctx, req)
+		resp, err := s.delegate.ResolveCheck(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+
+		return copyResolveResponse(*resp), nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	resp := r.(*ResolveCheckResponse)
+	resp := r.(ResolveCheckResponse)
+	// Important to create a deferenced copy of the group.Do's response because it is actually a pointer (?)
+	copyResp := copyResolveResponse(resp)
 
 	if shared && !isUnique {
 		deduplicatedDispatchesCounter.Inc()
-		deduplicatedDBQueriesCounter.Add(float64(resp.ResolutionMetadata.DatastoreQueryCount))
-		resp.ResolutionMetadata.DatastoreQueryCount = 0
-		resp.ResolutionMetadata.Depth = req.ResolutionMetadata.Depth
+		deduplicatedDBQueriesCounter.Add(float64(copyResp.GetResolutionMetadata().DatastoreQueryCount))
+		copyResp.ResolutionMetadata.DatastoreQueryCount = req.GetResolutionMetadata().DatastoreQueryCount
+		copyResp.ResolutionMetadata.Depth = req.GetResolutionMetadata().Depth
 	}
 
-	return resp, err
+	return &copyResp, err
+}
+
+func copyResolveResponse(original ResolveCheckResponse) ResolveCheckResponse {
+	copy := ResolveCheckResponse{
+		Allowed: original.GetAllowed(),
+		ResolutionMetadata: &ResolutionMetadata{
+			Depth:               original.GetResolutionMetadata().Depth,
+			DatastoreQueryCount: original.GetResolutionMetadata().DatastoreQueryCount,
+		},
+	}
+
+	return copy
 }
