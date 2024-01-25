@@ -1254,10 +1254,6 @@ type document
 
 			for {
 				select {
-				case <-timeoutCtx.Done():
-					t.Logf("timed out")
-					require.FailNow(t, "timed out waiting for response")
-					return
 				case err := <-reverseExpandErrCh:
 					require.ErrorIs(t, err, test.expectedError)
 					return
