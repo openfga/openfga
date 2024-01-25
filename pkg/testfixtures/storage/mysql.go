@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -100,13 +99,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")
 
-	var db *sql.DB
-
 	stopContainer := func() {
-		if db != nil {
-			db.Close()
-		}
-
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -146,7 +139,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 
 	goose.SetLogger(goose.NopLogger())
 
-	db, err = goose.OpenDBWithDriver("mysql", uri)
+	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
 	defer db.Close()
 
