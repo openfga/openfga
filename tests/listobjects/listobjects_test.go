@@ -5,6 +5,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -25,8 +26,7 @@ func TestListObjectsMySQL(t *testing.T) {
 }
 
 func testRunAll(t *testing.T, engine string) {
-	// uncomment in https://github.com/openfga/openfga/pull/1315
-	// defer goleak.VerifyNone(t)
+	defer goleak.VerifyNone(t)
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
