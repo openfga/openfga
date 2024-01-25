@@ -522,13 +522,13 @@ condition condition1(x: int) {
 				go func() {
 					for {
 						select {
-						case objectId, open := <-server.channel:
+						case objectID, open := <-server.channel:
 							if !open {
 								done <- struct{}{}
 								return
 							}
 
-							streamedObjectIds = append(streamedObjectIds, objectId)
+							streamedObjectIds = append(streamedObjectIds, objectID)
 
 						// for tests whose deadline is sooner than the latency of the storage layer
 						case <-time.After(test.readTuplesDelay + 1*time.Second):

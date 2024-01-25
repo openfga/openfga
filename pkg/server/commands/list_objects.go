@@ -372,39 +372,36 @@ func (q *ListObjectsQuery) Execute(
 	objects := make([]string, 0)
 
 	var errs *multierror.Error
-	for {
-		select {
-		case result, channelOpen := <-resultsChan:
-			if result.Err != nil {
-				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return nil, result.Err
-				}
 
-				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-					errs = multierror.Append(errs, result.Err)
-					continue
-				}
-
-				if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
-					continue
-				}
-
-				return nil, serverErrors.HandleError("", result.Err)
+	for result := range resultsChan {
+		if result.Err != nil {
+			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
+				return nil, result.Err
 			}
 
-			if !channelOpen {
-				if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
-					return nil, errs
-				}
-
-				return &ListObjectsResponse{
-					Objects:            objects,
-					ResolutionMetadata: *resolutionMetadata,
-				}, nil
+			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
+				errs = multierror.Append(errs, result.Err)
+				continue
 			}
-			objects = append(objects, result.ObjectID)
+
+			if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+				continue
+			}
+
+			return nil, serverErrors.HandleError("", result.Err)
 		}
+
+		objects = append(objects, result.ObjectID)
 	}
+
+	if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
+		return nil, errs
+	}
+
+	return &ListObjectsResponse{
+		Objects:            objects,
+		ResolutionMetadata: *resolutionMetadata,
+	}, nil
 }
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
@@ -429,31 +426,25 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		return nil, err
 	}
 
-	for {
-		select {
-		case result, channelOpen := <-resultsChan:
-			if !channelOpen {
-				// Channel closed! No more results.
-				return resolutionMetadata, nil
+	for result := range resultsChan {
+		if result.Err != nil {
+			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
+				return nil, result.Err
 			}
 
-			if result.Err != nil {
-				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return nil, result.Err
-				}
-
-				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-					return nil, serverErrors.ValidationError(result.Err)
-				}
-
-				return nil, serverErrors.HandleError("", result.Err)
+			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
+				return nil, serverErrors.ValidationError(result.Err)
 			}
 
-			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
-				Object: result.ObjectID,
-			}); err != nil {
-				return nil, serverErrors.NewInternalError("", err)
-			}
+			return nil, serverErrors.HandleError("", result.Err)
+		}
+
+		if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
+			Object: result.ObjectID,
+		}); err != nil {
+			return nil, serverErrors.NewInternalError("", err)
 		}
 	}
+
+	return resolutionMetadata, nil
 }
