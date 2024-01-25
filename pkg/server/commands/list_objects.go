@@ -148,6 +148,14 @@ type listObjectsRequest interface {
 	GetContext() *structpb.Struct
 }
 
+// evaluate fires of evaluation of the ListObjects query by delegating to
+// [[reverseexpand.ReverseExpand#Execute]] and resolving the results yielded
+// from it. If any results yielded by reverse expansion require further eval,
+// then these results get dispatched to Check to resolve the residual outcome.
+//
+// The resultsChan is **always** closed by evaluate when it is done with its work,
+// which is either when all results have been yielded, the deadline has been met,
+// or some other terminal error case has occurred.
 func (q *ListObjectsQuery) evaluate(
 	ctx context.Context,
 	req listObjectsRequest,
