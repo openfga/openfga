@@ -64,7 +64,7 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	}
 
 	isUnique := false
-	r, err, shared := s.group.Do(key, func() (interface{}, error) {
+	singleFlightResp, err, shared := s.group.Do(key, func() (interface{}, error) {
 		isUnique = true
 		resp, err := s.delegate.ResolveCheck(ctx, req)
 		if err != nil {
@@ -77,18 +77,17 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	resp := r.(ResolveCheckResponse)
+	r := singleFlightResp.(ResolveCheckResponse)
 	// Important to create a deferenced copy of the group.Do's response because it is actually a pointer (?)
-	copyResp := copyResolveResponse(resp)
+	resp := copyResolveResponse(r)
 
 	if shared && !isUnique {
 		deduplicatedDispatchesCounter.Inc()
-		deduplicatedDBQueriesCounter.Add(float64(copyResp.GetResolutionMetadata().DatastoreQueryCount))
-		copyResp.ResolutionMetadata.DatastoreQueryCount = req.GetResolutionMetadata().DatastoreQueryCount
-		copyResp.ResolutionMetadata.Depth = req.GetResolutionMetadata().Depth
+		deduplicatedDBQueriesCounter.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
+		resp.ResolutionMetadata.DatastoreQueryCount = 0
 	}
 
-	return &copyResp, err
+	return &resp, err
 }
 
 func copyResolveResponse(original ResolveCheckResponse) ResolveCheckResponse {

@@ -92,3 +92,49 @@ func TestSingleflightResolver(t *testing.T) {
 	require.True(t, resWithSingleflight.GetAllowed())
 	require.Less(t, resWithSingleflight.GetResolutionMetadata().DatastoreQueryCount, respWithoutSingleflight.GetResolutionMetadata().DatastoreQueryCount)
 }
+
+func TestSingleflightResolverWithCycle(t *testing.T) {
+	ds := memory.New()
+	defer ds.Close()
+
+	storeID := ulid.Make().String()
+
+	var tuples = []*openfgav1.TupleKey{
+		{User: "document:1#viewer", Relation: "viewer", Object: "document:1"},
+	}
+
+	err := ds.Write(context.Background(), storeID, nil, tuples)
+	require.NoError(t, err)
+
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+  
+  type user
+  
+  type document
+	relations
+	  define viewer: [user, document#viewer]`).TypeDefinitions
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+		&openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			TypeDefinitions: typedefs,
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+		},
+	))
+
+	checkerWithoutSingleflight := NewLocalChecker(
+		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+		WithSingleflightResolver(),
+	)
+	defer checkerWithoutSingleflight.Close()
+
+	_, err = checkerWithoutSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		ContextualTuples:   nil,
+		ResolutionMetadata: &ResolutionMetadata{Depth: 10},
+	})
+
+	require.ErrorIs(t, err, ErrCycleDetected)
+}
