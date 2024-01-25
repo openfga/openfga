@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"strings"
@@ -98,7 +99,13 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
 
+	var db *sql.DB
+
 	stopContainer := func() {
+		if db != nil {
+			db.Close()
+		}
+
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -135,8 +142,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 
 	goose.SetLogger(goose.NopLogger())
 
-	db, err := goose.OpenDBWithDriver("pgx", uri)
+	db, err = goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
+	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
@@ -159,9 +167,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 	version, err := goose.GetDBVersion(db)
 	require.NoError(t, err)
 	pgTestContainer.version = version
-
-	err = db.Close()
-	require.NoError(t, err)
 
 	return pgTestContainer, stopContainer
 }

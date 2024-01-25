@@ -100,7 +100,13 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")
 
+	var db *sql.DB
+
 	stopContainer := func() {
+		if db != nil {
+			db.Close()
+		}
+
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -140,16 +146,14 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 
 	goose.SetLogger(goose.NopLogger())
 
-	var db *sql.DB
+	db, err = goose.OpenDBWithDriver("mysql", uri)
+	require.NoError(t, err)
+	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 2 * time.Minute
 	err = backoff.Retry(
 		func() error {
-			db, err = goose.OpenDBWithDriver("mysql", uri)
-			if err != nil {
-				return err
-			}
 			return db.Ping()
 		},
 		backoffPolicy,
@@ -166,9 +170,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 	version, err := goose.GetDBVersion(db)
 	require.NoError(t, err)
 	mySQLTestContainer.version = version
-
-	err = db.Close()
-	require.NoError(t, err)
 
 	return mySQLTestContainer, stopContainer
 }
