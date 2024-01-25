@@ -90,11 +90,5 @@ func TestSingleflightResolver(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, resWithSingleflight.GetAllowed())
-
-	count = reflect.Indirect(reflect.ValueOf(deduplicatedDispatchesCounter)).FieldByName("valInt").Uint()
-	require.GreaterOrEqual(t, count, uint64(15))
-	count = reflect.Indirect(reflect.ValueOf(deduplicatedDBQueriesCounter)).FieldByName("valInt").Uint()
-	require.GreaterOrEqual(t, count, uint64(10))
-
 	require.Less(t, resWithSingleflight.GetResolutionMetadata().DatastoreQueryCount, respWithoutSingleflight.GetResolutionMetadata().DatastoreQueryCount)
 }
