@@ -100,7 +100,7 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	var tuples = []*openfgav1.TupleKey{
-		{User: "document:1#viewer", Relation: "viewer", Object: "document:1"},
+		{User: "document:1#viewer3", Relation: "viewer3", Object: "document:1"},
 	}
 
 	err := ds.Write(context.Background(), storeID, nil, tuples)
@@ -113,7 +113,9 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
   
   type document
 	relations
-	  define viewer: [user, document#viewer]`).TypeDefinitions
+		define viewer1: [user, document#viewer1]
+		define viewer2: viewer1 or viewer2
+	  	define viewer3: viewer1 or viewer2`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
@@ -131,7 +133,7 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 
 	_, err = checkerWithoutSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 10},
 	})
