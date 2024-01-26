@@ -33,20 +33,10 @@ type singleflightCheckResolver struct {
 	logger   logger.Logger
 }
 
-// SingleflightCheckResolverOpt defines an option that can be used to change the behavior of singleflightCheckResolver
-// instance.
-type SingleflightCheckResolverOpt func(*singleflightCheckResolver)
-
-func NewSingleflightCheckResolver(delegate CheckResolver, opts ...SingleflightCheckResolverOpt) *singleflightCheckResolver {
-	s := &singleflightCheckResolver{
+func NewSingleflightCheckResolver(delegate CheckResolver) *singleflightCheckResolver {
+	return &singleflightCheckResolver{
 		delegate: delegate,
 	}
-
-	for _, opt := range opts {
-		opt(s)
-	}
-
-	return s
 }
 
 // Close implements CheckResolver.

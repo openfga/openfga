@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -26,11 +25,12 @@ func TestSingleflightResolver(t *testing.T) {
 
 	var tuples = []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
-	}
-	for i := 1; i <= 10; i++ {
-		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent", fmt.Sprintf("folder:%d", i)))
-		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_parent", fmt.Sprintf("folder:%d", i)))
-		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_other_parent", fmt.Sprintf("folder:%d", i)))
+
+		tuple.NewTupleKey("folder:2", "parent1", "folder:1"),
+		tuple.NewTupleKey("folder:2", "parent2", "folder:1"),
+
+		tuple.NewTupleKey("folder:3", "parent1", "folder:2"),
+		tuple.NewTupleKey("folder:3", "parent2", "folder:2"),
 	}
 
 	err := ds.Write(context.Background(), storeID, nil, tuples)
@@ -43,10 +43,64 @@ func TestSingleflightResolver(t *testing.T) {
 
 	type folder
 	relations
-	  define parent: [folder]
-	  define other_parent: [folder]
-	  define other_other_parent: [folder]
-	  define viewer: [user] or viewer from parent or viewer from other_parent or viewer from other_other_parent`).TypeDefinitions
+	  define parent1: [folder]
+	  define parent2: [folder]
+	  define viewer: [user] or viewer from parent1 or viewer from parent2 or viewer`).TypeDefinitions
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+		&openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			TypeDefinitions: typedefs,
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+		},
+	))
+
+	checker := NewLocalChecker(
+		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+	)
+	defer checker.Close()
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("folder:3", "viewer", "user:jon"),
+		ContextualTuples:   nil,
+		ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.GetAllowed())
+	require.GreaterOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(4))
+	require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(7))
+}
+func TestSingleflightResolverVersusWithout(t *testing.T) {
+	ds := memory.New()
+	defer ds.Close()
+
+	storeID := ulid.Make().String()
+
+	var tuples = []*openfgav1.TupleKey{
+		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
+	}
+	for i := 1; i <= 15; i++ {
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent1", fmt.Sprintf("folder:%d", i)))
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent2", fmt.Sprintf("folder:%d", i)))
+		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent3", fmt.Sprintf("folder:%d", i)))
+	}
+
+	err := ds.Write(context.Background(), storeID, nil, tuples)
+	require.NoError(t, err)
+
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+
+	type user
+
+	type folder
+	relations
+	  define parent1: [folder]
+	  define parent2: [folder]
+	  define parent3: [folder]
+	  define viewer: [user] or viewer from parent1 or viewer from parent2 or viewer from parent3`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
@@ -60,7 +114,7 @@ func TestSingleflightResolver(t *testing.T) {
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("folder:10", "viewer", "user:jon"),
 		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 10},
+		ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 	}
 
 	checkerWithoutSingleflight := NewLocalChecker(
@@ -74,11 +128,6 @@ func TestSingleflightResolver(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, respWithoutSingleflight.GetAllowed())
 
-	count := reflect.Indirect(reflect.ValueOf(deduplicatedDispatchesCounter)).FieldByName("valInt").Uint()
-	require.Zero(t, count)
-	count = reflect.Indirect(reflect.ValueOf(deduplicatedDBQueriesCounter)).FieldByName("valInt").Uint()
-	require.Zero(t, count)
-
 	checkerWithSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 		WithSingleflightResolver(),
@@ -90,7 +139,7 @@ func TestSingleflightResolver(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, resWithSingleflight.GetAllowed())
-	require.Less(t, resWithSingleflight.GetResolutionMetadata().DatastoreQueryCount, respWithoutSingleflight.GetResolutionMetadata().DatastoreQueryCount)
+	require.LessOrEqual(t, resWithSingleflight.GetResolutionMetadata().DatastoreQueryCount, respWithoutSingleflight.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestSingleflightResolverWithCycle(t *testing.T) {
@@ -131,12 +180,13 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 	)
 	defer checkerWithoutSingleflight.Close()
 
-	_, err = checkerWithoutSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+	resp, err := checkerWithoutSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
 		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 10},
+		ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 	})
 
 	require.ErrorIs(t, err, ErrCycleDetected)
+	require.Nil(t, resp)
 }

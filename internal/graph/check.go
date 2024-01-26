@@ -152,9 +152,9 @@ func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 	}
 }
 
-func WithSingleflightResolver(opts ...SingleflightCheckResolverOpt) LocalCheckerOption {
+func WithSingleflightResolver() LocalCheckerOption {
 	return func(d *LocalChecker) {
-		singleflightResolver := NewSingleflightCheckResolver(d, opts...)
+		singleflightResolver := NewSingleflightCheckResolver(d)
 		d.delegate = singleflightResolver
 	}
 }
