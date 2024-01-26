@@ -76,8 +76,8 @@ func ExampleNewServerWithOpts() {
 	type user
 	
 	type document
-	  relations
-		define reader: [user]`)
+		relations
+			define reader: [user]`)
 
 	// write the model to the store
 	authorizationModel, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
