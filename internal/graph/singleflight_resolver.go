@@ -70,7 +70,6 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		if err != nil {
 			return nil, err
 		}
-
 		return copyResolveResponse(*resp), nil
 	})
 	if err != nil {
@@ -78,7 +77,9 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	}
 
 	r := singleFlightResp.(ResolveCheckResponse)
-	// Important to create a deferenced copy of the group.Do's response because it is actually a pointer (?)
+	// Important to create a deferenced copy of the group.Do's response because because otherwise
+	// it establishes a shared memory reference between the goroutines that were involved in the
+	//de-duplication, and thus is subject to race conditions.
 	resp := copyResolveResponse(r)
 
 	if shared && !isUnique {
