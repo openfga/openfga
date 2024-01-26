@@ -435,7 +435,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 }
 
 // Close is a noop
-func (c *LocalChecker) Close() {}
+func (c *LocalChecker) Close() {
+}
 
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
