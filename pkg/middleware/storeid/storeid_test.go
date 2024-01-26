@@ -51,7 +51,7 @@ func (s *mockServerStream) Context() context.Context {
 	return s.ctx
 }
 
-func (s *mockServerStream) RecvMsg(m interface{}) error {
+func (s *mockServerStream) RecvMsg(interface{}) error {
 	return nil
 }
 

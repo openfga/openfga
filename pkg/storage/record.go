@@ -10,6 +10,8 @@ import (
 	tupleutils "github.com/openfga/openfga/pkg/tuple"
 )
 
+// TupleRecord represents a record structure used
+// to store information about a specific tuple.
 type TupleRecord struct {
 	Store            string
 	ObjectType       string
@@ -22,6 +24,7 @@ type TupleRecord struct {
 	InsertedAt       time.Time
 }
 
+// AsTuple converts a [TupleRecord] into a [*openfgav1.Tuple].
 func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
 	return &openfgav1.Tuple{
 		Key: tupleutils.NewTupleKeyWithCondition(

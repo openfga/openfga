@@ -36,10 +36,8 @@ func (x *mockStreamServer) Send(m *openfgav1.StreamedListObjectsResponse) error 
 
 type listObjectsTestCase struct {
 	name                   string
-	schema                 string
 	tuples                 []*openfgav1.TupleKey
 	model                  string
-	authorizationModel     *openfgav1.AuthorizationModel
 	objectType             string
 	user                   string
 	relation               string
@@ -56,8 +54,7 @@ type listObjectsTestCase struct {
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 	testCases := []listObjectsTestCase{
 		{
-			name:   "max_results_equal_0_with_simple_model",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_equal_0_with_simple_model",
 			model: `model
 	schema 1.1
 type user
@@ -80,8 +77,7 @@ type repo
 			useCheckCache:          false,
 		},
 		{
-			name:   "max_results_equal_2_with_simple_model",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_equal_2_with_simple_model",
 			model: `model
 	schema 1.1
 type user
@@ -104,8 +100,7 @@ type repo
 			useCheckCache:          false,
 		},
 		{
-			name:   "max_results_with_model_that_uses_exclusion",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_with_model_that_uses_exclusion",
 			model: `model
 	schema 1.1
 type user
@@ -129,8 +124,7 @@ type org
 			useCheckCache:          false,
 		},
 		{
-			name:   "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
-			schema: typesystem.SchemaVersion1_1,
+			name: "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
 			model: `model
 	schema 1.1
 type user
@@ -154,8 +148,7 @@ type org
 			useCheckCache:          false,
 		},
 		{
-			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
-			schema: typesystem.SchemaVersion1_1,
+			name: "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
 			model: `model
 	schema 1.1
 type user
@@ -175,8 +168,7 @@ type team
 			useCheckCache:          false,
 		},
 		{
-			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
-			schema: typesystem.SchemaVersion1_1,
+			name: "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
 			model: `model
 	schema 1.1
 type user
@@ -199,8 +191,7 @@ type repo
 			useCheckCache:       false,
 		},
 		{
-			name:   "list_object_use_check_cache",
-			schema: typesystem.SchemaVersion1_1,
+			name: "list_object_use_check_cache",
 			model: `model
 	schema 1.1
 type user
@@ -225,40 +216,16 @@ type repo
 		},
 		{
 			name: "condition_with_tuples",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string) {
+  param1 == 'ok'
+}`,
 			tuples: []*openfgav1.TupleKey{
 				{
 					User:     "user:anne",
@@ -290,40 +257,16 @@ type repo
 		},
 		{
 			name: "condition_with_contextual_tuples",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string) {
+  param1 == 'ok'
+}`,
 			tuples:     nil,
 			user:       "user:anne",
 			objectType: "document",
@@ -357,40 +300,16 @@ type repo
 		},
 		{
 			name: "condition_with_tuples_and_contextual_tuples",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string) {
+  param1 == 'ok'
+}`,
 			tuples: []*openfgav1.TupleKey{
 				{
 					User:     "user:anne",
@@ -443,43 +362,16 @@ type repo
 		},
 		{
 			name: "condition_with_tuples_and_contextual_tuples_and_context",
-			authorizationModel: &openfgav1.AuthorizationModel{
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("user", ""), "condition1"),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok' && param2 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-							"param2": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
+			model: `model
+  schema 1.1
+type user
+type document
+  relations
+    define viewer: [user with condition1]
+
+condition condition1(param1: string, param2: string) {
+  param1 == 'ok' && param2 == 'ok'
+}`,
 			tuples: []*openfgav1.TupleKey{
 				{
 					User:     "user:anne",
@@ -533,7 +425,7 @@ type repo
 		},
 		{
 			name: "condition_in_ttu_relationships",
-			authorizationModel: parser.MustTransformDSLToProto(`model
+			model: `model
   schema 1.1
 
 type user
@@ -549,7 +441,7 @@ type document
 
 condition condition1(x: int) {
   x < 100
-}`),
+}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "condition1", nil),
 				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
@@ -572,19 +464,7 @@ condition condition1(x: int) {
 			storeID := ulid.Make().String()
 
 			// arrange: write model
-			model := test.authorizationModel
-
-			if model == nil {
-				model = &openfgav1.AuthorizationModel{
-					Id:              ulid.Make().String(),
-					SchemaVersion:   test.schema,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
-				}
-			}
-
-			if model.Id == "" {
-				model.Id = ulid.Make().String()
-			}
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
@@ -640,11 +520,22 @@ condition condition1(x: int) {
 				done := make(chan struct{})
 				var streamedObjectIds []string
 				go func() {
-					for x := range server.channel {
-						streamedObjectIds = append(streamedObjectIds, x)
-					}
+					for {
+						select {
+						case objectID, open := <-server.channel:
+							if !open {
+								done <- struct{}{}
+								return
+							}
 
-					done <- struct{}{}
+							streamedObjectIds = append(streamedObjectIds, objectID)
+
+						// for tests whose deadline is sooner than the latency of the storage layer
+						case <-time.After(test.readTuplesDelay + 1*time.Second):
+							done <- struct{}{}
+							return
+						}
+					}
 				}()
 
 				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{

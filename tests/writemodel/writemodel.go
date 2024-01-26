@@ -375,10 +375,12 @@ func runTests(t *testing.T, client ClientInterface) {
 			require.NoError(t, err)
 
 			storeID := resp.GetId()
+			model := parser.MustTransformDSLToProto(test.model)
 			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
+				TypeDefinitions: model.TypeDefinitions,
+				Conditions:      model.Conditions,
 			})
 
 			if test.code == 0 {
