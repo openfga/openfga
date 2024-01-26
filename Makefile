@@ -81,8 +81,16 @@ test: go-generate ## Run all tests
 build-docker-test-image: ## Build Docker image needed to run Docker tests
 	docker build -t="openfga/openfga:dockertest" .
 
-.PHONY: test-docker
-test-docker: ## Run Docker tests (needs build-docker-test-image)
+.PHONY: test-docker-ci
+test-docker-ci:
+	go test -race \
+			-count=1 \
+			-timeout=5m \
+			-tags=docker \
+			./cmd/openfga/...
+
+.PHONY: test-docker-local
+test-docker-local: build-docker-test-image ## Run Docker tests (locally)
 	go test -race \
 			-count=1 \
 			-timeout=5m \

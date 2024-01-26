@@ -98,7 +98,7 @@ jobs:
           tags: "openfga/openfga:dockertest"
 
       - name: Docker Tests
-        run: make test-docker
+        run: make test-docker-ci
 
   go-bench:
     runs-on: ubuntu-latest
