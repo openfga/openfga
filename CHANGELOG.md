@@ -8,6 +8,28 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.4.3] - 2024-01-26
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.2...v1.4.3)
+
+### Added
+
+* Add ability to close all server resources through `server.Stop()` ([#1318](https://github.com/openfga/openfga/pull/1318))
+
+### Changed
+
+* Increase performance by removing redundant `map.Clone()` calls in model validation ([#1281](https://github.com/openfga/openfga/pull/1281))
+
+### Fixed
+
+* Fix the sorting of contextual tuples when generating a cache key during check ([#1299](https://github.com/openfga/openfga/pull/1299))
+
+### Security
+
+* Patch [CVE-2024-23820](https://github.com/openfga/openfga/security/advisories/GHSA-rxpw-85vw-fx87) - a critical issue
+  where issuing many `ListObjects` API calls that hit the `--listObjects-deadline` setting can lead to an out of memory error.
+  See the CVE report for more details
+
 ## [1.4.2] - 2024-01-10
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.1...v1.4.2)
@@ -875,7 +897,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/openfga/openfga/releases/tag/v1.4.3
 [1.4.2]: https://github.com/openfga/openfga/releases/tag/v1.4.2
 [1.4.1]: https://github.com/openfga/openfga/releases/tag/v1.4.1
 [1.4.0]: https://github.com/openfga/openfga/releases/tag/v1.4.0
