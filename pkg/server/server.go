@@ -99,7 +99,8 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
-	typesystemResolver typesystem.TypesystemResolverFunc
+	typesystemResolver     typesystem.TypesystemResolverFunc
+	typesystemResolverStop func()
 
 	checkOptions           []graph.LocalCheckerOption
 	checkQueryCacheEnabled bool
@@ -112,6 +113,8 @@ type Server struct {
 
 type OpenFGAServiceV1Option func(s *Server)
 
+// WithDatastore passes a datastore to the Server.
+// You must call [storage.OpenFGADatastore.Close] on it after you have stopped using it.
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
@@ -243,6 +246,7 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
+// MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -252,6 +256,8 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	return s
 }
 
+// NewServerWithOpts returns a new server.
+// You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
 		logger:                           logger.NewNoopLogger(),
@@ -307,9 +313,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
 
-	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
 	return s, nil
+}
+
+// Close releases the server resources.
+func (s *Server) Close() {
+	if s.checkCache != nil {
+		s.checkCache.Stop()
+	}
+	s.typesystemResolverStop()
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
@@ -352,6 +366,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithLogger(s.logger),
 		))
 	}
 
@@ -444,6 +459,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		checkOptions = append(checkOptions, graph.WithCachedResolver(
 			graph.WithExistingCache(s.checkCache),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithLogger(s.logger),
 		))
 	}
 
