@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 )
@@ -54,9 +54,10 @@ type document
 			}, nil),
 	)
 
-	resolver := MemoizedTypesystemResolverFunc(
+	resolver, resolverStop := MemoizedTypesystemResolverFunc(
 		mockDatastore,
 	)
+	defer resolverStop()
 
 	typesys, err := resolver(context.Background(), storeID, modelID1)
 	require.NoError(t, err)
@@ -104,9 +105,10 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 			}, nil).MinTimes(1).MaxTimes(numGoroutines),
 	)
 
-	resolver := MemoizedTypesystemResolverFunc(
+	resolver, resolverStop := MemoizedTypesystemResolverFunc(
 		mockDatastore,
 	)
+	defer resolverStop()
 
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)

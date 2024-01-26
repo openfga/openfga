@@ -192,15 +192,15 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 	return converted, nil
 }
 
-// EvaluateWithContext evaluates the provided CEL condition expression with a CEL environment
+// Evaluate evaluates the provided CEL condition expression with a CEL environment
 // constructed from the condition's parameter type definitions and using the context maps provided.
 // If more than one source map of context is provided, and if the keys provided in those map
 // context(s) are overlapping, then the overlapping key for the last most context wins.
-func (e *EvaluableCondition) EvaluateWithContext(
+func (e *EvaluableCondition) Evaluate(
 	ctx context.Context,
 	contextMaps ...map[string]*structpb.Value,
 ) (EvaluationResult, error) {
-	_, span := tracer.Start(ctx, "EvaluateWithContext")
+	_, span := tracer.Start(ctx, "Evaluate")
 	defer span.End()
 
 	if err := e.Compile(); err != nil {
@@ -238,7 +238,7 @@ func (e *EvaluableCondition) EvaluateWithContext(
 		missingParameters = append(missingParameters, key)
 	}
 
-	out, details, err := e.celProgram.Eval(activation)
+	out, details, err := e.celProgram.ContextEval(ctx, activation)
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			e.Name,
@@ -285,15 +285,6 @@ func (e *EvaluableCondition) EvaluateWithContext(
 	}, nil
 }
 
-// Evaluate evaluates the provided CEL condition expression with a CEL environment
-// constructed from the condition's parameter type definitions and using the
-// context/struct maps provided. Evaluate is just meant to be a helper method for
-// EvaluateWithContext with an empty background context. See EvaluateWithContext
-// for more info.
-func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
-	return e.EvaluateWithContext(context.Background(), contextMaps...)
-}
-
 // WithTrackEvaluationCost enables CEL evaluation cost on the EvaluableCondition and returns the
 // mutated EvaluableCondition. The expectation is that this is called on the Uncompiled condition
 // because it modifies the behavior of the CEL program that is constructed after Compile.
@@ -308,6 +299,16 @@ func (e *EvaluableCondition) WithTrackEvaluationCost() *EvaluableCondition {
 // condition because it modifies the behavior of the CEL program that is constructed after Compile.
 func (e *EvaluableCondition) WithMaxEvaluationCost(cost uint64) *EvaluableCondition {
 	e.celProgramOpts = append(e.celProgramOpts, cel.CostLimit(cost))
+
+	return e
+}
+
+// WithInterruptCheckFrequency defines the upper limit on the number of iterations within a CEL comprehension to evaluate before CEL will interrupt evaluation and check for cancellation.
+// within a comprehension on the EvaluableCondition and returns the mutated EvaluableCondition.
+// The expectation is that this is called on the Uncompiled condition because it modifies
+// the behavior of the CEL program that is constructed after Compile.
+func (e *EvaluableCondition) WithInterruptCheckFrequency(checkFrequency uint) *EvaluableCondition {
+	e.celProgramOpts = append(e.celProgramOpts, cel.InterruptCheckFrequency(checkFrequency))
 
 	return e
 }

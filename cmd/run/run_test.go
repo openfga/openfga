@@ -25,6 +25,8 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/openfga/openfga/pkg/testutils"
 
@@ -695,7 +697,8 @@ func TestServerMetricsReporting(t *testing.T) {
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
+	defer stopFunc()
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine
@@ -766,11 +769,22 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 						},
 						"viewer": {
 							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-								{Type: "user"},
+								{Type: "user", Condition: "condx"},
 							},
 						},
 					},
 				},
+			},
+		},
+		Conditions: map[string]*openfgav1.Condition{
+			"condx": {
+				Name: "condx",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+				},
+				Expression: "x < 100",
 			},
 		},
 		SchemaVersion: typesystem.SchemaVersion1_1,
@@ -781,7 +795,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				{Object: "document:1", Relation: "viewer", User: "user:jon"},
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "condx", nil),
 				{Object: "document:2", Relation: "editor", User: "user:jon"},
 				{Object: "document:2", Relation: "allowed", User: "user:jon"},
 			},
@@ -792,6 +806,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:  storeID,
 		TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
+		Context: testutils.MustNewStruct(t, map[string]interface{}{
+			"x": 10,
+		}),
 	})
 	require.NoError(t, err)
 	require.True(t, checkResp.GetAllowed())
@@ -801,6 +818,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		Type:     "document",
 		Relation: "viewer",
 		User:     "user:jon",
+		Context: testutils.MustNewStruct(t, map[string]interface{}{
+			"x": 10,
+		}),
 	})
 	require.NoError(t, err)
 	require.Len(t, listObjectsResp.GetObjects(), 2)
@@ -812,18 +832,24 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
 
-	resBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	expectedMetrics := []string{
+		"openfga_datastore_query_count",
+		"openfga_request_duration_by_query_count_ms",
+		"grpc_server_handling_seconds",
+		"openfga_datastore_bounded_read_delay_ms",
+		"openfga_list_objects_further_eval_required_count",
+		"openfga_list_objects_no_further_eval_required_count",
+		"go_sql_idle_connections",
+		"openfga_condition_evaluation_cost",
+		"openfga_condition_compilation_duration_ms",
+		"openfga_condition_evaluation_duration_ms",
+	}
 
-	stringBody := string(resBody)
-	require.Contains(t, stringBody, "datastore_query_count")
-	require.Contains(t, stringBody, "request_duration_by_query_count_ms")
-	require.Contains(t, stringBody, "grpc_server_handling_seconds")
-	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
-	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
-	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
-	require.Contains(t, stringBody, "go_sql_idle_connections")
-	require.Contains(t, stringBody, "condition_evaluation_cost")
+	for _, metric := range expectedMetrics {
+		count, err := testutil.GatherAndCount(prometheus.DefaultGatherer, metric)
+		require.NoError(t, err)
+		require.GreaterOrEqualf(t, count, 1, "expected at least 1 reported value for '%s'", metric)
+	}
 }
 
 func TestHTTPServerDisabled(t *testing.T) {

@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/logger"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -107,6 +109,7 @@ type UserRef struct {
 }
 
 type ReverseExpandQuery struct {
+	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
@@ -134,6 +137,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
+		logger:                  logger.NewNoopLogger(),
 		datastore:               ds,
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
@@ -157,7 +161,6 @@ const (
 )
 
 type ReverseExpandResult struct {
-	Err          error
 	Object       string
 	ResultStatus ConditionalResultStatus
 }
@@ -172,31 +175,37 @@ func NewResolutionMetadata() *ResolutionMetadata {
 	}
 }
 
-// Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
-// and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
+func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.logger = logger
+	}
+}
+
+// Execute yields all the objects of the provided objectType that the
+// given user possibly has, a specific relation with and sends those
+// objects to resultChan. It MUST guarantee no duplicate objects sent.
 //
-// If an error is encountered before resolving all objects: the provided channel will NOT be closed and
-// - if the error is context cancellation or deadline: Execute may send the error through the channel
-// - otherwise: Execute will send the error through the channel
-// If no errors, Execute will yield all of the objects on the provided channel and then close the channel
-// to signal that it is done.
+// This function respects context timeouts and cancellations. If an
+// error is encountered (e.g. context timeout) before resolving all
+// objects, then the provided channel will NOT be closed, and it will
+// send the error through the channel.
+//
+// If no errors occur, then Execute will yield all of the objects on
+// the provided channel and then close the channel to signal that it
+// is done.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
-) {
+) error {
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
-		select {
-		case <-ctx.Done():
-			return
-		case resultChan <- &ReverseExpandResult{Err: err}:
-			return
-		}
+		return err
 	}
 
 	close(resultChan)
+	return nil
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -284,7 +293,9 @@ func (c *ReverseExpandQuery) execute(
 	pool.WithCancelOnError()
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
+	var errs *multierror.Error
 
+LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
@@ -312,22 +323,28 @@ func (c *ReverseExpandQuery) execute(
 			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
-				return err
+				errs = multierror.Append(errs, err)
+				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		default:
-			return fmt.Errorf("unsupported edge type")
+			panic("unsupported edge type")
 		}
 	}
 
 	err = pool.Wait()
 	if err != nil {
-		telemetry.TraceError(span, err)
+		errs = multierror.Append(errs, err)
 	}
-	return err
+	if errs.ErrorOrNil() != nil {
+		telemetry.TraceError(span, errs.ErrorOrNil())
+		return errs.ErrorOrNil()
+	}
+
+	return nil
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
@@ -433,7 +450,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
 	default:
-		return fmt.Errorf("unsupported edge type")
+		panic("unsupported edge type")
 	}
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
@@ -464,14 +481,16 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	var errs *multierror.Error
+
+LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-
-			return err
+			errs = multierror.Append(errs, err)
+			break LoopOnIterator
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
@@ -502,7 +521,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		case graph.TupleToUsersetEdge:
 			newRelation = req.edge.TargetReference.GetRelation()
 		default:
-			return fmt.Errorf("unsupported edge type")
+			panic("unsupported edge type")
 		}
 
 		pool.Go(func(ctx context.Context) error {

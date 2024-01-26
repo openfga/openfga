@@ -29,21 +29,21 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 		require.NoError(t, err)
 		require.True(t, status.IsReady)
 	})
-	// tuples
+	// Tuples.
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 	t.Run("TestRead", func(t *testing.T) { ReadTest(t, ds) })
 
-	// authorization models
+	// Authorization models.
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, ds) })
 	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, ds) })
 
-	// assertions
+	// Assertions.
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, ds) })
 
-	// stores
+	// Stores.
 	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
 }

@@ -45,6 +45,9 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
+	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
+	// defer goleak.VerifyNone(t)
+
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
@@ -321,7 +324,10 @@ type organization
     define repo_reader: [user,organization#member]
     define repo_writer: [user,organization#member]`
 
-func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, openfgav1.OpenFGAServiceClient) {
+// setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
+// and a cancellation function that stops the benchmark timer, cleans up the server and the datastore, and
+// closes the client connection.
+func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
@@ -335,13 +341,17 @@ func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.
 	require.NoError(b, err)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
-	return cancel, conn, client
+	return client, func() {
+		// so we don't steal time from the benchmark itself
+		b.StopTimer()
+		cancel()
+		conn.Close()
+	}
 }
 
 func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark without trace"})
@@ -379,9 +389,8 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithTrace(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with trace"})
@@ -420,9 +429,8 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with direct resolution"})
@@ -490,9 +498,8 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with bypass direct read"})
@@ -524,9 +531,8 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with bypass direct read"})
@@ -609,9 +615,8 @@ type document
 }
 
 func benchmarkCheckWithOneCondition(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	storeID := ulid.Make().String()
 	model := parser.MustTransformDSLToProto(`model
@@ -661,9 +666,8 @@ condition password(p: string) {
 }
 
 func benchmarkCheckWithOneConditionWithManyParameters(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	storeID := ulid.Make().String()
 	model := parser.MustTransformDSLToProto(`model

@@ -6,16 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/testutils"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -376,7 +375,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			// expect first call to result in actual resolve call
 			dut := NewCachedCheckResolver(mockResolver,
-				WithLogger(logger.NewNoopLogger()),
 				WithMaxCacheSize(10))
 			defer dut.Close()
 
@@ -590,19 +588,21 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	tuples1 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+		tuple.NewTupleKey("document:2", "admin", "user:jon"),
 	}
 
 	tuples2 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:2", "admin", "user:jon"),
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
 	}
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
 	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		TupleKey:             tupleKey,
 		ContextualTuples:     tuples1,
 	})
 	require.NoError(t, err)
@@ -610,7 +610,44 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		TupleKey:             tupleKey,
+		ContextualTuples:     tuples2,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, key1, key2)
+}
+
+func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	tuples1 := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
+	}
+
+	tuples2 := []*openfgav1.TupleKey{
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
+		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+	}
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     tuples1,
+	})
+	require.NoError(t, err)
+
+	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
 		ContextualTuples:     tuples2,
 	})
 	require.NoError(t, err)

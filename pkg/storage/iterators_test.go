@@ -94,7 +94,7 @@ func ExampleNewFilteredTupleKeyIterator() {
 				break
 			}
 
-			// handle the error in some way
+			// Handle the error in some way.
 			panic(err)
 		}
 
