@@ -26,33 +26,31 @@ import (
 )
 
 // newOpenFGAServerAndClient starts an OpenFGA server, waits until its is healthy, and returns a grpc client to it.
-func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
+// The caller must call the returned function after the server is no longer needed to clean up resources.
+func newOpenFGAServerAndClient(t *testing.T) (openfgav1.OpenFGAServiceClient, func()) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
-	cancel := StartServer(t, cfg)
-	t.Cleanup(func() {
-		cancel()
-	})
-
+	stopServer := StartServer(t, cfg)
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithBlock(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	t.Cleanup(func() {
-		conn.Close()
-	})
 	require.NoError(t, err)
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
-	return client
+	return client, func() {
+		conn.Close()
+		stopServer()
+	}
 }
 
 func TestGRPCMaxMessageSize(t *testing.T) {
-	client := newOpenFGAServerAndClient(t)
+	client, cancel := newOpenFGAServerAndClient(t)
+	defer cancel()
 
 	createResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "max_message_size",
@@ -335,7 +333,10 @@ type document
 }
 
 func TestFunctionalGRPC(t *testing.T) {
-	client := newOpenFGAServerAndClient(t)
+	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
+	//defer goleak.VerifyNone(t)
+	client, cancel := newOpenFGAServerAndClient(t)
+	defer cancel()
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, client) })
 	t.Run("TestGetStore", func(t *testing.T) { GRPCGetStoreTest(t, client) })
@@ -631,7 +632,8 @@ func GRPCGetStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 }
 
 func TestGRPCListStores(t *testing.T) {
-	client := newOpenFGAServerAndClient(t)
+	client, cancel := newOpenFGAServerAndClient(t)
+	defer cancel()
 	_, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
@@ -1025,7 +1027,8 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 // Checks against multi-model stores etc..
 // TODO move to consolidated_1_1_tests.yaml
 func TestCheckWorkflows(t *testing.T) {
-	client := newOpenFGAServerAndClient(t)
+	client, cancel := newOpenFGAServerAndClient(t)
+	defer cancel()
 
 	/*
 	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced
@@ -1129,7 +1132,8 @@ func TestCheckWorkflows(t *testing.T) {
 // Expands against multi-model stores etc..
 // TODO move to consolidated_1_1_tests.yaml
 func TestExpandWorkflows(t *testing.T) {
-	client := newOpenFGAServerAndClient(t)
+	client, cancel := newOpenFGAServerAndClient(t)
+	defer cancel()
 
 	/*
 	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced

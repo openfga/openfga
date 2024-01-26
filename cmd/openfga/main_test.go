@@ -16,11 +16,10 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/openfga/openfga/pkg/testutils"
 )
 
 type OpenFGATester interface {
@@ -43,8 +42,9 @@ func (s *serverHandle) GetHTTPAddress() string {
 
 // runOpenFGAContainerWithArgs spins up an openfga container with the default configuration
 // exposed for testing purposes. It is assumed that the openfga/dockertest image is available.
-// The container is automatically stopped after the test ends. On stopping, it asserts that the exit code was 0.
-func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATester {
+// The caller must call the returned function after the container is no longer needed.
+// This function asserts that the container's exit code was 0.
+func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATester, func()) {
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(
@@ -90,7 +90,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 
 		containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 		require.NoError(t, err)
-		require.Zero(t, containerJSON.State.ExitCode)
+		require.Zero(t, containerJSON.State.ExitCode, "expected exit code of the container to be zero")
 
 		timeoutSec := 5
 
@@ -102,9 +102,6 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 		dockerClient.Close()
 		t.Logf("stopped container %s", name)
 	}
-	t.Cleanup(func() {
-		stopContainer()
-	})
 
 	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 	require.NoError(t, err)
@@ -126,7 +123,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	return &serverHandle{
 		grpcAddress: fmt.Sprintf("localhost:%s", grpcPort),
 		httpAddress: fmt.Sprintf("localhost:%s", httpPort),
-	}
+	}, stopContainer
 }
 
 // createGrpcConnection connects to the underlying grpc server of the OpenFGATester and
@@ -150,8 +147,11 @@ func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 // It is not meant to include functionality tests.
 // For that, go to the github.com/openfga/openfga/tests package.
 func TestDocker(t *testing.T) {
+	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
+	//defer goleak.VerifyNone(t)
 	t.Run("run_command", func(t *testing.T) {
-		tester := runOpenFGAContainerWithArgs(t, []string{"run"})
+		tester, stopContainer := runOpenFGAContainerWithArgs(t, []string{"run"})
+		defer stopContainer()
 
 		testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil, true)
 
@@ -177,10 +177,12 @@ func TestDocker(t *testing.T) {
 
 	t.Run("migrate_command", func(t *testing.T) {
 		// this will be a no-op
-		_ = runOpenFGAContainerWithArgs(t, []string{"migrate", "--datastore-engine", "memory"})
+		_, stopContainer := runOpenFGAContainerWithArgs(t, []string{"migrate", "--datastore-engine", "memory"})
+		defer stopContainer()
 	})
 
 	t.Run("version_command", func(t *testing.T) {
-		_ = runOpenFGAContainerWithArgs(t, []string{"version"})
+		_, stopContainer := runOpenFGAContainerWithArgs(t, []string{"version"})
+		defer stopContainer()
 	})
 }

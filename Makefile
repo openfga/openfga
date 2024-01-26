@@ -83,7 +83,7 @@ build-docker-test-image: ## Build Docker image needed to run Docker tests
 
 .PHONY: test-docker-ci
 test-docker-ci:
-	go test -race \
+	go test -v \
 			-count=1 \
 			-timeout=5m \
 			-tags=docker \
@@ -91,11 +91,7 @@ test-docker-ci:
 
 .PHONY: test-docker-local
 test-docker-local: build-docker-test-image ## Run Docker tests (locally)
-	go test -race \
-			-count=1 \
-			-timeout=5m \
-			-tags=docker \
-			./cmd/openfga/...
+	make test-docker-ci
 
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
