@@ -14,7 +14,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
+	language "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -48,6 +48,77 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func ExampleNewServerWithOpts() {
+	datastore := memory.New() // other supported datastores include Postgres and MySQL
+	defer datastore.Close()
+
+	openfga, err := NewServerWithOpts(WithDatastore(datastore),
+		WithCheckQueryCacheEnabled(true),
+		// more options available
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer openfga.Close()
+
+	// create store
+	store, err := openfga.CreateStore(context.Background(),
+		&openfgav1.CreateStoreRequest{Name: "demo"})
+	if err != nil {
+		panic(err)
+	}
+
+	model := language.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	
+	type document
+		relations
+			define reader: [user]`)
+
+	// write the model to the store
+	authorizationModel, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         store.Id,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
+		SchemaVersion:   model.SchemaVersion,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// write tuples to the store
+	_, err = openfga.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: store.Id,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "document:budget", Relation: "reader", User: "user:anne"},
+			},
+		},
+		Deletes: nil,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// make an authorization check
+	checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              store.Id,
+		AuthorizationModelId: authorizationModel.AuthorizationModelId, // optional, but recommended for speed
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     "user:anne",
+			Relation: "reader",
+			Object:   "document:budget",
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(checkResponse.Allowed)
+	// Output: true
 }
 
 func TestServerPanicIfNoDatastore(t *testing.T) {
@@ -200,7 +271,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -274,7 +345,7 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
+		TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -329,7 +400,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	// The model is invalid
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -412,7 +483,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -483,7 +554,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -545,7 +616,7 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -748,7 +819,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -811,7 +882,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
+			TypeDefinitions: language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -863,7 +934,7 @@ type document
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
+			TypeDefinitions: language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -1015,7 +1086,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
+			TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type repo
 `).TypeDefinitions,
