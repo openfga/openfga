@@ -2,7 +2,7 @@ run:
   timeout: 3m
   modules-download-mode: readonly
   build-tags:
-    - functional
+    - docker
 
 linters:
   enable:
