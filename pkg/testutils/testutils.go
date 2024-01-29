@@ -111,9 +111,6 @@ func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	creds := insecure.NewCredentials()
 	if transportCredentials != nil {
 		creds = transportCredentials
@@ -126,7 +123,7 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}
 
 	conn, err := grpc.DialContext(
-		timeoutCtx,
+		context.Background(),
 		grpcAddr,
 		dialOpts...,
 	)
@@ -139,7 +136,7 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	policy.MaxElapsedTime = 30 * time.Second
 
 	err = backoff.Retry(func() error {
-		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
+		resp, err := client.Check(context.Background(), &healthv1pb.HealthCheckRequest{
 			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		})
 		if err != nil {
