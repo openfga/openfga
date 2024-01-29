@@ -137,7 +137,7 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	var tuples = []*openfgav1.TupleKey{
-		{User: "document:1#viewer3", Relation: "viewer3", Object: "document:1"},
+		tuple.NewTupleKey("document:1", "viewer3", "document:1#viewer3"),
 	}
 
 	err := ds.Write(context.Background(), storeID, nil, tuples)
@@ -156,13 +156,13 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
-	checkerWithoutSingleflight := NewLocalChecker(
+	checker := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 		WithSingleflightResolver(),
 	)
-	defer checkerWithoutSingleflight.Close()
+	defer checker.Close()
 
-	resp, err := checkerWithoutSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
 		ContextualTuples:   nil,
