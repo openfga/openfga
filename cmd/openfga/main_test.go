@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -16,11 +18,10 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/openfga/openfga/pkg/testutils"
 )
 
 type OpenFGATester interface {
@@ -120,6 +121,29 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 		t.Fatalf("failed to get grpc host port mapping from openfga container")
 	}
 	grpcPort := m[0].HostPort
+
+	if len(commandArgs) > 0 && commandArgs[0] == "run" {
+		policy := backoff.NewExponentialBackOff()
+		policy.MaxElapsedTime = 30 * time.Second
+
+		err = backoff.Retry(func() error {
+			containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
+			require.NoError(t, err)
+			require.NotNil(t, containerJSON.State.Health)
+
+			if containerJSON.State.Health.Status == types.Healthy {
+				return nil
+			}
+			if containerJSON.State.Health.Status == types.Unhealthy {
+				for _, healthLog := range containerJSON.State.Health.Log {
+					t.Log(healthLog.Output)
+				}
+				return fmt.Errorf("container unhealthy")
+			}
+			return fmt.Errorf("container starting")
+		}, policy)
+		require.NoError(t, err)
+	}
 
 	return &serverHandle{
 		grpcAddress: fmt.Sprintf("localhost:%s", grpcPort),
