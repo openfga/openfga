@@ -133,6 +133,7 @@ func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
 	}
 }
 
+// WithTransport enables setting headers in the response.
 func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.transport = t
@@ -161,18 +162,25 @@ func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithChangelogHorizonOffset sets an offset (in minutes) from the current time.
+// Changes that occur after this offset will not be included in the response of ReadChanges API.
+// If your datastore is eventually consistent or if you have a database with replication delay, we recommend setting this (e.g. 1 minute)
 func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
 	}
 }
 
+// WithListObjectsDeadline affect the ListObjects API and Streamed ListObjects API only.
+// It sets the maximum amount of time that the server will spend gathering results.
 func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsDeadline = deadline
 	}
 }
 
+// WithListObjectsMaxResults affects the ListObjects API only.
+// It sets the maximum number of results that this API will return.
 func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsMaxResults = limit
@@ -211,7 +219,9 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
-// WithCheckQueryCacheEnabled enables/disables caching of check and list objects partial results.
+// WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
+// This cache is shared for all requests.
+// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL
 func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheEnabled = enabled
@@ -219,6 +229,7 @@ func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 }
 
 // WithCheckQueryCacheLimit sets the cache size limit (in items)
+// Needs WithCheckQueryCacheEnabled set to true.
 func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheLimit = limit
@@ -226,6 +237,7 @@ func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 }
 
 // WithCheckQueryCacheTTL sets the TTL of cached checks and list objects partial results
+// Needs WithCheckQueryCacheEnabled set to true.
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheTTL = ttl
