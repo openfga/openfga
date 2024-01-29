@@ -7,12 +7,12 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -36,7 +36,7 @@ func TestSingleflightResolver(t *testing.T) {
 	err := ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 
 	type user
@@ -45,15 +45,9 @@ func TestSingleflightResolver(t *testing.T) {
 	relations
 	  define parent1: [folder]
 	  define parent2: [folder]
-	  define viewer: [user] or viewer from parent1 or viewer from parent2 or viewer`).TypeDefinitions
+	  define viewer: [user] or viewer from parent1 or viewer from parent2 or viewer`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	checker := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
@@ -90,25 +84,19 @@ func TestSingleflightResolverVersusWithout(t *testing.T) {
 	err := ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`model  
+    schema 1.1  
 
-	type user
+type user  
 
-	type folder
-	relations
-	  define parent1: [folder]
-	  define parent2: [folder]
-	  define parent3: [folder]
-	  define viewer: [user] or viewer from parent1 or viewer from parent2 or viewer from parent3`).TypeDefinitions
+type folder  
+    relations  
+    define parent1: [folder]  
+    define parent2: [folder]  
+    define parent3: [folder]  
+    define viewer: [user] or viewer from parent1 or viewer from parent2 or viewer from parent3`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	checkReq := ResolveCheckRequest{
 		StoreID:            storeID,
@@ -155,7 +143,7 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 	err := ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
   
   type user
@@ -164,15 +152,9 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 	relations
 		define viewer1: [user, document#viewer1]
 		define viewer2: viewer1 or viewer2
-	  	define viewer3: viewer1 or viewer2`).TypeDefinitions
+	  	define viewer3: viewer1 or viewer2`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
 	checkerWithoutSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
