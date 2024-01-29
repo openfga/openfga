@@ -19,7 +19,7 @@ import (
 
 func TestSingleflightResolver(t *testing.T) {
 	ds := memory.New()
-	defer ds.Close()
+	t.Cleanup(ds.Close)
 
 	storeID := ulid.Make().String()
 
@@ -52,7 +52,7 @@ func TestSingleflightResolver(t *testing.T) {
 	checker := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 	)
-	defer checker.Close()
+	t.Cleanup(checker.Close)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
@@ -68,7 +68,7 @@ func TestSingleflightResolver(t *testing.T) {
 }
 func TestSingleflightResolverVersusWithout(t *testing.T) {
 	ds := memory.New()
-	defer ds.Close()
+	t.Cleanup(ds.Close)
 
 	storeID := ulid.Make().String()
 
@@ -108,7 +108,6 @@ type folder
 	checkerWithoutSingleflight := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 	)
-	defer checkerWithoutSingleflight.Close()
 
 	req := checkReq
 	respWithoutSingleflight, err := checkerWithoutSingleflight.ResolveCheck(ctx, &req)
@@ -120,7 +119,7 @@ type folder
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 		WithSingleflightResolver(),
 	)
-	defer checkerWithSingleflight.Close()
+	t.Cleanup(checkerWithSingleflight.Close)
 
 	req = checkReq
 	resWithSingleflight, err := checkerWithSingleflight.ResolveCheck(ctx, &req)
@@ -132,7 +131,7 @@ type folder
 
 func TestSingleflightResolverWithCycle(t *testing.T) {
 	ds := memory.New()
-	defer ds.Close()
+	t.Cleanup(ds.Close)
 
 	storeID := ulid.Make().String()
 
@@ -160,7 +159,7 @@ func TestSingleflightResolverWithCycle(t *testing.T) {
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 		WithSingleflightResolver(),
 	)
-	defer checker.Close()
+	t.Cleanup(checker.Close)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,

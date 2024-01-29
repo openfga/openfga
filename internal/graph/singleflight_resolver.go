@@ -33,7 +33,7 @@ type singleflightCheckResolver struct {
 	logger   logger.Logger
 }
 
-func NewSingleflightCheckResolver(delegate CheckResolver) *singleflightCheckResolver {
+func NewSingleflightCheckResolver(delegate CheckResolver) CheckResolver {
 	return &singleflightCheckResolver{
 		delegate: delegate,
 	}
@@ -82,13 +82,11 @@ func (s *singleflightCheckResolver) ResolveCheck(
 }
 
 func copyResolveResponse(original ResolveCheckResponse) ResolveCheckResponse {
-	copy := ResolveCheckResponse{
+	return ResolveCheckResponse{
 		Allowed: original.GetAllowed(),
 		ResolutionMetadata: &ResolutionMetadata{
 			Depth:               original.GetResolutionMetadata().Depth,
 			DatastoreQueryCount: original.GetResolutionMetadata().DatastoreQueryCount,
 		},
 	}
-
-	return copy
 }
