@@ -613,7 +613,7 @@ type repo
 func TestCheckWithSingleflightResolution(t *testing.T) {
 	ctx := context.Background()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 
 type user
