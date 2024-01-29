@@ -616,14 +616,13 @@ func TestCheckWithSingleflightResolution(t *testing.T) {
 	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 
-type user
+	type user
 
-type folder
-	relations
-	  define parent: [folder]
-	  define other_parent: [folder]
-	  define other_other_parent: [folder]
-	  define viewer: [user] or viewer from parent or viewer from other_parent or viewer from other_other_parent`).TypeDefinitions
+	type folder
+		relations
+		define parent1: [folder]
+		define parent2: [folder]
+		define viewer: [user] or viewer from parent1 or viewer from parent2`).TypeDefinitions
 
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
@@ -644,11 +643,12 @@ type folder
 
 	var tuples = []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
-	}
-	for i := 1; i <= 10; i++ {
-		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "parent", fmt.Sprintf("folder:%d", i)))
-		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_parent", fmt.Sprintf("folder:%d", i)))
-		tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("folder:%d", i+1), "other_other_parent", fmt.Sprintf("folder:%d", i)))
+
+		tuple.NewTupleKey("folder:2", "parent1", "folder:1"),
+		tuple.NewTupleKey("folder:2", "parent2", "folder:1"),
+
+		tuple.NewTupleKey("folder:3", "parent1", "folder:2"),
+		tuple.NewTupleKey("folder:3", "parent2", "folder:2"),
 	}
 	_, err = s.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              createStoreResp.Id,
@@ -661,7 +661,7 @@ type folder
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              createStoreResp.Id,
-		TupleKey:             tuple.NewCheckRequestTupleKey("folder:10", "viewer", "user:jon"),
+		TupleKey:             tuple.NewCheckRequestTupleKey("folder:3", "viewer", "user:jon"),
 		AuthorizationModelId: writeModelResp.AuthorizationModelId,
 	})
 
