@@ -164,7 +164,6 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	if opts != nil {
 		sb = sb.OrderBy("ulid")
 	}
-
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
