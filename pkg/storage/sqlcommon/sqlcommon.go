@@ -21,6 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // Config defines the configuration parameters
@@ -491,7 +492,7 @@ func ReadAuthorizationModel(
 	ctx context.Context,
 	dbInfo *DBInfo,
 	store, modelID string,
-) (*openfgav1.AuthorizationModel, error) {
+) (*typesystem.TypeSystem, error) {
 	rows, err := dbInfo.stbl.
 		Select("schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
@@ -523,7 +524,7 @@ func ReadAuthorizationModel(
 				return nil, err
 			}
 
-			return &model, nil
+			return typesystem.New(&model), nil
 		}
 
 		var typeDef openfgav1.TypeDefinition
@@ -542,11 +543,11 @@ func ReadAuthorizationModel(
 		return nil, storage.ErrNotFound
 	}
 
-	return &openfgav1.AuthorizationModel{
+	return typesystem.New(&openfgav1.AuthorizationModel{
 		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
-	}, nil
+	}), nil
 }
 
 // IsReady returns true if the connection to the datastore is successful

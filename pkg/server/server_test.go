@@ -291,10 +291,10 @@ type repo
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
+		Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-		}, nil)
+		}), nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
@@ -420,11 +420,11 @@ type repo
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
+		Return(typesystem.New(&openfgav1.AuthorizationModel{
 			Id:              modelID,
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-		}, nil)
+		}), nil)
 
 	// the model is error and err should return
 
@@ -502,10 +502,10 @@ type repo
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
+		Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-		}, nil)
+		}), nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
@@ -573,10 +573,10 @@ type repo
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
+		Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-		}, nil)
+		}), nil)
 
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
@@ -632,10 +632,10 @@ type repo
 	mockDSOldSchema.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
+		Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_0,
 			TypeDefinitions: typedefs,
-		}, nil)
+		}), nil)
 
 	mockDSBadReadAuthModel := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -648,10 +648,10 @@ type repo
 	mockDSBadWriteAssertions.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
+		Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-		}, nil)
+		}), nil)
 	mockDSBadWriteAssertions.EXPECT().
 		WriteAssertions(gomock.Any(), storeID, modelID, gomock.Any()).
 		AnyTimes().
@@ -727,73 +727,6 @@ func TestReadAssertionModelDSError(t *testing.T) {
 	require.ErrorIs(t, expectedError, err)
 }
 
-func TestResolveAuthorizationModel(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
-		store := ulid.Make().String()
-
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
-
-		s := MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-		)
-
-		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
-
-		_, err := s.resolveTypesystem(ctx, store, "")
-		require.ErrorIs(t, err, expectedError)
-	})
-
-	t.Run("read_existing_authorization_model", func(t *testing.T) {
-		store := ulid.Make().String()
-		modelID := ulid.Make().String()
-
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
-			&openfgav1.AuthorizationModel{
-				Id:            modelID,
-				SchemaVersion: typesystem.SchemaVersion1_1,
-			},
-			nil,
-		)
-
-		s := MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-		)
-
-		typesys, err := s.resolveTypesystem(ctx, store, "")
-		require.NoError(t, err)
-		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
-	})
-
-	t.Run("non-valid_modelID_returns_error", func(t *testing.T) {
-		store := ulid.Make().String()
-		modelID := "foo"
-		want := serverErrors.AuthorizationModelNotFound(modelID)
-
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-
-		s := MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-		)
-
-		_, err := s.resolveTypesystem(ctx, store, modelID)
-		require.Equal(t, want, err)
-	})
-}
-
 type mockStreamServer struct {
 	grpc.ServerStream
 }
@@ -830,10 +763,10 @@ type repo
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(typesystem.New(&openfgav1.AuthorizationModel{
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
-	}, nil)
+	}), nil)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := MustNewServerWithOpts(
@@ -880,7 +813,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		modelID := ulid.Make().String()
 
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: language.MustTransformDSLToProto(`model
   schema 1.1
@@ -889,7 +822,7 @@ type user
 type document
   relations
 	define viewer: [user, user:*]`).TypeDefinitions,
-		}, nil)
+		}), nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
@@ -998,7 +931,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(typesystem.New(&openfgav1.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
@@ -1011,7 +944,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 				},
 			},
 		},
-	}, nil)
+	}), nil)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),

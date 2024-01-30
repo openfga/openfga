@@ -7,6 +7,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/sync/errgroup"
 
+	internalCommands "github.com/openfga/openfga/internal/commands"
+
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -55,22 +57,14 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	model, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	typesys, err := internalCommands.NewReadAuthorizationModelOrLatestQuery(q.datastore).Execute(ctx, store, modelID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-
-		return nil, serverErrors.HandleError("", err)
+		return nil, err
 	}
 
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
+	err = typesys.Validate()
 	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+		return nil, serverErrors.ValidationError(err)
 	}
 
 	if err = validation.ValidateObject(typesys, tk); err != nil {

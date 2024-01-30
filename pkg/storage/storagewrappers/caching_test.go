@@ -43,17 +43,17 @@ func TestReadAuthorizationModel(t *testing.T) {
 	// Check that first hit to cache -> miss.
 	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
-	require.Equal(t, model, gotModel)
+	require.Equal(t, model, gotModel.GetModel())
 
 	// Check what's stored inside the cache.
 	modelKey := fmt.Sprintf("%s:%s", storeID, model.Id)
 	cachedModel := cachingBackend.cache.Get(modelKey).Value()
-	require.Equal(t, model, cachedModel)
+	require.Equal(t, model, cachedModel.GetModel())
 
 	// Check that second hit to cache -> hit.
 	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
-	require.Equal(t, model, gotModel)
+	require.Equal(t, model, gotModel.GetModel())
 }
 
 func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {

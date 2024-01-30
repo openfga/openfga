@@ -32,17 +32,17 @@ var (
 )
 
 type boundedConcurrencyTupleReader struct {
-	storage.RelationshipTupleReader
+	storage.Reader
 	limiter chan struct{}
 }
 
 // NewBoundedConcurrencyTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
 // "concurrency" concurrent calls to Read, ReadUserTuple and ReadUsersetTuples.
 // Consumers can then rest assured that one client will not hoard all the database connections available.
-func NewBoundedConcurrencyTupleReader(wrapped storage.RelationshipTupleReader, concurrency uint32) *boundedConcurrencyTupleReader {
+func NewBoundedConcurrencyTupleReader(wrapped storage.Reader, concurrency uint32) *boundedConcurrencyTupleReader {
 	return &boundedConcurrencyTupleReader{
-		RelationshipTupleReader: wrapped,
-		limiter:                 make(chan struct{}, concurrency),
+		Reader:  wrapped,
+		limiter: make(chan struct{}, concurrency),
 	}
 }
 
@@ -58,7 +58,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey)
+	return b.Reader.ReadUserTuple(ctx, store, tupleKey)
 }
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
@@ -69,7 +69,7 @@ func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, 
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.Read(ctx, store, tupleKey)
+	return b.Reader.Read(ctx, store, tupleKey)
 }
 
 // ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -84,7 +84,7 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter)
+	return b.Reader.ReadUsersetTuples(ctx, store, filter)
 }
 
 // ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -100,7 +100,7 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
+	return b.Reader.ReadStartingWithUser(ctx, store, filter)
 }
 
 func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {

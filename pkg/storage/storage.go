@@ -7,6 +7,8 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const (
@@ -160,9 +162,9 @@ type ReadUsersetTuplesFilter struct {
 
 // AuthorizationModelReadBackend provides a read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
-	// ReadAuthorizationModel reads the model corresponding to store and model ID.
-	// If it's not found, it must return ErrNotFound.
-	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
+	// ReadAuthorizationModel Read the model corresponding to store and model id
+	// If it's not found, it must return ErrNotFound
+	ReadAuthorizationModel(ctx context.Context, store string, id string) (*typesystem.TypeSystem, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
@@ -220,6 +222,11 @@ type ChangelogBackend interface {
 		paginationOptions PaginationOptions,
 		horizonOffset time.Duration,
 	) ([]*openfgav1.TupleChange, []byte, error)
+}
+
+type Reader interface {
+	RelationshipTupleReader
+	AuthorizationModelReadBackend
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting

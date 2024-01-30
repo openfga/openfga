@@ -9,11 +9,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	internalCommands "github.com/openfga/openfga/internal/commands"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
@@ -46,7 +51,7 @@ var (
 )
 
 type ListObjectsQuery struct {
-	datastore               storage.RelationshipTupleReader
+	datastore               storage.Reader
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -109,7 +114,7 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	}
 }
 
-func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
+func NewListObjectsQuery(ds storage.Reader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
 	query := &ListObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
@@ -166,14 +171,17 @@ func (q *ListObjectsQuery) evaluate(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		panic("typesystem missing in context")
+	typesys, err := internalCommands.NewReadAuthorizationModelOrLatestQuery(q.datastore).Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return err
 	}
 
-	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	err = typesys.Validate()
+	if err != nil {
+		return serverErrors.ValidationError(err)
 	}
+
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
@@ -181,7 +189,7 @@ func (q *ListObjectsQuery) evaluate(
 		}
 	}
 
-	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	_, err = typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return serverErrors.TypeNotFound(targetObjectType)
@@ -435,6 +443,12 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	}
 
 	for result := range resultsChan {
+		// TODO send every error or object through channel and let server set this header for every object response
+		if ok := grpc_ctxtags.Extract(ctx).Has("authorization_model_id"); ok {
+			resolvedModelID := grpc_ctxtags.Extract(ctx).Values()["authorization_model_id"].(string)
+			_ = grpc.SetHeader(ctx, metadata.Pairs("Openfga-Authorization-Model-Id", resolvedModelID))
+		}
+
 		if result.Err != nil {
 			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 				return nil, result.Err

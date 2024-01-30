@@ -109,8 +109,8 @@ type UserRef struct {
 }
 
 type ReverseExpandQuery struct {
+	datastore               storage.Reader
 	logger                  logger.Logger
-	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
@@ -135,7 +135,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
-func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
+func NewReverseExpandQuery(ds storage.Reader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
 		logger:                  logger.NewNoopLogger(),
 		datastore:               ds,

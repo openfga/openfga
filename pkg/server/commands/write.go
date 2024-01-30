@@ -10,13 +10,14 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	internalCommands "github.com/openfga/openfga/internal/commands"
+
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
@@ -87,19 +88,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	if len(writes) > 0 {
-		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		typesys, err := internalCommands.NewReadAuthorizationModelOrLatestQuery(c.datastore).Execute(ctx, store, modelID)
 		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return serverErrors.AuthorizationModelNotFound(modelID)
-			}
 			return err
 		}
-
-		if !typesystem.IsSchemaVersionSupported(authModel.GetSchemaVersion()) {
-			return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-		}
-
-		typesys := typesystem.New(authModel)
 
 		for _, tk := range writes {
 			err := validation.ValidateTuple(typesys, tk)

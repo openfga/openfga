@@ -170,17 +170,22 @@ func TestValidateWriteRequest(t *testing.T) {
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 			cmd := NewWriteCommand(mockDatastore)
 
+			storeID := "abcd123"
+			modelID := "abcd1234"
+
 			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
+				mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), storeID).Return(modelID, nil)
 				mockDatastore.EXPECT().
-					ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(&openfgav1.AuthorizationModel{
+					ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+					Return(typesystem.New(&openfgav1.AuthorizationModel{
+						Id:            modelID,
 						SchemaVersion: typesystem.SchemaVersion1_1,
-					}, nil)
+					}), nil)
 			}
 
 			ctx := context.Background()
 			req := &openfgav1.WriteRequest{
-				StoreId: "abcd123",
+				StoreId: storeID,
 				Writes:  test.writes,
 				Deletes: test.deletes,
 			}
@@ -197,18 +202,20 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(10)
+	modelID := "abcd1234"
 
+	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(10)
+	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).Return(modelID, nil)
 	mockDatastore.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
+		ReadAuthorizationModel(gomock.Any(), gomock.Any(), modelID).
 		Return(
-			testutils.MustTransformDSLToProtoWithID(`model
+			typesystem.New(testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 type user
 
 type document
   relations
-	define viewer: [user]`), nil)
+	define viewer: [user]`)), nil)
 
 	mockDatastore.EXPECT().
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -240,7 +247,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		expectedError error
 	}
 
-	model := &openfgav1.AuthorizationModel{
+	model := typesystem.New(&openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 		TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -293,7 +300,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				},
 			},
 		},
-	}
+	})
 
 	contextStructGood := testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"})
 	contextStructBad := testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok", "param2": 1})
@@ -475,7 +482,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			err := cmd.validateWriteRequest(context.Background(), &openfgav1.WriteRequest{
 				StoreId:              ulid.Make().String(),
-				AuthorizationModelId: model.Id,
+				AuthorizationModelId: model.GetAuthorizationModelID(),
 				Writes: &openfgav1.WriteRequestWrites{
 					TupleKeys: []*openfgav1.TupleKey{
 						test.tuple,

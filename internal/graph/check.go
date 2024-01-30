@@ -123,7 +123,7 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	ds                 storage.RelationshipTupleReader
+	ds                 storage.Reader
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
@@ -154,7 +154,7 @@ func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
-func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
+func NewLocalChecker(ds storage.Reader, opts ...LocalCheckerOption) CheckResolver {
 	checker := &LocalChecker{
 		ds:                 ds,
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,

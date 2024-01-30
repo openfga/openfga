@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/karlseguin/ccache/v3"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const ttl = time.Hour * 168
@@ -19,7 +19,7 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
 	lookupGroup singleflight.Group
-	cache       *ccache.Cache[*openfgav1.AuthorizationModel]
+	cache       *ccache.Cache[*typesystem.TypeSystem]
 }
 
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize
@@ -28,12 +28,11 @@ type cachedOpenFGADatastore struct {
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
-		cache:            ccache.New(ccache.Configure[*openfgav1.AuthorizationModel]().MaxSize(int64(maxSize))),
+		cache:            ccache.New(ccache.Configure[*typesystem.TypeSystem]().MaxSize(int64(maxSize))),
 	}
 }
 
-// ReadAuthorizationModel reads the model corresponding to store and model ID.
-func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgav1.AuthorizationModel, error) {
+func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
 	cacheKey := fmt.Sprintf("%s:%s", storeID, modelID)
 	cachedEntry := c.cache.Get(cacheKey)
 
@@ -41,14 +40,18 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 		return cachedEntry.Value(), nil
 	}
 
-	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	v, err, _ := c.lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
+		return c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, model, ttl) // These are immutable, once created, there cannot be edits, therefore they can be cached without ttl.
+	typesys := v.(*typesystem.TypeSystem)
 
-	return model, nil
+	c.cache.Set(cacheKey, typesys, ttl) // these are immutable, once created, there cannot be edits, therefore they can be cached without ttl
+
+	return typesys, nil
 }
 
 // FindLatestAuthorizationModelID returns the last model `id` written for a store.

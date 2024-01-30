@@ -31,7 +31,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.Id)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(model, got, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(model, got.GetModel(), cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
