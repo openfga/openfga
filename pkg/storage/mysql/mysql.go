@@ -154,13 +154,6 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
-	if opts != nil {
-		*opts = storage.NewPaginationOptions(int32(opts.PageSize), opts.From)
-	} else {
-		opts = new(storage.PaginationOptions)
-		*opts = storage.NewPaginationOptions(0, "")
-	}
-
 	sb := m.stbl.
 		Select(
 			"store", "object_type", "object_id", "relation", "_user",
@@ -186,14 +179,14 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	if tupleKey.GetUser() != "" {
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
-	if opts.From != "" {
+	if opts != nil && opts.From != "" {
 		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
-	if opts.PageSize != 0 {
+	if opts != nil && opts.PageSize != 0 {
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
