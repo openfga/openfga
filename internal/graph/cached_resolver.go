@@ -152,7 +152,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	checkCacheTotalCounter.Inc()
 
-	cacheKey, err := checkRequestCacheKey(req)
+	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
 		return nil, err
@@ -173,13 +173,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-// checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
+// CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
 // used for Check resolution cache key lookups in a stable way.
 //
 // For one store and model ID, the same tuple provided with the same contextual tuples and context
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
-func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
 	tupleKey := req.GetTupleKey()
