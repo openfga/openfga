@@ -161,7 +161,6 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-
 	if opts != nil {
 		sb = sb.OrderBy("ulid")
 	}
