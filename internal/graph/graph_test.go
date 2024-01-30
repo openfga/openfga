@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/openfga/openfga/pkg/testutils"
 
@@ -262,8 +262,8 @@ type organization
 			require.NoError(t, err)
 
 			cmpOpts := []cmp.Option{
+				cmpopts.IgnoreUnexported(openfgav1.RelationReference{}),
 				RelationshipEdgeTransformer,
-				protocmp.Transform(),
 			}
 			if diff := cmp.Diff(test.expected, edges, cmpOpts...); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
@@ -1490,8 +1490,8 @@ type document
 			require.NoError(t, err)
 
 			cmpOpts := []cmp.Option{
+				cmpopts.IgnoreUnexported(openfgav1.RelationReference{}),
 				RelationshipEdgeTransformer,
-				protocmp.Transform(),
 			}
 			if diff := cmp.Diff(test.expected, edges, cmpOpts...); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
