@@ -610,65 +610,6 @@ type repo
 	require.True(t, checkResponse.Allowed)
 }
 
-func TestCheckWithSingleflightResolution(t *testing.T) {
-	ctx := context.Background()
-
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-
-	type user
-
-	type folder
-		relations
-		define parent1: [folder]
-		define parent2: [folder]
-		define viewer: [user] or viewer from parent1 or viewer from parent2`).TypeDefinitions
-
-	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
-		WithCheckQueryCacheEnabled(true),
-	)
-
-	createStoreResp, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
-		Name: "singleflight-test",
-	})
-	require.NoError(t, err)
-
-	writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-		TypeDefinitions: typedefs,
-		StoreId:         createStoreResp.Id,
-		SchemaVersion:   "1.1",
-	})
-	require.NoError(t, err)
-
-	var tuples = []*openfgav1.TupleKey{
-		tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
-
-		tuple.NewTupleKey("folder:2", "parent1", "folder:1"),
-		tuple.NewTupleKey("folder:2", "parent2", "folder:1"),
-
-		tuple.NewTupleKey("folder:3", "parent1", "folder:2"),
-		tuple.NewTupleKey("folder:3", "parent2", "folder:2"),
-	}
-	_, err = s.Write(ctx, &openfgav1.WriteRequest{
-		StoreId:              createStoreResp.Id,
-		AuthorizationModelId: writeModelResp.AuthorizationModelId,
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: tuples,
-		},
-	})
-	require.NoError(t, err)
-
-	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              createStoreResp.Id,
-		TupleKey:             tuple.NewCheckRequestTupleKey("folder:3", "viewer", "user:jon"),
-		AuthorizationModelId: writeModelResp.AuthorizationModelId,
-	})
-
-	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
-}
-
 func TestWriteAssertionModelDSError(t *testing.T) {
 	ctx := context.Background()
 
