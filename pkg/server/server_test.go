@@ -12,11 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
+	language "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -49,6 +50,77 @@ func init() {
 	}
 }
 
+func ExampleNewServerWithOpts() {
+	datastore := memory.New() // other supported datastores include Postgres and MySQL
+	defer datastore.Close()
+
+	openfga, err := NewServerWithOpts(WithDatastore(datastore),
+		WithCheckQueryCacheEnabled(true),
+		// more options available
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer openfga.Close()
+
+	// create store
+	store, err := openfga.CreateStore(context.Background(),
+		&openfgav1.CreateStoreRequest{Name: "demo"})
+	if err != nil {
+		panic(err)
+	}
+
+	model := language.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	
+	type document
+		relations
+			define reader: [user]`)
+
+	// write the model to the store
+	authorizationModel, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         store.Id,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
+		SchemaVersion:   model.SchemaVersion,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// write tuples to the store
+	_, err = openfga.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: store.Id,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "document:budget", Relation: "reader", User: "user:anne"},
+			},
+		},
+		Deletes: nil,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// make an authorization check
+	checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              store.Id,
+		AuthorizationModelId: authorizationModel.AuthorizationModelId, // optional, but recommended for speed
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     "user:anne",
+			Relation: "reader",
+			Object:   "document:budget",
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(checkResponse.Allowed)
+	// Output: true
+}
+
 func TestServerPanicIfNoDatastore(t *testing.T) {
 	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
 		_ = MustNewServerWithOpts()
@@ -60,7 +132,8 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, uri, err := util.MustBootstrapDatastore(t, engine)
+			_, ds, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
+			defer stopFunc()
 			require.NoError(t, err)
 
 			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
@@ -92,14 +165,21 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	ds := MustBootstrapDatastore(t, "postgres")
-	defer ds.Close()
+	ds, stopFunc := MustBootstrapDatastore(t, "postgres")
+	defer func() {
+		stopFunc()
+		goleak.VerifyNone(t)
+	}()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer func() {
+		stopFunc()
+		goleak.VerifyNone(t)
+	}()
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := postgres.New(
@@ -116,21 +196,31 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := MustBootstrapDatastore(t, "memory")
-	defer ds.Close()
+	ds, stopFunc := MustBootstrapDatastore(t, "memory")
+	defer func() {
+		stopFunc()
+		goleak.VerifyNone(t)
+	}()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
-	ds := MustBootstrapDatastore(t, "mysql")
-	defer ds.Close()
+	ds, stopFunc := MustBootstrapDatastore(t, "mysql")
+	defer func() {
+		stopFunc()
+		goleak.VerifyNone(t)
+	}()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	defer func() {
+		stopFunc()
+		goleak.VerifyNone(t)
+	}()
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := mysql.New(
@@ -148,7 +238,8 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
+		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "postgres")
+		defer stopFunc()
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
@@ -164,7 +255,8 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+		defer stopFunc()
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
@@ -179,7 +271,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -233,7 +325,8 @@ type repo
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	defer stopFunc()
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := postgres.New(uri, sqlcommon.NewConfig(
@@ -252,7 +345,7 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
+		TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -307,7 +400,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	// The model is invalid
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -390,7 +483,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -461,7 +554,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -523,7 +616,7 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -659,7 +752,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	typedefs := language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -722,7 +815,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(typesystem.New(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
+			TypeDefinitions: language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -774,7 +867,7 @@ type document
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
+			TypeDefinitions: language.MustTransformDSLToProto(`model
   schema 1.1
 type user
 
@@ -926,7 +1019,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
+			TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type repo
 `).TypeDefinitions,
@@ -965,8 +1058,8 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
-func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+func MustBootstrapDatastore(t testing.TB, engine string) (storage.OpenFGADatastore, func()) {
+	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	uri := testDatastore.GetConnectionURI(true)
 
@@ -985,5 +1078,8 @@ func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastor
 	}
 	require.NoError(t, err)
 
-	return ds
+	return ds, func() {
+		ds.Close()
+		stopFunc()
+	}
 }

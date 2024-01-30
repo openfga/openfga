@@ -14,13 +14,13 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=bind,target=. \
     CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
 
-FROM cgr.dev/chainguard/static@sha256:d3041c12f55d84bb1477e76cdbab3fce2ac93406671386dd36fc9120b39f4da9
+FROM cgr.dev/chainguard/static@sha256:bda736ff75ec4b76ecd120d6ccf0b9428419cf4568a5d786a7d77ba23a9f6992
 
 EXPOSE 8081
 EXPOSE 8080
 EXPOSE 3000
 
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.23 /ko-app/grpc-health-probe /user/local/bin/grpc_health_probe
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.24 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 COPY --from=builder /bin/openfga /openfga
 
 # Healthcheck configuration for the container using grpc_health_probe

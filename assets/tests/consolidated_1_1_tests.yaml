@@ -2941,7 +2941,7 @@ tests:
             object: repo:1
         listObjectsAssertions:
           - contextualTuples:
-              - user: user:*  #not allowed
+              - user: user:* #not allowed
                 relation: owner
                 object: organization:1
             request:
@@ -2961,7 +2961,7 @@ tests:
               define owner: [user]
         listObjectsAssertions:
           - contextualTuples:
-              - user: user:*  #not allowed
+              - user: user:* #not allowed
                 relation: owner
                 object: organization:1
             request:
@@ -3008,7 +3008,7 @@ tests:
             relations
               define blocked: [user]
               define owner: [user] but not blocked
-        assertions:
+        listObjectsAssertions:
           - request:
               user: user:a
               type: repo
@@ -3021,7 +3021,7 @@ tests:
           type repo
             relations
               define owner: [user]
-        assertions:
+        listObjectsAssertions:
           - request:
               user: user:a
               type: repo
@@ -3531,7 +3531,6 @@ tests:
             expectation:
               - module:a
               - module:b
-
 
   - name: computed_user_multi_route
     stages:
@@ -5146,7 +5145,7 @@ tests:
               user: user:alex
               type: repo
               relation: admin
-            expectation: [ ]
+            expectation: []
   - name: list_objects_with_subcheck_encounters_cycle
     stages:
       - model: |
@@ -5226,7 +5225,7 @@ tests:
           model
             schema 1.1
           type user
-          
+
           type document
             relations
               define allowed: [user]

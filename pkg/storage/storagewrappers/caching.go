@@ -1,4 +1,3 @@
-// Package storagewrappers contains decorators for storage data
 package storagewrappers
 
 import (
@@ -23,8 +22,9 @@ type cachedOpenFGADatastore struct {
 	cache       *ccache.Cache[*typesystem.TypeSystem]
 }
 
-// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize *openfgav1.AuthorizationModel
-// on every call to storage.ReadAuthorizationModel.
+// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize
+// [*openfgav1.AuthorizationModel] on every call to storage.ReadAuthorizationModel.
+// It caches with unlimited TTL because models are immutable. It uses LRU for eviction.
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
@@ -54,6 +54,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	return typesys, nil
 }
 
+// FindLatestAuthorizationModelID returns the last model `id` written for a store.
 func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
 	v, err, _ := c.lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
 		return c.OpenFGADatastore.FindLatestAuthorizationModelID(ctx, storeID)
@@ -64,6 +65,7 @@ func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Cont
 	return v.(string), nil
 }
 
+// Close closes the datastore and cleans up any residual resources.
 func (c *cachedOpenFGADatastore) Close() {
 	c.cache.Stop()
 	c.OpenFGADatastore.Close()

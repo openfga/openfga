@@ -45,6 +45,9 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
+	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
+	// defer goleak.VerifyNone(t)
+
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
@@ -87,18 +90,19 @@ func TestCheckLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	typedefs := parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
+	define viewer: [user]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: typedefs,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(t, err)
 
@@ -260,7 +264,7 @@ type document
 
 func testRunAll(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
 	cancel := tests.StartServer(t, cfg)
@@ -320,7 +324,10 @@ type organization
     define repo_reader: [user,organization#member]
     define repo_writer: [user,organization#member]`
 
-func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, openfgav1.OpenFGAServiceClient) {
+// setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
+// and a cancellation function that stops the benchmark timer, cleans up the server and the datastore, and
+// closes the client connection.
+func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
@@ -334,23 +341,29 @@ func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.
 	require.NoError(b, err)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
-	return cancel, conn, client
+	return client, func() {
+		// so we don't steal time from the benchmark itself
+		b.StopTimer()
+		cancel()
+		conn.Close()
+	}
 }
 
 func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark without trace"})
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -376,19 +389,20 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithTrace(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with trace"})
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -415,19 +429,20 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with direct resolution"})
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 
@@ -483,19 +498,20 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with bypass direct read"})
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
+	model := parser.MustTransformDSLToProto(githubModel)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
 	})
 	require.NoError(b, err)
 
@@ -515,9 +531,8 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "check benchmark with bypass direct read"})
@@ -600,9 +615,8 @@ type document
 }
 
 func benchmarkCheckWithOneCondition(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	storeID := ulid.Make().String()
 	model := parser.MustTransformDSLToProto(`model
@@ -652,9 +666,8 @@ condition password(p: string) {
 }
 
 func benchmarkCheckWithOneConditionWithManyParameters(b *testing.B, engine string) {
-	cancel, conn, client := setupBenchmarkTest(b, engine)
+	client, cancel := setupBenchmarkTest(b, engine)
 	defer cancel()
-	defer conn.Close()
 
 	storeID := ulid.Make().String()
 	model := parser.MustTransformDSLToProto(`model

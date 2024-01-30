@@ -380,12 +380,15 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			DatastoreQueryCount: 0,
 		},
 	}
+
+	var errs *multierror.Error
 	var dbReads uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				return response, baseResult.err
+				errs = multierror.Append(errs, baseResult.err)
+				continue
 			}
 
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -397,7 +400,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				return response, subResult.err
+				errs = multierror.Append(errs, subResult.err)
+				continue
 			}
 
 			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -409,6 +413,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+
+	if errs.ErrorOrNil() != nil {
+		return response, errs
 	}
 
 	return &ResolveCheckResponse{
@@ -595,7 +603,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			var errs error
+			var errs *multierror.Error
 			var handlers []CheckHandlerFunc
 			for {
 				t, err := filteredIter.Next(ctx)
@@ -668,7 +676,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 			}
 
-			if len(handlers) == 0 && errs != nil {
+			if len(handlers) == 0 && errs.ErrorOrNil() != nil {
 				telemetry.TraceError(span, errs)
 				return nil, errs
 			}
@@ -792,7 +800,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		var errs error
+		var errs *multierror.Error
 		var handlers []CheckHandlerFunc
 		for {
 			t, err := filteredIter.Next(ctx)
@@ -860,7 +868,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}))
 		}
 
-		if len(handlers) == 0 && errs != nil {
+		if len(handlers) == 0 && errs.ErrorOrNil() != nil {
 			telemetry.TraceError(span, errs)
 			return nil, errs
 		}

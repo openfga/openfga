@@ -27,7 +27,7 @@ jobs:
           version: latest
           args: -v -c .golangci.yaml
 
-  unit-tests:
+  tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -46,8 +46,8 @@ jobs:
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
-      - name: Unit Tests
-        run: make unit-test
+      - name: Tests
+        run: make test
 
       - name: upload coverage to codecov
         uses: codecov/codecov-action@eaaf4bedf32dbdc6b720b63067d99c4d77d6047d # v3.1.4
@@ -67,43 +67,42 @@ jobs:
         with:
           go-version-file: go.mod
 
-  functional-tests:
-      runs-on: ubuntu-latest
-      timeout-minutes: 15
-      steps:
-        - name: Checkout code
-          uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
-        - name: Set up Go
-          uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
-          with:
-            go-version-file: './go.mod'
-            cache-dependency-path: './go.sum'
-            check-latest: true
+  docker-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+      - name: Set up Go
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
+          check-latest: true
 
-        - id: go-cache-paths
-          name: Get Go cache paths
-          run: |
-            echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-            echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+      - id: go-cache-paths
+        name: Get Go cache paths
+        run: |
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
-        - name: Set up Docker Buildx
-          uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
 
-        # build the openfga/openfga image for the functional tests
-        - name: Build and push openfga/openfga:functionaltest
-          uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.1.0
-          with:
-            file: Dockerfile
-            push: false # don't publish the built container for functional tests
-            load: true
-            tags: "openfga/openfga:functionaltest"
+      - name: Build and push openfga/openfga:dockertest
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v5.1.0
+        with:
+          file: Dockerfile
+          push: false # don't publish the built container for Docker tests
+          load: true
+          tags: "openfga/openfga:dockertest"
 
-        - name: Functional Tests
-          run: make functional-test
+      - name: Docker Tests
+        run: make test-docker-ci
 
   go-bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172
     steps:
       - name: Checkout code
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
@@ -135,7 +134,7 @@ jobs:
 
       - name: Get benchmark JSON from main branch
         id: cache
-        uses: actions/cache/restore@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
+        uses: actions/cache/restore@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # v4.0.0
         with:
           path: ./cache/benchmark-data.json
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark

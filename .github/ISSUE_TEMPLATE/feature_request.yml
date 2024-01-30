@@ -1,0 +1,50 @@
+name: 🚀 Feature Request
+description: Suggest an idea or a feature for this project
+labels: [ "enhancement" ]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this feature request!
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I agree to the terms within the [OpenFGA Code of Conduct](https://github.com/openfga/.github/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the problem you'd like to have solved
+      description: A clear and concise description of what the problem is.
+      placeholder: My life would be a lot simpler if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: ideal-solution
+    attributes:
+      label: Describe the ideal solution
+      description: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives-and-workarounds
+    attributes:
+      label: Alternatives and current workarounds
+      description: A clear and concise description of any alternatives you've considered or any workarounds that are currently in place.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context or screenshots about the feature request here.
+    validations:
+      required: false
