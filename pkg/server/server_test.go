@@ -35,7 +35,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -157,10 +156,11 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
+		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 			WithRequestDurationByQueryHistogramBuckets([]uint{}),
 		)
+		defer s.Close()
 	})
 }
 
@@ -287,6 +287,9 @@ type repo
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	defer mockDatastore.Close()
+
+	mockDatastore.EXPECT().Close().Times(1)
 
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
@@ -314,6 +317,7 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	defer s.Close()
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -337,9 +341,10 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 	defer ds.Close()
 
 	s := MustNewServerWithOpts(
-		WithDatastore(storagewrappers.NewContextWrapper(ds)),
+		WithDatastore(ds),
 		WithMaxConcurrentReadsForListObjects(1),
 	)
+	defer s.Close()
 
 	storeID := ulid.Make().String()
 
@@ -416,7 +421,7 @@ type repo
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-
+	defer mockDatastore.Close()
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
@@ -425,12 +430,14 @@ type repo
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
 		}, nil)
+	mockDatastore.EXPECT().Close().Times(1)
 
 	// the model is error and err should return
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	defer s.Close()
 
 	_, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -498,7 +505,9 @@ type repo
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	defer mockDatastore.Close()
 
+	mockDatastore.EXPECT().Close().Times(1)
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
@@ -533,6 +542,7 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	defer s.Close()
 
 	start := time.Now()
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -569,7 +579,9 @@ type repo
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	defer mockDatastore.Close()
 
+	mockDatastore.EXPECT().Close().Times(1)
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
@@ -589,6 +601,7 @@ type repo
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
+	defer s.Close()
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -742,6 +755,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		defer s.Close()
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
@@ -757,6 +771,9 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		defer mockDatastore.Close()
+
+		mockDatastore.EXPECT().Close().Times(1)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
 			&openfgav1.AuthorizationModel{
@@ -769,6 +786,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		defer s.Close()
 
 		typesys, err := s.resolveTypesystem(ctx, store, "")
 		require.NoError(t, err)
@@ -784,10 +802,14 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		defer mockDatastore.Close()
+
+		mockDatastore.EXPECT().Close().Times(1)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		defer s.Close()
 
 		_, err := s.resolveTypesystem(ctx, store, modelID)
 		require.Equal(t, want, err)
@@ -829,7 +851,9 @@ type repo
 	define viewer: [user] and allowed`).TypeDefinitions
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	defer mockDatastore.Close()
 
+	mockDatastore.EXPECT().Close().Times(1)
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
@@ -839,6 +863,7 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	defer s.Close()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -873,10 +898,14 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 	t.Run("database_errors", func(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		defer mockDatastore.Close()
+
+		mockDatastore.EXPECT().Close().Times(1)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		defer s.Close()
 
 		modelID := ulid.Make().String()
 
@@ -926,10 +955,13 @@ type document
 	})
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
+		datastore := memory.New()
+		defer datastore.Close()
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(datastore),
 			WithResolveNodeLimit(2),
 		)
+		defer s.Close()
 
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
@@ -997,6 +1029,9 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	defer mockDatastore.Close()
+
+	mockDatastore.EXPECT().Close().Times(1)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_0,
@@ -1016,6 +1051,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	defer s.Close()
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -1118,9 +1154,13 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
 
+	ds := memory.New()
+	defer ds.Close()
 	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
+		WithDatastore(ds),
 	)
+	defer s.Close()
+
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }

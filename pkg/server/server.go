@@ -24,6 +24,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	storagewrappers "github.com/openfga/openfga/internal/storagewrappers"
+
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/gateway"
@@ -38,7 +40,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -88,6 +89,7 @@ type Server struct {
 	datastore                        storage.OpenFGADatastore
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
+	maxAuthorizationModelCacheSize   int
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
 	changelogHorizonOffset           int
@@ -118,6 +120,13 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+// WithDatastoreCacheSize sets the maximum number of authorization models that will be cached in memory.
+func WithDatastoreCacheSize(maxAuthorizationModelCacheSize int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxAuthorizationModelCacheSize = maxAuthorizationModelCacheSize
 	}
 }
 
@@ -275,6 +284,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
+		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
 		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
@@ -320,6 +330,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("a datastore option must be provided")
 	}
 
+	s.datastore = storagewrappers.NewCachedOpenFGADatastore(
+		storagewrappers.NewContextWrapper(s.datastore),
+		s.maxAuthorizationModelCacheSize)
+
 	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
@@ -335,6 +349,7 @@ func (s *Server) Close() {
 		s.checkCache.Stop()
 	}
 	s.typesystemResolverStop()
+	s.datastore.Close()
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {

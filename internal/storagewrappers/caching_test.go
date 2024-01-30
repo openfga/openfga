@@ -20,6 +20,7 @@ import (
 func TestReadAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
 	memoryBackend := memory.New()
+	defer memoryBackend.Close()
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 	defer cachingBackend.Close()
 
@@ -68,6 +69,7 @@ func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
 		return expectedModelID, nil
 	}).Times(1)
 	mockDatastore.EXPECT().Close().Times(1)
+	defer mockDatastore.Close()
 
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
 	defer cachingBackend.Close()

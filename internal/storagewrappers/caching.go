@@ -62,8 +62,7 @@ func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Cont
 	return v.(string), nil
 }
 
-// Close closes the datastore and cleans up any residual resources.
+// Close stops the cache only. You must call Close on the underlying datastore yourself.
 func (c *cachedOpenFGADatastore) Close() {
 	c.cache.Stop()
-	c.OpenFGADatastore.Close()
 }

@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	DefaultMaxAuthorizationModelCacheSize   = 100000
 	DefaultMaxRPCMessageSizeInBytes         = 512 * 1_204 // 512 KB
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100

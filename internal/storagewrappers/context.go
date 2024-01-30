@@ -32,9 +32,8 @@ func queryContext(ctx context.Context) context.Context {
 	return trace.ContextWithSpan(context.Background(), span)
 }
 
-// Close ensures proper cleanup and closure of resources associated with the OpenFGADatastore.
+// Close does nothing. You must call Close on the underlying datastore yourself.
 func (c *ContextTracerWrapper) Close() {
-	c.OpenFGADatastore.Close()
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
