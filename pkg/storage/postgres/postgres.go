@@ -172,7 +172,6 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	if opts != nil {
 		sb = sb.OrderBy("ulid")
 	}
-
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
