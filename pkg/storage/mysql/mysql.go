@@ -128,7 +128,7 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, nil, false)
+	return m.read(ctx, store, tupleKey, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -141,7 +141,7 @@ func (m *MySQL) ReadPage(
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, &opts, true)
+	iter, err := m.read(ctx, store, tupleKey, &opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -150,7 +150,7 @@ func (m *MySQL) ReadPage(
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions, sortByUlid bool) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -162,7 +162,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 		From("tuple").
 		Where(sq.Eq{"store": store})
 
-	if sortByUlid {
+	if opts != nil {
 		sb = sb.OrderBy("ulid")
 	}
 

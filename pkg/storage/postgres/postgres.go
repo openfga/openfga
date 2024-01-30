@@ -141,7 +141,7 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
-	return p.read(ctx, store, tupleKey, nil, false)
+	return p.read(ctx, store, tupleKey, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -149,7 +149,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
 
-	iter, err := p.read(ctx, store, tupleKey, &opts, true)
+	iter, err := p.read(ctx, store, tupleKey, &opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -158,7 +158,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	return iter.ToArray(opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions, sortByUlid bool) (*sqlcommon.SQLTupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
@@ -169,7 +169,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if sortByUlid {
+	if opts != nil {
 		sb = sb.OrderBy("ulid")
 	}
 
