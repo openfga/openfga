@@ -11,6 +11,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -1212,6 +1213,64 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+}
+
+func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "reader", "user:anne"),
+	}
+
+	err := datastore.Write(ctx, storeID, nil, tuples)
+	require.NoError(t, err)
+
+	tuples = []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:2", "reader", "user:anne"),
+	}
+
+	err = datastore.Write(ctx, storeID, nil, tuples)
+	require.NoError(t, err)
+
+	tuples = []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "admin", "user:anne"),
+	}
+
+	err = datastore.Write(ctx, storeID, nil, tuples)
+	require.NoError(t, err)
+
+	t.Run("returns_2_results_when_page_size_2", func(t *testing.T) {
+		tuples, contToken, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:anne"),
+			storage.PaginationOptions{
+				PageSize: 2,
+				From:     "",
+			},
+		)
+		require.NoError(t, err)
+
+		var receivedTuples []*openfgav1.TupleKey
+		for _, tuple := range tuples {
+			receivedTuples = append(receivedTuples, tuple.Key)
+		}
+
+		expectedTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "admin", "user:anne"),
+			tuple.NewTupleKey("document:1", "reader", "user:anne"),
+		}
+
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+		if diff := cmp.Diff(expectedTuples, receivedTuples, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+		require.Empty(t, contToken)
 	})
 }
 

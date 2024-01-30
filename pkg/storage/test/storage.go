@@ -35,6 +35,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 	t.Run("TestRead", func(t *testing.T) { ReadTest(t, ds) })
+	t.Run("TestReadPage", func(t *testing.T) { ReadPageTest(t, ds) })
 
 	// Authorization models.
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })
