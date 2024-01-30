@@ -141,7 +141,7 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
-	return p.read(ctx, store, tupleKey, nil)
+	return p.read(ctx, store, tupleKey, nil, false)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -149,7 +149,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
 
-	iter, err := p.read(ctx, store, tupleKey, &opts)
+	iter, err := p.read(ctx, store, tupleKey, &opts, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -158,9 +158,16 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	return iter.ToArray(opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions, sortByUlid bool) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
+
+	if opts != nil {
+		*opts = storage.NewPaginationOptions(int32(opts.PageSize), opts.From)
+	} else {
+		opts = new(storage.PaginationOptions)
+		*opts = storage.NewPaginationOptions(0, "")
+	}
 
 	sb := p.stbl.
 		Select(
@@ -169,7 +176,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if opts != nil {
+	if sortByUlid {
 		sb = sb.OrderBy("ulid")
 	}
 
@@ -186,14 +193,14 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	if tupleKey.GetUser() != "" {
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
-	if opts != nil && opts.From != "" {
+	if opts.From != "" {
 		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
-	if opts != nil && opts.PageSize != 0 {
+	if opts.PageSize != 0 {
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 

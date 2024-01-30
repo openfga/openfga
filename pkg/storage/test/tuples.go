@@ -1240,14 +1240,13 @@ func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	err := datastore.Write(ctx, storeID, nil, tuplesWritten)
 	require.NoError(t, err)
 
-	t.Run("returns_2_results_when_page_size_2", func(t *testing.T) {
+	t.Run("returns_2_results_and_no_continuation_token_when_page_size_2", func(t *testing.T) {
 		tuplesRead, contToken, err := datastore.ReadPage(
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", "user:anne"),
 			storage.PaginationOptions{
 				PageSize: 2,
-				From:     "",
 			},
 		)
 		require.NoError(t, err)
@@ -1264,6 +1263,42 @@ func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 		diff := cmp.Diff(expectedTuples, tuplesRead, cmpOpts...)
 		require.Empty(t, diff)
+		require.Empty(t, contToken)
+	})
+
+	t.Run("returns_1_results_and_continuation_token_when_page_size_1", func(t *testing.T) {
+		firstRead, contToken, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:anne"),
+			storage.PaginationOptions{
+				PageSize: 1,
+			},
+		)
+		require.NoError(t, err)
+
+		require.Len(t, firstRead, 1)
+		require.Equal(t, "document:1", firstRead[0].Key.Object)
+		require.Equal(t, "user:anne", firstRead[0].Key.User)
+		require.NotEmpty(t, contToken)
+
+		// use the token
+
+		secondRead, contToken, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:anne"),
+			storage.PaginationOptions{
+				PageSize: 50, // fetch the remainder
+				From:     string(contToken),
+			},
+		)
+		require.NoError(t, err)
+
+		require.Len(t, secondRead, 1)
+		require.Equal(t, "document:1", secondRead[0].Key.Object)
+		require.Equal(t, "user:anne", secondRead[0].Key.User)
+		require.NotEqual(t, firstRead[0].Key.Relation, secondRead[0].Key.Relation)
 		require.Empty(t, contToken)
 	})
 }
