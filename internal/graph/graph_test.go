@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/openfga/openfga/pkg/testutils"
 
@@ -21,16 +21,16 @@ var (
 
 		// Sort by Type and then by edge and then by tupleset relation
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Type > out[j].Type {
-				return false
+			if out[i].Type != out[j].Type {
+				return out[i].Type < out[j].Type
 			}
 
-			if typesystem.GetRelationReferenceAsString(out[i].TargetReference) > typesystem.GetRelationReferenceAsString(out[j].TargetReference) {
-				return false
+			if typesystem.GetRelationReferenceAsString(out[i].TargetReference) != typesystem.GetRelationReferenceAsString(out[j].TargetReference) {
+				return typesystem.GetRelationReferenceAsString(out[i].TargetReference) < typesystem.GetRelationReferenceAsString(out[j].TargetReference)
 			}
 
-			if out[i].TuplesetRelation > out[j].TuplesetRelation {
-				return false
+			if out[i].TuplesetRelation != out[j].TuplesetRelation {
+				return out[i].TuplesetRelation < out[j].TuplesetRelation
 			}
 
 			return true
@@ -262,8 +262,8 @@ type organization
 			require.NoError(t, err)
 
 			cmpOpts := []cmp.Option{
-				cmpopts.IgnoreUnexported(openfgav1.RelationReference{}),
 				RelationshipEdgeTransformer,
+				protocmp.Transform(),
 			}
 			if diff := cmp.Diff(test.expected, edges, cmpOpts...); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
@@ -1490,8 +1490,8 @@ type document
 			require.NoError(t, err)
 
 			cmpOpts := []cmp.Option{
-				cmpopts.IgnoreUnexported(openfgav1.RelationReference{}),
 				RelationshipEdgeTransformer,
+				protocmp.Transform(),
 			}
 			if diff := cmp.Diff(test.expected, edges, cmpOpts...); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)

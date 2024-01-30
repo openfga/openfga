@@ -11,6 +11,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -1253,23 +1254,18 @@ func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		)
 		require.NoError(t, err)
 
-		var receivedTuples []*openfgav1.TupleKey
-		for _, tuple := range tuples {
-			receivedTuples = append(receivedTuples, tuple.Key)
-		}
-
-		expectedTuples := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "admin", "user:anne"),
-			tuple.NewTupleKey("document:1", "reader", "user:anne"),
+		expectedTuples := []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "admin", "user:anne")},
+			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
 		}
 
 		cmpOpts := []cmp.Option{
-			testutils.TupleKeyCmpTransformer,
+			protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+			testutils.TupleCmpTransformer,
 			protocmp.Transform(),
 		}
-		if diff := cmp.Diff(expectedTuples, receivedTuples, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-want +got):\n%s", diff)
-		}
+		diff := cmp.Diff(expectedTuples, tuples, cmpOpts...)
+		require.Empty(t, diff)
 		require.Empty(t, contToken)
 	})
 }
