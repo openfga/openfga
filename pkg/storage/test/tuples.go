@@ -1221,29 +1221,27 @@ func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 
-	tuples := []*openfgav1.TupleKey{
+	tuplesWritten := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "reader", "user:anne"),
-	}
-
-	err := datastore.Write(ctx, storeID, nil, tuples)
-	require.NoError(t, err)
-
-	tuples = []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:2", "reader", "user:anne"),
-	}
-
-	err = datastore.Write(ctx, storeID, nil, tuples)
-	require.NoError(t, err)
-
-	tuples = []*openfgav1.TupleKey{
+		// read should skip over these
+		tuple.NewTupleKey("document:2", "a", "user:anne"),
+		tuple.NewTupleKey("document:2", "b", "user:anne"),
+		tuple.NewTupleKey("document:2", "c", "user:anne"),
+		tuple.NewTupleKey("document:2", "d", "user:anne"),
+		tuple.NewTupleKey("document:2", "e", "user:anne"),
+		tuple.NewTupleKey("document:2", "f", "user:anne"),
+		tuple.NewTupleKey("document:2", "g", "user:anne"),
+		tuple.NewTupleKey("document:2", "h", "user:anne"),
+		tuple.NewTupleKey("document:2", "j", "user:anne"),
+		// end of skip
 		tuple.NewTupleKey("document:1", "admin", "user:anne"),
 	}
 
-	err = datastore.Write(ctx, storeID, nil, tuples)
+	err := datastore.Write(ctx, storeID, nil, tuplesWritten)
 	require.NoError(t, err)
 
 	t.Run("returns_2_results_when_page_size_2", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(
+		tuplesRead, contToken, err := datastore.ReadPage(
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", "user:anne"),
@@ -1264,7 +1262,7 @@ func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			testutils.TupleCmpTransformer,
 			protocmp.Transform(),
 		}
-		diff := cmp.Diff(expectedTuples, tuples, cmpOpts...)
+		diff := cmp.Diff(expectedTuples, tuplesRead, cmpOpts...)
 		require.Empty(t, diff)
 		require.Empty(t, contToken)
 	})
