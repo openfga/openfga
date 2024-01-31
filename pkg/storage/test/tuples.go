@@ -11,6 +11,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -1212,6 +1214,92 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+}
+
+func ReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	tuplesWritten := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "reader", "user:anne"),
+		// read should skip over these
+		tuple.NewTupleKey("document:2", "a", "user:anne"),
+		tuple.NewTupleKey("document:2", "b", "user:anne"),
+		tuple.NewTupleKey("document:2", "c", "user:anne"),
+		tuple.NewTupleKey("document:2", "d", "user:anne"),
+		tuple.NewTupleKey("document:2", "e", "user:anne"),
+		tuple.NewTupleKey("document:2", "f", "user:anne"),
+		tuple.NewTupleKey("document:2", "g", "user:anne"),
+		tuple.NewTupleKey("document:2", "h", "user:anne"),
+		tuple.NewTupleKey("document:2", "j", "user:anne"),
+		// end of skip
+		tuple.NewTupleKey("document:1", "admin", "user:anne"),
+	}
+
+	err := datastore.Write(ctx, storeID, nil, tuplesWritten)
+	require.NoError(t, err)
+
+	t.Run("returns_2_results_and_no_continuation_token_when_page_size_2", func(t *testing.T) {
+		tuplesRead, contToken, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:anne"),
+			storage.PaginationOptions{
+				PageSize: 2,
+			},
+		)
+		require.NoError(t, err)
+
+		expectedTuples := []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "admin", "user:anne")},
+			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
+		}
+
+		cmpOpts := []cmp.Option{
+			protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+			testutils.TupleCmpTransformer,
+			protocmp.Transform(),
+		}
+		diff := cmp.Diff(expectedTuples, tuplesRead, cmpOpts...)
+		require.Empty(t, diff)
+		require.Empty(t, contToken)
+	})
+
+	t.Run("returns_1_results_and_continuation_token_when_page_size_1", func(t *testing.T) {
+		firstRead, contToken, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:anne"),
+			storage.PaginationOptions{
+				PageSize: 1,
+			},
+		)
+		require.NoError(t, err)
+
+		require.Len(t, firstRead, 1)
+		require.Equal(t, "document:1", firstRead[0].Key.Object)
+		require.Equal(t, "user:anne", firstRead[0].Key.User)
+		require.NotEmpty(t, contToken)
+
+		// use the token
+
+		secondRead, contToken, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:anne"),
+			storage.PaginationOptions{
+				PageSize: 50, // fetch the remainder
+				From:     string(contToken),
+			},
+		)
+		require.NoError(t, err)
+
+		require.Len(t, secondRead, 1)
+		require.Equal(t, "document:1", secondRead[0].Key.Object)
+		require.Equal(t, "user:anne", secondRead[0].Key.User)
+		require.NotEqual(t, firstRead[0].Key.Relation, secondRead[0].Key.Relation)
+		require.Empty(t, contToken)
 	})
 }
 
