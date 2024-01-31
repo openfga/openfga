@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
@@ -53,6 +54,11 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "singleflight"))
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	isUnique := false
 	singleFlightResp, err, shared := s.group.Do(key, func() (interface{}, error) {
 		isUnique = true
@@ -77,6 +83,9 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
 		resp.ResolutionMetadata.DatastoreQueryCount = 0
 	}
+
+	span.SetAttributes(attribute.Bool("is_shared_request", shared))
+	span.SetAttributes(attribute.Bool("is_ultimately_processed_request", isUnique))
 
 	return &resp, err
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/build"
@@ -150,6 +151,11 @@ func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "cache"))
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := CheckRequestCacheKey(req)
@@ -161,8 +167,10 @@ func (c *CachedCheckResolver) ResolveCheck(
 	cachedResp := c.cache.Get(cacheKey)
 	if cachedResp != nil && !cachedResp.Expired() {
 		checkCacheHitCounter.Inc()
+		span.SetAttributes(attribute.Bool("is_cached", true))
 		return cachedResp.Value().convertToResolveCheckResponse(), nil
 	}
+	span.SetAttributes(attribute.Bool("is_cached", false))
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
