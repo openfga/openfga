@@ -184,7 +184,7 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 		return err
 	}
 
-	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	logger := logger.MustNewLogger(cfg.Log)
 	serverCtx := &ServerContext{Logger: logger}
 	return serverCtx.Run(ctx, cfg)
 }

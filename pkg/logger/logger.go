@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/server/config"
 )
 
 type Logger interface {
@@ -93,13 +94,13 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
-func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
-	if logLevel == "none" {
+func NewLogger(logConfig config.LogConfig) (*ZapLogger, error) {
+	if logConfig.Level == "none" {
 		return NewNoopLogger(), nil
 	}
 
 	var level zapcore.Level
-	switch logLevel {
+	switch logConfig.Level {
 	case "debug":
 		level = zap.DebugLevel
 	case "info":
@@ -113,7 +114,7 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 	case "fatal":
 		level = zap.FatalLevel
 	default:
-		return nil, fmt.Errorf("unknown log level: %s", logLevel)
+		return nil, fmt.Errorf("unknown log level: %s", logConfig.Level)
 	}
 
 	cfg := zap.NewProductionConfig()
@@ -121,9 +122,13 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
-	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	if logConfig.TimestampFormat == "ISO8601" {
+		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	} else {
+		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder
+	}
 
-	if logFormat == "text" {
+	if logConfig.Format == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -134,15 +139,15 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 		return nil, err
 	}
 
-	if logFormat == "json" {
+	if logConfig.Format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
 	return &ZapLogger{log}, nil
 }
 
-func MustNewLogger(logFormat, logLevel string) *ZapLogger {
-	logger, err := NewLogger(logFormat, logLevel)
+func MustNewLogger(logConfig config.LogConfig) *ZapLogger {
+	logger, err := NewLogger(logConfig)
 	if err != nil {
 		panic(err)
 	}

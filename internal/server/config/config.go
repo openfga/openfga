@@ -126,6 +126,9 @@ type LogConfig struct {
 
 	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
 	Level string
+
+	// Format of the timestamp in the log output (e.g. 'Unix' or 'ISO8601'(default))
+	TimestampFormat string
 }
 
 type TraceConfig struct {
@@ -257,6 +260,10 @@ func (cfg *Config) Verify() error {
 		)
 	}
 
+	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
+		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
+	}
+
 	if cfg.Playground.Enabled {
 		if !cfg.HTTP.Enabled {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
@@ -333,8 +340,9 @@ func DefaultConfig() *Config {
 			AuthnOIDCConfig:         &AuthnOIDCConfig{},
 		},
 		Log: LogConfig{
-			Format: "text",
-			Level:  "info",
+			Format:          "text",
+			Level:           "info",
+			TimestampFormat: "ISO8601",
 		},
 		Trace: TraceConfig{
 			Enabled: false,

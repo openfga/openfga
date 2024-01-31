@@ -318,6 +318,13 @@
                     "enum": ["none", "debug", "info", "warn", "error", "panic", "fatal"],
                     "default": "info",
                     "x-env-variable": "OPENFGA_LOG_LEVEL"
+                },
+                "timestampFormat": {
+                    "description": "The timestamp format to use for the log output.",
+                    "type": "string",
+                    "enum": ["Unix", "ISO8601"],
+                    "default": "ISO8601",
+                    "x-env-variable": "OPENFGA_LOG_TIMESTAMP_FORMAT"
                 }
             }
         },
