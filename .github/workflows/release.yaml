@@ -45,7 +45,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@9614fae9e5c5eddabb09f90a270fcb487c9f7149 # v3.3.0
 
-      - uses: anchore/sbom-action/download-syft@24b0d5238516480139aa8bc6f92eeb7b54a9eb0a # v0.15.5
+      - uses: anchore/sbom-action/download-syft@c6aed38a4323b393d05372c58a74c39ae8386d02 # v0.15.6
 
       - name: Run GoReleaser
         id: goreleaser
@@ -58,7 +58,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
 
       - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@dc67fad7001ef9e8e3c124cb7a64e16d0a63d864 # v3.4.2
+        uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -110,7 +110,7 @@ jobs:
           args: --file=Dockerfile
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@0b21cf2492b6b02c465a3e5d7c473717ad7721ba # pin@v2
+        uses: github/codeql-action/upload-sarif@b7bf0a3ed3ecfa44160715d7c442788f65f0f923 # pin@v2
         with:
           sarif_file: snyk.sarif
 
