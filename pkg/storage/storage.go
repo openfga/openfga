@@ -38,7 +38,8 @@ type PaginationOptions struct {
 }
 
 // NewPaginationOptions creates a new [PaginationOptions] instance
-// with a specified page size and continuation token.
+// with a specified page size and continuation token. If the input page size is empty,
+// it uses DefaultPageSize
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
 	if ps != 0 {
@@ -75,10 +76,9 @@ type RelationshipTupleReader interface {
 	// There is NO guarantee on the order returned on the iterator.
 	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
 
-	// ReadPage functions similarly to Read but includes support for pagination. It takes additional
-	// pagination parameters and returns a slice of tuples along with a continuation token, which may
-	// not be empty. This token can be used for retrieving subsequent pages of data.
-	// The tuples returned are ordered by ULID (Universally Unique Lexicographically Sortable Identifier).
+	// ReadPage functions similarly to Read but includes support for pagination. It takes
+	// mandatory pagination options (pageSize can be zero :/)
+	// and returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	ReadPage(
 		ctx context.Context,
 		store string,

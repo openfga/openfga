@@ -31,20 +31,41 @@ const (
 )
 
 var (
+	TupleCmpTransformer = cmp.Transformer("Sort", func(in []*openfgav1.Tuple) []*openfgav1.Tuple {
+		out := append([]*openfgav1.Tuple(nil), in...) // Copy input to avoid mutating it
+
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].GetKey().Object != out[j].GetKey().Object {
+				return out[i].GetKey().Object < out[j].GetKey().Object
+			}
+
+			if out[i].GetKey().Relation != out[j].GetKey().Relation {
+				return out[i].GetKey().Relation < out[j].GetKey().Relation
+			}
+
+			if out[i].GetKey().User != out[j].GetKey().User {
+				return out[i].GetKey().User < out[j].GetKey().User
+			}
+
+			return true
+		})
+
+		return out
+	})
 	TupleKeyCmpTransformer = cmp.Transformer("Sort", func(in []*openfgav1.TupleKey) []*openfgav1.TupleKey {
 		out := append([]*openfgav1.TupleKey(nil), in...) // Copy input to avoid mutating it
 
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Object > out[j].Object {
-				return false
+			if out[i].Object != out[j].Object {
+				return out[i].Object < out[j].Object
 			}
 
-			if out[i].Relation > out[j].Relation {
-				return false
+			if out[i].Relation != out[j].Relation {
+				return out[i].Relation < out[j].Relation
 			}
 
-			if out[i].User > out[j].User {
-				return false
+			if out[i].User != out[j].User {
+				return out[i].User < out[j].User
 			}
 
 			return true

@@ -320,6 +320,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkOptions = []graph.LocalCheckerOption{
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		graph.WithSingleflightResolver(),
 	}
 
 	if s.checkQueryCacheEnabled {

@@ -153,6 +153,13 @@ func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 	}
 }
 
+func WithSingleflightResolver() LocalCheckerOption {
+	return func(d *LocalChecker) {
+		singleflightResolver := NewSingleflightCheckResolver(d)
+		d.delegate = singleflightResolver
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
