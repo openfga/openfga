@@ -488,7 +488,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
-		server.WithDatastoreCacheSize(config.Datastore.MaxCacheSize),
+		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),

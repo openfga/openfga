@@ -123,8 +123,8 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	}
 }
 
-// WithDatastoreCacheSize sets the maximum number of authorization models that will be cached in memory.
-func WithDatastoreCacheSize(maxAuthorizationModelCacheSize int) OpenFGAServiceV1Option {
+// WithAuthorizationModelCacheSize sets the maximum number of authorization models that will be cached in memory.
+func WithAuthorizationModelCacheSize(maxAuthorizationModelCacheSize int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxAuthorizationModelCacheSize = maxAuthorizationModelCacheSize
 	}
