@@ -308,6 +308,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		opt(s)
 	}
 
+	if s.datastore == nil {
+		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+	}
+
+	// at this point all validations have passed and we can create resources
 	s.checkOptions = []graph.LocalCheckerOption{
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
@@ -326,17 +335,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		))
 	}
 
-	if s.datastore == nil {
-		return nil, fmt.Errorf("a datastore option must be provided")
-	}
-
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(
 		storagewrappers.NewContextWrapper(s.datastore),
 		s.maxAuthorizationModelCacheSize)
-
-	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
-		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
-	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 

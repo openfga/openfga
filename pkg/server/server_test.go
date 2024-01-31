@@ -120,9 +120,33 @@ func ExampleNewServerWithOpts() {
 	// Output: true
 }
 
-func TestServerPanicIfNoDatastore(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
-		_ = MustNewServerWithOpts()
+func TestServerPanicIfValidationsFail(t *testing.T) {
+	// if validations fail, we must not leak resources
+	defer goleak.VerifyNone(t)
+
+	t.Run("no_datastore", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts()
+		})
+	})
+	t.Run("no_datastore_and_check_query_cache_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts(
+				WithCheckQueryCacheEnabled(true))
+		})
+	})
+
+	t.Run("no_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			s := MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByQueryHistogramBuckets([]uint{}),
+			)
+			defer s.Close()
+		})
 	})
 }
 
@@ -149,19 +173,6 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 			require.False(t, status.IsReady)
 		})
 	}
-}
-
-func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		s := MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithRequestDurationByQueryHistogramBuckets([]uint{}),
-		)
-		defer s.Close()
-	})
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
