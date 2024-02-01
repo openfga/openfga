@@ -877,7 +877,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 }
 
-func ReadPageTestPagination(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	tk0 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
@@ -1083,7 +1083,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 }
 
-func ReadTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
 	tuples := []*openfgav1.TupleKey{
@@ -1234,7 +1234,7 @@ func ReadTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 }
 
-func ReadPageTestPaginationV2(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 
@@ -1314,7 +1314,7 @@ func ReadPageTestPaginationV2(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 }
 
-func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
 	tuples := []*openfgav1.TupleKey{

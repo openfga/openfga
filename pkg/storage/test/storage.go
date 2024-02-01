@@ -35,12 +35,12 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 
 	// TODO I suspect there is overlap in test scenarios. Consolidate them into one
-	t.Run("TestReadPageTestPagination", func(t *testing.T) { ReadPageTestPagination(t, ds) })
-	t.Run("TestReadPageTestPaginationV2", func(t *testing.T) { ReadPageTestPaginationV2(t, ds) })
+	t.Run("ReadPageTestCorrectnessOfContinuationTokens", func(t *testing.T) { ReadPageTestCorrectnessOfContinuationTokens(t, ds) })
+	t.Run("ReadPageTestCorrectnessOfContinuationTokensV2", func(t *testing.T) { ReadPageTestCorrectnessOfContinuationTokensV2(t, ds) })
 
 	// TODO Consolidate them into one, since both Read and ReadPage should respect the same set of filters
-	t.Run("TestReadCorrectness", func(t *testing.T) { ReadTestCorrectness(t, ds) })
-	t.Run("TestReadPageCorrectness", func(t *testing.T) { ReadPageTestCorrectness(t, ds) })
+	t.Run("ReadTestCorrectnessOfTuples", func(t *testing.T) { ReadTestCorrectnessOfTuples(t, ds) })
+	t.Run("ReadPageTestCorrectnessOfTuples", func(t *testing.T) { ReadPageTestCorrectnessOfTuples(t, ds) })
 
 	// Authorization models.
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })

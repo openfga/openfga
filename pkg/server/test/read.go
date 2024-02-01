@@ -21,7 +21,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// TODO Read API delegates to [storage.ReadPage]. Tests here shouldn't assert on correctness of results because that's tested in pkg/storage/test.
+// Read Command delegates to [storage.ReadPage].
+// TODO Tests here shouldn't assert on correctness of results because that should be tested in pkg/storage/test.
 // We should pass a mock datastore and assert that mock.ReadPage was called
 
 func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
