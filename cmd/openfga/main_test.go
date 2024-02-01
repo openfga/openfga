@@ -85,7 +85,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 	cont, err := dockerClient.ContainerCreate(ctx, &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create openfga docker container")
 
-	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
+	err = dockerClient.ContainerStart(ctx, cont.ID, container.StartOptions{})
 	require.NoError(t, err)
 
 	stopContainer := func() {
