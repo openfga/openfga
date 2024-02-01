@@ -78,14 +78,18 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	// involved in the de-duplication, and thus is subject to race conditions.
 	resp := copyResolveResponse(r)
 
-	if shared && !isUnique {
-		deduplicatedDispatchCount.Inc()
-		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
-		resp.ResolutionMetadata.DatastoreQueryCount = 0
+	if shared {
+		if isUnique {
+			span.SetAttributes(attribute.String("singleflight_state", "shared_and_resolved"))
+		} else {
+			deduplicatedDispatchCount.Inc()
+			deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
+			span.SetAttributes(attribute.String("singleflight_state", "shared_but_deduplicated"))
+			resp.ResolutionMetadata.DatastoreQueryCount = 0
+		}
+	} else {
+		span.SetAttributes(attribute.String("singleflight_state", "not_shared"))
 	}
-
-	span.SetAttributes(attribute.Bool("is_shared_request", shared))
-	span.SetAttributes(attribute.Bool("is_ultimately_processed_request", isUnique))
 
 	return &resp, err
 }
