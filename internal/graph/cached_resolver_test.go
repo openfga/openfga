@@ -22,8 +22,7 @@ import (
 )
 
 func TestResolveCheckFromCache(t *testing.T) {
-	ctx, span := tracer.Start(context.Background(), gomock.Any().String())
-	defer span.End()
+	ctx := context.Background()
 
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
@@ -410,7 +409,7 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)
-	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
+	initialMockResolver.EXPECT().ResolveCheck(ctx, req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
 	dut := NewCachedCheckResolver(initialMockResolver, WithCacheTTL(1*time.Microsecond))
