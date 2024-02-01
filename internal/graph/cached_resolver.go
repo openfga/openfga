@@ -153,7 +153,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "cache"))
+	span.SetAttributes(attribute.String("resolver_type", "CachedCheckResolver"))
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	checkCacheTotalCounter.Inc()
