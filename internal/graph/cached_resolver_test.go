@@ -22,7 +22,8 @@ import (
 )
 
 func TestResolveCheckFromCache(t *testing.T) {
-	ctx, _ := tracer.Start(context.Background(), gomock.Any().String())
+	ctx, span := tracer.Start(context.Background(), gomock.Any().String())
+	defer span.End()
 
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
