@@ -323,7 +323,7 @@
                     "description": "The timestamp format to use for the log output.",
                     "type": "string",
                     "enum": ["Unix", "ISO8601"],
-                    "default": "ISO8601",
+                    "default": "Unix",
                     "x-env-variable": "OPENFGA_LOG_TIMESTAMP_FORMAT"
                 }
             }

@@ -122,16 +122,18 @@ func NewLogger(logConfig config.LogConfig) (*ZapLogger, error) {
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
-	if logConfig.TimestampFormat == "ISO8601" {
-		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	} else {
-		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder
-	}
 
 	if logConfig.Format == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	} else { // Json
+		if logConfig.TimestampFormat == "ISO8601" {
+			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		} else {
+			cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
+		}
 	}
 
 	log, err := cfg.Build()

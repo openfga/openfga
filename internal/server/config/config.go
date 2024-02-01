@@ -342,7 +342,7 @@ func DefaultConfig() *Config {
 		Log: LogConfig{
 			Format:          "text",
 			Level:           "info",
-			TimestampFormat: "ISO8601",
+			TimestampFormat: "Unix",
 		},
 		Trace: TraceConfig{
 			Enabled: false,
