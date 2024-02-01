@@ -82,9 +82,9 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		if isUnique {
 			span.SetAttributes(attribute.String("singleflight_state", "shared_and_resolved"))
 		} else {
+			span.SetAttributes(attribute.String("singleflight_state", "shared_but_deduplicated"))
 			deduplicatedDispatchCount.Inc()
 			deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
-			span.SetAttributes(attribute.String("singleflight_state", "shared_but_deduplicated"))
 			resp.ResolutionMetadata.DatastoreQueryCount = 0
 		}
 	} else {
