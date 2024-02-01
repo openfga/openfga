@@ -31,11 +31,16 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	})
 	// Tuples.
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
-	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
-	t.Run("TestRead", func(t *testing.T) { ReadTest(t, ds) })
-	t.Run("TestReadPage", func(t *testing.T) { ReadPageTest(t, ds) })
+
+	// TODO Consolidate them into one
+	t.Run("TestReadPageTestPagination", func(t *testing.T) { ReadPageTestPagination(t, ds) })
+	t.Run("TestReadPageTestPaginationV2", func(t *testing.T) { ReadPageTestPaginationV2(t, ds) })
+
+	// TODO Consolidate them into one
+	t.Run("TestReadCorrectness", func(t *testing.T) { ReadTestCorrectness(t, ds) })
+	t.Run("TestReadPageCorrectness", func(t *testing.T) { ReadPageTestCorrectness(t, ds) })
 
 	// Authorization models.
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })
