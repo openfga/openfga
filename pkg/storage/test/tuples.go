@@ -1164,7 +1164,7 @@ func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastor
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 
-	t.Run("filter_by_user_and_and_objectType", func(t *testing.T) {
+	t.Run("filter_by_user_and_objectType", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
@@ -1396,7 +1396,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 		require.Empty(t, contToken)
 	})
 
-	t.Run("filter_by_user_and_and_objectType", func(t *testing.T) {
+	t.Run("filter_by_user_and_objectType", func(t *testing.T) {
 		gotTuples, contToken, err := datastore.ReadPage(
 			ctx,
 			storeID,
