@@ -1513,12 +1513,12 @@ func getTupleKeys(tupleIterator storage.TupleIterator, t *testing.T) []*openfgav
 	return tupleKeys
 }
 
-func requireEqualTuples(t *testing.T, expectedTuples []*openfgav1.Tuple, tuplesRead []*openfgav1.Tuple) {
+func requireEqualTuples(t *testing.T, expectedTuples []*openfgav1.Tuple, actualTuples []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
 		testutils.TupleCmpTransformer,
 		protocmp.Transform(),
 	}
-	diff := cmp.Diff(expectedTuples, tuplesRead, cmpOpts...)
+	diff := cmp.Diff(expectedTuples, actualTuples, cmpOpts...)
 	require.Empty(t, diff)
 }
