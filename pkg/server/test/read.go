@@ -21,6 +21,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// TODO Read API delegates to [storage.ReadPage]. Tests here shouldn't assert on correctness of results because that's tested in pkg/storage/test.
+// We should pass a mock datastore and assert that mock.ReadPage was called
+
 func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/openfga/sandcastle/issues/13
 	tests := []struct {

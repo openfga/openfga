@@ -1273,7 +1273,7 @@ func ReadPageTestPaginationV2(t *testing.T, datastore storage.OpenFGADatastore) 
 			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, tuplesRead)
+		requireEqualTuples(t, expectedTuples, tuplesRead)
 		require.Empty(t, contToken)
 	})
 
@@ -1337,7 +1337,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 	require.NoError(t, err)
 
 	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
-		gotTupleKeys, contToken, err := datastore.ReadPage(
+		gotTuples, contToken, err := datastore.ReadPage(
 			ctx,
 			storeID,
 			tuple.NewTupleKey("", "", ""),
@@ -1354,7 +1354,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKeyWithCondition("document:2", "viewer", "user:anne", "condition", nil)},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTupleKeys)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 
@@ -1373,7 +1373,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTuples)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 
@@ -1392,7 +1392,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTuples)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 
@@ -1412,7 +1412,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTuples)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 
@@ -1432,7 +1432,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTuples)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 
@@ -1453,7 +1453,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTuples)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 
@@ -1473,7 +1473,7 @@ func ReadPageTestCorrectness(t *testing.T, datastore storage.OpenFGADatastore) {
 			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
 		}
 
-		requireNoDiffTuples(t, expectedTuples, gotTuples)
+		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
 	})
 }
@@ -1513,7 +1513,7 @@ func getTupleKeys(tupleIterator storage.TupleIterator, t *testing.T) []*openfgav
 	return tupleKeys
 }
 
-func requireNoDiffTuples(t *testing.T, expectedTuples []*openfgav1.Tuple, tuplesRead []*openfgav1.Tuple) {
+func requireEqualTuples(t *testing.T, expectedTuples []*openfgav1.Tuple, tuplesRead []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
 		testutils.TupleCmpTransformer,
