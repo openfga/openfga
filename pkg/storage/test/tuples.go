@@ -1168,7 +1168,7 @@ func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastor
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
-			tuple.NewTupleKey("document:1", "", "user:bob"),
+			tuple.NewTupleKey("document:", "", "user:bob"),
 		)
 		require.NoError(t, err)
 		defer tupleIterator.Stop()
