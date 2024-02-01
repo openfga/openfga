@@ -78,18 +78,13 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	// involved in the de-duplication, and thus is subject to race conditions.
 	resp := copyResolveResponse(r)
 
-	if shared {
-		if isUnique {
-			span.SetAttributes(attribute.String("singleflight_state", "shared_and_resolved"))
-		} else {
-			span.SetAttributes(attribute.String("singleflight_state", "shared_but_deduplicated"))
-			deduplicatedDispatchCount.Inc()
-			deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
-			resp.ResolutionMetadata.DatastoreQueryCount = 0
-		}
-	} else {
-		span.SetAttributes(attribute.String("singleflight_state", "not_shared"))
+	if shared && !isUnique {
+		deduplicatedDispatchCount.Inc()
+		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
+		resp.ResolutionMetadata.DatastoreQueryCount = 0
 	}
+
+	span.SetAttributes(singleflightRequestStateAttribute(shared, isUnique))
 
 	return &resp, err
 }
@@ -102,4 +97,15 @@ func copyResolveResponse(original ResolveCheckResponse) ResolveCheckResponse {
 			DatastoreQueryCount: original.GetResolutionMetadata().DatastoreQueryCount,
 		},
 	}
+}
+
+func singleflightRequestStateAttribute(isShared bool, isUnique bool) attribute.KeyValue {
+	attrName := "singleflight_resolver_state"
+	if !isShared {
+		return attribute.String(attrName, "not_shared")
+	}
+	if isUnique {
+		return attribute.String(attrName, "shared_and_resolved")
+	}
+	return attribute.String(attrName, "shared_but_deduplicated")
 }
