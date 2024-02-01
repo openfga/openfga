@@ -56,7 +56,7 @@ func (s *singleflightCheckResolver) ResolveCheck(
 
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "singleflight"))
+	span.SetAttributes(attribute.String("resolver_type", "SingleflightCheckResolver"))
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	isUnique := false
