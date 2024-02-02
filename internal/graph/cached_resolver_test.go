@@ -398,7 +398,6 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	ctx := context.Background()
 
-	gomock.AssignableToTypeOf(ctx)
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
