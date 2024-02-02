@@ -397,6 +397,8 @@ func TestResolveCheckExpired(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
+
+	gomock.AssignableToTypeOf(ctx)
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
@@ -409,7 +411,7 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)
-	initialMockResolver.EXPECT().ResolveCheck(ctx, req).Times(2).Return(result, nil)
+	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
 	dut := NewCachedCheckResolver(initialMockResolver, WithCacheTTL(1*time.Microsecond))
