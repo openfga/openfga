@@ -112,7 +112,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 		t.Logf("stopped container %s", name)
 	}
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
+	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
 	if err != nil {
 		stopContainer()
 		t.Fatalf("failed to start mysql container: %v", err)
