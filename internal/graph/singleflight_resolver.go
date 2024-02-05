@@ -65,11 +65,11 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		isUnique = true
 		resp, err := s.delegate.ResolveCheck(ctx, req)
 		if err != nil {
-			telemetry.TraceError(span, err)
 			return nil, err
 		}
 		return copyResolveResponse(*resp), nil
 	})
+	span.SetAttributes(singleflightRequestStateAttribute(shared, isUnique))
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -86,8 +86,6 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
 		resp.ResolutionMetadata.DatastoreQueryCount = 0
 	}
-
-	span.SetAttributes(singleflightRequestStateAttribute(shared, isUnique))
 
 	return &resp, err
 }
