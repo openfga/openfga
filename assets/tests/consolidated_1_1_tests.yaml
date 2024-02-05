@@ -2186,6 +2186,51 @@ tests:
               type: document
               relation: viewer
             expectation:
+  - name: prior_type_restrictions_ignored_with_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user:*]
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: user:*
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user]
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
 
   - name: wildcard_computed_userset
     stages:
