@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 var (
@@ -47,6 +49,11 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "SingleflightCheckResolver"))
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	key, err := CheckRequestCacheKey(req)
 	if err != nil {
 		s.logger.Error("singleflight cache key computation failed with error", zap.Error(err))
@@ -62,7 +69,9 @@ func (s *singleflightCheckResolver) ResolveCheck(
 		}
 		return copyResolveResponse(*resp), nil
 	})
+	span.SetAttributes(singleflightRequestStateAttribute(shared, isUnique))
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -89,4 +98,15 @@ func copyResolveResponse(original ResolveCheckResponse) ResolveCheckResponse {
 			DatastoreQueryCount: original.GetResolutionMetadata().DatastoreQueryCount,
 		},
 	}
+}
+
+func singleflightRequestStateAttribute(isShared bool, isUnique bool) attribute.KeyValue {
+	attrName := "singleflight_resolver_state"
+	if !isShared {
+		return attribute.String(attrName, "not_shared")
+	}
+	if isUnique {
+		return attribute.String(attrName, "shared_and_resolved")
+	}
+	return attribute.String(attrName, "shared_but_deduplicated")
 }

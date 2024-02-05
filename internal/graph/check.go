@@ -459,7 +459,7 @@ func (c *LocalChecker) ResolveCheck(
 
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
-
+	span.SetAttributes(attribute.String("resolver_type", "LocalChecker"))
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	if req.GetResolutionMetadata().Depth == 0 {

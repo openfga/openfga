@@ -46,10 +46,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(0).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 		{
@@ -60,10 +60,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -74,10 +74,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -88,10 +88,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -102,10 +102,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -116,10 +116,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -137,10 +137,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -151,10 +151,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(nil, fmt.Errorf("Mock error"))
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -194,10 +194,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(0).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 		{
@@ -237,10 +237,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(0)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0)
 			},
 		},
 		{
@@ -270,10 +270,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -318,10 +318,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
@@ -350,10 +350,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				ContextualTuples:     []*openfgav1.TupleKey{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 	}
@@ -396,6 +396,7 @@ func TestResolveCheckExpired(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
+
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
@@ -408,7 +409,7 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)
-	initialMockResolver.EXPECT().ResolveCheck(ctx, req).Times(2).Return(result, nil)
+	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
 	dut := NewCachedCheckResolver(initialMockResolver, WithCacheTTL(1*time.Microsecond))
