@@ -12,6 +12,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 var (
@@ -48,27 +49,29 @@ func (s *singleflightCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "SingleflightCheckResolver"))
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	key, err := CheckRequestCacheKey(req)
 	if err != nil {
 		s.logger.Error("singleflight cache key computation failed with error", zap.Error(err))
 		return nil, err
 	}
 
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
-	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "SingleflightCheckResolver"))
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
-
 	isUnique := false
 	singleFlightResp, err, shared := s.group.Do(key, func() (interface{}, error) {
 		isUnique = true
 		resp, err := s.delegate.ResolveCheck(ctx, req)
 		if err != nil {
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 		return copyResolveResponse(*resp), nil
 	})
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 

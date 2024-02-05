@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
@@ -161,6 +162,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -174,6 +176,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
