@@ -45,10 +45,10 @@ type ValidatorTestSuite struct {
 
 func (s *ValidatorTestSuite) TestPing() {
 	_, err := s.Client.Ping(s.SimpleCtx(), &testpb.PingRequest{Value: "ping"})
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 }
 
 func (s *ValidatorTestSuite) TestStreamingPing() {
 	_, err := s.Client.PingStream(s.SimpleCtx())
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 }

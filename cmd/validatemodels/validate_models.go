@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (

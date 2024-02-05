@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReadAuthorizationModel(t *testing.T) {
@@ -39,17 +40,17 @@ func TestReadAuthorizationModel(t *testing.T) {
 	err := memoryBackend.WriteAuthorizationModel(ctx, storeID, model)
 	require.NoError(t, err)
 
-	// check that first hit to cache -> miss
+	// Check that first hit to cache -> miss.
 	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)
 
-	// check what's stored inside the cache
+	// Check what's stored inside the cache.
 	modelKey := fmt.Sprintf("%s:%s", storeID, model.Id)
 	cachedModel := cachingBackend.cache.Get(modelKey).Value()
 	require.Equal(t, model, cachedModel)
 
-	// check that second hit to cache -> hit
+	// Check that second hit to cache -> hit.
 	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)

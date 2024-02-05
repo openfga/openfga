@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openfga/openfga/internal/build"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/openfga/openfga/internal/build"
 )
 
 type Logger interface {

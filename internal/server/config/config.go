@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	DefaultMaxRPCMessageSizeInBytes         = 512 * 1_204 // 512 KB
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
@@ -22,10 +23,20 @@ const (
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
 
+	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 	DefaultCheckQueryCacheLimit  = 10000
 	DefaultCheckQueryCacheTTL    = 10 * time.Second
 	DefaultCheckQueryCacheEnable = false
+
+	// care should be taken here - decreasing can cause API compatibility problems with Conditions
+	DefaultMaxConditionEvaluationCost = 100
+	DefaultInterruptCheckFrequency    = 100
 )
+
+type DatastoreMetricsConfig struct {
+	// Enabled enables export of the Datastore metrics.
+	Enabled bool
+}
 
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
@@ -53,6 +64,9 @@ type DatastoreConfig struct {
 
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
+
+	// Metrics is configuration for the Datastore metrics.
+	Metrics DatastoreMetricsConfig
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
@@ -88,8 +102,8 @@ type AuthnConfig struct {
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string
-	*AuthnOIDCConfig         `       mapstructure:"oidc"`
-	*AuthnPresharedKeyConfig `       mapstructure:"preshared"`
+	*AuthnOIDCConfig         `mapstructure:"oidc"`
+	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
 }
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.

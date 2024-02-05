@@ -6,10 +6,11 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/tuple"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const InternalServerErrorMsg = "Internal Server Error"
@@ -19,7 +20,6 @@ var (
 	AuthorizationModelResolutionTooComplex = status.Error(codes.Code(openfgav1.ErrorCode_authorization_model_resolution_too_complex), "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting")
 	InvalidWriteInput                      = status.Error(codes.Code(openfgav1.ErrorCode_invalid_write_input), "Invalid input. Make sure you provide at least one write, or at least one delete")
 	InvalidContinuationToken               = status.Error(codes.Code(openfgav1.ErrorCode_invalid_continuation_token), "Invalid continuation token")
-	InvalidCheckInput                      = status.Error(codes.Code(openfgav1.ErrorCode_invalid_check_input), "Invalid input. Make sure you provide a user, object and relation")
 	InvalidExpandInput                     = status.Error(codes.Code(openfgav1.ErrorCode_invalid_expand_input), "Invalid input. Make sure you provide an object and a relation")
 	UnsupportedUserSet                     = status.Error(codes.Code(openfgav1.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")
 	StoreIDNotFound                        = status.Error(codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found), "Store ID not found")
@@ -93,21 +93,8 @@ func ExceededEntityLimit(entity string, limit int) error {
 		fmt.Sprintf("The number of %s exceeds the allowed limit of %d", entity, limit))
 }
 
-func InvalidTuple(reason string, tuple *openfgav1.TupleKey) error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tuple.String(), reason))
-}
-
-// InvalidObjectFormat is used when an object does not have a type and id part
-func InvalidObjectFormat(tuple *openfgav1.TupleKey) error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_object_format), fmt.Sprintf("Invalid object format for tuple '%s'", tuple.String()))
-}
-
-func DuplicateTupleInWrite(tk *openfgav1.TupleKey) error {
+func DuplicateTupleInWrite(tk tuple.TupleWithoutCondition) error {
 	return status.Error(codes.Code(openfgav1.ErrorCode_cannot_allow_duplicate_tuples_in_one_request), fmt.Sprintf("duplicate tuple in write: user: '%s', relation: '%s', object: '%s'", tk.GetUser(), tk.GetRelation(), tk.GetObject()))
-}
-
-func WriteToIndirectRelationError(reason string, tk *openfgav1.TupleKey) error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tk.String(), reason))
 }
 
 func WriteFailedDueToInvalidInput(err error) error {
@@ -130,6 +117,7 @@ func HandleError(public string, err error) error {
 	} else if errors.Is(err, storage.ErrCancelled) {
 		return RequestCancelled
 	}
+
 	return NewInternalError(public, err)
 }
 
@@ -137,15 +125,14 @@ func HandleError(public string, err error) error {
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:
-		return InvalidTuple(t.Cause.Error(), t.TupleKey)
-	case *tuple.InvalidObjectFormatError:
-		return InvalidObjectFormat(t.TupleKey)
+		return status.Error(
+			codes.Code(openfgav1.ErrorCode_invalid_tuple),
+			fmt.Sprintf("Invalid tuple '%s'. Reason: %s", t.TupleKey, t.Cause.Error()),
+		)
 	case *tuple.TypeNotFoundError:
 		return TypeNotFound(t.TypeName)
 	case *tuple.RelationNotFoundError:
 		return RelationNotFound(t.Relation, t.TypeName, t.TupleKey)
-	case *tuple.IndirectWriteError:
-		return WriteToIndirectRelationError(t.Reason, t.TupleKey)
 	}
 
 	return HandleError("", err)

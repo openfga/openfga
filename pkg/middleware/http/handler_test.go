@@ -10,9 +10,10 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/server/errors"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/openfga/openfga/pkg/server/errors"
 )
 
 func TestCustomHTTPErrorHandler(t *testing.T) {

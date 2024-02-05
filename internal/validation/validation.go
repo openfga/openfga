@@ -6,12 +6,15 @@ import (
 	"reflect"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// ValidateUserObjectRelation checks whether a tuple is well formed
+// ValidateUserObjectRelation returns nil if the tuple is well-formed and valid according to the provided model.
+//
+// Do NOT use this when reading or writing tuples to storage. Use ValidateTuple instead, because it's stricter.
 func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
 		return err
@@ -28,7 +31,10 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 	return nil
 }
 
-// ValidateTuple checks whether a tuple is well formed and valid according to the provided model.
+// ValidateTuple returns nil if a tuple is well formed and valid according to the provided model.
+// It is a superset of ValidateUserObjectRelation; it also validates TTU relations and type restrictions.
+//
+// Do NOT use this when validating a tuple that is an input to a Check or WriteAssertions request.
 func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
@@ -54,6 +60,10 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 		err := validateTypeRestrictions(typesys, tk)
 		if err != nil {
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
+		}
+
+		if err := ValidateCondition(typesys, tk); err != nil {
+			return err
 		}
 	}
 
@@ -164,6 +174,89 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	}
 
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
+}
+
+// ValidateCondition enforces conditions on a relationship tuple
+func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	objectType := tuple.GetType(tk.Object)
+	userType := tuple.GetType(tk.User)
+	userRelation := tuple.GetRelation(tk.User)
+
+	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.Relation)
+	if err != nil {
+		return err
+	}
+
+	if tk.Condition == nil {
+		for _, directlyRelatedType := range typeRestrictions {
+			if directlyRelatedType.Condition != "" {
+				continue
+			}
+
+			if directlyRelatedType.Type != userType {
+				continue
+			}
+
+			if directlyRelatedType.GetRelationOrWildcard() != nil {
+				if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+					continue
+				}
+
+				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.User) {
+					continue
+				}
+			}
+
+			return nil
+		}
+
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
+		}
+	}
+
+	condition, ok := typesys.GetConditions()[tk.Condition.Name]
+	if !ok {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
+		}
+	}
+
+	validCondition := false
+	for _, directlyRelatedType := range typeRestrictions {
+		if directlyRelatedType.Type == userType && directlyRelatedType.Condition == tk.Condition.Name {
+			validCondition = true
+			break
+		}
+	}
+
+	if !validCondition {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
+		}
+	}
+
+	contextStruct := tk.GetCondition().GetContext()
+	contextFieldMap := contextStruct.GetFields()
+
+	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
+	if err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
+		}
+	}
+
+	for key := range contextFieldMap {
+		_, ok := typedParams[key]
+		if !ok {
+			return &tuple.InvalidConditionalTupleError{
+				Cause:    fmt.Errorf("found invalid context parameter: %s", key),
+				TupleKey: tk,
+			}
+		}
+	}
+
+	return nil
 }
 
 // FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide

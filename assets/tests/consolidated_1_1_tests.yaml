@@ -2,11 +2,13 @@ tests:
   - name: this
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         tuples:
           - object: document:1
             relation: viewer
@@ -43,12 +45,14 @@ tests:
   - name: computed_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define viewer as writer
+              define writer: [user]
+              define viewer: writer
         tuples:
           - object: document:1
             relation: writer
@@ -86,16 +90,18 @@ tests:
   - name: tuple_to_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define viewer: [user] as self
-          
+              define viewer: [user]
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -120,12 +126,14 @@ tests:
   - name: this_and_union
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define viewer: [user] as self or writer
+              define writer: [user]
+              define viewer: [user] or writer
         tuples:
           - object: document:1
             relation: viewer
@@ -161,12 +169,14 @@ tests:
   - name: this_and_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define viewer: [user] as self and writer
+              define writer: [user]
+              define viewer: [user] and writer
         tuples:
           - object: document:1
             relation: viewer
@@ -217,12 +227,14 @@ tests:
   - name: this_and_exclusion_base
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define viewer: [user] as self but not writer
+              define writer: [user]
+              define viewer: [user] but not writer
         tuples:
           - object: document:1
             relation: viewer
@@ -273,13 +285,15 @@ tests:
   - name: computed_userset_and_computed_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define owner: [user] as self
-              define writer as owner
-              define viewer as writer
+              define owner: [user]
+              define writer: owner
+              define viewer: writer
         tuples:
           - object: document:1
             relation: owner
@@ -301,13 +315,15 @@ tests:
   - name: computed_userset_and_union
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer or editor
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer or editor
         tuples:
           - object: document:1
             relation: writer
@@ -343,12 +359,14 @@ tests:
   - name: simple_computeduserset_indirect_ref
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define parent: [folder] as self
-              define viewer: [user] as self or viewer from parent
-              define can_view as viewer
+              define parent: [folder]
+              define viewer: [user] or viewer from parent
+              define can_view: viewer
         tuples:
           - user: user:anne
             relation: viewer
@@ -379,13 +397,15 @@ tests:
   - name: computed_userset_and_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer and editor
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer and editor
         tuples:
           - object: document:1
             relation: writer
@@ -436,13 +456,15 @@ tests:
   - name: computed_userset_and_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer but not editor
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer but not editor
         tuples:
           - object: document:1
             relation: writer
@@ -493,17 +515,19 @@ tests:
   - name: tuple_to_userset_and_computed_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define writer: [user] as self
-              define viewer as writer
-    
+              define writer: [user]
+              define viewer: writer
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -528,21 +552,23 @@ tests:
   - name: tuple_to_userset_and_tuple_to_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type group
             relations
-              define member: [user] as self
-    
+              define member: [user]
+
           type folder
             relations
-              define parent: [group] as self
-              define viewer as member from parent
-    
+              define parent: [group]
+              define viewer: member from parent
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -570,18 +596,20 @@ tests:
   - name: tuple_to_userset_and_union
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer or editor
-    
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer or editor
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -620,18 +648,20 @@ tests:
   - name: tuple_to_userset_and_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer and editor
-    
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer and editor
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -685,18 +715,20 @@ tests:
   - name: tuple_to_userset_and_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer but not editor
-    
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer but not editor
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -750,16 +782,18 @@ tests:
   - name: union_and_tuple_to_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define viewer: [user] as self
-    
+              define viewer: [user]
+
           type document
             relations
-              define parent: [folder] as self
-              define writer: [user] as self
-              define viewer as writer or (viewer from parent)
+              define parent: [folder]
+              define writer: [user]
+              define viewer: writer or viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -798,14 +832,16 @@ tests:
   - name: union_and_union
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer or (editor or owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer or editor or owner
         tuples:
           - object: document:1
             relation: writer
@@ -856,7 +892,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -928,12 +964,12 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
+              define writer: [user]  as self
+              define editor: [user]  as self
+              define owner: [user]  as self
               define viewer as writer or (editor but not owner)
         tuples:
           - object: document:1
@@ -1005,17 +1041,19 @@ tests:
   - name: intersection_and_tuple_to_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define viewer: [user] as self
-    
+              define viewer: [user]
+
           type document
             relations
-              define parent: [folder] as self
-              define writer: [user] as self
-              define viewer as writer and (viewer from parent)
+              define parent: [folder]
+              define writer: [user]
+              define viewer: writer and viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -1070,7 +1108,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1157,14 +1195,16 @@ tests:
   - name: intersection_and_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer and (editor and owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer and editor and owner
         tuples:
           - object: document:1
             relation: writer
@@ -1264,7 +1304,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1369,13 +1409,15 @@ tests:
   - name: exclusion_and_computed_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define viewer as writer but not editor
+              define writer: [user]
+              define editor: [user]
+              define viewer: writer but not editor
         tuples:
           - object: document:1
             relation: writer
@@ -1426,17 +1468,19 @@ tests:
   - name: exclusion_and_tuple_to_userset_in_base
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define viewer: [user] as self
-    
+              define viewer: [user]
+
           type document
             relations
-              define parent: [folder] as self
-              define writer: [user] as self
-              define viewer as (viewer from parent) but not writer
+              define parent: [folder]
+              define writer: [user]
+              define viewer: viewer from parent but not writer
         tuples:
           - object: document:1
             relation: parent
@@ -1490,17 +1534,19 @@ tests:
   - name: exclusion_and_tuple_to_userset_in_subtract
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type folder
             relations
-              define viewer: [user] as self
-    
+              define viewer: [user]
+
           type document
             relations
-              define parent: [folder] as self
-              define writer: [user] as self
-              define viewer as writer but not (viewer from parent)
+              define parent: [folder]
+              define writer: [user]
+              define viewer: writer but not viewer from parent
         tuples:
           - object: document:1
             relation: parent
@@ -1555,7 +1601,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1649,7 +1695,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1710,7 +1756,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1800,7 +1846,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1882,7 +1928,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -1943,7 +1989,7 @@ tests:
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define writer: [user] as self
@@ -2010,15 +2056,17 @@ tests:
   - name: userset_as_user
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type group
             relations
-              define member: [user] as self
-    
+              define member: [user]
+
           type document
             relations
-              define viewer: [group#member] as self
+              define viewer: [group#member]
         tuples:
           - object: document:1
             relation: viewer
@@ -2054,11 +2102,13 @@ tests:
   - name: wildcard_direct
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define viewer: [user:*] as self
+              define viewer: [user:*]
         tuples:
           - object: document:public
             relation: viewer
@@ -2091,11 +2141,13 @@ tests:
   - name: prior_type_restrictions_ignored
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         tuples:
           - object: document:1
             relation: viewer
@@ -2114,12 +2166,14 @@ tests:
             expectation:
               - document:1
       - model: |
+          model
+            schema 1.1
           type user
           type employee
 
           type document
             relations
-              define viewer: [employee] as self
+              define viewer: [employee]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2136,11 +2190,13 @@ tests:
   - name: wildcard_computed_userset
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define writer: [user:*] as self
-              define viewer: [user] as self or writer
+              define writer: [user:*]
+              define viewer: [user] or writer
         tuples:
           - object: document:public
             relation: writer
@@ -2162,15 +2218,17 @@ tests:
   - name: check_with_invalid_tuple_in_store
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define viewer: [user] as self
-          
+              define viewer: [user]
+
           type document
             relations
-              define parent: [folder] as self
-              define viewer: [user] as self or viewer from parent
+              define parent: [folder]
+              define viewer: [user] or viewer from parent
         tuples:
           - object: folder:x
             relation: viewer
@@ -2192,10 +2250,12 @@ tests:
             expectation:
               - document:1
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2212,11 +2272,13 @@ tests:
   - name: this_with_contextual_tuples
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         tuples:
           - object: document:1
             relation: viewer
@@ -2238,14 +2300,16 @@ tests:
   - name: wildcard_and_userset_restriction
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type user2
           type group
             relations
-              define member: [user2] as self
+              define member: [user2]
           type document
             relations
-              define viewer: [user:*, group#member] as self
+              define viewer: [user:*, group#member]
         tuples:
           - object: document:public
             relation: viewer
@@ -2273,14 +2337,16 @@ tests:
   - name: wildcard_obeys_the_types_in_stages
     stages:
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type employee
-          
+
           type document
             relations
-              define writer: [employee:*] as self
-              define viewer: [user] as self or writer
+              define writer: [employee:*]
+              define viewer: [user] or writer
         tuples:
           - object: document:1
             relation: writer
@@ -2309,13 +2375,15 @@ tests:
             expectation:
               - document:1
       - model: |
+          model
+            schema 1.1
           type user
-          
+
           type employee
           type document
             relations
-              define writer: [user:*] as self
-              define viewer: [user] as self or writer
+              define writer: [user:*]
+              define viewer: [user] or writer
         checkAssertions:
           - tuple:
               object: document:1
@@ -2338,73 +2406,12 @@ tests:
               type: document
               relation: viewer
             expectation:
-
-  - name: validation_nil_tuple
-    stages:
-      - model: |
-          type user
-        checkAssertions:
-          - errorCode: 3
-
-  - name: validation_empty_tuple
-    stages:
-      - model: |
-          type user
-        checkAssertions:
-          - tuple:
-              object:
-              relation:
-              user:
-            errorCode: 2009
-
-  - name: validation_empty_object
-    stages:
-      - model: |
-          type user
-        checkAssertions:
-          - tuple:
-              object:
-              relation: viewer
-              user: user:aardvark
-            errorCode: 2009
-
-  - name: validation_empty_relation
-    stages:
-      - model: |
-          type user
-        checkAssertions:
-          - tuple:
-              object: user:aardvark
-              relation:
-              user: user:badger
-            errorCode: 2009
-        listObjectsAssertions:
-          - request:
-              user: user
-              type: user
-              relation:
-            errorCode: 3
-
-  - name: validation_empty_user
-    stages:
-      - model: |
-          type user
-        checkAssertions:
-          - tuple:
-              object: user:aardvark
-              relation: viewer
-              user:
-            errorCode: 2009
-        listObjectsAssertions:
-          - request:
-              user:
-              type: user
-              relation: viewer
-            errorCode: 3
 
   - name: validation_relation_not_in_model
     stages:
       - model: |
+          model
+            schema 1.1
           type user
         checkAssertions:
           - tuple:
@@ -2422,10 +2429,12 @@ tests:
   - name: validation_type_not_in_model
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
-             relations
-               define viewer: [user] as self
+            relations
+              define viewer: [user]
         listObjectsAssertions:
           - request:
               user: user:badger
@@ -2436,10 +2445,12 @@ tests:
   - name: validation_user_type_not_in_model
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2456,10 +2467,12 @@ tests:
   - name: validation_userset_type_not_in_model
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2476,10 +2489,12 @@ tests:
   - name: validation_userset_relation_not_in_model
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2496,10 +2511,12 @@ tests:
   - name: validation_user_invalid
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2516,10 +2533,12 @@ tests:
   - name: validation_invalid_object_type_in_contextual_tuple
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2544,10 +2563,12 @@ tests:
   - name: validation_invalid_relation_in_contextual_tuple
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2572,10 +2593,12 @@ tests:
   - name: validation_invalid_user_in_contextual_tuple
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2600,10 +2623,12 @@ tests:
   - name: validation_invalid_wildcard_in_contextual_tuple
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define viewer: [user] as self
+              define viewer: [user]
         checkAssertions:
           - tuple:
               object: document:1
@@ -2628,14 +2653,16 @@ tests:
   - name: val_contextual_tuples_and_wildcard_in_ttu_evaluation
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define viewer: [user] as self
+              define viewer: [user]
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
+              define parent: [folder]
+              define viewer: viewer from parent
         checkAssertions:
           - tuple:
               object: document:1
@@ -2659,11 +2686,13 @@ tests:
   - name: list_objects_considers_input_contextual_tuples
     stages:
       - model: | #concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         tuples:
           - user: user:a
             relation: owner
@@ -2685,10 +2714,12 @@ tests:
               - repo:2
               - repo:3
       - model: | #reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
+              define owner: [user]
         listObjectsAssertions:
           - contextualTuples:
               - user: user:a
@@ -2708,11 +2739,13 @@ tests:
   - name: ignores_irrelevant_contextual_tuples_because_different_user
     stages:
       - model: | #concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         tuples:
           - user: user:a
             relation: owner
@@ -2729,13 +2762,15 @@ tests:
             expectation:
               - repo:1
       - model: | #reverse expansion
+          model
+            schema 1.1
           type user
           type team
             relations
-              define member: [user] as self
+              define member: [user]
           type repo
             relations
-              define owner: [user, team#member] as self
+              define owner: [user, team#member]
         listObjectsAssertions:
           - contextualTuples:
               - user: user:b #different user
@@ -2750,15 +2785,17 @@ tests:
   - name: ignores_irrelevant_contextual_tuples_because_different_type
     stages:
       - model: | #concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
           type organization
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         tuples:
           - user: user:a
             relation: owner
@@ -2775,13 +2812,15 @@ tests:
             expectation:
               - repo:1
       - model: | #reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
+              define owner: [user]
           type organization
             relations
-              define owner: [user] as self
+              define owner: [user]
         listObjectsAssertions:
           - contextualTuples:
               - user: user:a
@@ -2796,11 +2835,13 @@ tests:
   - name: list_objects_ignores_irrelevant_tuples_because_different_user
     stages:
       - model: | # concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         tuples:
           - user: user:a
             relation: owner
@@ -2816,10 +2857,12 @@ tests:
             expectation:
               - repo:1
       - model: | #reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
+              define owner: [user]
         listObjectsAssertions:
           - request:
               user: user:a
@@ -2830,11 +2873,13 @@ tests:
   - name: list_objects_ignores_duplicate_contextual_tuples
     stages:
       - model: | # concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         tuples:
           - user: user:a
             relation: owner
@@ -2855,10 +2900,12 @@ tests:
               - repo:1
               - repo:2
       - model: | # reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
+              define owner: [user]
         listObjectsAssertions:
           - contextualTuples:
               - user: user:a
@@ -2877,22 +2924,24 @@ tests:
   - name: error_if_contextual_tuples_do_not_follow_type_restrictions
     stages:
       - model: | # concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
           type organization
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         tuples:
           - user: user:a
             relation: owner
             object: repo:1
         listObjectsAssertions:
           - contextualTuples:
-              - user: user:*  #not allowed
+              - user: user:* #not allowed
                 relation: owner
                 object: organization:1
             request:
@@ -2901,16 +2950,18 @@ tests:
               relation: owner
             errorCode: 2027
       - model: | # reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
+              define owner: [user]
           type organization
             relations
-              define owner: [user] as self
+              define owner: [user]
         listObjectsAssertions:
           - contextualTuples:
-              - user: user:*  #not allowed
+              - user: user:* #not allowed
                 relation: owner
                 object: organization:1
             request:
@@ -2921,11 +2972,13 @@ tests:
   - name: list_objects_error_if_unknown_type_in_request
     stages:
       - model: | # concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
+              define blocked: [user]
+              define owner: [user] but not blocked
         listObjectsAssertions:
           - request:
               user: user:a
@@ -2933,10 +2986,12 @@ tests:
               relation: owner
             errorCode: 2021 # type 'unknown' not found
       - model: | # reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
+              define owner: [user]
         listObjectsAssertions:
           - request:
               user: user:a
@@ -2946,23 +3001,27 @@ tests:
   - name: list_objects_error_if_unknown_relation_in_request
     stages:
       - model: | # concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user] as self but not blocked
-        assertions:
+              define blocked: [user]
+              define owner: [user] but not blocked
+        listObjectsAssertions:
           - request:
               user: user:a
               type: repo
               relation: unknown
             errorCode: 2022 # relation 'unknown' not found
       - model: | # reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user] as self
-        assertions:
+              define owner: [user]
+        listObjectsAssertions:
           - request:
               user: user:a
               type: repo
@@ -2971,16 +3030,18 @@ tests:
   - name: relations_not_defined_in_some_child_type
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define owner: [user] as self
-              define writer: [user,user:*] as self or owner
+              define owner: [user]
+              define writer: [user,user:*] or owner
           type document
             relations
-              define can_read as writer from parent
-              define parent: [document,folder] as self
-              define viewer: [user,user:*] as self
+              define can_read: writer from parent
+              define parent: [document,folder]
+              define viewer: [user,user:*]
         tuples:
           - user: user:anne
             relation: owner
@@ -3009,16 +3070,18 @@ tests:
   - name: same_relation_name_different_type
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define owner: [user] as self
-              define viewer: [user, user:*] as self or owner
+              define owner: [user]
+              define viewer: [user, user:*] or owner
           type document
             relations
-              define can_read as viewer from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
+              define can_read: viewer from parent
+              define parent: [document, folder]
+              define viewer: [user, user:*]
         tuples:
           - user: user:anne
             relation: owner
@@ -3052,17 +3115,19 @@ tests:
   - name: computed_user_indirect_ref
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define parent: [folder] as self
-              define viewer: [user] as self or viewer from parent
-              define can_view as viewer
+              define parent: [folder]
+              define viewer: [user] or viewer from parent
+              define can_view: viewer
           type document
             relations
-              define can_read as can_view from parent
-              define parent: [document, folder] as self
-              define viewer: [user] as self
+              define can_read: can_view from parent
+              define parent: [document, folder]
+              define viewer: [user]
         tuples:
           - user: user:anne
             relation: viewer
@@ -3115,18 +3180,20 @@ tests:
   - name: computed_user_indirect_ref_extra_indirection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [folder] as self
-              define viewer: [user] as self or owner or viewer from parent
-              define can_view as viewer
+              define owner: [user] or owner from parent
+              define parent: [folder]
+              define viewer: [user] or owner or viewer from parent
+              define can_view: viewer
           type document
             relations
-              define can_read as can_view from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
+              define can_read: can_view from parent
+              define parent: [document, folder]
+              define viewer: [user, user:*]
         tuples:
           - user: user:anne
             relation: owner
@@ -3179,22 +3246,24 @@ tests:
   - name: three_prong_relation
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type module
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [document, module] as self
-              define viewer: [user] as self or owner or viewer from parent
+              define owner: [user] or owner from parent
+              define parent: [document, module]
+              define viewer: [user] or owner or viewer from parent
           type folder
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [module, folder] as self
-              define viewer: [user] as self or owner or viewer from parent
+              define owner: [user] or owner from parent
+              define parent: [module, folder]
+              define viewer: [user] or owner or viewer from parent
           type document
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [folder, document] as self
-              define viewer: [user] as self or owner or viewer from parent
+              define owner: [user] or owner from parent
+              define parent: [folder, document]
+              define viewer: [user] or owner or viewer from parent
         tuples:
           - user: user:anne
             relation: owner
@@ -3271,22 +3340,24 @@ tests:
   - name: three_prong_relation_loop
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type module
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [document, module] as self
-              define viewer: [user] as self or owner or viewer from parent
+              define owner: [user] or owner from parent
+              define parent: [document, module]
+              define viewer: [user] or owner or viewer from parent
           type folder
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [module, folder] as self
-              define viewer: [user] as self or owner or viewer from parent
+              define owner: [user] or owner from parent
+              define parent: [module, folder]
+              define viewer: [user] or owner or viewer from parent
           type document
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [folder, document] as self
-              define viewer: [user] as self or owner or viewer from parent
+              define owner: [user] or owner from parent
+              define parent: [folder, document]
+              define viewer: [user] or owner or viewer from parent
         tuples:
           - user: user:anne
             relation: owner
@@ -3366,26 +3437,28 @@ tests:
   - name: three_prong_relation_possible_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type module
             relations
-              define owner: [user] as self or has_owned from parent
-              define parent: [document, module] as self
-              define has_owned as owner
-              define viewer: [user] as self or has_owned or viewer from parent
+              define owner: [user] or has_owned from parent
+              define parent: [document, module]
+              define has_owned: owner
+              define viewer: [user] or has_owned or viewer from parent
           type folder
             relations
-              define owner: [user] as self or has_owned from parent
-              define parent: [module, folder] as self
-              define has_owned as owner
-              define viewer: [user] as self or has_owned or viewer from parent
+              define owner: [user] or has_owned from parent
+              define parent: [module, folder]
+              define has_owned: owner
+              define viewer: [user] or has_owned or viewer from parent
           type document
             relations
-              define banned: [user] as self
-              define owner: [user] as self or has_owned from parent
-              define has_owned as owner but not banned
-              define parent: [folder, document] as self
-              define viewer: [user] as self or has_owned or viewer from parent
+              define banned: [user]
+              define owner: [user] or has_owned from parent
+              define has_owned: owner but not banned
+              define parent: [folder, document]
+              define viewer: [user] or has_owned or viewer from parent
         tuples:
           - user: user:anne
             relation: owner
@@ -3459,23 +3532,24 @@ tests:
               - module:a
               - module:b
 
-
   - name: computed_user_multi_route
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define owner: [user] as self or owner from parent
-              define can_modify as owner
-              define parent: [folder] as self
-              define viewer: [user] as self or can_modify or viewer from parent
-              define can_view as viewer
+              define owner: [user] or owner from parent
+              define can_modify: owner
+              define parent: [folder]
+              define viewer: [user] or can_modify or viewer from parent
+              define can_view: viewer
           type document
             relations
-              define can_read as can_view from parent or can_modify from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
+              define can_read: can_view from parent or can_modify from parent
+              define parent: [document, folder]
+              define viewer: [user, user:*]
         tuples:
           - user: user:anne
             relation: owner
@@ -3528,18 +3602,20 @@ tests:
   - name: computed_user_indirect_ref_same_rel_name
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define owner: [user] as self or owner from parent
-              define parent: [folder] as self
-              define viewer: [user] as self or owner or viewer from parent
-              define can_view as viewer
+              define owner: [user] or owner from parent
+              define parent: [folder]
+              define viewer: [user] or owner or viewer from parent
+              define can_view: viewer
           type document
             relations
-              define can_view as can_view from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
+              define can_view: can_view from parent
+              define parent: [document, folder]
+              define viewer: [user, user:*]
         tuples:
           - user: user:anne
             relation: owner
@@ -3593,17 +3669,19 @@ tests:
   - name: computed_user_indirect_ref_wildcard
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define parent: [folder] as self
-              define viewer: [user, user:*] as self or viewer from parent
-              define can_view as viewer
+              define parent: [folder]
+              define viewer: [user, user:*] or viewer from parent
+              define can_view: viewer
           type document
             relations
-              define can_read as can_view from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
+              define can_read: can_view from parent
+              define parent: [document, folder]
+              define viewer: [user, user:*]
         tuples:
           - user: user:*
             relation: viewer
@@ -3656,18 +3734,20 @@ tests:
   - name: computed_user_indirect_ref_extra_indirection_wildcard
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define owner: [user, user:*] as self or owner from parent
-              define parent: [folder] as self
-              define viewer: [user, user:*] as self or owner or viewer from parent
-              define can_view as viewer
+              define owner: [user, user:*] or owner from parent
+              define parent: [folder]
+              define viewer: [user, user:*] or owner or viewer from parent
+              define can_view: viewer
           type document
             relations
-              define can_read as can_view from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
+              define can_read: can_view from parent
+              define parent: [document, folder]
+              define viewer: [user, user:*]
         tuples:
           - user: user:*
             relation: owner
@@ -3720,19 +3800,21 @@ tests:
   - name: two_level_computed_user_indirect_ref
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define parent: [folder] as self
-              define viewer: [user] as self or viewer from parent
-              define can_look as viewer
-              define can_view as can_look
+              define parent: [folder]
+              define viewer: [user] or viewer from parent
+              define can_look: viewer
+              define can_view: can_look
 
           type document
             relations
-              define can_read as can_view from parent
-              define parent: [document, folder] as self
-              define viewer: [user] as self
+              define can_read: can_view from parent
+              define parent: [document, folder]
+              define viewer: [user]
         tuples:
           - user: user:anne
             relation: viewer
@@ -3785,19 +3867,21 @@ tests:
   - name: ttu_and_computed_ttu
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type group
             relations
-              define member: [user] as self
+              define member: [user]
           type folder
             relations
-              define can_view as viewer or can_view from parent
-              define parent: [folder] as self
-              define viewer: [group#member] as self
+              define can_view: viewer or can_view from parent
+              define parent: [folder]
+              define viewer: [group#member]
           type document
             relations
-              define parent: [folder] as self
-              define viewer as can_view from parent
+              define parent: [folder]
+              define viewer: can_view from parent
         tuples:
           - user: user:anne
             relation: member
@@ -3845,19 +3929,21 @@ tests:
   - name: ttu_and_computed_ttu_wildcard
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type group
             relations
-              define member: [user, user:*] as self
+              define member: [user, user:*]
           type folder
             relations
-              define can_view as viewer or can_view from parent
-              define parent: [folder] as self
-              define viewer: [group#member] as self
+              define can_view: viewer or can_view from parent
+              define parent: [folder]
+              define viewer: [group#member]
           type document
             relations
-              define parent: [folder] as self
-              define viewer as can_view from parent
+              define parent: [folder]
+              define viewer: can_view from parent
         tuples:
           - user: user:*
             relation: member
@@ -3905,23 +3991,25 @@ tests:
   - name: ttu_ttu_and_computed_ttu
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type group
             relations
-              define member: [user] as self
+              define member: [user]
           type module
             relations
-              define can_view as viewer or can_view from parent
-              define parent: [module] as self
-              define viewer: [group#member] as self
+              define can_view: viewer or can_view from parent
+              define parent: [module]
+              define viewer: [group#member]
           type folder
             relations
-              define parent: [module, folder] as self
-              define can_view as can_view from parent
+              define parent: [module, folder]
+              define can_view: can_view from parent
           type document
             relations
-              define parent: [folder] as self
-              define viewer as can_view from parent
+              define parent: [folder]
+              define viewer: can_view from parent
         tuples:
           - user: user:anne
             relation: member
@@ -3972,23 +4060,25 @@ tests:
   - name: contextual_tuple_ref_relation_disjoint
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type company
             relations
-              define admin: [user] as self
-              define management: [user] as self
-              define employee: [user] as self or admin
+              define admin: [user]
+              define management: [user]
+              define employee: [user] or admin
           type group
             relations
-              define corp: [company] as self
-              define member as employee from corp
+              define corp: [company]
+              define member: employee from corp
           type document
             relations
-              define viewer: [group#member] as self
+              define viewer: [group#member]
           type diagram
             relations
-              define parent: [document] as self
-              define viewer as viewer from parent
+              define parent: [document]
+              define viewer: viewer from parent
         tuples:
           - object: company:abc
             relation: management
@@ -4028,22 +4118,24 @@ tests:
   - name: reverse_expand_relation_not_match
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type company
             relations
-              define admin: [user] as self
-              define management: [user] as self
-              define employee: [user] as self or admin
+              define admin: [user]
+              define management: [user]
+              define employee: [user] or admin
           type group
             relations
-              define observer: [company] as self
-              define owner: [company] as self
-              define admin as admin from owner
-              define member as employee from owner
+              define observer: [company]
+              define owner: [company]
+              define admin: admin from owner
+              define member: employee from owner
           type document
             relations
-              define owner: [group] as self
-              define viewer as member from owner or observer from owner
+              define owner: [group]
+              define viewer: member from owner or observer from owner
         tuples:
           - object: company:abc
             relation: employee
@@ -4070,21 +4162,23 @@ tests:
   - name: exclusion_for_some_relations
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type group
             relations
-              define member: [user] as self
+              define member: [user]
           type folder
             relations
-              define owner: [group] as self
-              define viewer as member from owner
+              define owner: [group]
+              define viewer: member from owner
           type document
             relations
-              define banned: [user] as self
-              define owner: [folder] as self
-              define viewer as viewer from owner
-              define can_view as viewer but not banned
-              define can_see as can_view
+              define banned: [user]
+              define owner: [folder]
+              define viewer: viewer from owner
+              define can_view: viewer but not banned
+              define can_see: can_view
         tuples:
           - user: user:anne
             relation: member
@@ -4134,15 +4228,17 @@ tests:
   - name: evaluate_userset_in_computed_relation_of_ttu
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [organization] as self
-              define reader as repo_admin from owner
+              define owner: [organization]
+              define reader: repo_admin from owner
           type organization
             relations
-              define member: [user] as self
-              define repo_admin: [organization#member] as self
+              define member: [user]
+              define repo_admin: [organization#member]
         tuples:
           - user: organization:openfga
             relation: owner
@@ -4170,20 +4266,22 @@ tests:
   - name: nested_ttu_involving_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type organization
             relations
-              define member: [user] as self
-              define viewer: [user] as self and member
+              define member: [user]
+              define viewer: [user] and member
           type folder
             relations
-              define parent: [organization] as self
-              define viewer as viewer from parent
+              define parent: [organization]
+              define viewer: viewer from parent
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
-              define can_view as viewer
+              define parent: [folder]
+              define viewer: viewer from parent
+              define can_view: viewer
         tuples:
           - user: user:jon
             relation: member
@@ -4224,20 +4322,22 @@ tests:
   - name: nested_ttu_involving_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type organization
             relations
-              define restricted: [user] as self
-              define viewer: [user] as self but not restricted
+              define restricted: [user]
+              define viewer: [user] but not restricted
           type folder
             relations
-              define parent: [organization] as self
-              define viewer as viewer from parent
+              define parent: [organization]
+              define viewer: viewer from parent
           type document
             relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
-              define can_view as viewer
+              define parent: [folder]
+              define viewer: viewer from parent
+              define can_view: viewer
         tuples:
           - user: user:bob
             relation: restricted
@@ -4298,17 +4398,19 @@ tests:
   - name: userset_with_intersection_in_computed_relation_of_ttu
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [organization] as self
-              define allowed: [user] as self
-              define reader as repo_admin from owner and allowed
-              define can_read as reader
+              define owner: [organization]
+              define allowed: [user]
+              define reader: repo_admin from owner and allowed
+              define can_read: reader
           type organization
             relations
-              define member: [user] as self
-              define repo_admin: [organization#member] as self
+              define member: [user]
+              define repo_admin: [organization#member]
         tuples:
           - user: organization:openfga
             relation: owner
@@ -4372,17 +4474,19 @@ tests:
   - name: userset_with_exclusion_in_computed_relation_of_ttu
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [organization] as self
-              define restricted: [user] as self
-              define reader as repo_admin from owner but not restricted
-              define can_read as reader
+              define owner: [organization]
+              define restricted: [user]
+              define reader: repo_admin from owner but not restricted
+              define can_read: reader
           type organization
             relations
-              define member: [user] as self
-              define repo_admin: [organization#member] as self
+              define member: [user]
+              define repo_admin: [organization#member]
         tuples:
           - user: organization:openfga
             relation: owner
@@ -4446,12 +4550,14 @@ tests:
   - name: relation_with_wildcard_involving_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define allowed: [user] as self
-              define viewer: [user:*] as self and allowed
-              define can_view as viewer
+              define allowed: [user]
+              define viewer: [user:*] and allowed
+              define can_view: viewer
         tuples:
           - user: user:jon
             relation: allowed
@@ -4509,12 +4615,14 @@ tests:
   - name: relation_with_wildcard_involving_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type document
             relations
-              define restricted: [user] as self
-              define viewer: [user:*] as self but not restricted
-              define can_view as viewer
+              define restricted: [user]
+              define viewer: [user:*] but not restricted
+              define can_view: viewer
         tuples:
           - user: user:bob
             relation: restricted
@@ -4586,11 +4694,13 @@ tests:
   - name: list_objects_does_not_return_duplicates
     stages:
       - model: | #concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define admin: [user, user:*] as self but not blocked
+              define blocked: [user]
+              define admin: [user, user:*] but not blocked
         tuples:
           - user: user:a
             relation: admin
@@ -4606,10 +4716,12 @@ tests:
             expectation:
               - repo:1
       - model: | #reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define admin: [user, user:*] as self
+              define admin: [user, user:*]
         listObjectsAssertions:
           - request:
               user: user:a
@@ -4620,12 +4732,14 @@ tests:
   - name: list_objects_expands_wildcard_tuple
     stages:
       - model: | #concurrent checks
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define blocked: [user] as self
-              define owner: [user, user:*] as self but not blocked
-              define can_own as owner
+              define blocked: [user]
+              define owner: [user, user:*] but not blocked
+              define can_own: owner
         tuples:
           - user: user:*
             relation: owner
@@ -4644,11 +4758,13 @@ tests:
             expectation:
               - repo:1
       - model: | #reverse expansion
+          model
+            schema 1.1
           type user
           type repo
             relations
-              define owner: [user, user:*] as self
-              define can_own as owner
+              define owner: [user, user:*]
+              define can_own: owner
         listObjectsAssertions:
           - request:
               user: user:a
@@ -4657,29 +4773,31 @@ tests:
             expectation:
               - repo:1
       - model: | #complex model
+          model
+            schema 1.1
           type user
           type folder
             relations
-              define parent: [folder] as self
-              define owner: [group] as self
-              define folder_reader: [user, group#member] as self or folder_reader from owner or folder_reader from parent
-              define blocked: [user, user:*, group#member] as self or nblocked from parent
-              define unblocked: [user, group#member] as self
-              define nblocked as blocked but not unblocked
-              define allowed: [user, user:*, group#member] as self or allowed from parent
-              define super_allowed: [user, group#member] as self or super_allowed from parent
-              define reader as folder_reader and allowed and super_allowed
-              define can_read as reader but not nblocked
+              define parent: [folder]
+              define owner: [group]
+              define folder_reader: [user, group#member] or folder_reader from owner or folder_reader from parent
+              define blocked: [user, user:*, group#member] or nblocked from parent
+              define unblocked: [user, group#member]
+              define nblocked: blocked but not unblocked
+              define allowed: [user, user:*, group#member] or allowed from parent
+              define super_allowed: [user, group#member] or super_allowed from parent
+              define reader: folder_reader and allowed and super_allowed
+              define can_read: reader but not nblocked
           type group
             relations
-              define parent: [group] as self
-              define allowed: [user, group#member] as self or allowed from parent
-              define super_allowed: [user, group#super_allowed] as self
-              define blocked: [user, group#member] as self or blocked from parent
-              define og_member: [user] as self or member from parent
-              define allowed_member as og_member and allowed and super_allowed
-              define member as allowed_member but not blocked
-              define folder_reader: [group#member] as self or folder_reader from parent
+              define parent: [group]
+              define allowed: [user, group#member] or allowed from parent
+              define super_allowed: [user, group#super_allowed]
+              define blocked: [user, group#member] or blocked from parent
+              define og_member: [user] or member from parent
+              define allowed_member: og_member and allowed and super_allowed
+              define member: allowed_member but not blocked
+              define folder_reader: [group#member] or folder_reader from parent
         tuples:
           - user: user:anne
             relation: og_member
@@ -4904,52 +5022,66 @@ tests:
   - name: resolution_too_complex_throws_error
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type resource
             relations
-              define a1 as a2
-              define a2 as a3
-              define a3 as a4
-              define a4 as a5
-              define a5 as a6
-              define a6 as a7
-              define a7 as a8
-              define a8 as a9
-              define a9 as a10
-              define a10 as a11
-              define a11 as a12
-              define a12 as a13
-              define a13 as a14
-              define a14 as a15
-              define a15 as a16
-              define a16 as a17
-              define a17 as a18
-              define a18 as a19
-              define a19 as a20
-              define a20 as a21
-              define a21 as a22
-              define a22 as a23
-              define a23 as a24
-              define a24 as a25
-              define a25 as a26
-              define a26: [user] as self
+              define a1: a2
+              define a2: a3
+              define a3: a4
+              define a4: a5
+              define a5: a6
+              define a6: a7
+              define a7: a8
+              define a8: a9
+              define a9: a10
+              define a10: a11
+              define a11: a12
+              define a12: a13
+              define a13: a14
+              define a14: a15
+              define a15: a16
+              define a16: a17
+              define a17: a18
+              define a18: a19
+              define a19: a20
+              define a20: a21
+              define a21: a22
+              define a22: a23
+              define a23: a24
+              define a24: a25
+              define a25: a26
+              define a26: [user]
+        tuples:
+          - object: resource:1
+            relation: a26
+            user: user:jon
         checkAssertions:
           - tuple:
               object: resource:abc
               relation: a1
               user: user:maria
             errorCode: 2002
+        listObjectsAssertions:
+          - request:
+              type: resource
+              relation: a1
+              user: user:jon
+            errorCode: 2002
   - name: race_condition_same_user_same_object_diff_relation
     stages:
       - model: |
+          model
+            schema 1.1
           type user
           type test_type
             relations
-              define relation1: [user] as self
-              define relation2: [user] as self
+              define relation1: [user]
+              define relation2: [user]
           type list_type
             relations
-              define list_relation: [test_type#relation1,test_type#relation2] as self
+              define list_relation: [test_type#relation1,test_type#relation2]
         tuples:
           - user: user:test_user
             relation: relation1
@@ -4981,18 +5113,20 @@ tests:
   - name: follows_correct_graph_edges
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type repo
             relations
-              define admin: [user] as self or repo_admin from owner
-              define owner: [organization] as self
+              define admin: [user] or repo_admin from owner
+              define owner: [organization]
 
           type organization
             relations
-              define member: [user] as self or owner
-              define owner: [user] as self
-              define repo_admin: [user, organization#member] as self
+              define member: [user] or owner
+              define owner: [user]
+              define repo_admin: [user, organization#member]
         tuples:
           - user: user:alex
             relation: member
@@ -5011,4 +5145,102 @@ tests:
               user: user:alex
               type: repo
               relation: admin
-            expectation: [ ]
+            expectation: []
+  - name: list_objects_with_subcheck_encounters_cycle
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define allowed: [user, document#viewer]
+              define viewer: [user, document#allowed] and allowed
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+          - user: document:1#viewer
+            relation: allowed
+            object: document:1
+          - user: document:1#allowed
+            relation: viewer
+            object: document:1
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2002
+  - name: list_objects_with_subcheck_resolution_depth_exceeded
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define a1: a2
+              define a2: a3
+              define a3: a4
+              define a4: a5
+              define a5: a6
+              define a6: a7
+              define a7: a8
+              define a8: a9
+              define a9: a10
+              define a10: a11
+              define a11: a12
+              define a12: a13
+              define a13: a14
+              define a14: a15
+              define a15: a16
+              define a16: a17
+              define a17: a18
+              define a18: a19
+              define a19: a20
+              define a20: a21
+              define a21: a22
+              define a22: a23
+              define a23: a24
+              define a24: a25
+              define a25: a26
+              define a26: [user]
+              define viewer: [user] and a1
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2002
+  - name: direct_relationships_with_intersection
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define allowed: [user]
+              define viewer: [user] and allowed
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: allowed
+            object: document:1
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1

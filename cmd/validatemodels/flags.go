@@ -1,9 +1,10 @@
 package validatemodels
 
 import (
-	"github.com/openfga/openfga/cmd/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/openfga/openfga/cmd/util"
 )
 
 // bindRunFlags binds the cobra cmd flags to the equivalent config value being managed

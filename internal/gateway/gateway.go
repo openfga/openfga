@@ -3,10 +3,11 @@ package gateway
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 type Transport interface {

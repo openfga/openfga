@@ -6,23 +6,27 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/assets"
 )
 
 const (
-	datastoreEngineFlag  = "datastore-engine"
-	datastoreURIFlag     = "datastore-uri"
-	versionFlag          = "version"
-	timeoutFlag          = "timeout"
-	verboseMigrationFlag = "verbose"
+	datastoreEngineFlag   = "datastore-engine"
+	datastoreURIFlag      = "datastore-uri"
+	datastoreUsernameFlag = "datastore-username"
+	datastorePasswordFlag = "datastore-password"
+	versionFlag           = "version"
+	timeoutFlag           = "timeout"
+	verboseMigrationFlag  = "verbose"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -38,6 +42,8 @@ func NewMigrateCommand() *cobra.Command {
 
 	flags.String(datastoreEngineFlag, "", "(required) the datastore engine that will be used for persistence")
 	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
+	flags.String(datastoreUsernameFlag, "", "(optional) overwrite the username in the connection string")
+	flags.String(datastorePasswordFlag, "", "(optional) overwrite the password in the connection string")
 	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout for the time it takes the migrate process to connect to the database")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
@@ -55,6 +61,8 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
 	verbose := viper.GetBool(verboseMigrationFlag)
+	username := viper.GetString(datastoreUsernameFlag)
+	password := viper.GetString(datastorePasswordFlag)
 
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(verbose)
@@ -68,10 +76,40 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		driver = "mysql"
 		dialect = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
+
+		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
+		dsn, err := mysql.ParseDSN(uri)
+		if err != nil {
+			log.Fatalf("invalid database uri: %v\n", err)
+		}
+		if username != "" {
+			dsn.User = username
+		}
+		if password != "" {
+			dsn.Passwd = password
+		}
+		uri = dsn.FormatDSN()
+
 	case "postgres":
 		driver = "pgx"
 		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir
+
+		// Parse the database uri with url.Parse() and update username/password, if set via flags
+		dbURI, err := url.Parse(uri)
+		if err != nil {
+			log.Fatalf("invalid database uri: %v\n", err)
+		}
+		if username == "" && dbURI.User != nil {
+			username = dbURI.User.Username()
+		}
+		if password == "" && dbURI.User != nil {
+			password, _ = dbURI.User.Password()
+		}
+		dbURI.User = url.UserPassword(username, password)
+
+		// Replace CLI uri with the one we just updated.
+		uri = dbURI.String()
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:

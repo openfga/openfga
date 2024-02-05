@@ -4,16 +4,17 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/openfga/openfga/cmd/run"
+	"github.com/openfga/openfga/tests"
 )
 
 func TestWriteAuthorizationModel(t *testing.T) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
 	cancel := tests.StartServer(t, cfg)

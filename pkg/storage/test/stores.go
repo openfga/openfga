@@ -7,16 +7,17 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	// Create some stores
+	// Create some stores.
 	numStores := 10
 	var stores []*openfgav1.Store
 	for i := 0; i < numStores; i++ {
@@ -41,13 +42,13 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		gotStores, ct, err := datastore.ListStores(ctx, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 
-		require.Equal(t, 1, len(gotStores))
+		require.Len(t, gotStores, 1)
 		require.NotEmpty(t, len(ct))
 
 		_, ct, err = datastore.ListStores(ctx, storage.PaginationOptions{PageSize: 100, From: string(ct)})
 		require.NoError(t, err)
 
-		// This will fail if there are actually over 101 stores in the DB at the time of running
+		// This will fail if there are actually over 101 stores in the DB at the time of running.
 		require.Zero(t, len(ct))
 	})
 
@@ -69,7 +70,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.DeleteStore(ctx, store.Id)
 		require.NoError(t, err)
 
-		// Should not be able to get the store now
+		// Should not be able to get the store now.
 		_, err = datastore.GetStore(ctx, store.Id)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -79,7 +80,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.DeleteStore(ctx, store.Id)
 		require.NoError(t, err)
 
-		// Store id should not appear in the list of store ids
+		// Store id should not appear in the list of store ids.
 		gotStores, _, err := datastore.ListStores(ctx, storage.PaginationOptions{PageSize: storage.DefaultPageSize})
 		require.NoError(t, err)
 

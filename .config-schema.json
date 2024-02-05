@@ -78,7 +78,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["check-query-cache"]
+                "enum": []
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -175,6 +175,17 @@
                     "type": "duration",
                     "default": "connections are not closed due to connection's age - database/sql default",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
+                },
+                "metrics": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "enable/disable sql metrics for the datastore",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_DATASTORE_METRICS_ENABLED"
+                        }
+                    }
                 }
             }
         },

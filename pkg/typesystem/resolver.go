@@ -9,25 +9,26 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 const (
-	typesystemCacheTTL = 168 * time.Hour // 7 days
+	typesystemCacheTTL = 168 * time.Hour // 7 days.
 )
 
-// TypesystemResolverFunc is a function that implementations can implement to provide lookup and
-// resolution of a Typesystem.
+// TypesystemResolverFunc is a function type that implementations
+// can use to provide lookup and resolution of a Typesystem.
 type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (*TypeSystem, error)
 
-// MemoizedTypesystemResolverFunc returns a TypesystemResolverFunc that either fetches the provided authorization
-// model (if provided) or looks up the latest authorization model, and then it constructs a TypeSystem from
-// the resolved model. The type-system resolution is memoized so if another lookup of the same model occurs,
-// then the earlier TypeSystem that was constructed will be used.
+// MemoizedTypesystemResolverFunc returns a TypesystemResolverFunc that fetches the provided authorization
+// model (if provided) or looks up the latest authorization model. It then constructs a TypeSystem from
+// the resolved model, and memoizes the type-system resolution. If another lookup of the same model occurs,
+// the earlier constructed TypeSystem will be used.
 //
-// The memoized resolver function is safe for concurrent use.
-func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
+// The memoized resolver function is designed for concurrent use.
+func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) (TypesystemResolverFunc, func()) {
 	lookupGroup := singleflight.Group{}
 
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
@@ -87,5 +88,5 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		cache.Set(key, typesys, typesystemCacheTTL)
 
 		return typesys, nil
-	}
+	}, cache.Stop
 }

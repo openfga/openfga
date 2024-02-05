@@ -100,5 +100,12 @@ dependencies:
   - sbom-file: https://github.com/openfga/openfga/releases/download/v1.3.3/openfga_1.3.3_linux_amd64.tar.gz.sbom
     sbom-format: SPDX
     sbom-url: https://github.com/openfga/openfga/releases
-#  dependencies-lifecycle:
-#    policy-url: https://example.org
+  env-dependencies-policy:
+    policy-url: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
+security-artifacts:
+  threat-model:
+    threat-model-created: false
+  self-assessment:
+    self-assessment-created: true
+    evidence-url: 
+      - https://github.com/openfga/openfga/blob/main/docs/security-self-assessment.md

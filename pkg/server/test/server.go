@@ -23,7 +23,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestListStores", func(t *testing.T) { TestListStores(t, ds) })
 
 	t.Run("TestReadAssertionQuery", func(t *testing.T) { TestReadAssertionQuery(t, ds) })
-
 	t.Run("TestReadQuerySuccess", func(t *testing.T) { ReadQuerySuccessTest(t, ds) })
 	t.Run("TestReadQueryError", func(t *testing.T) { ReadQueryErrorTest(t, ds) })
 	t.Run("TestReadAllTuples", func(t *testing.T) { ReadAllTuplesTest(t, ds) })
@@ -49,23 +48,19 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 		func(t *testing.T) { TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t, ds) },
 	)
 
-	t.Run("TestListObjectsRespectsMaxResults", func(t *testing.T) { TestListObjectsRespectsMaxResults(t, ds) })
+	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteCommand", func(t *testing.T) { TestWriteCommand(t, ds) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { WriteAuthorizationModelTest(t, ds) })
-	t.Run("TestWriteAssertions", func(t *testing.T) { TestWriteAssertions(t, ds) })
+	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { TestWriteAndReadAssertions(t, ds) })
+	t.Run("TestWriteAssertionsFailure", func(t *testing.T) { TestWriteAssertionsFailure(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	RunListObjectsBenchmarks(b, ds)
-}
-
-func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	b.Run("BenchmarkListObjectsWithReverseExpand", func(b *testing.B) { BenchmarkListObjectsWithReverseExpand(b, ds) })
-	b.Run("BenchmarkListObjectsWithConcurrentChecks", func(b *testing.B) { BenchmarkListObjectsWithConcurrentChecks(b, ds) })
+	b.Run("BenchmarkListObjects", func(b *testing.B) { BenchmarkListObjects(b, ds) })
 }

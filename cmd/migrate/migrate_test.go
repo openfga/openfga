@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/cmd/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/util"
 )
 
 const defaultDuration = 1 * time.Minute
@@ -19,7 +20,8 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			container, _, uri, err := util.MustBootstrapDatastore(t, engine)
+			container, _, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
+			defer stopFunc()
 			require.NoError(t, err)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
@@ -44,16 +46,18 @@ func TestMigrateCommandNoConfigDefaultValues(t *testing.T) {
 	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.Equal(t, "", viper.GetString(datastoreUsernameFlag))
+		require.Equal(t, "", viper.GetString(datastorePasswordFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
+		require.False(t, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(migrateCmd)
 	cmd.SetArgs([]string{"migrate"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }
 
 func TestMigrateCommandConfigFileValuesAreParsed(t *testing.T) {
@@ -69,14 +73,14 @@ func TestMigrateCommandConfigFileValuesAreParsed(t *testing.T) {
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
+		require.False(t, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(migrateCmd)
 	cmd.SetArgs([]string{"migrate"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }
 
 func TestMigrateCommandConfigIsMerged(t *testing.T) {
@@ -94,12 +98,12 @@ func TestMigrateCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		require.Equal(t, true, viper.GetBool(verboseMigrationFlag))
+		require.True(t, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(migrateCmd)
 	cmd.SetArgs([]string{"migrate"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }

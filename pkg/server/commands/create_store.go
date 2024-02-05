@@ -5,6 +5,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -15,14 +16,27 @@ type CreateStoreCommand struct {
 	logger        logger.Logger
 }
 
+type CreateStoreCmdOption func(*CreateStoreCommand)
+
+func WithCreateStoreCmdLogger(l logger.Logger) CreateStoreCmdOption {
+	return func(c *CreateStoreCommand) {
+		c.logger = l
+	}
+}
+
 func NewCreateStoreCommand(
 	storesBackend storage.StoresBackend,
-	logger logger.Logger,
+	opts ...CreateStoreCmdOption,
 ) *CreateStoreCommand {
-	return &CreateStoreCommand{
+	cmd := &CreateStoreCommand{
 		storesBackend: storesBackend,
-		logger:        logger,
+		logger:        logger.NewNoopLogger(),
 	}
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
 }
 
 func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {

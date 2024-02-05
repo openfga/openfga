@@ -2,7 +2,7 @@ run:
   timeout: 3m
   modules-download-mode: readonly
   build-tags:
-    - functional
+    - docker
 
 linters:
   enable:
@@ -10,13 +10,15 @@ linters:
     - gofmt
     - goimports
     - stylecheck
-
     - importas
     - errcheck
     - gosimple
     - govet
     - ineffassign
+    - mirror
     - staticcheck
+    - tagalign
+    - testifylint
     - typecheck
     - unused
     - unconvert
@@ -29,6 +31,13 @@ linters:
     # - promlinter
 
 linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
+  goimports:
+    local-prefixes: "github.com/openfga/openfga"
   importas:
     # Do not allow unaliased imports of aliased packages.
     no-unaliased: true

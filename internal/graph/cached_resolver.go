@@ -1,18 +1,20 @@
 package graph
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/gob"
 	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/karlseguin/ccache/v3"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
+
+	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/keys"
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -23,13 +25,15 @@ const (
 
 var (
 	checkCacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "check_cache_total_count",
-		Help: "The total number of calls to ResolveCheck.",
+		Namespace: build.ProjectName,
+		Name:      "check_cache_total_count",
+		Help:      "The total number of calls to ResolveCheck.",
 	})
 
 	checkCacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "check_cache_hit_count",
-		Help: "The total number of cache hits for ResolveCheck.",
+		Namespace: build.ProjectName,
+		Name:      "check_cache_hit_count",
+		Help:      "The total number of cache hits for ResolveCheck.",
 	})
 )
 
@@ -148,7 +152,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	checkCacheTotalCounter.Inc()
 
-	cacheKey, err := checkRequestCacheKey(req)
+	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
 		return nil, err
@@ -169,33 +173,42 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-// checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
-// used for Check resolution cache key lookups.
-// The same tuple provided with the same contextual tuples should produce the same
-// cache key. If the contextual tuples are different order, it is possible that a different
-// cache key will be produced. This will result in duplicate entries.
-func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	var contextualTuplesCacheKey string
+// CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
+// used for Check resolution cache key lookups in a stable way.
+//
+// For one store and model ID, the same tuple provided with the same contextual tuples and context
+// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
+// only the contents are compared.
+func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
-	contextualTuples := req.GetContextualTuples()
-
-	if len(contextualTuples) > 0 {
-		var c bytes.Buffer
-
-		// only use gob if there are contextual tuples as it is CPU intensive
-		if err := gob.NewEncoder(&c).Encode(req.GetContextualTuples()); err != nil {
-			return "", err
-		}
-
-		contextualTuplesCacheKey = "/" + c.String()
-	}
-
-	key := fmt.Sprintf("%s/%s/%s%s",
+	tupleKey := req.GetTupleKey()
+	key := fmt.Sprintf("%s/%s/%s#%s@%s",
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
-		req.GetTupleKey(),
-		contextualTuplesCacheKey, // note that there is a prefix "/" if contextualTuplesCacheKey is not empty
+		tupleKey.GetObject(),
+		tupleKey.GetRelation(),
+		tupleKey.GetUser(),
 	)
 
-	return base64.StdEncoding.EncodeToString([]byte(key)), nil
+	if err := hasher.WriteString(key); err != nil {
+		return "", err
+	}
+
+	// here, and for context below, avoid hashing if we don't need to
+	contextualTuples := req.GetContextualTuples()
+	if len(contextualTuples) > 0 {
+		if err := keys.NewTupleKeysHasher(contextualTuples...).Append(hasher); err != nil {
+			return "", err
+		}
+	}
+
+	if req.GetContext() != nil {
+		err := keys.NewContextHasher(req.GetContext()).Append(hasher)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
 }

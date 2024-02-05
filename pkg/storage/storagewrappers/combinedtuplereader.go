@@ -4,22 +4,29 @@ import (
 	"context"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// NewContextualTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
-// tuples specified in the request
-func NewContextualTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey) *ContextualTupleReader {
-	return &ContextualTupleReader{RelationshipTupleReader: ds, contextualTuples: contextualTuples}
+// NewCombinedTupleReader returns a [storage.RelationshipTupleReader] that reads from
+// a persistent datastore and from the contextual tuples specified in the request.
+func NewCombinedTupleReader(
+	ds storage.RelationshipTupleReader,
+	contextualTuples []*openfgav1.TupleKey,
+) *CombinedTupleReader {
+	return &CombinedTupleReader{
+		RelationshipTupleReader: ds,
+		contextualTuples:        contextualTuples,
+	}
 }
 
-type ContextualTupleReader struct {
+type CombinedTupleReader struct {
 	storage.RelationshipTupleReader
 	contextualTuples []*openfgav1.TupleKey
 }
 
-var _ storage.RelationshipTupleReader = (*ContextualTupleReader)(nil)
+var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object and relation provided in the filterKey.
@@ -36,7 +43,8 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 	return filtered
 }
 
-func (c *ContextualTupleReader) Read(
+// Read see [storage.RelationshipTupleReader.ReadUserTuple].
+func (c *CombinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
 	tk *openfgav1.TupleKey,
@@ -51,18 +59,19 @@ func (c *ContextualTupleReader) Read(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-func (c *ContextualTupleReader) ReadPage(
+// ReadPage see [storage.RelationshipTupleReader.ReadPage].
+func (c *CombinedTupleReader) ReadPage(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
-	// no reading from contextual tuples
-
+	// No reading from contextual tuples.
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, opts)
 }
 
-func (c *ContextualTupleReader) ReadUserTuple(
+// ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
+func (c *CombinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
@@ -78,7 +87,8 @@ func (c *ContextualTupleReader) ReadUserTuple(
 	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk)
 }
 
-func (c *ContextualTupleReader) ReadUsersetTuples(
+// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
+func (c *CombinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
@@ -101,7 +111,8 @@ func (c *ContextualTupleReader) ReadUsersetTuples(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-func (c *ContextualTupleReader) ReadStartingWithUser(
+// ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
+func (c *CombinedTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,

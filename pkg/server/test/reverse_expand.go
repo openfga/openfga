@@ -5,15 +5,16 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
@@ -41,14 +42,14 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 				ContextualTuples: []*openfgav1.TupleKey{},
 			},
-			model: `
-				type user
+			model: `model
+	schema 1.1
+type user
 
-				type document
-				  relations
-				    define allowed: [user] as self
-				    define viewer: [user] as self and allowed
-				`,
+type document
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
@@ -80,20 +81,20 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 				ContextualTuples: []*openfgav1.TupleKey{},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-				define writer: [user] as self
-				define editor: [user] as self
-				define viewer as writer and editor
+type folder
+  relations
+	define writer: [user]
+	define editor: [user]
+	define viewer: writer and editor
 
-			type document
-			  relations
-				define parent: [folder] as self
-				define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:X"),
 				tuple.NewTupleKey("folder:X", "writer", "user:jon"),
@@ -125,13 +126,13 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("document:doc3", "viewer", "user:jon"),
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user] as self
-			`,
+type document
+  relations
+	define viewer: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 			},
@@ -158,17 +159,17 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "jon",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type document
-			  relations
-			    define viewer: [user, group#member] as self
-			`,
+type document
+  relations
+	define viewer: [user, group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
@@ -198,18 +199,18 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "jon",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type document
-			  relations
-			    define owner: [user, group#member] as self
-			    define viewer as owner
-			`,
+type document
+  relations
+	define owner: [user, group#member]
+	define viewer: owner`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "owner", "user:jon"),
 				tuple.NewTupleKey("document:doc2", "owner", "user:bob"),
@@ -245,23 +246,23 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("folder:folder6", "viewer", "user:bob"),
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user, group#member] as self
+type group
+  relations
+	define member: [user, group#member]
 
-			type folder
-			  relations
-			    define parent: [folder] as self
-			    define viewer: [user, group#member] as self or viewer from parent
+type folder
+  relations
+	define parent: [folder]
+	define viewer: [user, group#member] or viewer from parent
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
@@ -300,14 +301,14 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define parent: [folder] as self
-			    define viewer: [user] as self or viewer from parent
-			`,
+type folder
+  relations
+	define parent: [folder]
+	define viewer: [user] or viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
@@ -343,14 +344,14 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 			resolveNodeLimit: 2,
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define parent: [folder] as self
-			    define viewer: [user] as self or viewer from parent
-			`,
+type folder
+  relations
+	define parent: [folder]
+	define viewer: [user] or viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
@@ -372,13 +373,13 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user, group#member] as self
-			`,
+type group
+  relations
+	define member: [user, group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:opensource", "member", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
@@ -409,11 +410,11 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type group
-			  relations
-			    define member: [group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type group
+  relations
+	define member: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:iam", "member", "group:iam#member"),
 			},
@@ -438,15 +439,15 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define owner: [user] as self
-			    define editor as owner
-			    define viewer: [document#editor] as self
-			`,
+type document
+  relations
+	define owner: [user]
+	define editor: owner
+	define viewer: [document#editor]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "document:1#editor"),
 				tuple.NewTupleKey("document:1", "owner", "user:jon"),
@@ -472,18 +473,18 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define manager: [user] as self
-			    define member as manager
+type group
+  relations
+	define manager: [user]
+	define member: manager
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+type document
+  relations
+	define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "manager", "user:jon"),
@@ -509,19 +510,19 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define admin: [user] as self
-			    define member as admin
+type team
+  relations
+	define admin: [user]
+	define member: admin
 
-			type trial
-			  relations
-			    define editor: [team#member] as self
-			    define viewer as editor
-			`,
+type trial
+  relations
+	define editor: [team#member]
+	define viewer: editor`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("trial:1", "editor", "team:devs#member"),
 				tuple.NewTupleKey("team:devs", "admin", "user:fede"),
@@ -547,17 +548,17 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-			    define can_view as viewer
+			model: `model
+	schema 1.1
+type organization
+  relations
+	define viewer: [organization]
+	define can_view: viewer
 
-			type document
-			  relations
-			    define parent: [organization] as self
-			    define view as can_view from parent
-			`,
+type document
+  relations
+	define parent: [organization]
+	define view: can_view from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "organization:1"),
 				tuple.NewTupleKey("organization:1", "viewer", "organization:2"),
@@ -578,13 +579,13 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				Relation:   "viewer",
 				User:       &reverseexpand.UserRefTypedWildcard{Type: "user"},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user, user:*] as self
-			`,
+type document
+  relations
+	define viewer: [user, user:*]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
@@ -610,15 +611,15 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				Relation:   "viewer",
 				User:       &reverseexpand.UserRefTypedWildcard{Type: "user"},
 			},
-			model: `
-			type user
-			type group
-			  relations
-			    define member: [user:*] as self
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user:*]
+type document
+  relations
+	define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("document:2", "viewer", "group:fga#member"),
@@ -645,18 +646,18 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
-			type team
-			  relations
-			    define member: [user] as self
-			type group
-			  relations
-			    define member: [team#member] as self
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type team
+  relations
+	define member: [user]
+type group
+  relations
+	define member: [team#member]
+type document
+  relations
+	define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("team:tigers", "member", "user:jon"),
 				tuple.NewTupleKey("group:eng", "member", "team:tigers#member"),
@@ -683,18 +684,18 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
-			type group
-			  relations
-			    define member: [team#member] as self
-			type team
-			  relations
-			    define member: [user:*] as self
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [team#member]
+type team
+  relations
+	define member: [user:*]
+type document
+  relations
+	define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("team:tigers", "member", "user:*"),
 				tuple.NewTupleKey("group:eng", "member", "team:tigers#member"),
@@ -718,12 +719,12 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Object: &openfgav1.Object{Type: "user", Id: "jon"},
 				},
 			},
-			model: `
-			type user
-			type document
-			  relations
-			    define viewer: [user, user:*] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define viewer: [user, user:*]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
@@ -753,15 +754,15 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
-			type group
-			  relations
-			    define member: [user, user:*] as self
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user, user:*]
+type document
+  relations
+	define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
@@ -793,15 +794,15 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
-			type group
-			  relations
-			    define member: [user:*] as self
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user:*]
+type document
+  relations
+	define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 				tuple.NewTupleKey("group:other", "member", "employee:*"), // assume this comes from a prior model
@@ -830,16 +831,16 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					},
 				},
 			},
-			model: `
-			type user
-			type group
-			  relations
-			    define member: [user] as self
-			type resource
-			  relations
-			    define reader: [user, user:*, group#member] as self or writer
-				define writer: [user, user:*, group#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user]
+type resource
+  relations
+	define reader: [user, user:*, group#member] or writer
+	define writer: [user, user:*, group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:x", "writer", "user:*"),
 			},
@@ -865,12 +866,12 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				},
 			},
-			model: `
-			type user
-			type document
-			  relations
-			    define viewer: [user, user:*] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define viewer: [user, user:*]`,
 			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
@@ -895,13 +896,13 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				},
 			},
-			model: `
-			type user
-			type employee
-			type document
-			  relations
-			    define viewer: [user:*] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type employee
+type document
+  relations
+	define viewer: [user:*]`,
 			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:2",
@@ -926,17 +927,17 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+type document
+  relations
+	define viewer: [group#member]`,
 			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
@@ -956,18 +957,18 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "jon",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define viewer: [user, user:*] as self
+type folder
+  relations
+	define viewer: [user, user:*]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:1"),
 				tuple.NewTupleKey("document:2", "parent", "folder:2"),
@@ -997,19 +998,19 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "jon",
 				}},
 			},
-			model: `
-			type user
-			type employee
+			model: `model
+	schema 1.1
+type user
+type employee
 
-			type folder
-			  relations
-			    define viewer: [user, employee:*] as self
+type folder
+  relations
+	define viewer: [user, employee:*]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:1"),
 				tuple.NewTupleKey("document:2", "parent", "folder:2"),
@@ -1035,21 +1036,21 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "jon",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user:*] as self
-			type folder
-			  relations
-			    define viewer: [group#member] as self
+type group
+  relations
+	define member: [user:*]
+type folder
+  relations
+	define viewer: [group#member]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:1"),
 				tuple.NewTupleKey("folder:1", "viewer", "group:eng#member"),
@@ -1074,22 +1075,22 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "anne",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type org
-			  relations
-			    define dept: [group] as self
-			    define dept_member as member from dept
+type org
+  relations
+	define dept: [group]
+	define dept_member: member from dept
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type resource
-			  relations
-			    define writer: [org#dept_member] as self
-			`,
+type resource
+  relations
+	define writer: [org#dept_member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:eng_handbook", "writer", "org:eng#dept_member"),
 				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
@@ -1114,23 +1115,23 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "anne",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type org
-			  relations
-			    define dept: [group] as self
-			    define dept_member as member from dept
+type org
+  relations
+	define dept: [group]
+	define dept_member: member from dept
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type resource
-			  relations
-			    define writer: [org#dept_member] as self
-			    define reader: [org#dept_member] as self or writer
-			`,
+type resource
+  relations
+	define writer: [org#dept_member]
+	define reader: [org#dept_member] or writer`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:eng_handbook", "writer", "org:eng#dept_member"),
 				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
@@ -1155,14 +1156,14 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "wonder",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type node
-			  relations
-			    define parent: [node] as self
-			    define editor: [user] as self or editor from parent
-			`,
+type node
+  relations
+	define parent: [node]
+	define editor: [user] or editor from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("node:abc", "editor", "user:wonder"),
 			},
@@ -1185,18 +1186,18 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Id:   "jon",
 				}},
 			},
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-				define member: [user] as self
-				define maintainer: [user] as self
+type group
+  relations
+	define member: [user]
+	define maintainer: [user]
 
-			type document
-			  relations
-				define viewer: [group#member,group#maintainer] as self
-			`,
+type document
+  relations
+	define viewer: [group#member,group#maintainer]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:example1#maintainer"),
 				tuple.NewTupleKey("group:example1", "maintainer", "user:jon"),
@@ -1214,22 +1215,16 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require := require.New(t)
-
 			ctx := context.Background()
 			store := ulid.Make().String()
 			test.request.StoreID = store
 
-			model := &openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(test.model),
-			}
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			err := ds.WriteAuthorizationModel(ctx, store, model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			err = ds.Write(ctx, store, nil, test.tuples)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			var opts []reverseexpand.ReverseExpandQueryOption
 
@@ -1240,37 +1235,43 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, typesystem.New(model), opts...)
 
 			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)
-			done := make(chan struct{})
-
-			var results []*reverseexpand.ReverseExpandResult
-			go func() {
-				for result := range resultChan {
-					results = append(results, result)
-				}
-
-				done <- struct{}{}
-			}()
 
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
+			reverseExpandErrCh := make(chan error, 1)
 			go func() {
-				err = reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
-				require.ErrorIs(err, test.expectedError)
-				close(resultChan)
+				err := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				if err != nil {
+					reverseExpandErrCh <- err
+					t.Logf("sent err %s", err)
+				}
 			}()
 
-			select {
-			case <-timeoutCtx.Done():
-				require.FailNow("timed out waiting for response")
-			case <-done:
-			}
+			var results []*reverseexpand.ReverseExpandResult
 
-			if test.expectedError == nil {
-				require.ElementsMatch(test.expectedResult, results)
-				require.Equal(test.expectedDSQueryCount, *resolutionMetadata.QueryCount)
+			for {
+				select {
+				case err := <-reverseExpandErrCh:
+					require.ErrorIs(t, err, test.expectedError)
+					return
+				case res, channelOpen := <-resultChan:
+					if !channelOpen {
+						t.Log("channel closed")
+						if test.expectedError == nil {
+							require.ElementsMatch(t, test.expectedResult, results)
+							require.Equal(t, test.expectedDSQueryCount, *resolutionMetadata.QueryCount)
+						} else {
+							require.FailNow(t, "expected an error, got none")
+						}
+						return
+					} else {
+						t.Logf("appending result %s", res.Object)
+						results = append(results, res)
+					}
+				}
 			}
 		})
 	}

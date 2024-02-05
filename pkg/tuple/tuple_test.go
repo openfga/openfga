@@ -233,17 +233,17 @@ func TestTupleKeyToString(t *testing.T) {
 }
 
 func TestIsWildcard(t *testing.T) {
-	require.Equal(t, true, IsWildcard("*"))
-	require.Equal(t, true, IsWildcard("user:*"))
-	require.Equal(t, false, IsWildcard("user:jon"))
-	require.Equal(t, false, IsWildcard("jon"))
+	require.True(t, IsWildcard("*"))
+	require.True(t, IsWildcard("user:*"))
+	require.False(t, IsWildcard("user:jon"))
+	require.False(t, IsWildcard("jon"))
 }
 
 func TestIsTypedWildcard(t *testing.T) {
-	require.Equal(t, false, IsTypedWildcard("*"))
-	require.Equal(t, true, IsTypedWildcard("user:*"))
-	require.Equal(t, false, IsTypedWildcard("user:jon"))
-	require.Equal(t, false, IsTypedWildcard("jon"))
+	require.False(t, IsTypedWildcard("*"))
+	require.True(t, IsTypedWildcard("user:*"))
+	require.False(t, IsTypedWildcard("user:jon"))
+	require.False(t, IsTypedWildcard("jon"))
 }
 
 func TestIsValidUser(t *testing.T) {

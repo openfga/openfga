@@ -6,6 +6,11 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -14,22 +19,39 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const (
-	IndirectWriteErrorReason = "Attempting to write directly to an indirect only relationship"
-)
-
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	logger                    logger.Logger
+	datastore                 storage.OpenFGADatastore
+	conditionContextByteLimit int
 }
 
-// NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
-	return &WriteCommand{
-		logger:    logger,
-		datastore: datastore,
+type WriteCommandOption func(*WriteCommand)
+
+func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
+	return func(wc *WriteCommand) {
+		wc.logger = l
 	}
+}
+
+func WithConditionContextByteLimit(limit int) WriteCommandOption {
+	return func(wc *WriteCommand) {
+		wc.conditionContextByteLimit = limit
+	}
+}
+
+// NewWriteCommand creates a WriteCommand with specified storage.OpenFGADatastore to use for storage.
+func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOption) *WriteCommand {
+	cmd := &WriteCommand{
+		datastore:                 datastore,
+		logger:                    logger.NewNoopLogger(),
+		conditionContextByteLimit: config.DefaultWriteContextByteLimit,
+	}
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
@@ -38,7 +60,12 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	err := c.datastore.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
+	err := c.datastore.Write(
+		ctx,
+		req.GetStoreId(),
+		req.GetDeletes().GetTupleKeys(),
+		req.GetWrites().GetTupleKeys(),
+	)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -55,7 +82,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	deletes := req.GetDeletes().GetTupleKeys()
 	writes := req.GetWrites().GetTupleKeys()
 
-	if deletes == nil && writes == nil {
+	if len(deletes) == 0 && len(writes) == 0 {
 		return serverErrors.InvalidWriteInput
 	}
 
@@ -80,24 +107,12 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 				return serverErrors.ValidationError(err)
 			}
 
-			objectType, _ := tupleUtils.SplitObject(tk.GetObject())
-
-			relation, err := typesys.GetRelation(objectType, tk.GetRelation())
-			if err != nil {
-				if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-					return serverErrors.TypeNotFound(objectType)
-				}
-
-				if errors.Is(err, typesystem.ErrRelationUndefined) {
-					return serverErrors.RelationNotFound(tk.GetRelation(), objectType, tk)
-				}
-
-				return serverErrors.HandleError("", err)
-			}
-
-			// Validate that we are not trying to write to an indirect-only relationship
-			if !typesystem.RewriteContainsSelf(relation.GetRewrite()) {
-				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
+			contextSize := proto.Size(tk.GetCondition().GetContext())
+			if contextSize > c.conditionContextByteLimit {
+				return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
+					Cause:    fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, c.conditionContextByteLimit),
+					TupleKey: tk,
+				})
 			}
 		}
 	}
@@ -121,7 +136,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
-func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.TupleKey, writes []*openfgav1.TupleKey) error {
+func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
+	deletes []*openfgav1.TupleKeyWithoutCondition,
+	writes []*openfgav1.TupleKey,
+) error {
 	tuples := map[string]struct{}{}
 
 	for _, tk := range deletes {
@@ -148,7 +166,7 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.T
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return serverErrors.NewInternalError("concurrent write conflict", err)
+		return status.Error(codes.Aborted, err.Error())
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}
