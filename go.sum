@@ -206,6 +206,8 @@ github.com/openfga/language v0.0.0-20240205122832-cf938f8254bd h1:z3xQ4AUYw4KJ0j
 github.com/openfga/language v0.0.0-20240205122832-cf938f8254bd/go.mod h1:RK2c3PsdcjISnVzJOHx/alMlDKk8iM5QcIChSSXCau8=
 github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993 h1:rgtfC6/vyeeEKcQP7RNI5JaOeebXf8sP8gsm3k1wdAk=
 github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993/go.mod h1:dHJaJ7H5tViBCPidTsfl3IOd152FhYxWFQmZXOhZ2pw=
+github.com/openfga/language/pkg/go v0.0.0-20240205122832-cf938f8254bd h1:W7Oa32FZPfy3B6IOwm1a6j24hSMwsQkXTaVZIUHTJ/M=
+github.com/openfga/language/pkg/go v0.0.0-20240205122832-cf938f8254bd/go.mod h1:m4eSYdyRWv6mu5mBFAfUdK4J6WJkHnlhMHI1k0621qM=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/ory/dockertest/v3 v3.10.0 h1:4K3z2VMe8Woe++invjaTB7VRyQXQy5UY+loujO4aNE4=
 github.com/ory/dockertest/v3 v3.10.0/go.mod h1:nr57ZbRWMqfsdGdFNLHz5jjNdDb7VVFnzAeW1n5N1Lg=
