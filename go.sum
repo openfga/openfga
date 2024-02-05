@@ -202,6 +202,8 @@ github.com/opencontainers/runc v1.1.10 h1:EaL5WeO9lv9wmS6SASjszOeQdSctvpbu0DdBQB
 github.com/opencontainers/runc v1.1.10/go.mod h1:+/R6+KmDlh+hOO8NkjmgkG9Qzvypzk0yXxAPYYR65+M=
 github.com/openfga/api/proto v0.0.0-20240201160513-05de9d8be3ee h1:ZqeLB0dxo4XgRLRpaF9dDt3S3BShbrGE9NO6L2eUDDE=
 github.com/openfga/api/proto v0.0.0-20240201160513-05de9d8be3ee/go.mod h1:XF/4W9je/FGBZQ2M5pbQnrzdKF4VcEEtds3ole9sW5E=
+github.com/openfga/language v0.0.0-20240205122832-cf938f8254bd h1:z3xQ4AUYw4KJ0j646cOmer9QYzpFXd0hV7mMVeUMYJ0=
+github.com/openfga/language v0.0.0-20240205122832-cf938f8254bd/go.mod h1:RK2c3PsdcjISnVzJOHx/alMlDKk8iM5QcIChSSXCau8=
 github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993 h1:rgtfC6/vyeeEKcQP7RNI5JaOeebXf8sP8gsm3k1wdAk=
 github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993/go.mod h1:dHJaJ7H5tViBCPidTsfl3IOd152FhYxWFQmZXOhZ2pw=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=

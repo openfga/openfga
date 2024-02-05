@@ -41,18 +41,18 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		checker := NewLocalChecker(ds)
 
 		model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
+			schema 1.1
+			type user
 
-type group
-  relations
-	define member: [user, group#member]
+			type group
+  				relations
+					define member: [user, group#member]
 
-type document
-  relations
-	define allowed: [user]
-	define viewer: [group#member] or editor
-	define editor: [group#member] and allowed`)
+			type document
+  			relations
+				define allowed: [user]
+				define viewer: [group#member] or editor
+				define editor: [group#member] and allowed`)
 
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
