@@ -9,7 +9,11 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -578,4 +582,169 @@ condition condition1(param1: string) {
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
+}
+
+func TestCheckReadsFromContextualTuples(t *testing.T) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+           relations
+			define member: [user]
+		type folder
+		  relations
+			define viewer: [user]
+		type document
+		  relations
+			define parent: [folder]
+			define viewer: [user, group#member] or viewer from parent
+		`)
+
+	testCases := map[string]struct {
+		contextualTuples         []*openfgav1.TupleKey
+		setDatastoreExpectations func(*mocks.MockOpenFGADatastore)
+		check                    *openfgav1.TupleKey
+		expectation              bool
+	}{
+		`read_call`: {
+			setDatastoreExpectations: func(mockDatastore *mocks.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+				mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).MinTimes(1)
+			},
+			contextualTuples: []*openfgav1.TupleKey{
+				{Object: "document:0", Relation: "parent", User: "folder:parent"},
+				{Object: "folder:parent", Relation: "viewer", User: "user:maria"},
+			},
+			check:       tuple.NewTupleKey("document:0", "viewer", "user:maria"),
+			expectation: true,
+		},
+		`read_userset_call`: {
+			setDatastoreExpectations: func(mockDatastore *mocks.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+				mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+				mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).MinTimes(1)
+			},
+			contextualTuples: []*openfgav1.TupleKey{
+				{Object: "document:0", Relation: "viewer", User: "group:fga#member"},
+				{Object: "group:fga", Relation: "member", User: "user:maria"},
+			},
+			check:       tuple.NewTupleKey("document:0", "viewer", "user:maria"),
+			expectation: true,
+		},
+		`read_direct_call`: {
+			setDatastoreExpectations: func(mockDatastore *mocks.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).Times(0)
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+				mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).MinTimes(1)
+			},
+			contextualTuples: []*openfgav1.TupleKey{
+				{Object: "document:0", Relation: "viewer", User: "user:maria"},
+			},
+			check:       tuple.NewTupleKey("document:0", "viewer", "user:maria"),
+			expectation: true,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+			checker := NewLocalChecker(mockDatastore)
+
+			test.setDatastoreExpectations(mockDatastore)
+
+			resolveCheckResponse, err := checker.ResolveCheck(
+				typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model)),
+				&ResolveCheckRequest{
+					StoreID:            ulid.Make().String(),
+					TupleKey:           test.check,
+					ContextualTuples:   test.contextualTuples,
+					ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+				})
+
+			require.NoError(t, err)
+			require.Equal(t, test.expectation, resolveCheckResponse.Allowed)
+		})
+	}
+}
+
+func TestCheckPassesContextualTuplesToSubproblems(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	// no tuples in datastore, everything will be in contextual tuples
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).AnyTimes()
+	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.NewStaticTupleIterator(nil), nil).AnyTimes()
+
+	checker := NewLocalChecker(mockDatastore)
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		  schema 1.1
+		
+		type user
+		
+		type group
+		  relations
+			define member: [user]
+		
+		type folder
+		  relations
+			define viewer: [user]
+		
+		type document
+		  relations
+			define parent: [folder]
+            define computed: [user]
+			define viewer: [user, group#member] or computed or viewer from parent
+		`)
+
+	testCases := map[string]struct {
+		contextualTuples []*openfgav1.TupleKey
+		check            *openfgav1.TupleKey
+		expectation      bool
+	}{
+		`subproblem_tuple_to_userset`: {
+			contextualTuples: []*openfgav1.TupleKey{
+				{Object: "document:0", Relation: "parent", User: "folder:parent"},
+				{Object: "folder:parent", Relation: "viewer", User: "user:maria"},
+			},
+			check:       tuple.NewTupleKey("document:0", "viewer", "user:maria"),
+			expectation: true,
+		},
+		`subproblem_computed_userset`: {
+			contextualTuples: []*openfgav1.TupleKey{
+				{Object: "document:0", Relation: "computed", User: "user:maria"},
+			},
+			check:       tuple.NewTupleKey("document:0", "viewer", "user:maria"),
+			expectation: true,
+		},
+		`subproblem_usersets`: {
+			contextualTuples: []*openfgav1.TupleKey{
+				{Object: "document:0", Relation: "viewer", User: "group:fga#member"},
+				{Object: "group:fga", Relation: "member", User: "user:maria"},
+			},
+			check:       tuple.NewTupleKey("document:0", "viewer", "user:maria"),
+			expectation: true,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			resolveCheckResponse, err := checker.ResolveCheck(
+				typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model)),
+				&ResolveCheckRequest{
+					StoreID:            ulid.Make().String(),
+					TupleKey:           test.check,
+					ContextualTuples:   test.contextualTuples,
+					ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+				})
+
+			require.NoError(t, err)
+			require.Equal(t, test.expectation, resolveCheckResponse.Allowed)
+		})
+	}
 }
