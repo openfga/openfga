@@ -176,6 +176,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
+	     telemetry.TraceError(span, err)
+	     return nil, err
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
