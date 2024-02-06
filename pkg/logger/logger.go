@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/server/config"
 )
 
 type Logger interface {
@@ -94,13 +93,13 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
-func NewLogger(logConfig config.LogConfig) (*ZapLogger, error) {
-	if logConfig.Level == "none" {
+func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, error) {
+	if logLevel == "none" {
 		return NewNoopLogger(), nil
 	}
 
 	var level zapcore.Level
-	switch logConfig.Level {
+	switch logLevel {
 	case "debug":
 		level = zap.DebugLevel
 	case "info":
@@ -114,7 +113,7 @@ func NewLogger(logConfig config.LogConfig) (*ZapLogger, error) {
 	case "fatal":
 		level = zap.FatalLevel
 	default:
-		return nil, fmt.Errorf("unknown log level: %s", logConfig.Level)
+		return nil, fmt.Errorf("unknown log level: %s", logLevel)
 	}
 
 	cfg := zap.NewProductionConfig()
@@ -123,13 +122,13 @@ func NewLogger(logConfig config.LogConfig) (*ZapLogger, error) {
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
-	if logConfig.Format == "text" {
+	if logFormat == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	} else { // Json
-		if logConfig.TimestampFormat == "ISO8601" {
+		if logTimestampFormat == "ISO8601" {
 			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		} else {
 			cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
@@ -141,15 +140,15 @@ func NewLogger(logConfig config.LogConfig) (*ZapLogger, error) {
 		return nil, err
 	}
 
-	if logConfig.Format == "json" {
+	if logFormat == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
 	return &ZapLogger{log}, nil
 }
 
-func MustNewLogger(logConfig config.LogConfig) *ZapLogger {
-	logger, err := NewLogger(logConfig)
+func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
+	logger, err := NewLogger(logFormat, logLevel, logTimestampFormat)
 	if err != nil {
 		panic(err)
 	}

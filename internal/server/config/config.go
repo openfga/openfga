@@ -127,7 +127,7 @@ type LogConfig struct {
 	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
 	Level string
 
-	// Format of the timestamp in the log output (e.g. 'Unix' or 'ISO8601'(default))
+	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
 	TimestampFormat string
 }
 
