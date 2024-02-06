@@ -748,8 +748,8 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 			&ResolveCheckRequest{
 				StoreID:              req.GetStoreID(),
 				AuthorizationModelID: req.GetAuthorizationModelID(),
-				ContextualTuples:     req.GetContextualTuples(),
 				TupleKey:             rewrittenTupleKey,
+				ContextualTuples:     req.GetContextualTuples(),
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth:               req.GetResolutionMetadata().Depth - 1,
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
@@ -900,7 +900,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 	}
 }
 
-func (c *LocalChecker) checkSetOperation(ctx context.Context, req *ResolveCheckRequest, setOpType setOperatorType, reducer CheckFuncReducer, children ...*openfgav1.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkSetOperation(
+	ctx context.Context,
+	req *ResolveCheckRequest,
+	setOpType setOperatorType,
+	reducer CheckFuncReducer,
+	children ...*openfgav1.Userset,
+) CheckHandlerFunc {
 	var handlers []CheckHandlerFunc
 
 	var reducerKey string
@@ -941,7 +947,11 @@ func (c *LocalChecker) checkSetOperation(ctx context.Context, req *ResolveCheckR
 	}
 }
 
-func (c *LocalChecker) checkRewrite(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkRewrite(
+	ctx context.Context,
+	req *ResolveCheckRequest,
+	rewrite *openfgav1.Userset,
+) CheckHandlerFunc {
 	switch rw := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
