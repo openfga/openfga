@@ -50,6 +50,8 @@ type ResolutionMetadata struct {
 	// evaluated and potentially discarded
 	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreQueryCount uint32
+
+	DispatchCount uint32
 }
 
 type RelationshipEdgeType int

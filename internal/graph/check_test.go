@@ -581,3 +581,71 @@ condition condition1(param1: string) {
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
 }
+
+func TestCheckDispatchCount(t *testing.T) {
+	ds := memory.New()
+
+	storeID := ulid.Make().String()
+
+	model := parser.MustTransformDSLToProto(`model
+  schema 1.1
+
+type user
+
+type folder
+  	relations
+		define viewer: [user] or viewer from parent
+		define parent: [folder]
+
+type doc
+	relations
+		define viewer: [user] or viewer from parent
+		define parent: [folder]
+`)
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		// Folder B => Folder A => doc:readme
+		{
+			User:     "user:jon",
+			Relation: "viewer",
+			Object:   "folder:C",
+		},
+		{
+			User:     "folder:C",
+			Relation: "parent",
+			Object:   "folder:B",
+		},
+		{
+			User:     "folder:B",
+			Relation: "parent",
+			Object:   "folder:A",
+		},
+		{
+			User:     "folder:A",
+			Relation: "parent",
+			Object:   "doc:readme",
+		},
+	})
+	require.NoError(t, err)
+
+	checker := NewLocalChecker(ds)
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
+		ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Allowed)
+
+	require.Equal(t, uint32(3), resp.GetResolutionMetadata().DispatchCount)
+}
