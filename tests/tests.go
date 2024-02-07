@@ -40,9 +40,9 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	serverDone := make(chan error)
 	go func() {
-		err := serverCtx.Run(ctx, cfg)
-		require.NoError(t, err)
+		serverDone <- serverCtx.Run(ctx, cfg)
 	}()
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
@@ -50,5 +50,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	return func() {
 		stopFunc()
 		cancel()
+		serverErr := <-serverDone
+		require.NoError(t, serverErr)
 	}
 }
