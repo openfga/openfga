@@ -3,7 +3,6 @@ package storagewrappers
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -72,15 +72,19 @@ func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
 	defer cachingBackend.Close()
 
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
+	var wg errgroup.Group
 	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() error {
 			id, err := cachingBackend.FindLatestAuthorizationModelID(context.Background(), "id")
-			require.NoError(t, err)
-			require.Equal(t, expectedModelID, id)
-		}()
+			if err != nil {
+				return err
+			}
+			if id != expectedModelID {
+				return fmt.Errorf("expected model ID %s, actual %s", expectedModelID, id)
+			}
+			return nil
+		})
 	}
-	wg.Wait()
+	err := wg.Wait()
+	require.NoError(t, err)
 }
