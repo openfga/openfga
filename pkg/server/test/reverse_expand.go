@@ -1244,7 +1244,7 @@ type document
 			reverseExpandErrCh := make(chan error, 1)
 			go func() {
 				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
-				if err != nil {
+				if reverseExpandErrCh != nil {
 					reverseExpandErrCh <- errReverseExpand
 					t.Logf("sent err %s", errReverseExpand)
 				}
@@ -1257,6 +1257,8 @@ type document
 				case err := <-reverseExpandErrCh:
 					require.ErrorIs(t, err, test.expectedError)
 					return
+				case <-timeoutCtx.Done():
+					require.FailNow(t, "unexpected timeout")
 				case res, channelOpen := <-resultChan:
 					if !channelOpen {
 						t.Log("channel closed")
