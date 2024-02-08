@@ -130,6 +130,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
+			if contextTupleTest && len(stage.Tuples) > 20 {
+				// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
+				t.Skipf("cannot send more than 20 contextual tuples in one request")
+			}
 			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
 			model, err := parser.TransformDSLToProto(stage.Model)

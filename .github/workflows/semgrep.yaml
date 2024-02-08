@@ -17,6 +17,6 @@ jobs:
     if: (github.repository_owner == 'openfga' && github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
     steps:
     - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
-    - run: semgrep ci
+    - run: semgrep ci --no-suppress-errors
       env:
         SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
