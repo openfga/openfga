@@ -151,7 +151,11 @@ type document
 		t.Logf("before receive one result")
 		res := <-resultChan
 		t.Logf("after receive one result")
+
+		// send cancellation to the other goroutine
 		cancelFunc()
+
+		// this check it not the goal of this test, it's here just as sanity check
 		if res.Object == "" {
 			panic("expected object, got nil")
 		}
@@ -160,7 +164,7 @@ type document
 
 	select {
 	case err := <-errChan:
-		require.Error(t, err)
+		require.ErrorContains(t, err, "context canceled")
 	case <-time.After(30 * time.Millisecond):
 		require.FailNow(t, "unexpected timeout on channel receive, expected receive on error channel")
 	}
