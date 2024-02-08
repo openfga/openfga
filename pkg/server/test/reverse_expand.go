@@ -1244,7 +1244,7 @@ type document
 			reverseExpandErrCh := make(chan error, 1)
 			go func() {
 				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
-				if reverseExpandErrCh != nil {
+				if errReverseExpand != nil {
 					reverseExpandErrCh <- errReverseExpand
 					t.Logf("sent err %s", errReverseExpand)
 				}
