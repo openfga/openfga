@@ -1243,10 +1243,10 @@ type document
 
 			reverseExpandErrCh := make(chan error, 1)
 			go func() {
-				err := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				if err != nil {
-					reverseExpandErrCh <- err
-					t.Logf("sent err %s", err)
+					reverseExpandErrCh <- errReverseExpand
+					t.Logf("sent err %s", errReverseExpand)
 				}
 			}()
 
