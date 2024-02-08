@@ -152,6 +152,9 @@ type document
 		res := <-resultChan
 		t.Logf("after receive one result")
 		cancelFunc()
+		if res.Object == "" {
+			panic("expected object, got nil")
+		}
 		t.Logf("received object %s ", res.Object)
 	}()
 
