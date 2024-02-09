@@ -32,7 +32,7 @@ func TestSingleflightResolver(t *testing.T) {
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
-	t.Run("Check evaluates correctly", func(t *testing.T) {
+	t.Run("Check_evaluates_correctly", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
