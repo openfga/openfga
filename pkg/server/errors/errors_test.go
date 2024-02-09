@@ -4,10 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func TestInternalErrorDontLeakInternals(t *testing.T) {
