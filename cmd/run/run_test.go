@@ -567,6 +567,80 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	}
 }
 
+func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
+	oidcServerPort1, oidcServerPortReleaser1 := TCPRandomPort()
+	oidcServerPort2, oidcServerPortReleaser2 := TCPRandomPort()
+	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
+	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
+
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "oidc"
+	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
+		Audience:      "openfga.dev",
+		Issuer:        oidcServerURL1,
+		IssuerAliases: []string{oidcServerURL2},
+	}
+
+	oidcServerPortReleaser1()
+	oidcServerPortReleaser2()
+
+	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
+	require.NoError(t, err)
+
+	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+
+	trustedToken, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	tests := []authTest{
+		{
+			_name:      "Header_with_invalid_token_fails",
+			authHeader: "Bearer incorrecttoken",
+			expectedErrorResponse: &serverErrors.ErrorResponse{
+				Code:    "auth_failed_invalid_bearer_token",
+				Message: "invalid bearer token",
+			},
+			expectedStatusCode: 401,
+		},
+		{
+			_name:      "Missing_header_fails",
+			authHeader: "",
+			expectedErrorResponse: &serverErrors.ErrorResponse{
+				Code:    "bearer_token_missing",
+				Message: "missing bearer token",
+			},
+			expectedStatusCode: 401,
+		},
+		{
+			_name:              "Correct_token_succeeds",
+			authHeader:         "Bearer " + trustedToken,
+			expectedStatusCode: 200,
+		},
+	}
+
+	retryClient := retryablehttp.NewClient()
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
+		})
+
+		t.Run(test._name+"/streaming", func(t *testing.T) {
+			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedToken)
+		})
+	}
+}
+
 func TestHTTPServingTLS(t *testing.T) {
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
