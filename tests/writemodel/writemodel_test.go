@@ -6,6 +6,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/openfga/openfga/cmd/run"
@@ -21,7 +22,7 @@ func TestWriteAuthorizationModel(t *testing.T) {
 	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)

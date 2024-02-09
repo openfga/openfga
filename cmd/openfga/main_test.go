@@ -20,6 +20,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/openfga/openfga/pkg/testutils"
@@ -160,7 +161,7 @@ func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 	conn, err := grpc.Dial(
 		tester.GetGRPCAddress(),
 		[]grpc.DialOption{
-			grpc.WithBlock(),
+			grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		}...,
 	)
@@ -179,7 +180,8 @@ func TestDocker(t *testing.T) {
 		tester, stopContainer := runOpenFGAContainerWithArgs(t, []string{"run"})
 		defer stopContainer()
 
-		testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil, true)
+		err := testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil, true)
+		require.NoError(t, err)
 
 		t.Run("grpc_endpoint_works", func(t *testing.T) {
 			conn := createGrpcConnection(t, tester)

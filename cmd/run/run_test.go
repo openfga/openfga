@@ -209,7 +209,8 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -238,7 +239,8 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -303,7 +305,8 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
@@ -427,7 +430,8 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	type args struct {
 		origin string
@@ -533,7 +537,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	tests := []authTest{
 		{
@@ -593,7 +598,8 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		require.NoError(t, err)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
@@ -653,7 +659,8 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		require.NoError(t, err)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
@@ -683,7 +690,8 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		require.NoError(t, err)
 	})
 }
 
@@ -723,7 +731,8 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	require.NoError(t, err)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -865,9 +874,10 @@ func TestHTTPServerDisabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
+	require.NoError(t, err)
 
-	_, err := http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	_, err = http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.Error(t, err)
 	require.ErrorContains(t, err, "connect: connection refused")
 }
@@ -884,7 +894,8 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1162,7 +1173,8 @@ func TestHTTPHeaders(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)

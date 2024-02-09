@@ -10,6 +10,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -34,12 +35,13 @@ func newOpenFGAServerAndClient(t *testing.T) (openfgav1.OpenFGAServiceClient, fu
 
 	stopServer := StartServer(t, cfg)
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 	return client, func() {
@@ -114,7 +116,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	})
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	t.Cleanup(func() {
@@ -370,7 +372,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	})
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	t.Cleanup(func() {
@@ -378,7 +380,8 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	require.NoError(t, err)
 
 	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 

@@ -130,7 +130,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = timeout
 	err = backoff.Retry(func() error {
-		err = db.PingContext(context.Background())
+		err := db.PingContext(context.Background())
 		if err != nil {
 			return err
 		}

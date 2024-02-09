@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"sort"
 	"strconv"
 	"testing"
@@ -129,7 +130,7 @@ func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 
 // EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
 // ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
-func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) error {
 	t.Helper()
 
 	creds := insecure.NewCredentials()
@@ -138,17 +139,21 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}
 
 	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	conn, err := grpc.DialContext(
-		context.Background(),
+		ctx,
 		grpcAddr,
 		dialOpts...,
 	)
-	require.NoError(t, err)
+	if err != nil {
+		return fmt.Errorf("error creating grpc connection to server: %w", err)
+	}
 	defer conn.Close()
 
 	client := healthv1pb.NewHealthClient(conn)
@@ -170,11 +175,18 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 
 		return nil
 	}, policy)
-	require.NoError(t, err)
+	if err != nil {
+		return fmt.Errorf("server did not reach healthy status: %w", err)
+	}
 
 	if httpHealthCheck {
 		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
-		require.Equal(t, 200, resp.StatusCode)
-		require.NoError(t, err)
+		if err != nil {
+			return fmt.Errorf("http endpoint not healthy: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code received from server: %v", resp.StatusCode)
+		}
 	}
+	return nil
 }

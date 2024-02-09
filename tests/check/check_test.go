@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -74,7 +75,7 @@ func TestCheckLogs(t *testing.T) {
 	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUserAgent("test-user-agent"),
 	)
@@ -271,7 +272,7 @@ func testRunAll(t *testing.T, engine string) {
 	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
@@ -335,7 +336,7 @@ func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceCl
 	cancel := tests.StartServer(b, cfg)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(b, err)

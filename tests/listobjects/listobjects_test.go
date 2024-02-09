@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/openfga/openfga/cmd/run"
@@ -35,7 +36,7 @@ func testRunAll(t *testing.T, engine string) {
 	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
