@@ -65,7 +65,7 @@ func TestSingleflightResolver(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("Check with singleflight resolver reduces DB query count when compared to not using it", func(t *testing.T) {
+	t.Run("Check_with_singleflight_resolver_reduces_DB_query_count_when_compared_to_not_using_it", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
