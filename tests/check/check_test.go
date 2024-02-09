@@ -52,9 +52,7 @@ func TestCheckLogs(t *testing.T) {
 	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	_, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
+	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Trace.Enabled = true

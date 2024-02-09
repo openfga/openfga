@@ -283,9 +283,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	otlpServer, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
+	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
 
 	// create OpenFGA server with tracing enabled
 	cfg := MustDefaultConfigWithRandomPorts()
@@ -307,7 +305,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err = client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
 
 	// wait for trace exporting
