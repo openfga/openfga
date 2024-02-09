@@ -46,7 +46,3 @@ linters-settings:
     alias:
       - pkg: github.com/openfga/api/proto/openfga/v1
         alias: openfgav1
-  testifylint:
-    enable-all: true
-    disable:
-      - go-require
