@@ -191,7 +191,7 @@ func (q *ListObjectsQuery) evaluate(
 			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
 		}
 
-		return serverErrors.NewInternalError("", err)
+		return serverErrors.HandleError("", err)
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
@@ -450,7 +450,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
 			Object: result.ObjectID,
 		}); err != nil {
-			return nil, serverErrors.NewInternalError("", err)
+			return nil, serverErrors.HandleError("", err)
 		}
 	}
 

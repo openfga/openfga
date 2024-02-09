@@ -2,7 +2,7 @@ package typesystem
 
 import (
 	"context"
-	"sync"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,6 +11,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 )
@@ -110,17 +111,21 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 	)
 	defer resolverStop()
 
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
+	var wg errgroup.Group
 
 	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() error {
 			typesys, err := resolver(context.Background(), storeID, "")
-			require.NoError(t, err)
-			require.Equal(t, modelID, typesys.GetAuthorizationModelID())
-		}()
+			if err != nil {
+				return err
+			}
+			if typesys.GetAuthorizationModelID() != modelID {
+				return fmt.Errorf("expected model %s, actual %s", modelID, typesys.GetAuthorizationModelID())
+			}
+			return nil
+		})
 	}
 
-	wg.Wait()
+	err := wg.Wait()
+	require.NoError(t, err)
 }
