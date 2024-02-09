@@ -8,6 +8,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -50,15 +51,20 @@ func TestStaticTupleIteratorNoRace(t *testing.T) {
 	}
 	defer iter.Stop()
 
-	go func() {
-		_, err := iter.Next(context.Background())
-		require.NoError(t, err)
-	}()
+	var wg errgroup.Group
 
-	go func() {
+	wg.Go(func() error {
 		_, err := iter.Next(context.Background())
-		require.NoError(t, err)
-	}()
+		return err
+	})
+
+	wg.Go(func() error {
+		_, err := iter.Next(context.Background())
+		return err
+	})
+
+	err := wg.Wait()
+	require.NoError(t, err)
 }
 
 func TestStaticTupleIteratorContextCanceled(t *testing.T) {

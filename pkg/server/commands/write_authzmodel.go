@@ -86,7 +86,8 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
 	if err != nil {
-		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
+		return nil, serverErrors.
+			HandleError("Error writing authorization model configuration", err)
 	}
 
 	return &openfgav1.WriteAuthorizationModelResponse{
