@@ -20,15 +20,15 @@ func TestSingleflightResolver(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model  
-    schema 1.1  
+  schema 1.1  
 
-	type user
-	type doc
-		relations
-			define a1: [user]
-			define a2: a1
-			define a3: a2
-			define a4: a2 or a3`)
+  type user
+  type doc
+	  relations
+	    define a1: [user]
+		define a2: a1
+		define a3: a2
+		define a4: a2 or a3`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
