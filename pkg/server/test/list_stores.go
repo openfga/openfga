@@ -21,15 +21,15 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	deleteCmd := commands.NewDeleteStoreCommand(datastore)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {
-		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+		listStoresResponse, err := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 			ContinuationToken: deleteContinuationToken,
 		})
+		require.NoError(t, err)
 		for _, store := range listStoresResponse.Stores {
-			if _, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
+			_, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
 				StoreId: store.Id,
-			}); err != nil {
-				t.Fatalf("failed cleaning stores with %v", err)
-			}
+			})
+			require.NoError(t, err)
 		}
 		deleteContinuationToken = listStoresResponse.ContinuationToken
 	}
