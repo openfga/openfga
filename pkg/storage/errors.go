@@ -33,6 +33,9 @@ var (
 	// ErrCancelled is returned when the request has been cancelled.
 	ErrCancelled = errors.New("request has been cancelled")
 
+	// ErrDeadlineExceeded is returned when the request's deadline is exceeded.
+	ErrDeadlineExceeded = errors.New("request deadline exceeded")
+
 	// ErrNotFound is returned when the object does not exist.
 	ErrNotFound = errors.New("not found")
 )
