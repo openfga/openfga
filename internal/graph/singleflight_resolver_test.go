@@ -19,8 +19,7 @@ import (
 func TestSingleflightResolver(t *testing.T) {
 	storeID := ulid.Make().String()
 
-	t.Run("Reduces DB query count when compared to not using singleflight", func(t *testing.T) {
-		model := testutils.MustTransformDSLToProtoWithID(`model  
+	model := testutils.MustTransformDSLToProtoWithID(`model  
     schema 1.1  
 
 	type user
@@ -31,13 +30,44 @@ func TestSingleflightResolver(t *testing.T) {
 			define a3: a2
 			define a4: a2 or a3`)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
+	t.Run("Check evaluates correctly", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "a1", "user:jon"),
+		})
+		require.NoError(t, err)
 
-		storeID := ulid.Make().String()
+		checkerWithSingleflight := NewLocalChecker(
+			storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+			WithSingleflightResolver(),
+		)
+		t.Cleanup(checkerWithSingleflight.Close)
 
+		resp, err := checkerWithSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
+			ContextualTuples:   nil,
+			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+
+		resp, err = checkerWithSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           tuple.NewTupleKey("doc:2", "a4", "user:jon"),
+			ContextualTuples:   nil,
+			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("Check with singleflight resolver reduces DB query count when compared to not using it", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:2", "a1", "user:jon"),
 		})
