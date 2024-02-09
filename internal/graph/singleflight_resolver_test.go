@@ -82,10 +82,10 @@ func TestSingleflightResolver(t *testing.T) {
 		// The results of the singleflight resolver are not deterministic.
 		// For better test reliability, the test is repeated a number of times
 		// and then assertions made within a reasonable threshold.
-		TEST_ITERATIONS := 3
+		testIterations := 3
 
 		var dbReadsWith uint32
-		for i := 0; i < TEST_ITERATIONS; i++ {
+		for i := 0; i < testIterations; i++ {
 			resp, err := checkerWithSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
 				TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
@@ -102,7 +102,7 @@ func TestSingleflightResolver(t *testing.T) {
 		)
 
 		var dbReadsWithout uint32
-		for i := 0; i < TEST_ITERATIONS; i++ {
+		for i := 0; i < testIterations; i++ {
 			resp, err := checkerWithoutSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
 				TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
@@ -116,10 +116,10 @@ func TestSingleflightResolver(t *testing.T) {
 
 		require.Less(t, dbReadsWith, dbReadsWithout) //singleflight resolver will always result in fewer DB reads than without
 
-		require.LessOrEqual(t, dbReadsWith, uint32(TEST_ITERATIONS+2)) // A buffer of two DB reads to ensure test reliability
-		require.GreaterOrEqual(t, dbReadsWith, uint32(TEST_ITERATIONS))
+		require.LessOrEqual(t, dbReadsWith, uint32(testIterations+2)) // A buffer of two DB reads to ensure test reliability
+		require.GreaterOrEqual(t, dbReadsWith, uint32(testIterations))
 
-		require.Equal(t, dbReadsWithout, uint32(2*TEST_ITERATIONS))
+		require.Equal(t, dbReadsWithout, uint32(2*testIterations))
 	})
 
 	t.Run("cyclic relationship detected", func(t *testing.T) {
