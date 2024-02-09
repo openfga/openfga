@@ -3,11 +3,12 @@ package mocks
 import (
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"log"
 	"net"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	otlpcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
