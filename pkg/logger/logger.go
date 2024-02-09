@@ -98,26 +98,13 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 		return NewNoopLogger(), nil
 	}
 
-	var level zapcore.Level
-	switch logLevel {
-	case "debug":
-		level = zap.DebugLevel
-	case "info":
-		level = zap.InfoLevel
-	case "warn":
-		level = zap.WarnLevel
-	case "error":
-		level = zap.ErrorLevel
-	case "panic":
-		level = zap.PanicLevel
-	case "fatal":
-		level = zap.FatalLevel
-	default:
-		return nil, fmt.Errorf("unknown log level: %s", logLevel)
+	level, err := zap.ParseAtomicLevel(logLevel)
+	if err != nil {
+		return nil, fmt.Errorf("unknown log level: %s, error: %w", logLevel, err)
 	}
 
 	cfg := zap.NewProductionConfig()
-	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.Level = level
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
