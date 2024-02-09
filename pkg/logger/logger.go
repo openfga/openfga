@@ -128,10 +128,9 @@ func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, erro
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	} else { // Json
+		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
 		if logTimestampFormat == "ISO8601" {
 			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-		} else {
-			cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
 		}
 	}
 
