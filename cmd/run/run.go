@@ -290,6 +290,8 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	var tracerProviderCloser func()
 
