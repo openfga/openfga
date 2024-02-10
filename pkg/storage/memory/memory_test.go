@@ -117,7 +117,7 @@ func TestStaticTupleIteratorContextDeadlineExceeded(t *testing.T) {
 }
 
 func TestTupleRecordMatchTupleKey(t *testing.T) {
-	var testCases = map[string]struct {
+	testCases := map[string]struct {
 		target *openfgav1.TupleKey
 		source *storage.TupleRecord
 		match  bool
@@ -181,7 +181,7 @@ func TestTupleRecordMatchTupleKey(t *testing.T) {
 }
 
 func TestFindTupleKey(t *testing.T) {
-	var testCases = map[string]struct {
+	testCases := map[string]struct {
 		records  []*storage.TupleRecord
 		tupleKey *openfgav1.TupleKey
 		found    bool

@@ -15,7 +15,6 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -46,8 +45,10 @@ var (
 	fetchJWKs = fetchJWK
 )
 
-var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
-var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
+var (
+	_ authn.Authenticator     = (*RemoteOidcAuthenticator)(nil)
+	_ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
+)
 
 func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
@@ -107,7 +108,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	// optional subject
-	var subject = ""
+	subject := ""
 	if subjectClaim, ok := claims["sub"]; ok {
 		if subject, ok = subjectClaim.(string); !ok {
 			return nil, errInvalidSubject

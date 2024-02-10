@@ -25,7 +25,7 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 		request *openfgav1.DeleteStoreRequest
 		err     error
 	}
-	var tests = []deleteStoreTest{
+	tests := []deleteStoreTest{
 		{
 			_name: "Execute_Delete_Store_With_Non_Existent_Store_Succeeds",
 			request: &openfgav1.DeleteStoreRequest{

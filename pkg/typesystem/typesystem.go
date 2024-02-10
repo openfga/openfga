@@ -36,8 +36,7 @@ const (
 // IsSchemaVersionSupported checks if the provided schema version is supported.
 func IsSchemaVersionSupported(version string) bool {
 	switch version {
-	case SchemaVersion1_1,
-		SchemaVersion1_2:
+	case SchemaVersion1_1, SchemaVersion1_2:
 		return true
 	default:
 		return false

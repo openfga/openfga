@@ -28,7 +28,8 @@ func WithWriteAssertCmdLogger(l logger.Logger) WriteAssertionsCmdOption {
 }
 
 func NewWriteAssertionsCommand(
-	datastore storage.OpenFGADatastore, opts ...WriteAssertionsCmdOption) *WriteAssertionsCommand {
+	datastore storage.OpenFGADatastore, opts ...WriteAssertionsCmdOption,
+) *WriteAssertionsCommand {
 	cmd := &WriteAssertionsCommand{
 		datastore: datastore,
 		logger:    logger.NewNoopLogger(),

@@ -16,7 +16,7 @@ import (
 )
 
 func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.OpenFGADatastore) {
-	var tests = []struct {
+	tests := []struct {
 		name    string
 		storeID string
 		model   *openfgav1.AuthorizationModel
@@ -84,7 +84,7 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 		expectedError error
 	}
 
-	var tests = []readAuthorizationModelQueryTest{
+	tests := []readAuthorizationModelQueryTest{
 		{
 			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
 			request: &openfgav1.ReadAuthorizationModelRequest{

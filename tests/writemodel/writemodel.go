@@ -248,8 +248,8 @@ type group
 	//	"case25": {
 	//		model: `model
 	//	schema 1.1
-	//type user
-	//type org
+	// type user
+	// type org
 	//  relations
 	//	define member`,
 	//		code: 2056,

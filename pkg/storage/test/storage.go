@@ -14,14 +14,12 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
-var (
-	cmpOpts = []cmp.Option{
-		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
-		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
-		testutils.TupleKeyCmpTransformer,
-		protocmp.Transform(),
-	}
-)
+var cmpOpts = []cmp.Option{
+	protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+	protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
+	testutils.TupleKeyCmpTransformer,
+	protocmp.Transform(),
+}
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestDatastoreIsReady", func(t *testing.T) {

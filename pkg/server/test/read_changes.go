@@ -32,16 +32,19 @@ var tkMaria = &openfgav1.TupleKey{
 	Relation: "admin",
 	User:     "maria",
 }
+
 var tkMariaOrg = &openfgav1.TupleKey{
 	Object:   "org:openfga",
 	Relation: "member",
 	User:     "maria",
 }
+
 var tkCraig = &openfgav1.TupleKey{
 	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "craig",
 }
+
 var tkYamil = &openfgav1.TupleKey{
 	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
@@ -149,7 +152,8 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
-			}, {
+			},
+			{
 				_name:   "using_the_token_from_the_previous_test_yields_1_change_and_a_token",
 				request: newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
 				expectedChanges: []*openfgav1.TupleChange{{
@@ -162,14 +166,16 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
-			}, {
+			},
+			{
 				_name:                            "using_the_token_from_the_previous_test_yields_0_changes_and_a_token",
 				request:                          newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
-			}, {
+			},
+			{
 				_name:         "using_the_token_from_the_previous_test_yields_an_error_because_the_types_in_the_token_and_the_request_don't_match",
 				request:       newReadChangesRequest(store, "does-not-match", "", storage.DefaultPageSize),
 				expectedError: serverErrors.MismatchObjectType,

@@ -18,8 +18,7 @@ type Transport interface {
 }
 
 // NoopTransport defines a no-op transport.
-type NoopTransport struct {
-}
+type NoopTransport struct{}
 
 var _ Transport = (*NoopTransport)(nil)
 
@@ -28,7 +27,6 @@ func NewNoopTransport() *NoopTransport {
 }
 
 func (n *NoopTransport) SetHeader(_ context.Context, key, value string) {
-
 }
 
 // RPCTransport defines a transport for gRPC.

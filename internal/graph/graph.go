@@ -20,9 +20,7 @@ const (
 	resolutionDepthCtxKey ctxKey = "resolution-depth"
 )
 
-var (
-	ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
-)
+var ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
 
 type findEdgeOption int
 

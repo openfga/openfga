@@ -19,7 +19,7 @@ func TestEncodedError(t *testing.T) {
 		expectedCodeString     string
 		expectedHTTPStatusCode int
 	}
-	var tests = []encodedTests{
+	tests := []encodedTests{
 		{
 			_name:                  "aborted_error",
 			errorCode:              int32(codes.Aborted),
@@ -134,7 +134,7 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 		status            *status.Status
 		expectedErrorCode int32
 	}
-	var tests = []encodedTests{
+	tests := []encodedTests{
 		{
 			_name:             "normal_code",
 			status:            status.New(codes.Code(openfgav1.ErrorCode_validation_error), "other error"),

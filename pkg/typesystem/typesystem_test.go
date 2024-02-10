@@ -105,7 +105,7 @@ func TestHasEntrypoints(t *testing.T) {
 					define viewer: viewer from parent`,
 			inputType:     "document",
 			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, //TODO this should be an error
+			expectDetails: &relationDetails{false, false}, // TODO this should be an error
 		},
 		`this_has_entrypoints_to_same_type`: {
 			model: `
@@ -900,7 +900,7 @@ type document
 }
 
 func TestSuccessfulRewriteValidations(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name  string
 		model *openfgav1.AuthorizationModel
 	}{
@@ -978,7 +978,7 @@ type document
 }
 
 func TestInvalidRewriteValidations(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name  string
 		model *openfgav1.AuthorizationModel
 		err   error
@@ -1430,8 +1430,9 @@ type folder
 		})
 	}
 }
+
 func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name  string
 		model *openfgav1.AuthorizationModel
 	}{
@@ -1533,7 +1534,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 }
 
 func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name  string
 		model *openfgav1.AuthorizationModel
 		err   error

@@ -19,7 +19,7 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 		request *openfgav1.CreateStoreRequest
 	}
 
-	var tests = []createStoreTestSettings{
+	tests := []createStoreTestSettings{
 		{
 			name: "CreateStoreSucceeds",
 			request: &openfgav1.CreateStoreRequest{

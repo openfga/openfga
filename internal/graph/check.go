@@ -26,9 +26,7 @@ import (
 
 var tracer = otel.Tracer("internal/graph/check")
 
-var (
-	ErrCycleDetected = errors.New("a cycle has been detected")
-)
+var ErrCycleDetected = errors.New("a cycle has been detected")
 
 type ResolveCheckRequest struct {
 	StoreID              string

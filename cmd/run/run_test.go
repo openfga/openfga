@@ -27,23 +27,6 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-
-	"github.com/openfga/openfga/pkg/testutils"
-
-	"github.com/openfga/openfga/pkg/middleware/requestid"
-	"github.com/openfga/openfga/pkg/middleware/storeid"
-	"github.com/openfga/openfga/pkg/server"
-
-	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -51,6 +34,20 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/server"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestMain(m *testing.M) {
@@ -83,7 +80,7 @@ func genCACert(t *testing.T) (*x509.Certificate, []byte, *rsa.PrivateKey) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	var rootTemplate = &x509.Certificate{
+	rootTemplate := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -108,7 +105,7 @@ func genServerCert(t *testing.T, caCert *x509.Certificate, caKey *rsa.PrivateKey
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	var template = &x509.Certificate{
+	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		KeyUsage:              x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -1261,7 +1258,7 @@ type document
 
 	httpClient := retryablehttp.NewClient()
 
-	var testCases = map[string]struct {
+	testCases := map[string]struct {
 		httpVerb      string
 		httpPath      string
 		httpJSONBody  string
