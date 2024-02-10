@@ -527,7 +527,29 @@ Notice that when we first visit the subproblem `group:1#member@user:jon` we add 
 #### Resolution Breadth
 #### Bounding Concurrency at the Storage Layer
 
-### CheckResolver Composition (Delegation)
+### CheckResolver
+The [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface establishes a contract that all implementations of a Check query resolver must implement. The interface allows for layered dispatch composition as well as remote dispatch semantics (though this is not implemented yet). 
+
+The interface design is purposefully modeled after an RPC definition (notice its similarity to gRPC generated stubs), and it purposefully does not assume that internal (binary local) object references can be passed over RPC boundaries. In fact, this definition will eventually move to an internal protobuf package and we'll introduce a gRPC service definition to replace the interface. The reasoning behind this design is that we don't want the interface to assume purely local (same binary) resolution semantics, and we want to set ourselves up to avoid a much larger refactor if/when we do remote dispatching. At some point we'll be implementing remote dispatching where we dispatch subproblems across a network boundary and not just dispatched internally across package/function boundaries. Changing the signature(s) of the CheckResolver in a way that would undermine this design objective would be counter-productive to the original design intent and shouldn't be taken litely as it was very explicitly intended.
+
+### Delegate Composition (Delegation)
+ We have various implementations of the `CheckResolver` interface and they are layered ontop of one another to establish the overall Check resolution behavior. For example, we have the following CheckResolver implementations today:
+
+* [SingleflightCheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/singleflight_resolver.go#L32) - this implementation provides a de-duplication mechanism. That is, overlapping subproblems being evaluated at the same time are de-duplicated. Actual evaluation of a given subproblem is delegated to the resolvers delegate.
+
+* [CachedCheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L67) - this implementation provides a local cache of subproblems that have already been evaluated in the recent past. We avoid evaluating the same subproblem we've recently seen and we re-use the cached result from the previous evaluation of that subproblem.
+
+* [LocalChecker](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L125) - the LocalChecker is the "meat and potatoes" of the various resolvers. Though the other resolvers are very important, the LocalChecker implements the core algorithm. The LocalChecker follows relationship rewrite rules, does database lookups, and executes the expansion and dispatch of subproblems. A LocalChecker also has a delegate that it dispatches subproblems to, which allows the LocalChecker to dispatch subproblems through one of the CheckResovlers mentioned above and avoid duplicating subproblem evaluation and/or re-evaluation of previously computed subproblems.
+
+These implementations are very purposefully layered like so:
+```
+SingleflightCheckResolver <---------------------|
+|-> CachedCheckResolver                         |
+|----> LocalChecker                             |
+|-------> SingleflightCheckResolver (loopback) -|
+```
+
+When a Check request is received in [Server#Check](https://github.com/openfga/openfga/blob/ad04038afbd58890cb65b409780b0cbbf85d5103/pkg/server/server.go#L582) the first CheckResolver layer that gets executed is the [SingleflightCheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/singleflight_resolver.go#L48). If two or more of the same subproblems are received by the server at the same time, then the subproblem will only get evaluated once and the other overlapping requests will get the result from the one evaluation. The `SingflightCheckResolver` [delegates the ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/singleflight_resolver.go#L66) to the [CachedCheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L151). If the subproblem was previously evaluated and cached in the local `CachedCheckResolver`, then the previously evaluated result is promptly returned and we can avoid any further evaluation. Otherwise, the `CachedCheckResolver` [delegates the ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L177) to the [LocalChecker#ResolveCheck](https://github.com/openfga/openfga/blob/ad04038afbd58890cb65b409780b0cbbf85d5103/internal/graph/check.go#L444). As the `LocalChecker` expands the subproblem it may find new subproblems that need to be dispatched. If so, the `LocalChecker` will subsequently [delegate/dispatch the ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L445) back through the layers mentioned above (e.g. a loopback mechanism).
 
 ## Code References
 
@@ -544,6 +566,10 @@ Notice that when we first visit the subproblem `group:1#member@user:jon` we add 
 * [LocalChecker#checkTTU](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L762) - Check rewrite handler for hierarchical relationship (tuple_to_userset)
 
 * [LocalChecker#dispatch]() - a helper function which encapsulates the behavior of dispatching a new query subproblem. The dispatch delegates the subproblem resolution to an implementation of the [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface.
+
+* [SingleflightCheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/singleflight_resolver.go#L48) - an implementation of the [CheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L10) signature that de-duplicates duplicate subproblems.
+
+* [CachedCheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L151) - an implementation of the [CheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L10) signature that attempts to resolve the subproblem using a previously cached result for the same subproblem, and delegates the subproblem if it does not have a cached result.
 
 * [storage#ReadUserTuple](https://github.com/openfga/openfga/blob/ad04038afbd58890cb65b409780b0cbbf85d5103/pkg/storage/storage.go#L91) - direct database/storage tuple lookup 
 
