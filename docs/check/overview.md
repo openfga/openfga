@@ -524,8 +524,13 @@ Notice that when we first visit the subproblem `group:1#member@user:jon` we add 
 
 ### Concurrency Control
 #### Resolution Depth
+- [] todo: fill me out
+
 #### Resolution Breadth
+- [] todo: fill me out
+
 #### Bounding Concurrency at the Storage Layer
+- [] todo: fill me out
 
 ### CheckResolver
 The [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface establishes a contract that all implementations of a Check query resolver must implement. The interface allows for layered dispatch composition as well as remote dispatch semantics (though this is not implemented yet). 
