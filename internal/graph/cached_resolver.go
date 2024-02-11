@@ -117,13 +117,13 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
 // NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup
-func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverOpt) *CachedCheckResolver {
+func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
-		delegate:     delegate,
 		maxCacheSize: defaultMaxCacheSize,
 		cacheTTL:     defaultCacheTTL,
 		logger:       logger.NewNoopLogger(),
 	}
+	checker.delegate = checker
 
 	for _, opt := range opts {
 		opt(checker)
@@ -137,6 +137,11 @@ func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverO
 	}
 
 	return checker
+}
+
+// SetDelegate sets this CachedCheckResolver's dispatch delegate.
+func (c *CachedCheckResolver) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
 }
 
 // Close will deallocate resource allocated by the CachedCheckResolver

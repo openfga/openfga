@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -234,6 +235,17 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
+}
+
+func TestSingleflightCheckResolverDefault(t *testing.T) {
+	s := MustNewServerWithOpts(
+		WithDatastore(memory.New()),
+	)
+
+	// the default (outer most layer) of the CheckResolver
+	// composition should always be SingleflightCheckResolver.
+	_, ok := s.checkResolver.(*graph.SingleflightCheckResolver)
+	require.True(t, ok)
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {

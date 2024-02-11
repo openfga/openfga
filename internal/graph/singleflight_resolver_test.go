@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -40,13 +40,18 @@ func TestSingleflightResolver(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checkerWithSingleflight := NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-			WithSingleflightResolver(),
-		)
-		t.Cleanup(checkerWithSingleflight.Close)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
-		resp, err := checkerWithSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+		singleflightCheckResolver := NewSingleflightCheckResolver()
+		localCheckResolver := NewLocalChecker()
+
+		singleflightCheckResolver.SetDelegate(localCheckResolver)
+		localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+		t.Cleanup(localCheckResolver.Close)
+		t.Cleanup(singleflightCheckResolver.Close)
+
+		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
 			ContextualTuples:   nil,
@@ -55,7 +60,7 @@ func TestSingleflightResolver(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 
-		resp, err = checkerWithSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+		resp, err = singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("doc:2", "a4", "user:jon"),
 			ContextualTuples:   nil,
@@ -73,11 +78,16 @@ func TestSingleflightResolver(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checkerWithSingleflight := NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-			WithSingleflightResolver(),
-		)
-		t.Cleanup(checkerWithSingleflight.Close)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+		singleflightCheckResolver := NewSingleflightCheckResolver()
+		localCheckResolver := NewLocalChecker()
+
+		singleflightCheckResolver.SetDelegate(localCheckResolver)
+		localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+		t.Cleanup(localCheckResolver.Close)
+		t.Cleanup(singleflightCheckResolver.Close)
 
 		// The results of the singleflight resolver are not deterministic.
 		// For better test reliability, the test is repeated a number of times
@@ -95,7 +105,7 @@ func TestSingleflightResolver(t *testing.T) {
 		//var dbReadsWith uint32
 		var numFewerDBQueries int
 		for i := 0; i < testIterations; i++ {
-			resp, err := checkerWithSingleflight.ResolveCheck(ctx, &ResolveCheckRequest{
+			resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
 				TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
 				ContextualTuples:   nil,
@@ -134,13 +144,18 @@ func TestSingleflightResolver(t *testing.T) {
 
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
 
-		checker := NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-			WithSingleflightResolver(),
-		)
-		t.Cleanup(checker.Close)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
-		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		singleflightCheckResolver := NewSingleflightCheckResolver()
+		localCheckResolver := NewLocalChecker()
+
+		singleflightCheckResolver.SetDelegate(localCheckResolver)
+		localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+		t.Cleanup(localCheckResolver.Close)
+		t.Cleanup(singleflightCheckResolver.Close)
+
+		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
 			ContextualTuples:   nil,

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -491,25 +490,28 @@ condition condition1(x: int) {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
-			checkOptions := []graph.LocalCheckerOption{
+			var checkResolver graph.CheckResolver
+			localCheckResolver := graph.NewLocalChecker(
 				graph.WithResolveNodeBreadthLimit(100),
 				graph.WithMaxConcurrentReads(30),
-			}
+			)
+			checkResolver = localCheckResolver
 
 			if test.useCheckCache {
-				checkCache := ccache.New(
-					ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(100),
-				)
-				defer checkCache.Stop()
-
-				checkOptions = append(checkOptions, graph.WithCachedResolver(
-					graph.WithExistingCache(checkCache),
+				cachedCheckResolver := graph.NewCachedCheckResolver(
+					graph.WithMaxCacheSize(100),
 					graph.WithCacheTTL(10*time.Second),
-				))
+				)
+				defer cachedCheckResolver.Close()
+
+				cachedCheckResolver.SetDelegate(localCheckResolver)
+				localCheckResolver.SetDelegate(cachedCheckResolver)
+
+				checkResolver = cachedCheckResolver
 			}
 
-			opts = append(opts, commands.WithCheckOptions(checkOptions))
-			listObjectsQuery := commands.NewListObjectsQuery(datastore, opts...)
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			require.NoError(t, err)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -642,9 +644,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	var oneResultIterations, allResultsIterations int
 
 	b.Run("oneResult", func(b *testing.B) {
-		listObjectsQuery := commands.NewListObjectsQuery(ds,
+		listObjectsQuery, err := commands.NewListObjectsQuery(
+			ds,
+			nil,
 			commands.WithListObjectsMaxResults(1),
 		)
+		require.NoError(b, err)
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)
@@ -655,9 +661,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		oneResultIterations = b.N
 	})
 	b.Run("allResults", func(b *testing.B) {
-		listObjectsQuery := commands.NewListObjectsQuery(ds,
+		listObjectsQuery, err := commands.NewListObjectsQuery(
+			ds,
+			nil,
 			commands.WithListObjectsMaxResults(0),
 		)
+		require.NoError(b, err)
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)

@@ -29,23 +29,29 @@ var (
 	})
 )
 
-type singleflightCheckResolver struct {
+type SingleflightCheckResolver struct {
 	delegate CheckResolver
 	group    singleflight.Group
 	logger   logger.Logger
 }
 
-func NewSingleflightCheckResolver(delegate CheckResolver) CheckResolver {
-	return &singleflightCheckResolver{
-		delegate: delegate,
-	}
+func NewSingleflightCheckResolver() *SingleflightCheckResolver {
+	s := &SingleflightCheckResolver{}
+	s.delegate = s
+
+	return s
+}
+
+// SetDelegate sets this SingleflightCheckResolver's dispatch delegate.
+func (s *SingleflightCheckResolver) SetDelegate(delegate CheckResolver) {
+	s.delegate = delegate
 }
 
 // Close implements CheckResolver.
-func (s *singleflightCheckResolver) Close() {}
+func (s *SingleflightCheckResolver) Close() {}
 
 // ResolveCheck implements CheckResolver.
-func (s *singleflightCheckResolver) ResolveCheck(
+func (s *SingleflightCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {

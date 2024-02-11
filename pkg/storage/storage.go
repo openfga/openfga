@@ -9,6 +9,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+type ctxKey string
+
 const (
 	// DefaultMaxTuplesPerWrite specifies the default maximum number of tuples that can be written
 	// in a single write operation. This constant is used to limit the batch size in write operations
@@ -27,7 +29,29 @@ const (
 	// parts of the system, ensuring a consistent and manageable volume of data per page. The default
 	// value is set to 50, balancing detail per page with the overall number of pages.
 	DefaultPageSize = 50
+
+	relationshipTupleReaderCtxKey ctxKey = "relationship-tuple-reader-context-key"
 )
+
+// ContextWithRelationshipTupleReader sets the provided [[RelationshipTupleReader]]
+// in the context. The context returned is a new context derived from the parent
+// context provided.
+func ContextWithRelationshipTupleReader(
+	parent context.Context,
+	reader RelationshipTupleReader,
+) context.Context {
+	return context.WithValue(parent, relationshipTupleReaderCtxKey, reader)
+}
+
+// RelationshipTupleReaderFromContext extracts a [[RelationshipTupleReader]] from the
+// provided context (if any). If no such value is in the context a boolean false is returned,
+// otherwise the RelationshipTupleReader is returned.
+func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleReader, bool) {
+	ctxValue := ctx.Value(relationshipTupleReaderCtxKey)
+
+	reader, ok := ctxValue.(RelationshipTupleReader)
+	return reader, ok
+}
 
 // PaginationOptions holds the settings for pagination in data retrieval operations. It defines
 // the number of items to be included on each page (PageSize) and a marker from where to start

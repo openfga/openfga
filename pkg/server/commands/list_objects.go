@@ -54,7 +54,7 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	checkOptions []graph.LocalCheckerOption
+	checkResolver graph.CheckResolver
 }
 
 type ListObjectsResponse struct {
@@ -96,12 +96,6 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
-func WithCheckOptions(checkOptions []graph.LocalCheckerOption) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.checkOptions = checkOptions
-	}
-}
-
 // WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
 func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
@@ -109,7 +103,19 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	}
 }
 
-func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
+func NewListObjectsQuery(
+	ds storage.RelationshipTupleReader,
+	checkResolver graph.CheckResolver,
+	opts ...ListObjectsQueryOption,
+) (*ListObjectsQuery, error) {
+	if ds == nil {
+		return nil, fmt.Errorf("the provided datastore parameter 'ds' must be non-nil")
+	}
+
+	if checkResolver == nil {
+		return nil, fmt.Errorf("the provided CheckResolver parameter 'checkResolver' must be non-nil")
+	}
+
 	query := &ListObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
@@ -118,7 +124,7 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
-		checkOptions:            []graph.LocalCheckerOption{},
+		checkResolver:           checkResolver,
 	}
 
 	for _, opt := range opts {
@@ -127,7 +133,7 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 
 	query.datastore = storagewrappers.NewBoundedConcurrencyTupleReader(query.datastore, query.maxConcurrentReads)
 
-	return query
+	return query, nil
 }
 
 type ListObjectsResult struct {
@@ -226,8 +232,13 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
+		ds := storagewrappers.NewCombinedTupleReader(
 			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+		)
+
+		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
+			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
@@ -257,11 +268,8 @@ func (q *ListObjectsQuery) evaluate(
 			}
 		}()
 
-		checkResolver := graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
-			q.checkOptions...,
-		)
-		defer checkResolver.Close()
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
@@ -296,7 +304,7 @@ func (q *ListObjectsQuery) evaluate(
 
 					concurrencyLimiterCh <- struct{}{}
 
-					resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 						StoreID:              req.GetStoreId(),
 						AuthorizationModelID: req.GetAuthorizationModelId(),
 						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
