@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -15,6 +16,92 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+func TestSingleflightCheckResolver_ContextCancellation(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	ds := memory.New()
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("folder:1", "folder_reader", "user:anne"),
+		tuple.NewTupleKey("folder:1", "allowed", "user:anne"),
+		tuple.NewTupleKey("folder:2", "parent", "folder:1"),
+		tuple.NewTupleKey("folder:4", "parent", "folder:2"),
+		tuple.NewTupleKey("folder:4", "blocked", "user:*"),
+		tuple.NewTupleKey("folder:4", "allowed", "user:*"),
+	})
+	require.NoError(t, err)
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+  schema 1.1
+
+type user
+type folder
+relations
+	define parent: [folder]
+	define folder_reader: [user] or folder_reader from parent
+	define blocked: [user:*]
+	define allowed: [user, user:*] or allowed from parent
+	define reader: folder_reader and allowed
+	define can_read: reader but not blocked
+ `)
+
+	err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+	singleflightCheckResolver := NewSingleflightCheckResolver()
+	localCheckResolver := NewLocalChecker()
+
+	singleflightCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10000; i++ {
+		ctx1, cancel := context.WithCancel(ctx)
+		ctx2 := ctx
+
+		wg.Add(1)
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			_, err := singleflightCheckResolver.ResolveCheck(ctx2, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("folder:4", "can_read", "user:anne"),
+				ResolutionMetadata: &ResolutionMetadata{
+					Depth: 25,
+				},
+			})
+			require.NoError(t, err)
+		}()
+
+		go func() {
+			defer wg.Done()
+
+			_, err := singleflightCheckResolver.ResolveCheck(ctx1, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("folder:2", "can_read", "user:anne"),
+				ResolutionMetadata: &ResolutionMetadata{
+					Depth: 25,
+				},
+			})
+			require.NoError(t, err)
+
+			cancel()
+		}()
+
+		wg.Wait()
+	}
+}
 
 func TestSingleflightResolver(t *testing.T) {
 	storeID := ulid.Make().String()
