@@ -63,14 +63,13 @@ relations
 	var wg sync.WaitGroup
 
 	for i := 0; i < 10000; i++ {
-		ctx1, cancel := context.WithCancel(ctx)
-		ctx2 := ctx
-
 		wg.Add(1)
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
+
+			ctx2 := ctx
 
 			_, err := singleflightCheckResolver.ResolveCheck(ctx2, &ResolveCheckRequest{
 				StoreID:              storeID,
@@ -85,6 +84,8 @@ relations
 
 		go func() {
 			defer wg.Done()
+
+			ctx1, cancel := context.WithCancel(ctx)
 
 			_, err := singleflightCheckResolver.ResolveCheck(ctx1, &ResolveCheckRequest{
 				StoreID:              storeID,
