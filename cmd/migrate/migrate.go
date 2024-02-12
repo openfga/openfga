@@ -3,7 +3,6 @@ package migrate
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
@@ -12,11 +11,10 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-
-	"github.com/openfga/openfga/assets"
 )
 
 const (
@@ -67,14 +65,13 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(verbose)
 
-	var driver, dialect, migrationsPath string
+	var driver, migrationsPath string
 	switch engine {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
-		dialect = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
 
 		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
@@ -92,7 +89,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	case "postgres":
 		driver = "pgx"
-		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir
 
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
@@ -116,7 +112,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
 
-	db, err := sql.Open(driver, uri)
+	db, err := goose.OpenDBWithDriver(driver, uri)
 	if err != nil {
 		log.Fatalf("failed to open a connection to the datastore: %v", err)
 	}
@@ -130,7 +126,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = timeout
 	err = backoff.Retry(func() error {
-		err := db.PingContext(context.Background())
+		err = db.PingContext(context.Background())
 		if err != nil {
 			return err
 		}
@@ -139,10 +135,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	}, policy)
 	if err != nil {
 		log.Fatalf("failed to initialize database connection: %v", err)
-	}
-
-	if err := goose.SetDialect(dialect); err != nil {
-		log.Fatalf("failed to initialize the migrate command: %v", err)
 	}
 
 	goose.SetBaseFS(assets.EmbedMigrations)

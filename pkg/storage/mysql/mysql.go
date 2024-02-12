@@ -85,7 +85,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	policy.MaxElapsedTime = 1 * time.Minute
 	attempt := 1
 	err = backoff.Retry(func() error {
-		err := db.PingContext(context.Background())
+		err = db.PingContext(context.Background())
 		if err != nil {
 			cfg.Logger.Info("waiting for mysql", zap.Int("attempt", attempt))
 			attempt++
