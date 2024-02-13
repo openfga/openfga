@@ -3,7 +3,6 @@
 package util
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -46,8 +45,9 @@ func Index[E comparable](s []E, v E) int {
 	return -1
 }
 
-func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, func(), string, error) {
-	container, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
+// MustBootstrapDatastore returns the datastore's container, the datastore, and the URI to connect to it
+func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, string) {
+	container := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	uri := container.GetConnectionURI(true)
 
@@ -60,14 +60,14 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
 	default:
-		return nil, nil, func() {}, "", fmt.Errorf("'%s' is not a supported datastore engine", engine)
+		t.Fatalf("'%s' is not a supported datastore engine", engine)
 	}
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		ds.Close()
+	})
 
-	return container, ds, func() {
-		defer ds.Close()
-		stopFunc()
-	}, uri, nil
+	return container, ds, uri
 }
 
 func PrepareTempConfigDir(t *testing.T) string {

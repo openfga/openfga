@@ -132,9 +132,7 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
-			defer stopFunc()
-			require.NoError(t, err)
+			_, ds, uri := util.MustBootstrapDatastore(t, engine)
 
 			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
 
@@ -142,7 +140,7 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 
 			migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(targetVersion))})
 
-			err = migrateCommand.Execute()
+			err := migrateCommand.Execute()
 			require.NoError(t, err)
 
 			status, _ := ds.IsReady(context.Background())
@@ -165,21 +163,19 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	ds, stopFunc := MustBootstrapDatastore(t, "postgres")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	ds := MustBootstrapDatastore(t, "postgres")
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := postgres.New(
@@ -196,31 +192,28 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds, stopFunc := MustBootstrapDatastore(t, "memory")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	ds := MustBootstrapDatastore(t, "memory")
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
-	ds, stopFunc := MustBootstrapDatastore(t, "mysql")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	ds := MustBootstrapDatastore(t, "mysql")
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "mysql")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := mysql.New(
@@ -238,8 +231,7 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "postgres")
-		defer stopFunc()
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
@@ -255,8 +247,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
-		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "mysql")
-		defer stopFunc()
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
@@ -325,8 +316,7 @@ type repo
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := postgres.New(uri, sqlcommon.NewConfig(
@@ -1125,8 +1115,8 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
-func MustBootstrapDatastore(t testing.TB, engine string) (storage.OpenFGADatastore, func()) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
+func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	uri := testDatastore.GetConnectionURI(true)
 
@@ -1144,9 +1134,9 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storage.OpenFGADatasto
 		t.Fatalf("'%s' is not a supported datastore engine", engine)
 	}
 	require.NoError(t, err)
-
-	return ds, func() {
+	t.Cleanup(func() {
 		ds.Close()
-		stopFunc()
-	}
+	})
+
+	return ds
 }

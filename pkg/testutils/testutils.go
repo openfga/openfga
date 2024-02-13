@@ -128,8 +128,7 @@ func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 	return model
 }
 
-// CreateGrpcConnection creates a grpc connection to an address.
-// It is up to the caller to call Close() on the connection
+// CreateGrpcConnection creates a grpc connection to an address and closes it when the test ends.
 func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOption) *grpc.ClientConn {
 	t.Helper()
 
@@ -144,13 +143,16 @@ func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOpt
 		grpcAddress, defaultOptions...,
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		conn.Close()
+	})
 
 	return conn
 }
 
 // EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
 // ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
-func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) error {
+func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
 	creds := insecure.NewCredentials()
@@ -171,10 +173,10 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 		grpcAddr,
 		dialOpts...,
 	)
-	if err != nil {
-		return fmt.Errorf("error creating grpc connection to server: %w", err)
-	}
-	defer conn.Close()
+	require.NoError(t, err, "error creating grpc connection to server")
+	t.Cleanup(func() {
+		conn.Close()
+	})
 
 	client := healthv1pb.NewHealthClient(conn)
 
@@ -195,18 +197,11 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 
 		return nil
 	}, policy)
-	if err != nil {
-		return fmt.Errorf("server did not reach healthy status: %w", err)
-	}
+	require.NoError(t, err, "server did not reach healthy status")
 
 	if httpHealthCheck {
 		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
-		if err != nil {
-			return fmt.Errorf("http endpoint not healthy: %w", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("unexpected status code received from server: %v", resp.StatusCode)
-		}
+		require.NoError(t, err, "http endpoint not healthy")
+		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 	}
-	return nil
 }

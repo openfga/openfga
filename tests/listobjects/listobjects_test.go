@@ -24,15 +24,16 @@ func TestListObjectsMySQL(t *testing.T) {
 }
 
 func testRunAll(t *testing.T, engine string) {
-	defer goleak.VerifyNone(t)
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
-	cancel := tests.StartServer(t, cfg)
-	defer cancel()
+	tests.StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-	defer conn.Close()
+
 	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
 }

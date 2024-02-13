@@ -207,16 +207,14 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-	defer conn.Close()
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	// Just checking we can create a store with no authentication.
-	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
+	_, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
 	require.NoError(t, err)
 }
 
@@ -236,8 +234,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -302,8 +299,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		}
 	}()
 
-	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
@@ -427,8 +423,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	type args struct {
 		origin string
@@ -534,8 +529,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{
 		{
@@ -595,8 +589,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-		require.NoError(t, err)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
@@ -656,8 +649,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
-		require.NoError(t, err)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
@@ -687,8 +679,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
-		require.NoError(t, err)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
 }
 
@@ -702,8 +693,7 @@ func TestServerMetricsReporting(t *testing.T) {
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine
@@ -728,11 +718,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-	defer conn.Close()
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -870,10 +858,9 @@ func TestHTTPServerDisabled(t *testing.T) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
 
-	_, err = http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	_, err := http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.Error(t, err)
 	require.ErrorContains(t, err, "connect: connection refused")
 }
@@ -890,8 +877,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1169,13 +1155,9 @@ func TestHTTPHeaders(t *testing.T) {
 		}
 	}()
 
-	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-	require.NoError(t, err)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-	t.Cleanup(func() {
-		conn.Close()
-	})
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
