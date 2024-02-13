@@ -27,7 +27,7 @@ type TestClientBootstrapper interface {
 
 // StartServer calls StartServerWithContext. See the docs for that.
 func StartServer(t testing.TB, cfg *serverconfig.Config) {
-	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level, cfg.Log.TimestampFormat)
 	serverCtx := &run.ServerContext{Logger: logger}
 	StartServerWithContext(t, cfg, serverCtx)
 }

@@ -93,7 +93,7 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
-func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
+func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, error) {
 	if logLevel == "none" {
 		return NewNoopLogger(), nil
 	}
@@ -114,6 +114,11 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	} else { // Json
+		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
+		if logTimestampFormat == "ISO8601" {
+			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		}
 	}
 
 	log, err := cfg.Build()
@@ -128,8 +133,8 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 	return &ZapLogger{log}, nil
 }
 
-func MustNewLogger(logFormat, logLevel string) *ZapLogger {
-	logger, err := NewLogger(logFormat, logLevel)
+func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
+	logger, err := NewLogger(logFormat, logLevel, logTimestampFormat)
 	if err != nil {
 		panic(err)
 	}

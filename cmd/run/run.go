@@ -152,6 +152,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("log-level", defaultConfig.Log.Level, "the log level to use")
 
+	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
+
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
@@ -267,7 +269,7 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
+	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
 
 	serverCtx := &ServerContext{Logger: logger}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
