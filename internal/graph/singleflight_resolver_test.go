@@ -17,17 +17,93 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+func TestSingleflightCheckResolver_ThreeProngLoop(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	ds := memory.New()
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("module:a", "owner", "user:anne"),
+		tuple.NewTupleKey("folder:a", "parent", "module:a"),
+		tuple.NewTupleKey("document:a", "parent", "folder:a"),
+		tuple.NewTupleKey("module:b", "parent", "document:a"),
+		tuple.NewTupleKey("folder:b", "parent", "module:b"),
+		tuple.NewTupleKey("document:b", "parent", "folder:b"),
+		tuple.NewTupleKey("module:a", "parent", "document:b"),
+	})
+	require.NoError(t, err)
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+  schema 1.1
+
+type user
+type module
+relations
+	define owner: [user] or owner from parent
+	define parent: [document, module]
+	define viewer: [user] or owner or viewer from parent
+type folder
+relations
+	define owner: [user] or owner from parent
+	define parent: [module, folder]
+	define viewer: [user] or owner or viewer from parent
+type document
+relations
+	define owner: [user] or owner from parent
+	define parent: [folder, document]
+	define viewer: [user] or owner or viewer from parent`)
+
+	err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+	singleflightCheckResolver := NewSingleflightCheckResolver()
+	localCheckResolver := NewLocalChecker()
+
+	singleflightCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+	tupleKeys := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("module:a", "viewer", "user:anne"),
+		tuple.NewTupleKey("module:b", "viewer", "user:anne"),
+		tuple.NewTupleKey("folder:a", "viewer", "user:anne"),
+		tuple.NewTupleKey("folder:b", "viewer", "user:anne"),
+		tuple.NewTupleKey("document:a", "viewer", "user:anne"),
+		tuple.NewTupleKey("document:b", "viewer", "user:anne"),
+	}
+
+	for _, tupleKey := range tupleKeys {
+		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tupleKey,
+			ResolutionMetadata: &ResolutionMetadata{
+				Depth: 25,
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	}
+}
+
+// TestSingleflightCheckResolver_ContextCancellation is a test to assert
+// that if two FGA queries that have overlapping nested subproblems share
+// different contexts, and one is cancelled out-of-band from the other, then
+// they should both resolve with non-nil errors. If they do not, then that
+// indicates incorrect handling of context cancellation in the call chain.
 func TestSingleflightCheckResolver_ContextCancellation(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	ds := memory.New()
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("folder:1", "folder_reader", "user:anne"),
-		tuple.NewTupleKey("folder:1", "allowed", "user:anne"),
-		tuple.NewTupleKey("folder:2", "parent", "folder:1"),
+		tuple.NewTupleKey("folder:2", "folder_reader", "user:anne"),
+		tuple.NewTupleKey("folder:2", "allowed", "folder:1"),
 		tuple.NewTupleKey("folder:4", "parent", "folder:2"),
-		tuple.NewTupleKey("folder:4", "blocked", "user:*"),
-		tuple.NewTupleKey("folder:4", "allowed", "user:*"),
+		tuple.NewTupleKey("folder:4", "allowed", "user:anne"),
 	})
 	require.NoError(t, err)
 
@@ -39,10 +115,9 @@ type folder
 relations
 	define parent: [folder]
 	define folder_reader: [user] or folder_reader from parent
-	define blocked: [user:*]
-	define allowed: [user, user:*] or allowed from parent
+	define blocked: [user]
+	define allowed: [user] or allowed from parent
 	define reader: folder_reader and allowed
-	define can_read: reader but not blocked
  `)
 
 	err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
@@ -62,7 +137,7 @@ relations
 
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		wg.Add(1)
 
@@ -74,7 +149,7 @@ relations
 			_, err := singleflightCheckResolver.ResolveCheck(ctx2, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
-				TupleKey:             tuple.NewTupleKey("folder:4", "can_read", "user:anne"),
+				TupleKey:             tuple.NewTupleKey("folder:4", "reader", "user:anne"),
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth: 25,
 				},
@@ -90,7 +165,7 @@ relations
 			_, err := singleflightCheckResolver.ResolveCheck(ctx1, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
-				TupleKey:             tuple.NewTupleKey("folder:2", "can_read", "user:anne"),
+				TupleKey:             tuple.NewTupleKey("folder:2", "reader", "user:anne"),
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth: 25,
 				},

@@ -232,13 +232,8 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		ds := storagewrappers.NewCombinedTupleReader(
-			q.datastore,
-			req.GetContextualTuples().GetTupleKeys(),
-		)
-
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
-			ds,
+			q.datastore,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
@@ -268,8 +263,13 @@ func (q *ListObjectsQuery) evaluate(
 			}
 		}()
 
+		ds := storagewrappers.NewCombinedTupleReader(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+		)
+
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx := storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
