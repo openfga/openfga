@@ -9,10 +9,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -34,13 +31,9 @@ func newOpenFGAServerAndClient(t *testing.T) (openfgav1.OpenFGAServiceClient, fu
 	cfg.Datastore.Engine = "memory"
 
 	stopServer := StartServer(t, cfg)
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(t, err)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	require.NoError(t, err)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
@@ -115,14 +108,10 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		cancel()
 	})
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	t.Cleanup(func() {
 		conn.Close()
 	})
-	require.NoError(t, err)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -371,16 +360,12 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 		cancel()
 	})
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	t.Cleanup(func() {
 		conn.Close()
 	})
-	require.NoError(t, err)
 
-	err = testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	require.NoError(t, err)
 
 	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)

@@ -49,9 +49,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -212,8 +210,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	require.NoError(t, err)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
@@ -734,8 +731,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	require.NoError(t, err)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
@@ -1176,8 +1172,7 @@ func TestHTTPHeaders(t *testing.T) {
 	err := testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	require.NoError(t, err)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	t.Cleanup(func() {
 		conn.Close()
 	})

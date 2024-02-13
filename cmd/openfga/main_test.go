@@ -19,9 +19,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	grpcbackoff "google.golang.org/grpc/backoff"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -153,23 +150,6 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 	}, stopContainer
 }
 
-// createGrpcConnection connects to the underlying grpc server of the OpenFGATester and
-// returns the client connection. It is up to the caller to call Close() on the connection
-func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
-	t.Helper()
-
-	conn, err := grpc.Dial(
-		tester.GetGRPCAddress(),
-		[]grpc.DialOption{
-			grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}...,
-	)
-	require.NoError(t, err)
-
-	return conn
-}
-
 // TestDocker does basic sanity tests against the Dockerfile.
 // It is not meant to include functionality tests.
 // For that, go to the github.com/openfga/openfga/tests package.
@@ -184,7 +164,7 @@ func TestDocker(t *testing.T) {
 		require.NoError(t, err)
 
 		t.Run("grpc_endpoint_works", func(t *testing.T) {
-			conn := createGrpcConnection(t, tester)
+			conn := testutils.CreateGrpcConnection(t, tester.GetGRPCAddress())
 			defer conn.Close()
 
 			grpcClient := openfgav1.NewOpenFGAServiceClient(conn)

@@ -128,6 +128,26 @@ func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 	return model
 }
 
+// CreateGrpcConnection creates a grpc connection to an address.
+// It is up to the caller to call Close() on the connection
+func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOption) *grpc.ClientConn {
+	t.Helper()
+
+	defaultOptions := []grpc.DialOption{
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	defaultOptions = append(defaultOptions, opts...)
+
+	conn, err := grpc.Dial(
+		grpcAddress, defaultOptions...,
+	)
+	require.NoError(t, err)
+
+	return conn
+}
+
 // EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
 // ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
 func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) error {

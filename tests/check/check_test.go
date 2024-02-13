@@ -20,6 +20,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/testutils"
+
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
@@ -74,12 +76,9 @@ func TestCheckLogs(t *testing.T) {
 	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
 	defer cancel()
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr,
 		grpc.WithUserAgent("test-user-agent"),
 	)
-	require.NoError(t, err)
 	defer conn.Close()
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
@@ -271,11 +270,7 @@ func testRunAll(t *testing.T, engine string) {
 	cancel := tests.StartServer(t, cfg)
 	defer cancel()
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(t, err)
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
 	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
