@@ -39,7 +39,6 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 
 	serverDone := make(chan error)
 	go func() {
@@ -49,6 +48,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	t.Cleanup(func() {
+		cancel()
 		serverErr := <-serverDone
 		t.Log(serverErr)
 	})
