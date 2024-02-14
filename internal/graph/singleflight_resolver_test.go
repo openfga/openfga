@@ -197,12 +197,13 @@ relations
 		wg.Add(1)
 		wg.Add(1)
 
+		var err1 error
 		go func() {
 			defer wg.Done()
 
 			ctx2 := ctx
 
-			_, err := singleflightCheckResolver.ResolveCheck(ctx2, &ResolveCheckRequest{
+			_, err1 = singleflightCheckResolver.ResolveCheck(ctx2, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("folder:4", "reader", "user:anne"),
@@ -210,15 +211,15 @@ relations
 					Depth: 25,
 				},
 			})
-			require.NoError(t, err)
 		}()
 
+		var err2 error
 		go func() {
 			defer wg.Done()
 
 			ctx1, cancel := context.WithCancel(ctx)
 
-			_, err := singleflightCheckResolver.ResolveCheck(ctx1, &ResolveCheckRequest{
+			_, err2 = singleflightCheckResolver.ResolveCheck(ctx1, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("folder:2", "reader", "user:anne"),
@@ -226,12 +227,13 @@ relations
 					Depth: 25,
 				},
 			})
-			require.NoError(t, err)
 
 			cancel()
 		}()
 
 		wg.Wait()
+		require.NoError(t, err1)
+		require.NoError(t, err2)
 	}
 }
 
