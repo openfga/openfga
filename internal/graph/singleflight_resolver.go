@@ -2,10 +2,12 @@ package graph
 
 import (
 	"context"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
-	"golang.org/x/sync/singleflight"
+
+	"resenje.org/singleflight"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -31,7 +33,7 @@ var (
 
 type SingleflightCheckResolver struct {
 	delegate CheckResolver
-	group    singleflight.Group
+	group    singleflight.Group[string, ResolveCheckResponse]
 	logger   logger.Logger
 }
 
@@ -66,28 +68,26 @@ func (s *SingleflightCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	isUnique := false
-	singleFlightResp, err, shared := s.group.Do(key, func() (interface{}, error) {
-		isUnique = true
-		resp, err := s.delegate.ResolveCheck(ctx, req)
+	var unique atomic.Bool
+	singleFlightResp, shared, err := s.group.Do(ctx, key, func(innerCtx context.Context) (ResolveCheckResponse, error) {
+		unique.Store(true)
+		resp, err := s.delegate.ResolveCheck(innerCtx, req)
 		if err != nil {
-			return nil, err
+			return ResolveCheckResponse{}, err
 		}
 		return copyResolveResponse(*resp), nil
 	})
-	span.SetAttributes(singleflightRequestStateAttribute(shared, isUnique))
+	span.SetAttributes(singleflightRequestStateAttribute(shared, unique.Load()))
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-
-	r := singleFlightResp.(ResolveCheckResponse)
 	// Important to create a dereferenced copy of the group.Do's response, otherwise
 	// it establishes a shared memory reference between the goroutines that were
 	// involved in the de-duplication, and thus is subject to race conditions.
-	resp := copyResolveResponse(r)
+	resp := copyResolveResponse(singleFlightResp)
 
-	if shared && !isUnique {
+	if shared && !unique.Load() {
 		deduplicatedDispatchCount.Inc()
 		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
 		resp.ResolutionMetadata.DatastoreQueryCount = 0

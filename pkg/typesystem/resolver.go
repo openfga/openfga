@@ -9,7 +9,7 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"golang.org/x/sync/singleflight"
+	"resenje.org/singleflight"
 
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -29,7 +29,7 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 //
 // The memoized resolver function is designed for concurrent use.
 func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) (TypesystemResolverFunc, func()) {
-	lookupGroup := singleflight.Group{}
+	lookupGroup := singleflight.Group[string, interface{}]{}
 
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
@@ -46,8 +46,8 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		}
 
 		if modelID == "" {
-			v, err, _ := lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
-				return datastore.FindLatestAuthorizationModelID(ctx, storeID)
+			v, _, err := lookupGroup.Do(ctx, fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func(innerCtx context.Context) (interface{}, error) {
+				return datastore.FindLatestAuthorizationModelID(innerCtx, storeID)
 			})
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
@@ -67,8 +67,8 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			return item.Value(), nil
 		}
 
-		v, err, _ := lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
-			return datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+		v, _, err := lookupGroup.Do(ctx, fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func(innerCtx context.Context) (interface{}, error) {
+			return datastore.ReadAuthorizationModel(innerCtx, storeID, modelID)
 		})
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {

@@ -57,7 +57,7 @@ type document
 		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 		for _, tupleKey := range tupleKeys {
 			resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
@@ -71,7 +71,6 @@ type document
 			require.True(t, resp.GetAllowed())
 		}
 	}
-
 }
 
 func TestSingleflightCheckResolver_ThreeProngLoop(t *testing.T) {

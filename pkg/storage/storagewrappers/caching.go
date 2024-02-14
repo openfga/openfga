@@ -7,7 +7,7 @@ import (
 
 	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"golang.org/x/sync/singleflight"
+	"resenje.org/singleflight"
 
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -18,7 +18,7 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
-	lookupGroup singleflight.Group
+	lookupGroup singleflight.Group[string, string]
 	cache       *ccache.Cache[*openfgav1.AuthorizationModel]
 }
 
@@ -53,13 +53,13 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 
 // FindLatestAuthorizationModelID returns the last model `id` written for a store.
 func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
-	v, err, _ := c.lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
-		return c.OpenFGADatastore.FindLatestAuthorizationModelID(ctx, storeID)
+	latestModelID, _, err := c.lookupGroup.Do(ctx, fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func(innerCtx context.Context) (string, error) {
+		return c.OpenFGADatastore.FindLatestAuthorizationModelID(innerCtx, storeID)
 	})
 	if err != nil {
 		return "", err
 	}
-	return v.(string), nil
+	return latestModelID, nil
 }
 
 // Close closes the datastore and cleans up any residual resources.

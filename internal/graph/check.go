@@ -236,11 +236,13 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+	cancelCtx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+	drain := resolver(cancelCtx, concurrencyLimit, resultChan, handlers...)
 
 	defer func() {
+		cancel()
 		drain()
 		close(resultChan)
 	}()
@@ -276,11 +278,13 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+	cancelCtx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+	drain := resolver(cancelCtx, concurrencyLimit, resultChan, handlers...)
 
 	defer func() {
+		cancel()
 		drain()
 		close(resultChan)
 	}()
@@ -327,12 +331,14 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	limiter := make(chan struct{}, concurrencyLimit)
 
+	cancelCtx, cancel := context.WithCancel(ctx)
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
 	var wg sync.WaitGroup
 
 	defer func() {
+		cancel()
 		wg.Wait()
 		close(baseChan)
 		close(subChan)
@@ -344,7 +350,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(ctx)
+		resp, err := baseHandler(cancelCtx)
 		baseChan <- checkOutcome{resp, err}
 		<-limiter
 		wg.Done()
@@ -353,7 +359,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(ctx)
+		resp, err := subHandler(cancelCtx)
 		subChan <- checkOutcome{resp, err}
 		<-limiter
 		wg.Done()
@@ -478,10 +484,7 @@ func (c *LocalChecker) ResolveCheck(
 		}
 	}
 
-	cancelCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	resp, err := union(cancelCtx, c.concurrencyLimit, c.checkRewrite(cancelCtx, req, rel.GetRewrite()))
+	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -502,9 +505,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-
-		cancelCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
 
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
@@ -685,7 +685,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				return nil, errs
 			}
 
-			resp, err := union(cancelCtx, c.concurrencyLimit, handlers...)
+			resp, err := union(ctx, c.concurrencyLimit, handlers...)
 			if err != nil {
 				telemetry.TraceError(span, err)
 				return nil, multierror.Append(errs, err)
@@ -709,7 +709,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = append(checkFuncs, fn2)
 		}
 
-		resp, err := union(cancelCtx, c.concurrencyLimit, checkFuncs...)
+		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
 		if err != nil {
 			telemetry.TraceError(span, err)
 		}
@@ -883,10 +883,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return nil, errs
 		}
 
-		cancelCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		unionResponse, err := union(cancelCtx, c.concurrencyLimit, handlers...)
+		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, multierror.Append(errs, err)
