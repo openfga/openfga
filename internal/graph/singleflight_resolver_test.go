@@ -17,6 +17,63 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+func TestSingleflightCheckResolver_2ProngLoop(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	ds := memory.New()
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "owner", "user:anne"),
+		tuple.NewTupleKey("document:2", "parent", "document:1"),
+		tuple.NewTupleKey("document:1", "parent", "document:2"),
+	})
+	require.NoError(t, err)
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+  schema 1.1
+
+type user
+type document
+  relations
+	define parent: [document]
+	define owner: [user] or owner from parent
+    define viewer: owner or viewer from parent`)
+
+	err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+	singleflightCheckResolver := NewSingleflightCheckResolver()
+	localCheckResolver := NewLocalChecker()
+
+	singleflightCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+	tupleKeys := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+	}
+
+	for i := 0; i < 10000; i++ {
+		for _, tupleKey := range tupleKeys {
+			resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tupleKey,
+				ResolutionMetadata: &ResolutionMetadata{
+					Depth: 25,
+				},
+			})
+			require.NoError(t, err)
+			require.True(t, resp.GetAllowed())
+		}
+	}
+
+}
+
 func TestSingleflightCheckResolver_ThreeProngLoop(t *testing.T) {
 	storeID := ulid.Make().String()
 
