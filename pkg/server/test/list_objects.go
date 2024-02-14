@@ -646,7 +646,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	b.Run("oneResult", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
-			nil,
+			graph.NewLocalChecker(),
 			commands.WithListObjectsMaxResults(1),
 		)
 		require.NoError(b, err)
@@ -663,7 +663,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	b.Run("allResults", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
-			nil,
+			graph.NewLocalChecker(),
 			commands.WithListObjectsMaxResults(0),
 		)
 		require.NoError(b, err)
