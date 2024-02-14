@@ -77,6 +77,14 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("invalid_log_timestamp_format", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.TimestampFormat = "notatimestampformat"
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
 	t.Run("empty_request_duration_datastore_query_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestDurationDatastoreQueryCountBuckets = []string{}
