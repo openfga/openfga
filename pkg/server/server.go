@@ -13,6 +13,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
@@ -133,7 +133,7 @@ func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
 	}
 }
 
-// WithTransport enables setting headers in the response.
+// WithTransport sets the connection transport.
 func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.transport = t
