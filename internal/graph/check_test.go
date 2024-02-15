@@ -581,3 +581,119 @@ condition condition1(param1: string) {
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
 }
+
+func TestUnionReducer(t *testing.T) {
+	ctx := context.Background()
+
+	concurrencyLimit := uint32(10)
+
+	falseCheck := func(context.Context) (*ResolveCheckResponse, error) {
+		return &ResolveCheckResponse{
+			Allowed:            false,
+			ResolutionMetadata: &ResolutionMetadata{},
+		}, nil
+	}
+
+	trueCheck := func(context.Context) (*ResolveCheckResponse, error) {
+		return &ResolveCheckResponse{
+			Allowed:            true,
+			ResolutionMetadata: &ResolutionMetadata{},
+		}, nil
+	}
+
+	t.Run("if no handlers, return allowed:false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	//type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
+	t.Run("if one handler is truthy and others are falsy, return allowed:true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueCheck, falseCheck, falseCheck)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("if all handlers are falsy, return allowed:false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseCheck, falseCheck, falseCheck)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if all handlers are falsy, return allowed:false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseCheck, falseCheck, falseCheck)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if a handler errors but other handler are truthy, return allowed:true", func(t *testing.T) {
+		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrResolutionDepthExceeded
+		}
+
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, trueCheck)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("if a handler errors but other handler is falsy, return error and allowed:false", func(t *testing.T) {
+		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrResolutionDepthExceeded
+		}
+
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseCheck)
+		require.Error(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if a handler errors with cycle but other handler is falsy, return allowed:false with a nil error", func(t *testing.T) {
+		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrCycleDetected
+		}
+
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, falseCheck)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("should only aggregate DB queries of truthy handlers", func(t *testing.T) {
+		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(1),
+				},
+			}, nil
+		}
+
+		falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(9),
+				},
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler) // three handlers
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+		require.Equal(t, uint32(9+1), resp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+
+	t.Run("should aggregate DB queries of all falsy handler", func(t *testing.T) {
+		handler := func(context.Context) (*ResolveCheckResponse, error) {
+			return &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(3),
+				},
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, handler, handler, handler) // three handlers
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+		require.Equal(t, uint32(3*3), resp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+}

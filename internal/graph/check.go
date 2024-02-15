@@ -269,7 +269,10 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				err = result.err
+				if result.err != ErrCycleDetected {
+					fmt.Println("DO SOMETHING")
+					err = result.err
+				}
 				continue
 			}
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
