@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/go-sql-driver/mysql"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,7 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 // MySQL datastore engine.
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
 	dockerClient, err := client.NewClientWithOpts(
+		client.WithHTTPClient(retryablehttp.NewClient().StandardClient()),
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)

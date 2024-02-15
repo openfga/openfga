@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/hashicorp/go-retryablehttp"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
@@ -47,6 +48,7 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 // Postgres datastore engine.
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	dockerClient, err := client.NewClientWithOpts(
+		client.WithHTTPClient(retryablehttp.NewClient().StandardClient()),
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)

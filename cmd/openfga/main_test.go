@@ -48,6 +48,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(
+		client.WithHTTPClient(retryablehttp.NewClient().StandardClient()),
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
