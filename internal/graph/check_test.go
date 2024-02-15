@@ -583,7 +583,7 @@ condition condition1(param1: string) {
 	require.False(t, resp.Allowed)
 }
 
-func TestUnionReducer(t *testing.T) {
+func TestUnionCheckFuncReducer(t *testing.T) {
 	ctx := context.Background()
 
 	concurrencyLimit := uint32(10)
