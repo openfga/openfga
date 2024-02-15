@@ -28,11 +28,20 @@ type Logger interface {
 	FatalWithContext(context.Context, string, ...zap.Field)
 }
 
+// NewNoopLogger provides a noop logger.
+func NewNoopLogger() *ZapLogger {
+	return &ZapLogger{
+		zap.NewNop(),
+	}
+}
+
 // ZapLogger is an implementation of Logger that uses the uber/zap logger underneath.
 // It provides additional methods such as ones that logs based on context.
 type ZapLogger struct {
 	*zap.Logger
 }
+
+var _ Logger = (*ZapLogger)(nil)
 
 func (l *ZapLogger) With(fields ...zap.Field) {
 	l.Logger = l.Logger.With(fields...)
@@ -84,13 +93,6 @@ func (l *ZapLogger) PanicWithContext(ctx context.Context, msg string, fields ...
 
 func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...zap.Field) {
 	l.Logger.Fatal(msg, fields...)
-}
-
-// NewNoopLogger provides noop logger that satisfies the logger interface.
-func NewNoopLogger() *ZapLogger {
-	return &ZapLogger{
-		zap.NewNop(),
-	}
 }
 
 func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, error) {
