@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -587,14 +588,14 @@ func TestUnionReducer(t *testing.T) {
 
 	concurrencyLimit := uint32(10)
 
-	falseCheck := func(context.Context) (*ResolveCheckResponse, error) {
+	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed:            false,
 			ResolutionMetadata: &ResolutionMetadata{},
 		}, nil
 	}
 
-	trueCheck := func(context.Context) (*ResolveCheckResponse, error) {
+	trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed:            true,
 			ResolutionMetadata: &ResolutionMetadata{},
@@ -607,21 +608,20 @@ func TestUnionReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	//type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
 	t.Run("if one handler is truthy and others are falsy, return allowed:true", func(t *testing.T) {
-		resp, err := union(ctx, concurrencyLimit, trueCheck, falseCheck, falseCheck)
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	})
 
 	t.Run("if all handlers are falsy, return allowed:false", func(t *testing.T) {
-		resp, err := union(ctx, concurrencyLimit, falseCheck, falseCheck, falseCheck)
+		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
 
 	t.Run("if all handlers are falsy, return allowed:false", func(t *testing.T) {
-		resp, err := union(ctx, concurrencyLimit, falseCheck, falseCheck, falseCheck)
+		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
@@ -631,7 +631,7 @@ func TestUnionReducer(t *testing.T) {
 			return nil, ErrResolutionDepthExceeded
 		}
 
-		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, trueCheck)
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	})
@@ -641,7 +641,7 @@ func TestUnionReducer(t *testing.T) {
 			return nil, ErrResolutionDepthExceeded
 		}
 
-		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseCheck)
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
 		require.Error(t, err)
 		require.False(t, resp.GetAllowed())
 	})
@@ -651,7 +651,7 @@ func TestUnionReducer(t *testing.T) {
 			return nil, ErrCycleDetected
 		}
 
-		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, falseCheck)
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
@@ -695,5 +695,37 @@ func TestUnionReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.Equal(t, uint32(3*3), resp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+
+	t.Run("should return allowed:true if truthy handler evaluated before handler cancels via context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(ctx)
+
+		cancelHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+			return nil, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, cancelHandler, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+	t.Run("should handle cancellations through context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(ctx)
+
+		cancelHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+			return nil, nil
+		}
+
+		stuckHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(1 * time.Hour)
+			return nil, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, cancelHandler, stuckHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.False(t, resp.GetAllowed())
 	})
 }
