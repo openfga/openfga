@@ -18,7 +18,6 @@ import (
 )
 
 func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
-	require := require.New(t)
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -50,21 +49,20 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 		t.Run(test.name, func(t *testing.T) {
 			if test.model != nil {
 				err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-				require.NoError(err)
+				require.NoError(t, err)
 			}
 
 			query := commands.NewReadAuthorizationModelsQuery(datastore)
 			resp, err := query.Execute(ctx, &openfgav1.ReadAuthorizationModelsRequest{StoreId: store})
-			require.NoError(err)
+			require.NoError(t, err)
 
-			require.Len(resp.GetAuthorizationModels(), test.expectedNumModelsReturned)
-			require.Empty(resp.ContinuationToken, "expected an empty continuation token")
+			require.Len(t, resp.GetAuthorizationModels(), test.expectedNumModelsReturned)
+			require.Empty(t, resp.ContinuationToken, "expected an empty continuation token")
 		})
 	}
 }
 
 func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenFGADatastore) {
-	require := require.New(t)
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -78,7 +76,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 		},
 	}
 	err := datastore.WriteAuthorizationModel(ctx, store, model1)
-	require.NoError(err)
+	require.NoError(t, err)
 
 	model2 := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
@@ -90,10 +88,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 		},
 	}
 	err = datastore.WriteAuthorizationModel(ctx, store, model2)
-	require.NoError(err)
+	require.NoError(t, err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
-	require.NoError(err)
+	require.NoError(t, err)
 
 	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
 
@@ -106,10 +104,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 		PageSize: wrapperspb.Int32(1),
 	}
 	firstResponse, err := query.Execute(ctx, firstRequest)
-	require.NoError(err)
-	require.Len(firstResponse.AuthorizationModels, 1)
-	require.Equal(firstResponse.AuthorizationModels[0].Id, model2.Id)
-	require.NotEmpty(firstResponse.ContinuationToken, "Expected continuation token")
+	require.NoError(t, err)
+	require.Len(t, firstResponse.AuthorizationModels, 1)
+	require.Equal(t, firstResponse.AuthorizationModels[0].Id, model2.Id)
+	require.NotEmpty(t, firstResponse.ContinuationToken, "Expected continuation token")
 
 	secondRequest := &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           store,
@@ -117,18 +115,18 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 		ContinuationToken: firstResponse.ContinuationToken,
 	}
 	secondResponse, err := query.Execute(ctx, secondRequest)
-	require.NoError(err)
-	require.Len(secondResponse.AuthorizationModels, 1)
-	require.Equal(secondResponse.AuthorizationModels[0].Id, model1.Id)
-	require.Empty(secondResponse.ContinuationToken, "Expected empty continuation token")
+	require.NoError(t, err)
+	require.Len(t, secondResponse.AuthorizationModels, 1)
+	require.Equal(t, secondResponse.AuthorizationModels[0].Id, model1.Id)
+	require.Empty(t, secondResponse.ContinuationToken, "Expected empty continuation token")
 
 	thirdRequest := &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "bad",
 	}
 	_, err = query.Execute(ctx, thirdRequest)
-	require.Error(err)
-	require.ErrorContains(err, "Invalid continuation token")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Invalid continuation token")
 
 	validToken := "eyJwayI6IkxBVEVTVF9OU0NPTkZJR19hdXRoMHN0b3JlIiwic2siOiIxem1qbXF3MWZLZExTcUoyN01MdTdqTjh0cWgifQ=="
 	invalidStoreRequest := &openfgav1.ReadAuthorizationModelsRequest{
@@ -136,12 +134,11 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 		ContinuationToken: validToken,
 	}
 	_, err = query.Execute(ctx, invalidStoreRequest)
-	require.Error(err)
-	require.ErrorContains(err, "Invalid continuation token")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Invalid continuation token")
 }
 
 func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore storage.OpenFGADatastore) {
-	require := require.New(t)
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -151,12 +148,12 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 		TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "repo"}},
 	}
 	err := datastore.WriteAuthorizationModel(ctx, store, model)
-	require.NoError(err)
+	require.NoError(t, err)
 
 	_, err = commands.NewReadAuthorizationModelsQuery(datastore).Execute(ctx,
 		&openfgav1.ReadAuthorizationModelsRequest{
 			StoreId:           store,
 			ContinuationToken: "foo",
 		})
-	require.ErrorIs(err, serverErrors.InvalidContinuationToken)
+	require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
 }
