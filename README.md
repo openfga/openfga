@@ -40,6 +40,9 @@ docker pull openfga/openfga
 docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
+> [!TIP]
+> The `OPENFGA_HTTP_ADDR` environment variable can used to configure the address at which [the playground](https://openfga.dev/docs/getting-started/setup-openfga/playground) expects the OpenFGA server to be. For example, `docker run -e OPENFGA_PLAYGROUND_ENABLED=true -e OPENFGA_HTTP_ADDR=0.0.0.0:4000 -p 4000:4000 -p 3000:3000 openfga/openfga run` will start the OpenFGA server on port 4000, and configure the playground too.
+
 #### Docker Compose
 
 [`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA with Postgres using `docker compose`.
