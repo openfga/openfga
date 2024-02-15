@@ -270,7 +270,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		case result := <-resultChan:
 			if result.err != nil {
 				if result.err != ErrCycleDetected {
-					fmt.Println("DO SOMETHING")
 					err = result.err
 				}
 				continue
