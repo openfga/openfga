@@ -39,12 +39,13 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/pkg/gateway"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/gateway"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"

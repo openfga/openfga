@@ -19,14 +19,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/gateway"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
@@ -133,7 +132,7 @@ func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
 	}
 }
 
-// WithTransport enables setting headers in the response.
+// WithTransport sets the connection transport.
 func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.transport = t
@@ -1007,7 +1006,7 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 
 	span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
 	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
-	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, resolvedModelID))
+	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
 	return typesys, nil
 }
