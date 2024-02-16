@@ -301,6 +301,8 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		}, nil
 	}
 
+	span := trace.SpanFromContext(ctx)
+
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -318,6 +320,8 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
+				span.RecordError(result.err)
+
 				if errors.Is(result.err, ErrCycleDetected) {
 					return &ResolveCheckResponse{
 						Allowed: false,
@@ -356,6 +360,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	if len(handlers) != 2 {
 		panic(fmt.Sprintf("expected two rewrite operands for exclusion operator, but got '%d'", len(handlers)))
 	}
+
+	span := trace.SpanFromContext(ctx)
 
 	limiter := make(chan struct{}, concurrencyLimit)
 
@@ -408,6 +414,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
+				span.RecordError(baseResult.err)
+
 				if errors.Is(baseResult.err, ErrCycleDetected) {
 					return &ResolveCheckResponse{
 						Allowed: false,
@@ -430,6 +438,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
+				span.RecordError(subResult.err)
+
 				if !errors.Is(subResult.err, ErrCycleDetected) {
 					subErr = subResult.err
 					continue
