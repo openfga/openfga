@@ -583,7 +583,7 @@ condition condition1(param1: string) {
 	require.False(t, resp.Allowed)
 }
 
-func TestUnionReducer(t *testing.T) {
+func TestUnionCheckFuncReducer(t *testing.T) {
 	ctx := context.Background()
 
 	concurrencyLimit := uint32(10)
@@ -642,7 +642,7 @@ func TestUnionReducer(t *testing.T) {
 		}
 
 		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
-		require.Error(t, err, ErrResolutionDepthExceeded)
+		require.ErrorIs(t, ErrResolutionDepthExceeded, err)
 		require.False(t, resp.GetAllowed())
 	})
 
