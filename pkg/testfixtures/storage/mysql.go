@@ -46,12 +46,15 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 // RunMySQLTestContainer runs a MySQL container, connects to it, and returns a
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // MySQL datastore engine.
-func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestContainer, func()) {
+func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		dockerClient.Close()
+	})
 
 	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
 		All: true,
@@ -99,7 +102,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")
 
-	stopContainer := func() {
+	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -107,14 +110,11 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to stop mysql container: %v", err)
 		}
-
-		dockerClient.Close()
 		t.Logf("stopped container %s", name)
-	}
+	})
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
 	if err != nil {
-		stopContainer()
 		t.Fatalf("failed to start mysql container: %v", err)
 	}
 
@@ -152,7 +152,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 		backoffPolicy,
 	)
 	if err != nil {
-		stopContainer()
 		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
 
@@ -164,7 +163,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) (DatastoreTestC
 	require.NoError(t, err)
 	mySQLTestContainer.version = version
 
-	return mySQLTestContainer, stopContainer
+	return mySQLTestContainer
 }
 
 // GetConnectionURI returns the mysql connection uri for the running mysql test container.
