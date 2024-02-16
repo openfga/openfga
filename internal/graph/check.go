@@ -294,6 +294,13 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+	if len(handlers) == 0 {
+		return &ResolveCheckResponse{
+			Allowed:            false,
+			ResolutionMetadata: &ResolutionMetadata{},
+		}, nil
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -311,7 +318,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				err = result.err
+				err = errors.Join(err, result.err)
 				continue
 			}
 
@@ -325,16 +332,22 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		}
 	}
 
+	var respErr error
+	if !errors.Is(err, ErrCycleDetected) {
+		respErr = err
+	}
+
 	allowed := true
-	if err != nil {
+	if errors.Is(err, ErrCycleDetected) {
 		allowed = false
 	}
+
 	return &ResolveCheckResponse{
 		Allowed: allowed,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
 		},
-	}, err
+	}, respErr
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -388,13 +401,15 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		},
 	}
 
-	var errs *multierror.Error
+	var baseErr error
+	var subErr error
+
 	var dbReads uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				errs = multierror.Append(errs, baseResult.err)
+				baseErr = baseResult.err
 				continue
 			}
 
@@ -407,7 +422,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				errs = multierror.Append(errs, subResult.err)
+				subErr = subResult.err
 				continue
 			}
 
@@ -422,12 +437,23 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		}
 	}
 
-	if errs.ErrorOrNil() != nil {
-		return response, errs
+	if (baseErr != nil && !errors.Is(baseErr, ErrCycleDetected)) &&
+		(subErr != nil && !errors.Is(subErr, ErrCycleDetected)) {
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolutionMetadata{
+				DatastoreQueryCount: 0,
+			},
+		}, errors.Join(baseErr, subErr)
+	}
+
+	allowed := true
+	if errors.Is(baseErr, ErrCycleDetected) {
+		allowed = false
 	}
 
 	return &ResolveCheckResponse{
-		Allowed: true,
+		Allowed: allowed,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
 		},
