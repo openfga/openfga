@@ -317,9 +317,7 @@ type document
 	for i := 0; i < 50; i++ {
 		t.Logf("iteration %d", i)
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Nanosecond))
-		t.Cleanup(func() {
-			cancel()
-		})
+		t.Cleanup(cancel)
 
 		resultChan := make(chan *ReverseExpandResult)
 		errChan := make(chan error, 1)

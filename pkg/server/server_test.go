@@ -1115,6 +1115,8 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
+// MustBootstrapDatastore returns a datastore of the given engine. It cleans it up
+// after the test is done.
 func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
@@ -1134,9 +1136,7 @@ func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastor
 		t.Fatalf("'%s' is not a supported datastore engine", engine)
 	}
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		ds.Close()
-	})
+	t.Cleanup(ds.Close)
 
 	return ds
 }

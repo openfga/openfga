@@ -1143,9 +1143,7 @@ func TestHTTPHeaders(t *testing.T) {
 	t.Parallel()
 	cfg := MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(func() {
-		cancel()
-	})
+	t.Cleanup(cancel)
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {

@@ -63,9 +63,7 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 		t.Fatalf("'%s' is not a supported datastore engine", engine)
 	}
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		ds.Close()
-	})
+	t.Cleanup(ds.Close)
 
 	return container, ds, uri
 }

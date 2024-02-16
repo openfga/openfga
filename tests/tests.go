@@ -48,6 +48,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	t.Cleanup(func() {
+		// send cancellation signal to server and wait for it to stop
 		cancel()
 		serverErr := <-serverDone
 		t.Log(serverErr)
