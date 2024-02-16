@@ -810,7 +810,7 @@ type document
 
 // TestCheckWithUnexpectedCycle tests the LocalChecker to make sure that if a model includes a cycle
 // that should have otherwise been invalid according to the typesystem, then the check resolution will
-// avoid the cycle and return an error indicating a cycle was detected.
+// consider the cycle a falsey allowed result and not bubble-up a cycle detected error.
 func TestCheckWithUnexpectedCycle(t *testing.T) {
 	ds := memory.New()
 	defer ds.Close()
@@ -894,15 +894,11 @@ type resource
 				ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 			})
 
-			// if the branch producing the cycle is reached first, then an error is returned, otherwise
-			// a result is returned if some other terminal path of evaluation was reached before the cycle
-			if err != nil {
-				require.ErrorIs(t, err, ErrCycleDetected)
-			} else {
-				require.False(t, resp.GetAllowed())
-				require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(1)) // min of 1 (x) if x isn't found and it returns quickly
-				require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
-			}
+			require.NoError(t, err)
+			require.False(t, resp.GetAllowed())
+
+			require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(0)) // min of 0 (x) if x is cycle. TODO: accurately report datastore query count of cycle branches
+			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
 		})
 	}
 }
@@ -998,4 +994,174 @@ condition condition1(param1: string) {
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
+}
+
+func TestUnionCheckFuncReducer(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	concurrencyLimit := uint32(10)
+
+	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
+		return &ResolveCheckResponse{
+			Allowed:            false,
+			ResolutionMetadata: &ResolutionMetadata{},
+		}, nil
+	}
+
+	trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+		return &ResolveCheckResponse{
+			Allowed:            true,
+			ResolutionMetadata: &ResolutionMetadata{},
+		}, nil
+	}
+
+	t.Run("if_no_handlers_return_allowed_false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if_one_handler_is_truthy_and_others_are_falsey_return_allowed_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("if_all_handlers_are_falsey_return_allowed_false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if_a_handler_errors_but_other_handler_are_truthy_return_allowed_true", func(t *testing.T) {
+		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrResolutionDepthExceeded
+		}
+
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("if_a_handler_errors_but_other_handler_is_falsey_return_error_and_allowed_false", func(t *testing.T) {
+		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrResolutionDepthExceeded
+		}
+
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
+		require.ErrorIs(t, ErrResolutionDepthExceeded, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_falsey_return_allowed_false_with_a_nil_error", func(t *testing.T) {
+		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrCycleDetected
+		}
+
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_truthy_return_allowed_true_with_a_nil_error", func(t *testing.T) {
+		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrCycleDetected
+		}
+
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("should_aggregate_DatastoreQueryCount_of_non_error handlers", func(t *testing.T) {
+		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
+			return &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(1),
+				},
+			}, nil
+		}
+
+		falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(5),
+				},
+			}, nil
+		}
+
+		errorHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return &ResolveCheckResponse{
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(9999999),
+				},
+			}, ErrResolutionDepthExceeded
+		}
+
+		resp, err := union(ctx, concurrencyLimit, falseHandler, trueHandler, errorHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+		require.Equal(t, uint32(5+1), resp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+
+	t.Run("should_aggregate_DatastoreQueryCount_of_all_falsey_handlers", func(t *testing.T) {
+		handler := func(context.Context) (*ResolveCheckResponse, error) {
+			return &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolutionMetadata{
+					DatastoreQueryCount: uint32(3),
+				},
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, handler, handler, handler) // three handlers
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+		require.Equal(t, uint32(3*3), resp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+
+	t.Run("should_return_allowed_true_if_truthy_handler_evaluated_before_handler_cancels_via_context", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+	t.Run("should_handle_cancellations_through_context", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+			return nil, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, slowHandler, falseHandler)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("should_handle_context_timeouts_even_with_eventual_truthy_handler", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(25 * time.Millisecond)
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.False(t, resp.GetAllowed())
+	})
 }
