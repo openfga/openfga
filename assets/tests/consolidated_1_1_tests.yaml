@@ -5212,6 +5212,12 @@ tests:
           - user: document:1#allowed
             relation: viewer
             object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:jon
