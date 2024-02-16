@@ -13,10 +13,10 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -374,16 +374,19 @@ func TestResolveCheckFromCache(t *testing.T) {
 			test.setInitialResult(mockResolver, initialReq)
 
 			// expect first call to result in actual resolve call
-			dut := NewCachedCheckResolver(mockResolver,
-				WithMaxCacheSize(10))
+			dut := NewCachedCheckResolver(WithMaxCacheSize(10))
 			defer dut.Close()
+
+			dut.SetDelegate(mockResolver)
 
 			_, _ = dut.ResolveCheck(ctx, initialReq)
 
 			test.setTestExpectations(mockResolver, test.subsequentReq)
 
-			dut2 := NewCachedCheckResolver(dut, WithExistingCache(dut.cache))
+			dut2 := NewCachedCheckResolver(WithExistingCache(dut.cache))
 			defer dut2.Close()
+
+			dut2.SetDelegate(dut)
 
 			actualResult, err := dut2.ResolveCheck(ctx, test.subsequentReq)
 			require.Equal(t, result.Allowed, actualResult.Allowed)
@@ -413,8 +416,10 @@ func TestResolveCheckExpired(t *testing.T) {
 	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
-	dut := NewCachedCheckResolver(initialMockResolver, WithCacheTTL(1*time.Microsecond))
+	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Microsecond))
 	defer dut.Close()
+
+	dut.SetDelegate(initialMockResolver)
 
 	actualResult, err := dut.ResolveCheck(ctx, req)
 	require.Equal(t, result.Allowed, actualResult.Allowed)
@@ -467,54 +472,49 @@ type document
 	define intersection_of_ttus: union_or_ttu and union_and_ttu
 	define parent: [org]`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	checkCache := ccache.New(
 		ccache.Configure[*CachedResolveCheckResponse]().MaxSize(100),
 	)
 	defer checkCache.Stop()
 
-	// Running the first check
-	firstLocalChecker := NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-		WithMaxConcurrentReads(1),
-		WithCachedResolver(
-			WithExistingCache(checkCache),
-			WithCacheTTL(10*time.Hour),
-		),
+	cachedCheckResolver := NewCachedCheckResolver(
+		WithExistingCache(checkCache),
+		WithCacheTTL(10*time.Hour),
 	)
+	defer cachedCheckResolver.Close()
 
-	res, err := firstLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
+	// Running the first check
+	localCheckResolver := NewLocalChecker(
+		WithMaxConcurrentReads(1),
+	)
+	defer localCheckResolver.Close()
+
+	cachedCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cachedCheckResolver)
+
+	res, err := cachedCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
-
-	firstLocalChecker.Close()
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 
-	// Second time running the check will result in datastore query count being 0
-
-	secondLocalChecker := NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-		WithMaxConcurrentReads(1),
-		WithCachedResolver(
-			WithExistingCache(checkCache),
-			WithCacheTTL(10*time.Hour),
-		),
-	)
-
-	res, err = secondLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
+	res, err = cachedCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
-
-	secondLocalChecker.Close()
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(0), res.GetResolutionMetadata().DatastoreQueryCount)
@@ -522,13 +522,10 @@ type document
 	// The ttuLocalChecker will use partial result from the cache and partial result from the local checker
 
 	ttuLocalChecker := NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
 		WithMaxConcurrentReads(1),
-		WithCachedResolver(
-			WithExistingCache(checkCache),
-			WithCacheTTL(10*time.Hour),
-		),
 	)
+	ttuLocalChecker.SetDelegate(cachedCheckResolver)
+
 	res, err = ttuLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:x", "ttu", "user:maria"),
