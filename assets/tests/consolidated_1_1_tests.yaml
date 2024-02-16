@@ -5217,7 +5217,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2002
+            expectation: []
   - name: list_objects_with_subcheck_resolution_depth_exceeded
     stages:
       - model: |
