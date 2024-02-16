@@ -147,7 +147,7 @@ func TestSingleflightResolver(t *testing.T) {
 			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 		})
 
-		require.ErrorIs(t, err, ErrCycleDetected)
-		require.Nil(t, resp)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
 	})
 }
