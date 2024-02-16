@@ -656,6 +656,16 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
+	t.Run("if a handler errors with cycle but other handler is truthy, return allowed:true with a nil error", func(t *testing.T) {
+		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, ErrCycleDetected
+		}
+
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
 	t.Run("should aggregate DatastoreQueryCount of non-error handlers", func(t *testing.T) {
 		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
