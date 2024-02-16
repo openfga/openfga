@@ -524,18 +524,17 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			test.request.StoreId = store
 			_, err = commands.NewReadQuery(datastore).Execute(ctx, test.request)
-			require.Error(err)
+			require.Error(t, err)
 		})
 	}
 }

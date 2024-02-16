@@ -45,12 +45,15 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 // RunPostgresTestContainer runs a Postgres container, connects to it, and returns a
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // Postgres datastore engine.
-func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (DatastoreTestContainer, func()) {
+func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		dockerClient.Close()
+	})
 
 	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
 		All: true,
@@ -98,7 +101,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
 
-	stopContainer := func() {
+	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -107,13 +110,11 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 			t.Logf("failed to stop postgres container: %v", err)
 		}
 
-		dockerClient.Close()
 		t.Logf("stopped container %s", name)
-	}
+	})
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
 	if err != nil {
-		stopContainer()
 		t.Fatalf("failed to start postgres container: %v", err)
 	}
 
@@ -147,10 +148,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 		},
 		backoffPolicy,
 	)
-	if err != nil {
-		stopContainer()
-		t.Fatalf("failed to connect to postgres container: %v", err)
-	}
+	require.NoError(t, err, "failed to connect to postgres container")
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
@@ -161,7 +159,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) (Datastor
 	require.NoError(t, err)
 	pgTestContainer.version = version
 
-	return pgTestContainer, stopContainer
+	return pgTestContainer
 }
 
 // GetConnectionURI returns the postgres connection uri for the running postgres test container.
