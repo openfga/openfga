@@ -18,7 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestSingleflightCheckResolver_2ProngLoop(t *testing.T) {
+func TestSingleflightCheckResolver_TwoProngLoop(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	ds := memory.New()
@@ -60,23 +60,17 @@ type document
 		localCheckResolver.Close()
 	})
 
-	tupleKeys := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-	}
-
 	for i := 0; i < 1000; i++ {
-		for _, tupleKey := range tupleKeys {
-			resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: model.GetId(),
-				TupleKey:             tupleKey,
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth: 25,
-				},
-			})
-			require.NoError(t, err)
-			require.True(t, resp.GetAllowed())
-		}
+		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			ResolutionMetadata: &ResolutionMetadata{
+				Depth: 25,
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
 	}
 }
 
