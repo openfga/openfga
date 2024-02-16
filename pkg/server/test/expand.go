@@ -867,7 +867,6 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 
 	for _, test := range tests {
@@ -875,7 +874,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// arrange
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			err = datastore.Write(
 				ctx,
@@ -883,16 +882,16 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				test.tuples,
 			)
-			require.NoError(err)
+			require.NoError(t, err)
 
-			require.NoError(err)
+			require.NoError(t, err)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
 			query := commands.NewExpandQuery(datastore)
 			got, err := query.Execute(ctx, test.request)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			// assert
 			if diff := cmp.Diff(test.expected, got, protocmp.Transform()); diff != "" {
@@ -1030,7 +1029,6 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 
 	for _, test := range tests {
@@ -1038,7 +1036,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			// arrange
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			err = datastore.Write(
 				ctx,
@@ -1046,9 +1044,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				test.tuples,
 			)
-			require.NoError(err)
+			require.NoError(t, err)
 
-			require.NoError(err)
+			require.NoError(t, err)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = test.model.Id
 
@@ -1057,8 +1055,8 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert
-			require.Nil(resp)
-			require.ErrorIs(err, test.expected)
+			require.Nil(t, resp)
+			require.ErrorIs(t, err, test.expected)
 		})
 	}
 }
