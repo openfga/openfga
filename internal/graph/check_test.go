@@ -651,7 +651,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if_a handler_errors_with_cycle_but_other_handler_is_truthy,_return_allowed:true_with_a_nil_error", func(t *testing.T) {
+	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_truthy,_return_allowed:true_with_a_nil_error", func(t *testing.T) {
 		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrCycleDetected
 		}
