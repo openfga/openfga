@@ -108,6 +108,7 @@ condition condX(x: int) {
 	x < 100
 }
 `)
+
 		checker := NewLocalCheckerWithCycleDetection()
 		t.Cleanup(checker.Close)
 

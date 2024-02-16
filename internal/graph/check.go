@@ -143,7 +143,9 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
-// NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check.
+// NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
+// request locally.
+//
 // The constructed LocalChecker is not wrapped with cycle detection. Developers
 // wanting a LocalChecker without other wrapped layers (e.g caching and others)
 // are encouraged to use [[NewLocalCheckerWithCycleDetection]] instead.
