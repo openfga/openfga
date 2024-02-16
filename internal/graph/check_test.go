@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -38,7 +39,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker(ds)
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
 
 		model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
@@ -54,7 +56,12 @@ type document
 	define viewer: [group#member] or editor
 	define editor: [group#member] and allowed`)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
@@ -100,9 +107,14 @@ condition condX(x: int) {
 }
 `)
 
-		checker := NewLocalChecker(ds)
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		for i := 0; i < 2000; i++ {
 			// subtract branch resolves to {allowed: true} even though the base branch
@@ -143,9 +155,14 @@ condition condX(x: int) {
 		}
 		`)
 
-		checker := NewLocalChecker(ds)
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		for i := 0; i < 2000; i++ {
 			// base should resolve to {allowed: false} even though the subtract branch
@@ -179,7 +196,8 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, WithResolveNodeBreadthLimit(concurrencyLimit))
+	checker := NewLocalCheckerWithCycleDetection(WithResolveNodeBreadthLimit(concurrencyLimit))
+	t.Cleanup(checker.Close)
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
@@ -191,7 +209,11 @@ type document
   relations
 	define viewer: [group#member]`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
@@ -240,7 +262,10 @@ type document
 	define parent: [org]
 `)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
 
 	tests := []struct {
 		name             string
@@ -366,6 +391,11 @@ type document
 		},
 	}
 
+	checker := NewLocalCheckerWithCycleDetection(
+		WithMaxConcurrentReads(1),
+	)
+	t.Cleanup(checker.Close)
+
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
@@ -375,10 +405,13 @@ type document
 				t.Run(test.name, func(t *testing.T) {
 					t.Parallel()
 
-					checker := NewLocalChecker(
-						// TODO build this wrapper inside ResolveCheck so that we don't need to construct a new Checker per test
-						storagewrappers.NewCombinedTupleReader(ds, test.contextualTuples),
-						WithMaxConcurrentReads(1))
+					ctx := storage.ContextWithRelationshipTupleReader(
+						ctx,
+						storagewrappers.NewCombinedTupleReader(
+							ds,
+							test.contextualTuples,
+						),
+					)
 
 					res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 						StoreID:            storeID,
@@ -464,13 +497,18 @@ type resource
 		},
 	}
 
-	checker := NewLocalChecker(ds)
+	checker := NewLocalCheckerWithCycleDetection()
+	t.Cleanup(checker.Close)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+			ctx := typesystem.ContextWithTypesystem(
+				context.Background(),
+				typesystem.New(model),
+			)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
@@ -536,7 +574,8 @@ condition condition1(param1: string) {
 	err = ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds)
+	checker := NewLocalCheckerWithCycleDetection()
+	t.Cleanup(checker.Close)
 
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),
@@ -545,6 +584,7 @@ condition condition1(param1: string) {
 	require.NoError(t, err)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	conditionContext, err := structpb.NewStruct(map[string]interface{}{
 		"param1": "notok",
