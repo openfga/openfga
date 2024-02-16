@@ -19,7 +19,6 @@ import (
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -123,7 +122,6 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	ds                 storage.RelationshipTupleReader
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
@@ -145,25 +143,14 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
-func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		cachedCheckResolver := NewCachedCheckResolver(d, opts...)
-		d.delegate = cachedCheckResolver
-	}
-}
-
-func WithSingleflightResolver() LocalCheckerOption {
-	return func(d *LocalChecker) {
-		singleflightResolver := NewSingleflightCheckResolver(d)
-		d.delegate = singleflightResolver
-	}
-}
-
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
-func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
+//
+// The constructed LocalChecker is not wrapped with cycle detection. Developers
+// wanting a LocalChecker without other wrapped layers (e.g caching and others)
+// are encouraged to use [[NewLocalCheckerWithCycleDetection]] instead.
+func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
-		ds:                 ds,
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 	}
@@ -174,11 +161,24 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 		opt(checker)
 	}
 
-	checker.ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
+	return checker
+}
 
-	// Depending on whether cached check resolver is used,
-	// we either return the newly created checker or the delegate (i.e., cached check resolver).
-	return checker.delegate
+// NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
+// which can be used to evaluate a Check request locally with cycle detection enabled.
+func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
+	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	localCheckResolver := NewLocalChecker(opts...)
+
+	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+	return cycleDetectionCheckResolver
+}
+
+// SetDelegate sets this LocalChecker's dispatch delegate.
+func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
 }
 
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
@@ -451,6 +451,14 @@ func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) Che
 
 // ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
 // evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
+//
+// It is expected that callers pass in, contextually, a [[storage.RelationshipTupleReader]] using
+// [[storage.ContextWithRelationshipTupleReader]]. This is by design because this method is called by
+// [[server.Check]], but each time it is called there are invariants that must be met that relate
+// to the concurrency of the underlying RelationshipTupleReader as well as contextual tuples per
+// parent request. Since [[server.Check]] shares a single instance of a [[LocalChecker]], and to
+// meet the invariants mentioned above, we contextually define the datastore used to serve the
+// ResolveCheck request.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
@@ -483,18 +491,6 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	if req.VisitedPaths != nil {
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
-			return nil, ErrCycleDetected
-		}
-
-		req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())] = struct{}{}
-	} else {
-		req.VisitedPaths = map[string]struct{}{
-			tuple.TupleKeyToString(req.GetTupleKey()): {},
-		}
-	}
-
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -522,6 +518,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
 
+		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
+		if !ok {
+			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		}
+
 		storeID := req.GetStoreID()
 		reqTupleKey := req.GetTupleKey()
 		objectType := tuple.GetType(reqTupleKey.GetObject())
@@ -541,7 +542,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			t, err := c.ds.ReadUserTuple(ctx, storeID, reqTupleKey)
+			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -596,7 +597,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.Object,
 				Relation:                    reqTupleKey.Relation,
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
@@ -664,10 +665,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				if usersetRelation != "" {
 					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-
-					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-						return nil, ErrCycleDetected
-					}
 
 					handlers = append(handlers, c.dispatch(
 						ctx,
@@ -739,10 +736,6 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 			req.TupleKey.GetUser(),
 		)
 
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(rewrittenTupleKey)]; visited {
-			return nil, ErrCycleDetected
-		}
-
 		return c.dispatch(
 			ctx,
 			&ResolveCheckRequest{
@@ -776,7 +769,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
 
+		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
+		if !ok {
+			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		}
+
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
 		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
@@ -793,7 +792,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
 			},
 		}
-		iter, err := c.ds.Read(
+		iter, err := ds.Read(
 			ctx,
 			req.GetStoreID(),
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
@@ -856,10 +855,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				if errors.Is(err, typesystem.ErrRelationUndefined) {
 					continue // skip computed relations on tupleset relationships if they are undefined
 				}
-			}
-
-			if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-				return nil, ErrCycleDetected
 			}
 
 			handlers = append(handlers, c.dispatch(
