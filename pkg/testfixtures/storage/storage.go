@@ -49,7 +49,7 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 	case "memory":
 		return memoryTestContainer{}
 	default:
-		t.Fatalf("'%s' engine is not supported by RunDatastoreTestContainer", engine)
+		t.Fatalf("unsupported datastore engine: %q", engine)
 		return nil
 	}
 }
