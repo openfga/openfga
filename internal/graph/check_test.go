@@ -400,7 +400,7 @@ type document
 
 // TestCheckWithUnexpectedCycle tests the LocalChecker to make sure that if a model includes a cycle
 // that should have otherwise been invalid according to the typesystem, then the check resolution will
-// avoid the cycle and return an error indicating a cycle was detected.
+// consider the cycle a falsy allowed result and not bubble-up a cycle detected error.
 func TestCheckWithUnexpectedCycle(t *testing.T) {
 	ds := memory.New()
 	defer ds.Close()
@@ -479,15 +479,11 @@ type resource
 				ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 			})
 
-			// if the branch producing the cycle is reached first, then an error is returned, otherwise
-			// a result is returned if some other terminal path of evaluation was reached before the cycle
-			if err != nil {
-				require.ErrorIs(t, err, ErrCycleDetected)
-			} else {
-				require.False(t, resp.GetAllowed())
-				require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(1)) // min of 1 (x) if x isn't found and it returns quickly
-				require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
-			}
+			require.NoError(t, err)
+			require.False(t, resp.GetAllowed())
+
+			require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(0)) // min of 0 (x) if x is cycle. TODO: accurately report datastore query count of cycle branches
+			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
 		})
 	}
 }
