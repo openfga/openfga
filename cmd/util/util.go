@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -56,6 +57,8 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	var err error
 
 	switch engine {
+	case "memory":
+		ds = memory.New()
 	case "postgres":
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
 	case "mysql":
