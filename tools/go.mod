@@ -1,6 +1,6 @@
 module github.com/openfga/openfga/tooling
 
-go 1.21
+go 1.21.7
 
 require go.uber.org/mock v0.4.0
 
