@@ -318,6 +318,15 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
+				if errors.Is(result.err, ErrCycleDetected) {
+					return &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolutionMetadata{
+							DatastoreQueryCount: dbReads,
+						},
+					}, nil
+				}
+
 				err = errors.Join(err, result.err)
 				continue
 			}
@@ -332,22 +341,12 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		}
 	}
 
-	var respErr error
-	if !errors.Is(err, ErrCycleDetected) {
-		respErr = err
-	}
-
-	allowed := true
-	if errors.Is(err, ErrCycleDetected) {
-		allowed = false
-	}
-
 	return &ResolveCheckResponse{
-		Allowed: allowed,
+		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
 		},
-	}, respErr
+	}, err
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -409,6 +408,15 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
+				if errors.Is(baseResult.err, ErrCycleDetected) {
+					return &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolutionMetadata{
+							DatastoreQueryCount: dbReads,
+						},
+					}, nil
+				}
+
 				baseErr = baseResult.err
 				continue
 			}
@@ -422,8 +430,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				subErr = subResult.err
-				continue
+				if !errors.Is(subResult.err, ErrCycleDetected) {
+					subErr = subResult.err
+					continue
+				}
 			}
 
 			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -437,8 +447,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		}
 	}
 
-	if (baseErr != nil && !errors.Is(baseErr, ErrCycleDetected)) &&
-		(subErr != nil && !errors.Is(subErr, ErrCycleDetected)) {
+	if baseErr != nil && subErr != nil {
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolutionMetadata{
@@ -447,13 +456,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		}, errors.Join(baseErr, subErr)
 	}
 
-	allowed := true
-	if errors.Is(baseErr, ErrCycleDetected) {
-		allowed = false
-	}
-
 	return &ResolveCheckResponse{
-		Allowed: allowed,
+		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
 		},
