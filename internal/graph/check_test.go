@@ -434,7 +434,7 @@ type document
 
 // TestCheckWithUnexpectedCycle tests the LocalChecker to make sure that if a model includes a cycle
 // that should have otherwise been invalid according to the typesystem, then the check resolution will
-// consider the cycle a falsy allowed result and not bubble-up a cycle detected error.
+// consider the cycle a falsey allowed result and not bubble-up a cycle detected error.
 func TestCheckWithUnexpectedCycle(t *testing.T) {
 	ds := memory.New()
 	defer ds.Close()
@@ -649,13 +649,13 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if_one_handler_is_truthy_and_others_are_falsy_return_allowed_true", func(t *testing.T) {
+	t.Run("if_one_handler_is_truthy_and_others_are_falsey_return_allowed_true", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("if_all_handlers_are_falsy_return_allowed_false", func(t *testing.T) {
+	t.Run("if_all_handlers_are_falsey_return_allowed_false", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
@@ -671,7 +671,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("if_a_handler_errors_but_other_handler_is_falsy_return_error_and_allowed_false", func(t *testing.T) {
+	t.Run("if_a_handler_errors_but_other_handler_is_falsey_return_error_and_allowed_false", func(t *testing.T) {
 		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrResolutionDepthExceeded
 		}
@@ -681,7 +681,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_falsy_return_allowed_false_with_a_nil_error", func(t *testing.T) {
+	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_falsey_return_allowed_false_with_a_nil_error", func(t *testing.T) {
 		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrCycleDetected
 		}
@@ -735,7 +735,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.Equal(t, uint32(5+1), resp.GetResolutionMetadata().DatastoreQueryCount)
 	})
 
-	t.Run("should_aggregate_DatastoreQueryCount_of_all_falsy_handlers", func(t *testing.T) {
+	t.Run("should_aggregate_DatastoreQueryCount_of_all_falsey_handlers", func(t *testing.T) {
 		handler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
 				Allowed: false,
