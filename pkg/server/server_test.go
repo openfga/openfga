@@ -166,7 +166,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ds := MustBootstrapDatastore(t, "postgres")
+	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
 
 	test.RunAllTests(t, ds)
 }
@@ -195,7 +195,7 @@ func TestServerWithMemoryDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ds := MustBootstrapDatastore(t, "memory")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	test.RunAllTests(t, ds)
 }
@@ -204,7 +204,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ds := MustBootstrapDatastore(t, "mysql")
+	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
 
 	test.RunAllTests(t, ds)
 }
@@ -1113,30 +1113,4 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
-}
-
-// MustBootstrapDatastore returns a datastore of the given engine. It cleans it up
-// after the test is done.
-func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
-
-	uri := testDatastore.GetConnectionURI(true)
-
-	var ds storage.OpenFGADatastore
-	var err error
-
-	switch engine {
-	case "memory":
-		ds = memory.New()
-	case "postgres":
-		ds, err = postgres.New(uri, sqlcommon.NewConfig())
-	case "mysql":
-		ds, err = mysql.New(uri, sqlcommon.NewConfig())
-	default:
-		t.Fatalf("'%s' is not a supported datastore engine", engine)
-	}
-	require.NoError(t, err)
-	t.Cleanup(ds.Close)
-
-	return ds
 }

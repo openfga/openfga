@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/storage/memory"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
@@ -45,7 +47,8 @@ func Index[E comparable](s []E, v E) int {
 	return -1
 }
 
-// MustBootstrapDatastore returns the datastore's container, the datastore, and the URI to connect to it
+// MustBootstrapDatastore returns the datastore's container, the datastore, and the URI to connect to it.
+// It automatically cleans up the container after the test finishes.
 func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, string) {
 	container := storagefixtures.RunDatastoreTestContainer(t, engine)
 
@@ -55,12 +58,14 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	var err error
 
 	switch engine {
+	case "memory":
+		ds = memory.New()
 	case "postgres":
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
 	default:
-		t.Fatalf("'%s' is not a supported datastore engine", engine)
+		t.Fatalf("unsupported datastore engine: %q", engine)
 	}
 	require.NoError(t, err)
 	t.Cleanup(ds.Close)
