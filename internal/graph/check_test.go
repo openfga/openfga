@@ -177,7 +177,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // to avoid test leaks, wait for the goroutine helper above
+		wg.Wait() // just to make sure to avoid test leaks
 	})
 
 	t.Run("return_allowed:false_if_subtract_handler_evaluated_before_context_cancelled", func(t *testing.T) {
@@ -197,7 +197,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // to avoid test leaks, wait for the goroutine helper above
+		wg.Wait() // just to make sure to avoid test leaks
 	})
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
@@ -344,7 +344,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 
-		wg.Wait() // to avoid test leaks, wait for the goroutine helper above
+		wg.Wait() // just to make sure to avoid test leaks
 	})
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
