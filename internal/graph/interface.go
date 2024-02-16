@@ -4,6 +4,8 @@ package graph
 
 import "context"
 
+type CheckResolverCloser func()
+
 // CheckResolver represents an interface that can be implemented to provide recursive resolution
 // of a Check.
 type CheckResolver interface {
