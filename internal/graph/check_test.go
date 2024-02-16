@@ -159,7 +159,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_allowed:false_if_base_handler_evaluated_before_context_deadline", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-		defer cancel()
+		t.Cleanup(cancel)
 
 		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
@@ -168,7 +168,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_allowed:false_if_base_handler_evaluated_before_context_cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		t.Cleanup(cancel)
 
 		var wg sync.WaitGroup
 
@@ -188,7 +188,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_allowed:false_if_subtract_handler_evaluated_before_context_cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		t.Cleanup(cancel)
 
 		var wg sync.WaitGroup
 
@@ -208,7 +208,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		defer cancel()
+		t.Cleanup(cancel)
 
 		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
@@ -222,7 +222,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		t.Cleanup(cancel)
 
 		var wg sync.WaitGroup
 
@@ -330,7 +330,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_allowed:false_if_falsy_handler_evaluated_before_context_deadline", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		defer cancel()
+		t.Cleanup(cancel)
 
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
@@ -339,7 +339,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_allowed:false_if_falsy_handler_evaluated_before_context_cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		t.Cleanup(cancel)
 
 		var wg sync.WaitGroup
 
@@ -359,7 +359,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		defer cancel()
+		t.Cleanup(cancel)
 
 		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
@@ -373,7 +373,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		t.Cleanup(cancel)
 
 		var wg sync.WaitGroup
 
