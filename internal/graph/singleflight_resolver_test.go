@@ -7,6 +7,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.uber.org/goleak"
 
 	"github.com/stretchr/testify/require"
 
@@ -52,6 +53,12 @@ type document
 
 	singleflightCheckResolver.SetDelegate(localCheckResolver)
 	localCheckResolver.SetDelegate(singleflightCheckResolver)
+
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+		singleflightCheckResolver.Close()
+		localCheckResolver.Close()
+	})
 
 	tupleKeys := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
@@ -123,6 +130,12 @@ relations
 	singleflightCheckResolver.SetDelegate(localCheckResolver)
 	localCheckResolver.SetDelegate(singleflightCheckResolver)
 
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+		singleflightCheckResolver.Close()
+		localCheckResolver.Close()
+	})
+
 	tupleKeys := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("module:a", "viewer", "user:anne"),
 		tuple.NewTupleKey("module:b", "viewer", "user:anne"),
@@ -191,6 +204,12 @@ relations
 	singleflightCheckResolver.SetDelegate(localCheckResolver)
 	localCheckResolver.SetDelegate(singleflightCheckResolver)
 
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+		singleflightCheckResolver.Close()
+		localCheckResolver.Close()
+	})
+
 	var wg sync.WaitGroup
 
 	for i := 0; i < 100; i++ {
@@ -237,7 +256,10 @@ relations
 	}
 }
 
-func TestSingleflightResolver(t *testing.T) {
+func TestSingleflightCheckResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	storeID := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model  
@@ -255,7 +277,6 @@ func TestSingleflightResolver(t *testing.T) {
 
 	t.Run("Check_evaluates_correctly", func(t *testing.T) {
 		ds := memory.New()
-		t.Cleanup(ds.Close)
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:1", "a1", "user:jon"),
 		})
@@ -263,16 +284,22 @@ func TestSingleflightResolver(t *testing.T) {
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
+		cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 		singleflightCheckResolver := NewSingleflightCheckResolver()
 		localCheckResolver := NewLocalChecker()
 
+		cycleDetectionCheckResolver.SetDelegate(singleflightCheckResolver)
 		singleflightCheckResolver.SetDelegate(localCheckResolver)
-		localCheckResolver.SetDelegate(singleflightCheckResolver)
+		localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
-		t.Cleanup(localCheckResolver.Close)
-		t.Cleanup(singleflightCheckResolver.Close)
+		t.Cleanup(func() {
+			cycleDetectionCheckResolver.Close()
+			localCheckResolver.Close()
+			singleflightCheckResolver.Close()
+			ds.Close()
+		})
 
-		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
 			ContextualTuples:   nil,
@@ -281,7 +308,7 @@ func TestSingleflightResolver(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 
-		resp, err = singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+		resp, err = cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("doc:2", "a4", "user:jon"),
 			ContextualTuples:   nil,
@@ -293,7 +320,6 @@ func TestSingleflightResolver(t *testing.T) {
 
 	t.Run("Check_with_singleflight_resolver_reduces_DB_query_count_when_compared_to_not_using_it", func(t *testing.T) {
 		ds := memory.New()
-		t.Cleanup(ds.Close)
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:2", "a1", "user:jon"),
 		})
@@ -301,19 +327,25 @@ func TestSingleflightResolver(t *testing.T) {
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
+		cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 		singleflightCheckResolver := NewSingleflightCheckResolver()
 		localCheckResolver := NewLocalChecker()
 
+		cycleDetectionCheckResolver.SetDelegate(singleflightCheckResolver)
 		singleflightCheckResolver.SetDelegate(localCheckResolver)
-		localCheckResolver.SetDelegate(singleflightCheckResolver)
+		localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
-		t.Cleanup(localCheckResolver.Close)
-		t.Cleanup(singleflightCheckResolver.Close)
+		t.Cleanup(func() {
+			cycleDetectionCheckResolver.Close()
+			localCheckResolver.Close()
+			singleflightCheckResolver.Close()
+			ds.Close()
+		})
 
 		// The results of the singleflight resolver are not deterministic.
 		// For better test reliability, the test is repeated a number of times
 		// and then assertions made within a reasonable threshold.
-		testIterations := 5
+		testIterations := 15
 
 		// We know that given this model and the specific tuples, that there are
 		// expected to be two DB reads when singleflight is not used. We then use
@@ -323,10 +355,9 @@ func TestSingleflightResolver(t *testing.T) {
 
 		expectedOptimizedNumDBReads := expectedNumDBReads - 1 // Expect singleflight to reduce DB calls by one (usually)
 
-		//var dbReadsWith uint32
 		var numFewerDBQueries int
 		for i := 0; i < testIterations; i++ {
-			resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+			resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:            storeID,
 				TupleKey:           tuple.NewTupleKey("doc:1", "a4", "user:jon"),
 				ContextualTuples:   nil,
@@ -342,48 +373,5 @@ func TestSingleflightResolver(t *testing.T) {
 		}
 
 		require.Greater(t, numFewerDBQueries, 0) //singleflight resolver will always result in fewer DB reads than without
-	})
-
-	t.Run("cyclic relationship detected", func(t *testing.T) {
-		ds := memory.New()
-
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "viewer3", "document:1#viewer3"),
-		})
-		require.NoError(t, err)
-
-		model := testutils.MustTransformDSLToProtoWithID(`model
-		schema 1.1
-	  
-	  type user
-	  
-	  type document
-		relations
-			define viewer1: [user, document#viewer1]
-			define viewer2: viewer1 or viewer2
-			define viewer3: viewer1 or viewer2`)
-
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
-
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-		singleflightCheckResolver := NewSingleflightCheckResolver()
-		localCheckResolver := NewLocalChecker()
-
-		singleflightCheckResolver.SetDelegate(localCheckResolver)
-		localCheckResolver.SetDelegate(singleflightCheckResolver)
-
-		t.Cleanup(localCheckResolver.Close)
-		t.Cleanup(singleflightCheckResolver.Close)
-
-		resp, err := singleflightCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
-			ContextualTuples:   nil,
-			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
-		})
-
-		require.ErrorIs(t, err, ErrCycleDetected)
-		require.Nil(t, resp)
 	})
 }
