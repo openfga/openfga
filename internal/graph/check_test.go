@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -59,6 +60,10 @@ var (
 )
 
 func TestExclusionCheckFuncReducer(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	concurrencyLimit := uint32(10)
@@ -241,6 +246,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 }
 
 func TestIntersectionCheckFuncReducer(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	concurrencyLimit := uint32(10)
