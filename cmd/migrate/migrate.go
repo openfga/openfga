@@ -3,6 +3,7 @@ package migrate
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
@@ -66,13 +67,14 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(verbose)
 
-	var driver, migrationsPath string
+	var driver, dialect, migrationsPath string
 	switch engine {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
+		dialect = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
 
 		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
@@ -90,6 +92,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	case "postgres":
 		driver = "pgx"
+		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir
 
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
@@ -113,7 +116,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
 
-	db, err := goose.OpenDBWithDriver(driver, uri)
+	db, err := sql.Open(driver, uri)
 	if err != nil {
 		log.Fatalf("failed to open a connection to the datastore: %v", err)
 	}
@@ -136,6 +139,11 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	}, policy)
 	if err != nil {
 		log.Fatalf("failed to initialize database connection: %v", err)
+	}
+
+	// TODO use goose.OpenDBWithDriver which already sets the dialect
+	if err := goose.SetDialect(dialect); err != nil {
+		log.Fatalf("failed to initialize the migrate command: %v", err)
 	}
 
 	goose.SetBaseFS(assets.EmbedMigrations)
