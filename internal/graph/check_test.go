@@ -616,12 +616,6 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if_all_handlers_are_falsy,_return_allowed:false", func(t *testing.T) {
-		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-	})
-
 	t.Run("if_a_handler_errors_but_other_handler_are_truthy,_return_allowed:true", func(t *testing.T) {
 		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrResolutionDepthExceeded
