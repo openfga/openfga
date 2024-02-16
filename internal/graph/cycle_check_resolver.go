@@ -27,7 +27,6 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
 	if req.VisitedPaths == nil {
