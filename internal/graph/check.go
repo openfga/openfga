@@ -269,7 +269,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				if result.err == ErrCycleDetected {
+				if errors.Is(result.err, ErrCycleDetected) {
 					continue
 				}
 				err = result.err
