@@ -642,7 +642,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		}
 
 		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
-		require.Error(t, err)
+		require.ErrorIs(t, ErrResolutionDepthExceeded, err))
 		require.False(t, resp.GetAllowed())
 	})
 
