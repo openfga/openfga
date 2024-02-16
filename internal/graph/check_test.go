@@ -122,7 +122,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 	})
 
 	t.Run("base_handler_with_cycle_subtract_handler_is_truthy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
