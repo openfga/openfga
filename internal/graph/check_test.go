@@ -602,31 +602,31 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		}, nil
 	}
 
-	t.Run("if no handlers, return allowed:false", func(t *testing.T) {
+	t.Run("if_no handlers,_return_allowed:false", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if one handler is truthy and others are falsy, return allowed:true", func(t *testing.T) {
+	t.Run("if_one_handler_is_truthy_and_others_are_falsy,_return_allowed:true", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("if all handlers are falsy, return allowed:false", func(t *testing.T) {
+	t.Run("if_all_handlers_are_falsy,_return_allowed:false", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if all handlers are falsy, return allowed:false", func(t *testing.T) {
+	t.Run("if_all_handlers_are_falsy,_return_allowed:false", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if a handler errors but other handler are truthy, return allowed:true", func(t *testing.T) {
+	t.Run("if_a_handler_errors_but_other_handler_are_truthy,_return_allowed:true", func(t *testing.T) {
 		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrResolutionDepthExceeded
 		}
@@ -636,7 +636,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("if a handler errors but other handler is falsy, return error and allowed:false", func(t *testing.T) {
+	t.Run("if_a_handler_errors_but_other_handler_is_falsy,_return_error_and_allowed:false", func(t *testing.T) {
 		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrResolutionDepthExceeded
 		}
@@ -646,7 +646,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if a handler errors with cycle but other handler is falsy, return allowed:false with a nil error", func(t *testing.T) {
+	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_falsy,_return_allowed:false_with_a_nil_error", func(t *testing.T) {
 		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrCycleDetected
 		}
@@ -656,7 +656,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("if a handler errors with cycle but other handler is truthy, return allowed:true with a nil error", func(t *testing.T) {
+	t.Run("if_a handler_errors_with_cycle_but_other_handler_is_truthy,_return_allowed:true_with_a_nil_error", func(t *testing.T) {
 		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, ErrCycleDetected
 		}
@@ -666,7 +666,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("should aggregate DatastoreQueryCount of non-error handlers", func(t *testing.T) {
+	t.Run("should_aggregate_DatastoreQueryCount_of_non-error handlers", func(t *testing.T) {
 		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
 			return &ResolveCheckResponse{
@@ -700,7 +700,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.Equal(t, uint32(5+1), resp.GetResolutionMetadata().DatastoreQueryCount)
 	})
 
-	t.Run("should aggregate DatastoreQueryCount of all falsy handler", func(t *testing.T) {
+	t.Run("should_aggregate_DatastoreQueryCount_of_all_falsy_handlers", func(t *testing.T) {
 		handler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
 				Allowed: false,
@@ -716,7 +716,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.Equal(t, uint32(3*3), resp.GetResolutionMetadata().DatastoreQueryCount)
 	})
 
-	t.Run("should return allowed:true if truthy handler evaluated before handler cancels via context", func(t *testing.T) {
+	t.Run("should_return_allowed:true_if_truthy_handler_evaluated_before_handler_cancels_via_context", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 		t.Cleanup(cancel)
 
@@ -724,7 +724,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
 	})
-	t.Run("should handle cancellations through context", func(t *testing.T) {
+	t.Run("should_handle_cancellations_through_context", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 		t.Cleanup(cancel)
 
@@ -734,6 +734,22 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		}
 
 		resp, err := union(ctx, concurrencyLimit, slowHandler, falseHandler)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("should_handle_context_timeouts_even_with_eventual_truthy_handler", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(25 * time.Millisecond)
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.False(t, resp.GetAllowed())
 	})
