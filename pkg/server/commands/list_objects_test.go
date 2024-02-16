@@ -11,7 +11,7 @@ import (
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		q, err := NewListObjectsQuery(nil, graph.NewLocalChecker())
+		q, err := NewListObjectsQuery(nil, graph.NewLocalCheckerWithCycleDetection())
 		require.Nil(t, q)
 		require.Error(t, err)
 	})

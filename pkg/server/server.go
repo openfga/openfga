@@ -297,15 +297,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		opt(s)
 	}
 
-	singleflightCheckResolver := graph.NewSingleflightCheckResolver()
-	s.checkResolver = singleflightCheckResolver
+	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
+	s.checkResolver = cycleDetectionCheckResolver
 
 	localChecker := graph.NewLocalChecker(
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	singleflightCheckResolver.SetDelegate(localChecker)
-	localChecker.SetDelegate(singleflightCheckResolver)
+	cycleDetectionCheckResolver.SetDelegate(localChecker)
+	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
@@ -320,7 +320,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.cachedCheckResolverCloser = cachedCheckResolver.Close
 
 		cachedCheckResolver.SetDelegate(localChecker)
-		singleflightCheckResolver.SetDelegate(cachedCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 	}
 
 	if s.datastore == nil {

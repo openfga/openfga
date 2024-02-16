@@ -39,7 +39,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker()
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
 
 		model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
@@ -105,8 +106,8 @@ condition condX(x: int) {
 	x < 100
 }
 `)
-
-		checker := NewLocalChecker()
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
 
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
@@ -153,7 +154,8 @@ condition condX(x: int) {
 		}
 		`)
 
-		checker := NewLocalChecker()
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
 
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
@@ -193,7 +195,8 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(WithResolveNodeBreadthLimit(concurrencyLimit))
+	checker := NewLocalCheckerWithCycleDetection(WithResolveNodeBreadthLimit(concurrencyLimit))
+	t.Cleanup(checker.Close)
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
@@ -387,9 +390,10 @@ type document
 		},
 	}
 
-	checker := NewLocalChecker(
+	checker := NewLocalCheckerWithCycleDetection(
 		WithMaxConcurrentReads(1),
 	)
+	t.Cleanup(checker.Close)
 
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
@@ -492,7 +496,8 @@ type resource
 		},
 	}
 
-	checker := NewLocalChecker()
+	checker := NewLocalCheckerWithCycleDetection()
+	t.Cleanup(checker.Close)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -568,7 +573,8 @@ condition condition1(param1: string) {
 	err = ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	checker := NewLocalChecker()
+	checker := NewLocalCheckerWithCycleDetection()
+	t.Cleanup(checker.Close)
 
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),

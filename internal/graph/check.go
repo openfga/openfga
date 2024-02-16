@@ -143,8 +143,10 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
-// NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
-// request locally.
+// NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check.
+// The constructed LocalChecker is not wrapped with cycle detection. Developers
+// wanting a LocalChecker without other wrapped layers (e.g caching and others)
+// are encouraged to use [[NewLocalCheckerWithCycleDetection]] instead.
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
@@ -158,6 +160,18 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	}
 
 	return checker
+}
+
+// NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
+// which can be used to evaluate a Check request locally with cycle detection enabled.
+func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
+	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	localCheckResolver := NewLocalChecker(opts...)
+
+	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+	return cycleDetectionCheckResolver
 }
 
 // SetDelegate sets this LocalChecker's dispatch delegate.
@@ -472,18 +486,6 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	if req.VisitedPaths != nil {
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
-			return nil, ErrCycleDetected
-		}
-
-		req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())] = struct{}{}
-	} else {
-		req.VisitedPaths = map[string]struct{}{
-			tuple.TupleKeyToString(req.GetTupleKey()): {},
-		}
-	}
-
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -659,10 +661,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				if usersetRelation != "" {
 					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
 
-					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-						return nil, ErrCycleDetected
-					}
-
 					handlers = append(handlers, c.dispatch(
 						ctx,
 						&ResolveCheckRequest{
@@ -732,10 +730,6 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 			rewrite.ComputedUserset.GetRelation(),
 			req.TupleKey.GetUser(),
 		)
-
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(rewrittenTupleKey)]; visited {
-			return nil, ErrCycleDetected
-		}
 
 		return c.dispatch(
 			ctx,
@@ -856,10 +850,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				if errors.Is(err, typesystem.ErrRelationUndefined) {
 					continue // skip computed relations on tupleset relationships if they are undefined
 				}
-			}
-
-			if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-				return nil, ErrCycleDetected
 			}
 
 			handlers = append(handlers, c.dispatch(
