@@ -5212,12 +5212,18 @@ tests:
           - user: document:1#allowed
             relation: viewer
             object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2002
+            expectation: []
   - name: list_objects_with_subcheck_resolution_depth_exceeded
     stages:
       - model: |
