@@ -112,18 +112,18 @@ type repo
 			request := &openfgav1.WriteAssertionsRequest{
 				StoreId:              store,
 				Assertions:           test.assertions,
-				AuthorizationModelId: modelID.AuthorizationModelId,
+				AuthorizationModelId: modelID.GetAuthorizationModelId(),
 			}
 
 			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
 			_, err = writeAssertionCmd.Execute(ctx, request)
 			require.NoError(t, err)
 			query := commands.NewReadAssertionsQuery(datastore)
-			actualResponse, actualError := query.Execute(ctx, store, modelID.AuthorizationModelId)
+			actualResponse, actualError := query.Execute(ctx, store, modelID.GetAuthorizationModelId())
 			require.NoError(t, actualError)
 
 			expectedResponse := &openfgav1.ReadAssertionsResponse{
-				AuthorizationModelId: modelID.AuthorizationModelId,
+				AuthorizationModelId: modelID.GetAuthorizationModelId(),
 				Assertions:           test.assertions,
 			}
 			if diff := cmp.Diff(expectedResponse, actualResponse, protocmp.Transform()); diff != "" {
@@ -174,7 +174,7 @@ type repo
 					Expectation: false,
 				},
 			},
-			modelID: modelID.AuthorizationModelId,
+			modelID: modelID.GetAuthorizationModelId(),
 			err: serverErrors.ValidationError(
 				fmt.Errorf("relation 'repo#invalidrelation' not found"),
 			),

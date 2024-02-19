@@ -170,7 +170,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 			cmd := NewWriteCommand(mockDatastore)
 
-			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
+			if test.writes != nil && len(test.writes.GetTupleKeys()) > 0 {
 				mockDatastore.EXPECT().
 					ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(&openfgav1.AuthorizationModel{
@@ -475,7 +475,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			err := cmd.validateWriteRequest(context.Background(), &openfgav1.WriteRequest{
 				StoreId:              ulid.Make().String(),
-				AuthorizationModelId: model.Id,
+				AuthorizationModelId: model.GetId(),
 				Writes: &openfgav1.WriteRequestWrites{
 					TupleKeys: []*openfgav1.TupleKey{
 						test.tuple,

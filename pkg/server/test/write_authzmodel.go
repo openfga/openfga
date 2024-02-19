@@ -1062,7 +1062,7 @@ type other
 			require.Equal(t, test.errCode, status.Code())
 
 			if err == nil {
-				_, err = ulid.Parse(resp.AuthorizationModelId)
+				_, err = ulid.Parse(resp.GetAuthorizationModelId())
 				require.NoError(t, err)
 			}
 		})

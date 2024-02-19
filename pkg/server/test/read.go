@@ -377,14 +377,14 @@ type repo
 			require.NoError(t, err)
 
 			if test.response.Tuples != nil {
-				require.Equal(t, len(test.response.Tuples), len(resp.Tuples))
+				require.Equal(t, len(test.response.GetTuples()), len(resp.GetTuples()))
 
-				for i, responseTuple := range test.response.Tuples {
-					responseTupleKey := responseTuple.Key
-					actualTupleKey := resp.Tuples[i].Key
-					require.Equal(t, responseTupleKey.Object, actualTupleKey.Object)
-					require.Equal(t, responseTupleKey.Relation, actualTupleKey.Relation)
-					require.Equal(t, responseTupleKey.User, actualTupleKey.User)
+				for i, responseTuple := range test.response.GetTuples() {
+					responseTupleKey := responseTuple.GetKey()
+					actualTupleKey := resp.GetTuples()[i].GetKey()
+					require.Equal(t, responseTupleKey.GetObject(), actualTupleKey.GetObject())
+					require.Equal(t, responseTupleKey.GetRelation(), actualTupleKey.GetRelation())
+					require.Equal(t, responseTupleKey.GetUser(), actualTupleKey.GetUser())
 				}
 			}
 		})
@@ -573,23 +573,23 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	firstResponse, err := cmd.Execute(ctx, firstRequest)
 	require.NoError(t, err)
 
-	require.Len(t, firstResponse.Tuples, 1)
-	require.NotEmpty(t, firstResponse.ContinuationToken)
+	require.Len(t, firstResponse.GetTuples(), 1)
+	require.NotEmpty(t, firstResponse.GetContinuationToken())
 
 	var receivedTuples []*openfgav1.TupleKey
-	for _, tuple := range firstResponse.Tuples {
-		receivedTuples = append(receivedTuples, tuple.Key)
+	for _, tuple := range firstResponse.GetTuples() {
+		receivedTuples = append(receivedTuples, tuple.GetKey())
 	}
 
-	secondRequest := &openfgav1.ReadRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
+	secondRequest := &openfgav1.ReadRequest{StoreId: store, ContinuationToken: firstResponse.GetContinuationToken()}
 	secondResponse, err := cmd.Execute(ctx, secondRequest)
 	require.NoError(t, err)
 
-	require.Len(t, secondResponse.Tuples, 2)
-	require.Empty(t, secondResponse.ContinuationToken)
+	require.Len(t, secondResponse.GetTuples(), 2)
+	require.Empty(t, secondResponse.GetContinuationToken())
 
-	for _, tuple := range secondResponse.Tuples {
-		receivedTuples = append(receivedTuples, tuple.Key)
+	for _, tuple := range secondResponse.GetTuples() {
+		receivedTuples = append(receivedTuples, tuple.GetKey())
 	}
 
 	cmpOpts := []cmp.Option{

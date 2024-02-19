@@ -140,7 +140,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
 
-	relationInformation := relationsForObject[tk.Relation]
+	relationInformation := relationsForObject[tk.GetRelation()]
 
 	user := tk.GetUser()
 
@@ -178,22 +178,22 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 
 // ValidateCondition enforces conditions on a relationship tuple
 func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
-	objectType := tuple.GetType(tk.Object)
-	userType := tuple.GetType(tk.User)
-	userRelation := tuple.GetRelation(tk.User)
+	objectType := tuple.GetType(tk.GetObject())
+	userType := tuple.GetType(tk.GetUser())
+	userRelation := tuple.GetRelation(tk.GetUser())
 
-	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.Relation)
+	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.GetRelation())
 	if err != nil {
 		return err
 	}
 
-	if tk.Condition == nil {
+	if tk.GetCondition() == nil {
 		for _, directlyRelatedType := range typeRestrictions {
-			if directlyRelatedType.Condition != "" {
+			if directlyRelatedType.GetCondition() != "" {
 				continue
 			}
 
-			if directlyRelatedType.Type != userType {
+			if directlyRelatedType.GetType() != userType {
 				continue
 			}
 
@@ -202,7 +202,7 @@ func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 					continue
 				}
 
-				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.User) {
+				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
 					continue
 				}
 			}
@@ -215,7 +215,7 @@ func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	condition, ok := typesys.GetConditions()[tk.Condition.Name]
+	condition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
 	if !ok {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
@@ -224,7 +224,7 @@ func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 	validCondition := false
 	for _, directlyRelatedType := range typeRestrictions {
-		if directlyRelatedType.Type == userType && directlyRelatedType.Condition == tk.Condition.Name {
+		if directlyRelatedType.GetType() == userType && directlyRelatedType.GetCondition() == tk.GetCondition().GetName() {
 			validCondition = true
 			break
 		}

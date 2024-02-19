@@ -209,7 +209,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 			if i >= 1 {
 				previousTest := testCasesInOrder[i-1]
 				if previousTest.saveContinuationTokenForNextTest {
-					previousToken := res.ContinuationToken
+					previousToken := res.GetContinuationToken()
 					test.request.ContinuationToken = previousToken
 				}
 			}
@@ -220,13 +220,13 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, res)
-				if diff := cmp.Diff(test.expectedChanges, res.Changes, ignoreTimestampOpts, protocmp.Transform()); diff != "" {
+				if diff := cmp.Diff(test.expectedChanges, res.GetChanges(), ignoreTimestampOpts, protocmp.Transform()); diff != "" {
 					t.Errorf("tuple change mismatch (-want +got):\n%s", diff)
 				}
 				if test.expectEmptyContinuationToken {
-					require.Empty(t, res.ContinuationToken)
+					require.Empty(t, res.GetContinuationToken())
 				} else {
-					require.NotEmpty(t, res.ContinuationToken)
+					require.NotEmpty(t, res.GetContinuationToken())
 				}
 			}
 		})
@@ -246,7 +246,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore st
 	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", res1.GetContinuationToken(), storage.DefaultPageSize))
 	require.NoError(t, err)
 
-	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
+	require.Equal(t, res1.GetContinuationToken(), res2.GetContinuationToken())
 }
 
 func TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -262,12 +262,12 @@ func TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t *testing.T, data
 	// without type
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	require.NoError(t, err)
-	require.Len(t, res1.Changes, totalTuplesToWrite)
+	require.Len(t, res1.GetChanges(), totalTuplesToWrite)
 
 	// with type
 	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "repo", "", storage.DefaultPageSize))
 	require.NoError(t, err)
-	require.Len(t, res2.Changes, totalTuplesToWrite)
+	require.Len(t, res2.GetChanges(), totalTuplesToWrite)
 }
 
 func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {

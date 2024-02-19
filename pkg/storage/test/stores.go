@@ -54,10 +54,10 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	t.Run("get_store_succeeds", func(t *testing.T) {
 		store := stores[0]
-		gotStore, err := datastore.GetStore(ctx, store.Id)
+		gotStore, err := datastore.GetStore(ctx, store.GetId())
 		require.NoError(t, err)
-		require.Equal(t, store.Id, gotStore.Id)
-		require.Equal(t, store.Name, gotStore.Name)
+		require.Equal(t, store.GetId(), gotStore.GetId())
+		require.Equal(t, store.GetName(), gotStore.GetName())
 	})
 
 	t.Run("get_non-existent_store_returns_not_found", func(t *testing.T) {
@@ -67,17 +67,17 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	t.Run("delete_store_succeeds", func(t *testing.T) {
 		store := stores[1]
-		err := datastore.DeleteStore(ctx, store.Id)
+		err := datastore.DeleteStore(ctx, store.GetId())
 		require.NoError(t, err)
 
 		// Should not be able to get the store now.
-		_, err = datastore.GetStore(ctx, store.Id)
+		_, err = datastore.GetStore(ctx, store.GetId())
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("deleted_store_does_not_appear_in_list", func(t *testing.T) {
 		store := stores[2]
-		err := datastore.DeleteStore(ctx, store.Id)
+		err := datastore.DeleteStore(ctx, store.GetId())
 		require.NoError(t, err)
 
 		// Store id should not appear in the list of store ids.
@@ -85,7 +85,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		for _, s := range gotStores {
-			require.NotEqual(t, store.Id, s.Id)
+			require.NotEqual(t, store.GetId(), s.GetId())
 		}
 	})
 }

@@ -174,7 +174,7 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 		if err != nil {
 			return nil, &ParameterTypeError{
 				Condition: e.Name,
-				Cause:     fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.TypeName, err),
+				Cause:     fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.GetTypeName(), err),
 			}
 		}
 

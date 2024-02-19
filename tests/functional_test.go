@@ -570,8 +570,8 @@ func GRPCCreateStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
 			if test.output.errorCode == codes.OK {
-				require.Equal(t, test.input.Name, response.Name)
-				_, err = ulid.Parse(response.Id)
+				require.Equal(t, test.input.GetName(), response.GetName())
+				_, err = ulid.Parse(response.GetId())
 				require.NoError(t, err)
 			}
 		})
@@ -585,12 +585,12 @@ func GRPCGetStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	require.NoError(t, err)
 
 	resp2, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
-		StoreId: resp1.Id,
+		StoreId: resp1.GetId(),
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, resp1.Name, resp2.Name)
-	require.Equal(t, resp1.Id, resp2.Id)
+	require.Equal(t, resp1.GetName(), resp2.GetName())
+	require.Equal(t, resp1.GetId(), resp2.GetId())
 
 	resp3, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
 		StoreId: ulid.Make().String(),
@@ -616,20 +616,20 @@ func TestGRPCListStores(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NotEmpty(t, response1.ContinuationToken)
+	require.NotEmpty(t, response1.GetContinuationToken())
 
 	var received []*openfgav1.Store
-	received = append(received, response1.Stores...)
+	received = append(received, response1.GetStores()...)
 
 	response2, err := client.ListStores(context.Background(), &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(2),
-		ContinuationToken: response1.ContinuationToken,
+		ContinuationToken: response1.GetContinuationToken(),
 	})
 	require.NoError(t, err)
 
-	require.Empty(t, response2.ContinuationToken)
+	require.Empty(t, response2.GetContinuationToken())
 
-	received = append(received, response2.Stores...)
+	received = append(received, response2.GetStores()...)
 
 	require.Len(t, received, 2)
 	// todo: add assertions on received Store objects
@@ -642,19 +642,19 @@ func GRPCDeleteStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	require.NoError(t, err)
 
 	response2, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
-		StoreId: response1.Id,
+		StoreId: response1.GetId(),
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, response1.Id, response2.Id)
+	require.Equal(t, response1.GetId(), response2.GetId())
 
 	_, err = client.DeleteStore(context.Background(), &openfgav1.DeleteStoreRequest{
-		StoreId: response1.Id,
+		StoreId: response1.GetId(),
 	})
 	require.NoError(t, err)
 
 	response3, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
-		StoreId: response1.Id,
+		StoreId: response1.GetId(),
 	})
 	require.Nil(t, response3)
 
@@ -1344,11 +1344,11 @@ type user`,
 		t.Run(test.name, func(t *testing.T) {
 			if test.testData != nil {
 				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-					StoreId:         test.input.StoreId,
+					StoreId:         test.input.GetStoreId(),
 					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).GetTypeDefinitions(),
 				})
-				test.input.Id = modelResp.AuthorizationModelId
+				test.input.Id = modelResp.GetAuthorizationModelId()
 				require.NoError(t, err)
 			}
 			_, err := client.ReadAuthorizationModel(context.Background(), test.input)
@@ -1426,17 +1426,17 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, client openfgav1.OpenFGAServi
 	})
 	require.NoError(t, err)
 
-	require.Len(t, resp1.AuthorizationModels, 1)
-	require.NotEmpty(t, resp1.ContinuationToken)
+	require.Len(t, resp1.GetAuthorizationModels(), 1)
+	require.NotEmpty(t, resp1.GetContinuationToken())
 
 	resp2, err := client.ReadAuthorizationModels(context.Background(), &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           storeID,
-		ContinuationToken: resp1.ContinuationToken,
+		ContinuationToken: resp1.GetContinuationToken(),
 	})
 	require.NoError(t, err)
 
-	require.Len(t, resp2.AuthorizationModels, 1)
-	require.Empty(t, resp2.ContinuationToken)
+	require.Len(t, resp2.GetAuthorizationModels(), 1)
+	require.Empty(t, resp2.GetContinuationToken())
 }
 
 func GRPCWriteAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
@@ -1555,7 +1555,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServi
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
 			if test.output.errorCode == codes.OK {
-				_, err = ulid.Parse(response.AuthorizationModelId)
+				_, err = ulid.Parse(response.GetAuthorizationModelId())
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
@@ -1733,11 +1733,11 @@ type document
 		t.Run(test.name, func(t *testing.T) {
 			if test.testData != nil {
 				modelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-					StoreId:         test.input.StoreId,
+					StoreId:         test.input.GetStoreId(),
 					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.testData.model).GetTypeDefinitions(),
 				})
-				test.input.AuthorizationModelId = modelResp.AuthorizationModelId
+				test.input.AuthorizationModelId = modelResp.GetAuthorizationModelId()
 				require.NoError(t, err)
 			}
 			_, err := client.WriteAssertions(context.Background(), test.input)

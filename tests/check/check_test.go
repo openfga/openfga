@@ -97,8 +97,8 @@ type document
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(t, err)
 
@@ -355,13 +355,13 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: tuples,
 		},
@@ -373,7 +373,7 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 		})
 
@@ -394,13 +394,13 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: tuples,
 		},
@@ -412,7 +412,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 			Trace:                true,
 		})
@@ -434,8 +434,8 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 
@@ -443,7 +443,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	for i := 0; i < 1000; i++ {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
@@ -456,7 +456,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	// one of those usersets gives access to the repo
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
@@ -468,7 +468,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	// add direct access to the repo
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
@@ -482,7 +482,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "admin", "user:anne"),
 		})
 
@@ -503,8 +503,8 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 
@@ -513,12 +513,12 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		check, err := client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			// users can't be direct owners of repos
 			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "owner", "user:anne"),
 		})
 
-		require.False(b, check.Allowed)
+		require.False(b, check.GetAllowed())
 		require.NoError(b, err)
 	}
 }
@@ -552,7 +552,7 @@ type document
 	for i := 0; i < 1000; i++ {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					{Object: fmt.Sprintf("group:%d", i), Relation: "member", User: "user:anne"},
@@ -565,7 +565,7 @@ type document
 	// one of those usersets gives access to document:budget
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "document:budget", Relation: "viewer", User: "group:999#member"},
@@ -598,11 +598,11 @@ type document
 	for i := 0; i < b.N; i++ {
 		check, err := client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 		})
 
-		require.False(b, check.Allowed)
+		require.False(b, check.GetAllowed())
 		require.NoError(b, err)
 	}
 }
@@ -630,7 +630,7 @@ condition password(p: string) {
 	require.NoError(b, err)
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "password", nil),
@@ -649,12 +649,12 @@ condition password(p: string) {
 	for i := 0; i < b.N; i++ {
 		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
 			Context:              contextStruct,
 		})
 		require.NoError(b, err)
-		require.True(b, resp.Allowed)
+		require.True(b, resp.GetAllowed())
 	}
 }
 
@@ -681,7 +681,7 @@ condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t
 	require.NoError(b, err)
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "complex", nil),
@@ -707,11 +707,11 @@ condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t
 	for i := 0; i < b.N; i++ {
 		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
 			Context:              contextStruct,
 		})
 		require.NoError(b, err)
-		require.True(b, resp.Allowed)
+		require.True(b, resp.GetAllowed())
 	}
 }

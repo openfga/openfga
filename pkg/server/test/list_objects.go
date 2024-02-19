@@ -29,7 +29,7 @@ type mockStreamServer struct {
 }
 
 func (x *mockStreamServer) Send(m *openfgav1.StreamedListObjectsResponse) error {
-	x.channel <- m.Object
+	x.channel <- m.GetObject()
 	return nil
 }
 

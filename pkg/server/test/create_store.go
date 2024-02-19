@@ -35,14 +35,14 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 			resp, err := commands.NewCreateStoreCommand(datastore).Execute(ctx, test.request)
 			require.NoError(t, err)
 
-			require.Equal(t, test.request.Name, resp.Name)
+			require.Equal(t, test.request.GetName(), resp.GetName())
 
-			_, err = ulid.Parse(resp.Id)
+			_, err = ulid.Parse(resp.GetId())
 			require.NoError(t, err)
 
-			require.NotEmpty(t, resp.CreatedAt)
-			require.NotEmpty(t, resp.UpdatedAt)
-			require.Equal(t, resp.CreatedAt, resp.UpdatedAt)
+			require.NotEmpty(t, resp.GetCreatedAt())
+			require.NotEmpty(t, resp.GetUpdatedAt())
+			require.Equal(t, resp.GetCreatedAt(), resp.GetUpdatedAt())
 		})
 	}
 }

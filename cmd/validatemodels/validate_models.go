@@ -108,16 +108,16 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 		// validate each store
 		for _, store := range stores {
-			latestModelID, err := db.FindLatestAuthorizationModelID(ctx, store.Id)
+			latestModelID, err := db.FindLatestAuthorizationModelID(ctx, store.GetId())
 			if err != nil {
-				fmt.Printf("no models in store %s \n", store.Id)
+				fmt.Printf("no models in store %s \n", store.GetId())
 			}
 
 			continuationTokenModels := ""
 
 			for {
 				// fetch a page of models for that store
-				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.Id, storage.PaginationOptions{
+				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.GetId(), storage.PaginationOptions{
 					PageSize: 100,
 					From:     continuationTokenModels,
 				})
@@ -130,9 +130,9 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 					_, err := typesystem.NewAndValidate(context.Background(), model)
 
 					validationResult := validationResult{
-						StoreID:       store.Id,
-						ModelID:       model.Id,
-						IsLatestModel: model.Id == latestModelID,
+						StoreID:       store.GetId(),
+						ModelID:       model.GetId(),
+						IsLatestModel: model.GetId() == latestModelID,
 					}
 
 					if err != nil {

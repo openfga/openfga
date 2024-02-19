@@ -1338,8 +1338,8 @@ type org
 
 			cmd := commands.NewWriteCommand(datastore)
 			test.request.StoreId = store
-			if test.request.AuthorizationModelId == "" {
-				test.request.AuthorizationModelId = test.model.Id
+			if test.request.GetAuthorizationModelId() == "" {
+				test.request.AuthorizationModelId = test.model.GetId()
 			}
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
