@@ -8,11 +8,11 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1
-	github.com/docker/docker v25.0.2+incompatible
+	github.com/docker/docker v25.0.3+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
-	github.com/google/cel-go v0.19.0
+	github.com/google/cel-go v0.20.0
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
@@ -35,7 +35,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.8.4
-	github.com/tidwall/gjson v1.17.0
+	github.com/tidwall/gjson v1.17.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.48.0
 	go.opentelemetry.io/otel v1.23.1
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.23.1
@@ -47,7 +47,7 @@ require (
 	go.uber.org/zap v1.26.0
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
 	golang.org/x/sync v0.6.0
-	google.golang.org/grpc v1.61.0
+	google.golang.org/grpc v1.61.1
 	google.golang.org/protobuf v1.32.0
 	sigs.k8s.io/yaml v1.4.0
 )
