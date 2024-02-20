@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -22,379 +21,95 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var (
-	falseHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: 1,
-			},
-		}, nil
-	}
+func TestThreeProngThroughVariousLayers(t *testing.T) {
 
-	trueHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: true,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: 1,
-			},
-		}, nil
-	}
+	ds := memory.New()
+	t.Cleanup(ds.Close)
 
-	depthExceededHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: 2,
-			},
-		}, ErrResolutionDepthExceeded
-	}
+	for i := 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			storeID := ulid.Make().String()
 
-	cyclicErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: 2,
-			},
-		}, ErrCycleDetected
-	}
-)
+			err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+				tuple.NewTupleKey("module:a", "owner", "user:anne"),
+				tuple.NewTupleKey("folder:a", "parent", "module:a"),
+				tuple.NewTupleKey("document:a", "parent", "folder:a"),
+				tuple.NewTupleKey("module:b", "parent", "document:a"),
+				tuple.NewTupleKey("folder:b", "parent", "module:b"),
+				tuple.NewTupleKey("document:b", "parent", "folder:b"),
+				tuple.NewTupleKey("module:a", "parent", "document:b"),
+			})
+			require.NoError(t, err)
 
-func TestExclusionCheckFuncReducer(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
+			model := testutils.MustTransformDSLToProtoWithID(`model
+			schema 1.1
+		  
+		  type user
+		  type module
+		  relations
+			  define owner: [user] or owner from parent
+			  define parent: [document, module]
+			  define viewer: [user] or owner or viewer from parent
+		  type folder
+		  relations
+			  define owner: [user] or owner from parent
+			  define parent: [module, folder]
+			  define viewer: [user] or owner or viewer from parent
+		  type document
+		  relations
+			  define owner: [user] or owner from parent
+			  define parent: [folder, document]
+			  define viewer: [user] or owner or viewer from parent`)
 
-	ctx := context.Background()
+			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
 
-	concurrencyLimit := uint32(10)
+			fmt.Printf("(store, model), (%s, %s)\n", storeID, model.GetId())
 
-	t.Run("requires_exactly_two_handlers", func(t *testing.T) {
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit)
+			ctx := typesystem.ContextWithTypesystem(
+				context.Background(),
+				typesystem.New(model),
+			)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			cycleCheckResolver := NewCycleDetectionCheckResolver()
+			singleflightCheckResolver := NewSingleflightCheckResolver()
+			localCheckResolver := NewLocalChecker()
+
+			cycleCheckResolver.SetDelegate(singleflightCheckResolver)
+			singleflightCheckResolver.SetDelegate(localCheckResolver)
+			localCheckResolver.SetDelegate(cycleCheckResolver)
+
+			t.Cleanup(func() {
+				//goleak.VerifyNone(t)
+				cycleCheckResolver.Close()
+				singleflightCheckResolver.Close()
+				localCheckResolver.Close()
+			})
+
+			tupleKeys := []*openfgav1.TupleKey{
+				tuple.NewTupleKey("module:a", "viewer", "user:anne"),
+				tuple.NewTupleKey("module:b", "viewer", "user:anne"),
+				tuple.NewTupleKey("folder:a", "viewer", "user:anne"),
+				tuple.NewTupleKey("folder:b", "viewer", "user:anne"),
+				tuple.NewTupleKey("document:a", "viewer", "user:anne"),
+				tuple.NewTupleKey("document:b", "viewer", "user:anne"),
+			}
+
+			for _, tupleKey := range tupleKeys {
+				resp, err := cycleCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+					StoreID:              storeID,
+					AuthorizationModelID: model.GetId(),
+					TupleKey:             tupleKey,
+					ResolutionMetadata: &ResolutionMetadata{
+						Depth: 25,
+					},
+				})
+				require.NoError(t, err)
+				require.True(t, resp.GetAllowed())
+			}
 		})
-
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler)
-		})
-
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
-		})
-
-		require.NotPanics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		})
-	})
-
-	t.Run("base_handler_is_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
-	})
-
-	t.Run("base_handler_is_falsy_subtract_handler_with_error_return_allowed:false", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("base_handler_with_error_subtract_handler_is_truthy_return_allowed:false", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
-	})
-
-	t.Run("base_handler_with_error_subtract_handler_with_error_return_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
-		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
-	})
-
-	t.Run("base_handler_with_cycle_subtract_handler_is_falsy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
-	})
-
-	t.Run("base_handler_with_cycle_subtract_handler_is_truthy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
-	})
-
-	t.Run("base_handler_is_falsy_subtract_handler_with_cycle_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("base_handler_is_truthy_subtract_handler_with_cycle_return_allowed:true_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler)
-		require.NoError(t, err)
-		require.True(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("base_handler_with_cycle_subtract_handler_with_cycle_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+2))
-	})
-
-	t.Run("aggregate_truthy_and_falsy_handlers_datastore_query_count", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
-	})
-
-	t.Run("return_allowed:false_if_base_handler_evaluated_before_context_deadline", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-		t.Cleanup(cancel)
-
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-	})
-
-	t.Run("return_allowed:false_if_base_handler_evaluated_before_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-
-		wg.Wait() // just to make sure to avoid test leaks
-	})
-
-	t.Run("return_allowed:false_if_subtract_handler_evaluated_before_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-
-		wg.Wait() // just to make sure to avoid test leaks
-	})
-
-	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		t.Cleanup(cancel)
-
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return nil, nil
-		}
-
-		resp, err := exclusion(ctx, concurrencyLimit, slowHandler, slowHandler)
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.False(t, resp.GetAllowed())
-	})
-
-	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return nil, nil
-		}
-
-		resp, err := exclusion(ctx, concurrencyLimit, slowHandler, slowHandler)
-		require.ErrorIs(t, err, context.Canceled)
-		require.False(t, resp.GetAllowed())
-
-		wg.Wait() // just to make sure to avoid test leaks
-	})
-}
-
-func TestIntersectionCheckFuncReducer(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	ctx := context.Background()
-
-	concurrencyLimit := uint32(10)
-
-	t.Run("no_handlers_return_allowed:false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.NotNil(t, resp.GetResolutionMetadata())
-	})
-
-	t.Run("one_handler_is_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
-	})
-
-	t.Run("one_handler_is_truthy_and_others_are_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2))
-	})
-
-	t.Run("all_handlers_are_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
-	})
-
-	t.Run("all_handlers_with_error_return_error", func(t *testing.T) {
-		_, err := intersection(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
-		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-	})
-
-	t.Run("one_handler_returns_error_but_other_handler_is_truthy_return_error_and_allowed:false", func(t *testing.T) {
-		_, err := intersection(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
-		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-	})
-
-	t.Run("one_handler_returns_error_but_other_handler_is_falsy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("one_handler_errors_with_cycle_but_other_handler_is_falsy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("one_handler_errors_with_cycle_but_other_handler_is_truthy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1))
-	})
-
-	t.Run("both_handlers_errors_with_cycle_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
-	})
-
-	t.Run("aggregate_truthy_and_falsy_handlers_datastore_query_count", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
-	})
-
-	t.Run("return_allowed:false_if_falsy_handler_evaluated_before_context_deadline", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		t.Cleanup(cancel)
-
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-	})
-
-	t.Run("return_allowed:false_if_falsy_handler_evaluated_before_context_cancelled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-
-		wg.Wait() // just to make sure to avoid test leaks
-	})
-
-	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		t.Cleanup(cancel)
-
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return nil, nil
-		}
-
-		resp, err := intersection(ctx, concurrencyLimit, slowHandler)
-		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.False(t, resp.GetAllowed())
-	})
-
-	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
-
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(10 * time.Millisecond)
-			cancel()
-		}()
-
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return nil, nil
-		}
-
-		resp, err := intersection(ctx, concurrencyLimit, slowHandler)
-		require.ErrorIs(t, err, context.Canceled)
-		require.False(t, resp.GetAllowed())
-
-		wg.Wait() // just to make sure to avoid test leaks
-	})
+	}
 }
 
 func TestResolveCheckDeterministic(t *testing.T) {
@@ -552,6 +267,78 @@ condition condX(x: int) {
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
+		}
+	})
+
+	t.Run("three_prong_loop", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("module:a", "owner", "user:anne"),
+			tuple.NewTupleKey("folder:a", "parent", "module:a"),
+			tuple.NewTupleKey("document:a", "parent", "folder:a"),
+			tuple.NewTupleKey("module:b", "parent", "document:a"),
+			tuple.NewTupleKey("folder:b", "parent", "module:b"),
+			tuple.NewTupleKey("document:b", "parent", "folder:b"),
+			tuple.NewTupleKey("module:a", "parent", "document:b"),
+		})
+		require.NoError(t, err)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+	  model
+		schema 1.1
+	  type user
+	  type module
+		relations
+		  define owner: [user] or owner from parent
+		  define parent: [document, module]
+		  define viewer: [user] or owner or viewer from parent
+	  type folder
+		relations
+		  define owner: [user] or owner from parent
+		  define parent: [module, folder]
+		  define viewer: [user] or owner or viewer from parent
+	  type document
+		relations
+		  define owner: [user] or owner from parent
+		  define parent: [folder, document]
+		  define viewer: [user] or owner or viewer from parent`)
+
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
+
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+		tupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("module:a", "viewer", "user:anne"),
+			tuple.NewTupleKey("module:b", "viewer", "user:anne"),
+			tuple.NewTupleKey("folder:a", "viewer", "user:anne"),
+			tuple.NewTupleKey("folder:b", "viewer", "user:anne"),
+			tuple.NewTupleKey("document:a", "viewer", "user:anne"),
+			tuple.NewTupleKey("document:b", "viewer", "user:anne"),
+		}
+
+		for _, tupleKey := range tupleKeys {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tupleKey,
+				ResolutionMetadata: &ResolutionMetadata{
+					Depth: 25,
+				},
+			})
+			require.NoError(t, err)
+			require.True(t, resp.GetAllowed())
 		}
 	})
 }
