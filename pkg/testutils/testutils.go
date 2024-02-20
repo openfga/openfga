@@ -168,6 +168,7 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	t.Log("creating connection to address", grpcAddr)
 	conn, err := grpc.DialContext(
 		ctx,
 		grpcAddr,
@@ -188,10 +189,12 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		})
 		if err != nil {
+			t.Log(time.Now(), "not serving yet at address", grpcAddr, err)
 			return err
 		}
 
 		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
+			t.Log(time.Now(), resp.GetStatus())
 			return errors.New("not serving")
 		}
 
