@@ -219,7 +219,8 @@ func TCPRandomPort() (int, func()) {
 	}
 }
 
-// MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
+// MustDefaultConfigWithRandomPorts is meant to be used for tests only (TODO move to test utils).
+// It returns default server config but with random ports for the grpc and http addresses and with the playground, tracing and metrics turned off.
 // This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	config := serverconfig.DefaultConfig()

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -88,6 +89,7 @@ func (s *SingleflightCheckResolver) ResolveCheck(
 	resp := copyResolveResponse(singleFlightResp)
 
 	if shared && !unique.Load() {
+		fmt.Println("DEDUPED!")
 		deduplicatedDispatchCount.Inc()
 		deduplicatedDBQueryCount.Add(float64(resp.GetResolutionMetadata().DatastoreQueryCount))
 		resp.ResolutionMetadata.DatastoreQueryCount = 0

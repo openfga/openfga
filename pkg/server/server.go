@@ -298,13 +298,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
+	singleflightCheckResolver := graph.NewSingleflightCheckResolver()
 	s.checkResolver = cycleDetectionCheckResolver
 
 	localChecker := graph.NewLocalChecker(
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	cycleDetectionCheckResolver.SetDelegate(localChecker)
+	cycleDetectionCheckResolver.SetDelegate(singleflightCheckResolver)
+	singleflightCheckResolver.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.checkQueryCacheEnabled {
@@ -319,8 +321,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 		s.cachedCheckResolverCloser = cachedCheckResolver.Close
 
+		singleflightCheckResolver.SetDelegate(cachedCheckResolver)
 		cachedCheckResolver.SetDelegate(localChecker)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 	}
 
 	if s.datastore == nil {

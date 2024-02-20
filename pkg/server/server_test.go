@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -239,6 +240,88 @@ func TestCheckResolverOuterLayerDefault(t *testing.T) {
 	// composition should always be CycleDetectionCheckResolver.
 	_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 	require.True(t, ok)
+}
+
+func TestCheckConcurrentOverlappingRequests(t *testing.T) {
+	ds := memory.New() // other supported datastores include Postgres and MySQL
+	defer ds.Close()
+
+	s, err := NewServerWithOpts(
+		WithDatastore(ds),
+		WithCheckQueryCacheEnabled(false),
+		// more options available
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer s.Close()
+
+	// create store
+	store, err := s.CreateStore(context.Background(),
+		&openfgav1.CreateStoreRequest{Name: "demo"})
+	if err != nil {
+		panic(err)
+	}
+
+	model := language.MustTransformDSLToProto(`model  
+	schema 1.1  
+  
+	type user
+	type doc
+	  relations
+		define a1: [user]
+		define a2: a1
+		define a3: a2
+		define a4: a2 or a3`)
+
+	// write the model to the store
+	authorizationModel, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         store.Id,
+		TypeDefinitions: model.TypeDefinitions,
+		Conditions:      model.Conditions,
+		SchemaVersion:   model.SchemaVersion,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// write tuples to the store
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: store.Id,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "doc:1", Relation: "a1", User: "user:jon"},
+			},
+		},
+		Deletes: nil,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 50; i++ {
+		go func() {
+			wg.Add(1)
+			checkResponse, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+				StoreId:              store.Id,
+				AuthorizationModelId: authorizationModel.AuthorizationModelId, // optional, but recommended for speed
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:jon",
+					Relation: "a4",
+					Object:   "doc:1",
+				},
+			})
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println(checkResponse.Allowed)
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {

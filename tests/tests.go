@@ -44,13 +44,12 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	go func() {
 		serverDone <- serverCtx.Run(ctx, cfg)
 	}()
-
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
-
 	t.Cleanup(func() {
-		// send cancellation signal to server and wait for it to stop
+		t.Log("waiting for server to stop")
 		cancel()
 		serverErr := <-serverDone
-		t.Log(serverErr)
+		t.Log("server stopped with error: ", serverErr)
 	})
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 }
