@@ -998,6 +998,7 @@ condition condition1(param1: string) {
 
 func TestCheckDispatchCount(t *testing.T) {
 	ds := memory.New()
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 
 	storeID := ulid.Make().String()
 
@@ -1017,7 +1018,7 @@ type doc
 		define parent: [folder]
 `)
 
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+	err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 		// Folder B => Folder A => doc:readme
 		{
 			User:     "user:jon",
@@ -1042,7 +1043,7 @@ type doc
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds)
+	checker := NewLocalChecker()
 
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),
@@ -1050,7 +1051,7 @@ type doc
 	)
 	require.NoError(t, err)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:              storeID,
