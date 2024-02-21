@@ -1062,6 +1062,8 @@ type doc
 	require.True(t, resp.Allowed)
 
 	require.Equal(t, uint32(3), resp.GetResolutionMetadata().DispatchCount)
+}
+
 func TestUnionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
