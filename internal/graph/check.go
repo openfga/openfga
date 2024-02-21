@@ -500,10 +500,10 @@ func (c *LocalChecker) Close() {
 func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		resp, err := c.delegate.ResolveCheck(ctx, req)
-		resp.GetResolutionMetadata().DispatchCount++
 		if err != nil {
 			return resp, err
 		}
+		resp.GetResolutionMetadata().DispatchCount++
 		return resp, nil
 	}
 }
