@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
-[![Docker Pulls](https://img.shields.io/docker/pulls/openfga/openfga)](https://hub.docker.com/r/openfga/openfga/tags)]
+[![Docker Pulls](https://img.shields.io/docker/pulls/openfga/openfga)](https://hub.docker.com/r/openfga/openfga/tags)
 [![Codecov](https://img.shields.io/codecov/c/github/openfga/openfga)](https://app.codecov.io/gh/openfga/openfga)
 [![Go Report](https://goreportcard.com/badge/github.com/openfga/openfga)](https://goreportcard.com/report/github.com/openfga/openfga)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374/badge)](https://bestpractices.coreinfrastructure.org/projects/6374)
