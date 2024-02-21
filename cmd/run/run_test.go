@@ -49,9 +49,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -184,7 +182,7 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 		return err
 	}
 
-	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level, cfg.Log.TimestampFormat)
 	serverCtx := &ServerContext{Logger: logger}
 	return serverCtx.Run(ctx, cfg)
 }
@@ -211,14 +209,12 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer conn.Close()
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	// Just checking we can create a store with no authentication.
-	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
+	_, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
 	require.NoError(t, err)
 }
 
@@ -283,9 +279,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	otlpServer, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
+	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
 
 	// create OpenFGA server with tracing enabled
 	cfg := MustDefaultConfigWithRandomPorts()
@@ -307,7 +301,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err = client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
 
 	// wait for trace exporting
@@ -697,8 +691,7 @@ func TestServerMetricsReporting(t *testing.T) {
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine
@@ -725,9 +718,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer conn.Close()
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -1152,9 +1143,7 @@ func TestHTTPHeaders(t *testing.T) {
 	t.Parallel()
 	cfg := MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(func() {
-		cancel()
-	})
+	t.Cleanup(cancel)
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {
@@ -1164,11 +1153,7 @@ func TestHTTPHeaders(t *testing.T) {
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		conn.Close()
-	})
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 

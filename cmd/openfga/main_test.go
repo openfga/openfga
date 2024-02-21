@@ -19,8 +19,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -45,9 +43,8 @@ func (s *serverHandle) GetHTTPAddress() string {
 
 // runOpenFGAContainerWithArgs spins up an openfga container with the default configuration
 // exposed for testing purposes. It is assumed that the openfga/dockertest image is available.
-// The caller must call the returned function after the container is no longer needed.
 // This function asserts that the container's exit code was 0.
-func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATester, func()) {
+func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATester {
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(
@@ -55,6 +52,9 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		dockerClient.Close()
+	})
 
 	containerCfg := container.Config{
 		Env: []string{},
@@ -88,8 +88,8 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 	err = dockerClient.ContainerStart(ctx, cont.ID, container.StartOptions{})
 	require.NoError(t, err)
 
-	stopContainer := func() {
-		t.Logf("stopping container %s", name)
+	t.Cleanup(func() {
+		t.Logf("%s: stopping container %s", time.Now(), name)
 
 		containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 		require.NoError(t, err)
@@ -102,9 +102,8 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 			t.Logf("failed to stop openfga container: %v", err)
 		}
 
-		dockerClient.Close()
-		t.Logf("stopped container %s", name)
-	}
+		t.Logf("%s: stopped container %s", time.Now(), name)
+	})
 
 	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 	require.NoError(t, err)
@@ -149,24 +148,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) (OpenFGATes
 	return &serverHandle{
 		grpcAddress: fmt.Sprintf("localhost:%s", grpcPort),
 		httpAddress: fmt.Sprintf("localhost:%s", httpPort),
-	}, stopContainer
-}
-
-// createGrpcConnection connects to the underlying grpc server of the OpenFGATester and
-// returns the client connection. It is up to the caller to call Close() on the connection
-func createGrpcConnection(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
-	t.Helper()
-
-	conn, err := grpc.Dial(
-		tester.GetGRPCAddress(),
-		[]grpc.DialOption{
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}...,
-	)
-	require.NoError(t, err)
-
-	return conn
+	}
 }
 
 // TestDocker does basic sanity tests against the Dockerfile.
@@ -176,14 +158,12 @@ func TestDocker(t *testing.T) {
 	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
 	//defer goleak.VerifyNone(t)
 	t.Run("run_command", func(t *testing.T) {
-		tester, stopContainer := runOpenFGAContainerWithArgs(t, []string{"run"})
-		defer stopContainer()
+		tester := runOpenFGAContainerWithArgs(t, []string{"run"})
 
 		testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil, true)
 
 		t.Run("grpc_endpoint_works", func(t *testing.T) {
-			conn := createGrpcConnection(t, tester)
-			defer conn.Close()
+			conn := testutils.CreateGrpcConnection(t, tester.GetGRPCAddress())
 
 			grpcClient := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -203,12 +183,10 @@ func TestDocker(t *testing.T) {
 
 	t.Run("migrate_command", func(t *testing.T) {
 		// this will be a no-op
-		_, stopContainer := runOpenFGAContainerWithArgs(t, []string{"migrate", "--datastore-engine", "memory"})
-		defer stopContainer()
+		_ = runOpenFGAContainerWithArgs(t, []string{"migrate", "--datastore-engine", "memory"})
 	})
 
 	t.Run("version_command", func(t *testing.T) {
-		_, stopContainer := runOpenFGAContainerWithArgs(t, []string{"version"})
-		defer stopContainer()
+		_ = runOpenFGAContainerWithArgs(t, []string{"version"})
 	})
 }

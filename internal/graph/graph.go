@@ -387,3 +387,43 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		panic("unexpected userset rewrite encountered")
 	}
 }
+
+// NewLayeredCheckResolver constructs a CheckResolver that is composed of various CheckResolver layers.
+// Specifically, it constructs a CheckResolver with the following composition:
+//
+//	CycleDetectionCheckResolver  <-----|
+//		CachedCheckResolver              |
+//			LocalChecker                   |
+//				CycleDetectionCheckResolver -|
+//
+// The returned CheckResolverCloser should be used to close all resolvers involved in the
+// composition after you are done with the CheckResolver.
+func NewLayeredCheckResolver(
+	localResolverOpts []LocalCheckerOption,
+	cacheEnabled bool,
+	cachedResolverOpts []CachedCheckResolverOpt,
+) (CheckResolver, CheckResolverCloser) {
+	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	localCheckResolver := NewLocalChecker(localResolverOpts...)
+
+	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+
+	var cachedCheckResolver *CachedCheckResolver
+	if cacheEnabled {
+		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		cachedCheckResolver.SetDelegate(localCheckResolver)
+	}
+
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+	return cycleDetectionCheckResolver, func() {
+		localCheckResolver.Close()
+
+		if cachedCheckResolver != nil {
+			cachedCheckResolver.Close()
+		}
+
+		cycleDetectionCheckResolver.Close()
+	}
+}

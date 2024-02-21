@@ -28,11 +28,20 @@ type Logger interface {
 	FatalWithContext(context.Context, string, ...zap.Field)
 }
 
+// NewNoopLogger provides a noop logger.
+func NewNoopLogger() *ZapLogger {
+	return &ZapLogger{
+		zap.NewNop(),
+	}
+}
+
 // ZapLogger is an implementation of Logger that uses the uber/zap logger underneath.
 // It provides additional methods such as ones that logs based on context.
 type ZapLogger struct {
 	*zap.Logger
 }
+
+var _ Logger = (*ZapLogger)(nil)
 
 func (l *ZapLogger) With(fields ...zap.Field) {
 	l.Logger = l.Logger.With(fields...)
@@ -86,38 +95,18 @@ func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...
 	l.Logger.Fatal(msg, fields...)
 }
 
-// NewNoopLogger provides noop logger that satisfies the logger interface.
-func NewNoopLogger() *ZapLogger {
-	return &ZapLogger{
-		zap.NewNop(),
-	}
-}
-
-func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
+func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, error) {
 	if logLevel == "none" {
 		return NewNoopLogger(), nil
 	}
 
-	var level zapcore.Level
-	switch logLevel {
-	case "debug":
-		level = zap.DebugLevel
-	case "info":
-		level = zap.InfoLevel
-	case "warn":
-		level = zap.WarnLevel
-	case "error":
-		level = zap.ErrorLevel
-	case "panic":
-		level = zap.PanicLevel
-	case "fatal":
-		level = zap.FatalLevel
-	default:
-		return nil, fmt.Errorf("unknown log level: %s", logLevel)
+	level, err := zap.ParseAtomicLevel(logLevel)
+	if err != nil {
+		return nil, fmt.Errorf("unknown log level: %s, error: %w", logLevel, err)
 	}
 
 	cfg := zap.NewProductionConfig()
-	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.Level = level
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
@@ -127,6 +116,11 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	} else { // Json
+		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
+		if logTimestampFormat == "ISO8601" {
+			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		}
 	}
 
 	log, err := cfg.Build()
@@ -141,8 +135,8 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 	return &ZapLogger{log}, nil
 }
 
-func MustNewLogger(logFormat, logLevel string) *ZapLogger {
-	logger, err := NewLogger(logFormat, logLevel)
+func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
+	logger, err := NewLogger(logFormat, logLevel, logTimestampFormat)
 	if err != nil {
 		panic(err)
 	}

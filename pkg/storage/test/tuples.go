@@ -956,7 +956,6 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 }
 
 func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) {
-	require := require.New(t)
 	ctx := context.Background()
 
 	tuples := []*openfgav1.TupleKey{
@@ -978,7 +977,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(err)
+		require.NoError(t, err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
@@ -997,18 +996,18 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 		)
-		require.NoError(err)
+		require.NoError(t, err)
 
-		objects := getObjects(tupleIterator, require)
+		objects := getObjects(t, tupleIterator)
 
-		require.ElementsMatch([]string{"document:doc1", "document:doc2", "document:doc4"}, objects)
+		require.ElementsMatch(t, []string{"document:doc1", "document:doc2", "document:doc4"}, objects)
 	})
 
 	t.Run("returns_no_results_if_the_input_users_do_not_match_the_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(err)
+		require.NoError(t, err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
@@ -1023,18 +1022,18 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 		)
-		require.NoError(err)
+		require.NoError(t, err)
 
-		objects := getObjects(tupleIterator, require)
+		objects := getObjects(t, tupleIterator)
 
-		require.Empty(objects)
+		require.Empty(t, objects)
 	})
 
 	t.Run("returns_no_results_if_the_input_relation_does_not_match_any_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(err)
+		require.NoError(t, err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
@@ -1049,18 +1048,18 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 		)
-		require.NoError(err)
+		require.NoError(t, err)
 
-		objects := getObjects(tupleIterator, require)
+		objects := getObjects(t, tupleIterator)
 
-		require.Empty(objects)
+		require.Empty(t, objects)
 	})
 
 	t.Run("returns_no_results_if_the_input_object_type_does_not_match_any_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(err)
+		require.NoError(t, err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
@@ -1075,11 +1074,11 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 			},
 		)
-		require.NoError(err)
+		require.NoError(t, err)
 
-		objects := getObjects(tupleIterator, require)
+		objects := getObjects(t, tupleIterator)
 
-		require.Empty(objects)
+		require.Empty(t, objects)
 	})
 }
 
@@ -1478,7 +1477,9 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 	})
 }
 
-func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions) []string {
+// getObjects returns all the objects from an iterator.
+// If the iterator throws an error, it fails the test.
+func getObjects(t *testing.T, tupleIterator storage.TupleIterator) []string {
 	var objects []string
 	for {
 		tp, err := tupleIterator.Next(context.Background())
@@ -1487,7 +1488,7 @@ func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions
 				break
 			}
 
-			require.Fail(err.Error())
+			t.Errorf(err.Error())
 		}
 
 		objects = append(objects, tp.GetKey().GetObject())
