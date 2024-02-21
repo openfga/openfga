@@ -1,4 +1,5 @@
-#OpenFGA
+# OpenFGA
+
 ![image](https://github.com/openfga/openfga/assets/1636576/dd7dec91-9e69-4c9e-8728-d6e0d5605c25)
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
