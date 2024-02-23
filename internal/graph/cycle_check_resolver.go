@@ -3,8 +3,9 @@ package graph
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type CycleDetectionCheckResolver struct {
