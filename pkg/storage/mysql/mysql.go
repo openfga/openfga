@@ -434,25 +434,12 @@ func (m *MySQL) ReadAuthorizationModels(
 	return models, token, nil
 }
 
-// FindLatestAuthorizationModelID see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
-func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
+func (m *MySQL) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModel")
 	defer span.End()
 
-	var modelID string
-	err := m.stbl.
-		Select("authorization_model_id").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		Limit(1).
-		QueryRowContext(ctx).
-		Scan(&modelID)
-	if err != nil {
-		return "", sqlcommon.HandleSQLError(err)
-	}
-
-	return modelID, nil
+	return sqlcommon.ReadLatestAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.

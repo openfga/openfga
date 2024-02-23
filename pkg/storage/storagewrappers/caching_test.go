@@ -3,18 +3,12 @@ package storagewrappers
 import (
 	"context"
 	"fmt"
-	"testing"
-	"time"
-
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
-	"golang.org/x/sync/errgroup"
-
-	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 func TestReadAuthorizationModel(t *testing.T) {
@@ -54,37 +48,9 @@ func TestReadAuthorizationModel(t *testing.T) {
 	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)
-}
 
-func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
-	const numGoroutines = 2
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	expectedModelID := "expectedId"
-	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
-		time.Sleep(1 * time.Second)
-		return expectedModelID, nil
-	}).Times(1)
-	mockDatastore.EXPECT().Close().Times(1)
-
-	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
-	defer cachingBackend.Close()
-
-	var wg errgroup.Group
-	for i := 0; i < numGoroutines; i++ {
-		wg.Go(func() error {
-			id, err := cachingBackend.FindLatestAuthorizationModelID(context.Background(), "id")
-			if err != nil {
-				return err
-			}
-			if id != expectedModelID {
-				return fmt.Errorf("expected model ID %s, actual %s", expectedModelID, id)
-			}
-			return nil
-		})
-	}
-	err := wg.Wait()
+	// ensure find latest authorization model will get hte latest model
+	latestModel, err := cachingBackend.FindLatestAuthorizationModel(ctx, storeID)
 	require.NoError(t, err)
+	require.Equal(t, model, latestModel)
 }

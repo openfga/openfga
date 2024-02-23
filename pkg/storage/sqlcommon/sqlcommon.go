@@ -486,32 +486,16 @@ func WriteAuthorizationModel(
 	return nil
 }
 
-// ReadAuthorizationModel reads the model corresponding to store and model ID.
-func ReadAuthorizationModel(
-	ctx context.Context,
-	dbInfo *DBInfo,
-	store, modelID string,
-) (*openfgav1.AuthorizationModel, error) {
-	rows, err := dbInfo.stbl.
-		Select("schema_version", "type", "type_definition", "serialized_protobuf").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-		}).
-		QueryContext(ctx)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-	defer rows.Close()
+func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
 
+	var modelID string
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
 		var marshalledModel []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
+		err := rows.Scan(&modelID, &schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
 		if err != nil {
 			return nil, HandleSQLError(err)
 		}
@@ -547,6 +531,47 @@ func ReadAuthorizationModel(
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
+}
+
+// ReadLatestAuthorizationModel reads the latest authorization model corresponding to the store
+func ReadLatestAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store string,
+) (*openfgav1.AuthorizationModel, error) {
+	rows, err := dbInfo.stbl.
+		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		OrderBy("authorization_model_id desc").
+		Limit(1).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer rows.Close()
+	return constructAuthorizationModelFromSQLRows(rows)
+}
+
+// ReadAuthorizationModel reads the model corresponding to store and model ID.
+func ReadAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store, modelID string,
+) (*openfgav1.AuthorizationModel, error) {
+	rows, err := dbInfo.stbl.
+		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer rows.Close()
+	return constructAuthorizationModelFromSQLRows(rows)
 }
 
 // IsReady returns true if the connection to the datastore is successful

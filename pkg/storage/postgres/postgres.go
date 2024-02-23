@@ -431,25 +431,12 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	return models, token, nil
 }
 
-// FindLatestAuthorizationModelID see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
-func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
+func (p *Postgres) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModel")
 	defer span.End()
 
-	var modelID string
-	err := p.stbl.
-		Select("authorization_model_id").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		Limit(1).
-		QueryRowContext(ctx).
-		Scan(&modelID)
-	if err != nil {
-		return "", sqlcommon.HandleSQLError(err)
-	}
-
-	return modelID, nil
+	return sqlcommon.ReadLatestAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.

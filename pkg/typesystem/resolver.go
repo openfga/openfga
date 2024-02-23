@@ -45,37 +45,41 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			}
 		}
 
+		var v interface{}
+		var key string
 		if modelID == "" {
-			v, err, _ := lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
-				return datastore.FindLatestAuthorizationModelID(ctx, storeID)
+			v, err, _ = lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModel:%s", storeID), func() (interface{}, error) {
+				return datastore.FindLatestAuthorizationModel(ctx, storeID)
 			})
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return nil, ErrModelNotFound
 				}
 
-				return nil, fmt.Errorf("failed to FindLatestAuthorizationModelID: %w", err)
+				return nil, fmt.Errorf("failed to FindLatestAuthorizationModel: %w", err)
 			}
 
-			modelID = v.(string)
-		}
+			key = fmt.Sprintf("%s/%s", storeID, v.(*openfgav1.AuthorizationModel).GetId())
 
-		key := fmt.Sprintf("%s/%s", storeID, modelID)
+		} else {
 
-		item := cache.Get(key)
-		if item != nil {
-			return item.Value(), nil
-		}
+			key = fmt.Sprintf("%s/%s", storeID, modelID)
 
-		v, err, _ := lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
-			return datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-		})
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return nil, ErrModelNotFound
+			item := cache.Get(key)
+			if item != nil {
+				return item.Value(), nil
 			}
 
-			return nil, fmt.Errorf("failed to ReadAuthorizationModel: %w", err)
+			v, err, _ = lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
+				return datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+			})
+			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					return nil, ErrModelNotFound
+				}
+
+				return nil, fmt.Errorf("failed to ReadAuthorizationModel: %w", err)
+			}
 		}
 
 		model := v.(*openfgav1.AuthorizationModel)
