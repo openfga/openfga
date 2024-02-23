@@ -397,7 +397,7 @@ func TestBlerbAvoidDeadlockWithinRequest(t *testing.T) {
 	require.False(t, resp.GetAllowed())
 }
 
-func TestBlerbThreeProngThroughVariousLayers(t *testing.T) {
+func TestThreeProngThroughVariousLayers(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
