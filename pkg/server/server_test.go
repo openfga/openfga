@@ -250,7 +250,7 @@ func TestCheckResolverOuterLayerDefault(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestBlerbAvoidDeadlockAcrossRequests(t *testing.T) {
+func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
