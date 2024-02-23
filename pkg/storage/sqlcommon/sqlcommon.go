@@ -532,8 +532,8 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 	}, nil
 }
 
-// ReadLatestAuthorizationModel reads the latest authorization model corresponding to the store
-func ReadLatestAuthorizationModel(
+// FindLatestAuthorizationModel reads the latest authorization model corresponding to the store
+func FindLatestAuthorizationModel(
 	ctx context.Context,
 	dbInfo *DBInfo,
 	store string,

@@ -434,12 +434,12 @@ func (m *MySQL) ReadAuthorizationModels(
 	return models, token, nil
 }
 
-// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
 func (m *MySQL) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
 	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadLatestAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store)
+	return sqlcommon.FindLatestAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
