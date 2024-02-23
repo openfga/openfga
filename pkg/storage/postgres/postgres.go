@@ -34,6 +34,7 @@ var tracer = otel.Tracer("openfga/pkg/storage/postgres")
 type Postgres struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
@@ -117,10 +118,13 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}
 	}
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"))
 
 	return &Postgres{
-		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
+		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -215,7 +219,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	now := time.Now().UTC()
-	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, deletes, writes, now)
+	return sqlcommon.Write(ctx, p.dbInfo, store, deletes, writes, now)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -358,7 +362,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, p.dbInfo, store, modelID)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -436,7 +440,7 @@ func (p *Postgres) FindLatestAuthorizationModel(ctx context.Context, store strin
 	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.FindLatestAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store)
+	return sqlcommon.FindLatestAuthorizationModel(ctx, p.dbInfo, store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -455,7 +459,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerModelField)
 	}
 
-	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, p.dbInfo, store, model)
 }
 
 // CreateStore adds a new store to the Postgres storage.
