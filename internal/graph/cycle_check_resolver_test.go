@@ -16,7 +16,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestCycleDetectionResolver(t *testing.T) {
+func TestCycleDetectionCheckResolver(t *testing.T) {
 	ds := memory.New()
 	storeID := ulid.Make().String()
 
