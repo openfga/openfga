@@ -36,7 +36,7 @@ type user
 type repo
   relations
 	define reader: [user]
-	define can_read: reader`).TypeDefinitions,
+	define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 
@@ -152,7 +152,7 @@ type user
 type repo
   relations
 	define reader: [user]
-	define can_read: reader`).TypeDefinitions,
+	define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 	ctx := context.Background()

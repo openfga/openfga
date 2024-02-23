@@ -54,7 +54,7 @@ type user
 
 type document
   relations
-	define reader: [user]`).TypeDefinitions,
+	define reader: [user]`).GetTypeDefinitions(),
 			},
 		},
 	}

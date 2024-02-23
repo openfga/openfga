@@ -544,7 +544,7 @@ type group
     define member: [user]
 type document
   relations
-    define viewer: [user:*, group#member]`).TypeDefinitions,
+    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -587,7 +587,7 @@ type group
     define member: [user2]
 type document
   relations
-    define viewer: [user:*, group#member]`).TypeDefinitions,
+    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 

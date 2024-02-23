@@ -593,7 +593,7 @@ type document
   relations
 	define viewer: [user]
 	define parent: [folder]
-	define can_view: viewer or viewer from parent`).TypeDefinitions,
+	define can_view: viewer or viewer from parent`).GetTypeDefinitions(),
 	}
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
 	require.NoError(b, err)

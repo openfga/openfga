@@ -124,7 +124,7 @@ type commerce_store
 	define approved_hourly_access: user from approved_timeslot and hourly_employee
 	define approved_timeslot: [timeslot]
 	define hourly_employee: [fga_user]
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 			tuples: []*openfgav1.TupleKey{
 				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
 				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
@@ -165,7 +165,7 @@ type document
   relations
 	define restricted: [user]
 	define viewer: [user] but not restricted
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
@@ -193,7 +193,7 @@ type user
 type document
   relations
 	define viewer: [user]
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 			assertions: []checktest.Assertion{
 				{
 					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -223,7 +223,7 @@ type group
 type document
   relations
 	define viewer: [group#member]
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
 				{Object: "group:eng", Relation: "member", User: "user:jon"},

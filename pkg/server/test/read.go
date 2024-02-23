@@ -49,7 +49,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		//type repo
 		//  relations
 		//	define owner: [team]
-		//	define admin: [user]`).TypeDefinitions,
+		//	define admin: [user]`).GetTypeDefinitions(),
 		//			},
 		//			tuples: []*openfgav1.TupleKey{
 		//				{
@@ -97,7 +97,7 @@ type user
 type repo
   relations
 	define admin: [user]
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose"),

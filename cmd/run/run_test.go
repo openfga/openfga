@@ -1173,7 +1173,7 @@ type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
+	define viewer: [user]`).GetTypeDefinitions(),
 	})
 	require.NoError(t, err)
 

@@ -281,7 +281,7 @@ type user
 type repo
   relations
 	define reader: [user]
-`).TypeDefinitions
+`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -353,7 +353,7 @@ type user
 
 type document
   relations
-	define editor: [user]`).TypeDefinitions,
+	define editor: [user]`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
@@ -411,7 +411,7 @@ type repo
 	define admin: [user]
 	define r1: [user] and r2 and r3
 	define r2: [user] and r1 and r3
-	define r3: [user] and r1 and r2`).TypeDefinitions
+	define r3: [user] and r1 and r2`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
@@ -491,7 +491,7 @@ type user
 
 type repo
   relations
-	define reader: [user:*]`).TypeDefinitions
+	define reader: [user:*]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -562,7 +562,7 @@ type user
 
 type repo
   relations
-	define reader: [user]`).TypeDefinitions
+	define reader: [user]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -624,7 +624,7 @@ type user
 
 type repo
   relations
-	define reader: [user]`).TypeDefinitions
+	define reader: [user]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -828,7 +828,7 @@ type user
 type repo
   relations
 	define allowed: [user]
-	define viewer: [user] and allowed`).TypeDefinitions
+	define viewer: [user] and allowed`).GetTypeDefinitions()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -890,7 +890,7 @@ type user
 
 type document
   relations
-	define viewer: [user, user:*]`).TypeDefinitions,
+	define viewer: [user, user:*]`).GetTypeDefinitions(),
 		}, nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
@@ -946,7 +946,7 @@ type group
 
 type document
   relations
-	define viewer: [group#member]`).TypeDefinitions,
+	define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -1091,7 +1091,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type repo
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)

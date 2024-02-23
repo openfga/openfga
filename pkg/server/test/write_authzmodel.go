@@ -147,7 +147,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: [document#viewer] or editor`).TypeDefinitions,
+	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 		},
@@ -160,7 +160,7 @@ type document
 type user
 type document
   relations
-	define viewer: [document#viewer]`).TypeDefinitions,
+	define viewer: [document#viewer]`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -175,7 +175,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: [document#viewer] and editor`).TypeDefinitions,
+	define viewer: [document#viewer] and editor`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -190,7 +190,7 @@ type user
 type document
   relations
 	define restricted: [user]
-	define viewer: [document#viewer] but not restricted`).TypeDefinitions,
+	define viewer: [document#viewer] but not restricted`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -208,7 +208,7 @@ type document
 	define admin: [user]
 	define action1: admin and action2 and action3
 	define action2: admin and action1 and action3
-	define action3: admin and action1 and action2`).TypeDefinitions,
+	define action3: admin and action1 and action2`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -223,7 +223,7 @@ type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
+	define viewer: [user]`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -237,7 +237,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: editor`).TypeDefinitions,
+	define viewer: editor`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -253,7 +253,7 @@ type document
 	define admin: [user]
 	define action1: admin but not action2
 	define action2: admin but not action3
-	define action3: admin but not action1`).TypeDefinitions,
+	define action3: admin but not action1`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -268,7 +268,7 @@ type user
 type document
   relations
 	define viewer: [document#viewer] and editor
-	define editor: [user]`).TypeDefinitions,
+	define editor: [user]`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -283,7 +283,7 @@ type user
 type document
   relations
 	define viewer: [document#viewer] but not editor
-	define editor: [user]`).TypeDefinitions,
+	define editor: [user]`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -304,7 +304,7 @@ type document
   relations
 	define parent: [folder]
 	define editor: viewer
-	define viewer: editor from parent`).TypeDefinitions,
+	define viewer: editor from parent`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -322,7 +322,7 @@ type document
 	define editor: [user]
 	define viewer: [document#viewer] or editor
 	define can_view: viewer but not restricted
-	define can_view_actual: can_view`).TypeDefinitions,
+	define can_view_actual: can_view`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -336,7 +336,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: [document#viewer] or editor`).TypeDefinitions,
+	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -357,7 +357,7 @@ type feature
   relations
 	define accessible: admin from subscriber_org or member from subscriber_group
 	define subscriber_group: [group]
-	define subscriber_org: [org]`).TypeDefinitions,
+	define subscriber_org: [org]`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -410,7 +410,7 @@ type account
 	define admin: [user] or member or super_admin or owner
 	define member: [user] or owner or admin or super_admin
 	define owner: [user]
-	define super_admin: [user] or admin or member`).TypeDefinitions,
+	define super_admin: [user] or admin or member`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -426,7 +426,7 @@ type other
   relations
 	define x: [user] and y
 	define y: [user] and z
-	define z: [user] or x`).TypeDefinitions,
+	define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -442,7 +442,7 @@ type other
   relations
 	define x: [user] but not y
 	define y: [user] but not z
-	define z: [user] or x`).TypeDefinitions,
+	define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -461,7 +461,7 @@ type other
   relations
 	define x: [user] but not y
 	define y: [user] but not z
-	define z: [user] or x`).TypeDefinitions,
+	define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
 		},

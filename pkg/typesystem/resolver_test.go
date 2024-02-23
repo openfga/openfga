@@ -31,7 +31,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 type user
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
+	define viewer: [user]`).GetTypeDefinitions()
 
 	gomock.InOrder(
 		mockDatastore.EXPECT().
