@@ -337,7 +337,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	require.False(t, resp2.GetAllowed())
 }
 
-func TestBlerbAvoidDeadlockWithinRequest(t *testing.T) {
+func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
