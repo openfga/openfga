@@ -487,7 +487,6 @@ func WriteAuthorizationModel(
 }
 
 func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
-
 	var modelID string
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition

@@ -3,12 +3,14 @@ package storagewrappers
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestReadAuthorizationModel(t *testing.T) {
