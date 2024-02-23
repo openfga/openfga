@@ -233,9 +233,16 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestCheckResolverOuterLayerDefault(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
 	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
+		WithDatastore(ds),
 	)
+	t.Cleanup(s.Close)
 
 	// the default (outer most layer) of the CheckResolver
 	// composition should always be CycleDetectionCheckResolver.
@@ -243,7 +250,11 @@ func TestCheckResolverOuterLayerDefault(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestAvoidDeadlockAcrossRequests(t *testing.T) {
+func TestBlerbAvoidDeadlockAcrossRequests(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	s := MustNewServerWithOpts(
@@ -326,7 +337,11 @@ func TestAvoidDeadlockAcrossRequests(t *testing.T) {
 	require.False(t, resp2.GetAllowed())
 }
 
-func TestAvoidDeadlockWithinRequest(t *testing.T) {
+func TestBlerbAvoidDeadlockWithinRequest(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	s := MustNewServerWithOpts(
@@ -382,7 +397,11 @@ func TestAvoidDeadlockWithinRequest(t *testing.T) {
 	require.False(t, resp.GetAllowed())
 }
 
-func TestThreeProngThroughVariousLayers(t *testing.T) {
+func TestBlerbThreeProngThroughVariousLayers(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	s := MustNewServerWithOpts(
