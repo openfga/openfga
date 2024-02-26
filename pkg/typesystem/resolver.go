@@ -59,7 +59,8 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 				return nil, fmt.Errorf("failed to FindLatestAuthorizationModel: %w", err)
 			}
 
-			key = fmt.Sprintf("%s/%s", storeID, v.(*openfgav1.AuthorizationModel).GetId())
+			model := v.(*openfgav1.AuthorizationModel)
+			key = fmt.Sprintf("%s/%s", storeID, model.GetId())
 		} else {
 			key = fmt.Sprintf("%s/%s", storeID, modelID)
 			item := cache.Get(key)
