@@ -3,15 +3,15 @@ package storagewrappers
 import (
 	"context"
 	"fmt"
-	"go.uber.org/goleak"
-	"golang.org/x/sync/errgroup"
-
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -99,7 +99,11 @@ func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
 
 	storeID := ulid.Make().String()
 	gomock.InOrder(
-		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).Times(1).Return(model, nil),
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).DoAndReturn(
+			func(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
+				time.Sleep(1 * time.Second)
+				return model, nil
+			}).Times(1),
 		mockDatastore.EXPECT().Close().Times(1),
 	)
 
