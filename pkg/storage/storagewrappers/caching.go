@@ -51,7 +51,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	return model, nil
 }
 
-// FindLatestAuthorizationModel returns the last model `id` written for a store.
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
 func (c *cachedOpenFGADatastore) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
 	v, err, _ := c.lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModel:%s", storeID), func() (interface{}, error) {
 		return c.OpenFGADatastore.FindLatestAuthorizationModel(ctx, storeID)

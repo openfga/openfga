@@ -17,11 +17,16 @@ import (
 
 func TestReadAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ctx := context.Background()
 	mockController := gomock.NewController(t)
 	mockController.Finish()
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	t.Cleanup(cachingBackend.Close)
 	model := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
