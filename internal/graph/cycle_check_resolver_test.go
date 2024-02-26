@@ -27,6 +27,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "viewer3", "document:1#viewer3"),
+		tuple.NewTupleKey("document:1", "viewer1", "user:1"),
 	})
 	require.NoError(t, err)
 
@@ -50,7 +51,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 	localCheckResolver := NewLocalChecker()
 	t.Cleanup(localCheckResolver.Close)
 
-	t.Run("detects_cycle_and_returns_no_error_with_local_check_resolver", func(t *testing.T) {
+	t.Run("detects_cycle_and_returns_no_error", func(t *testing.T) {
 		cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
 		localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
@@ -65,18 +66,18 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("detects_cycle_and_returns_no_error_with_singleflight_check_resolver", func(t *testing.T) {
+	t.Run("correctly_undetects_cycle_and_returns_no_error", func(t *testing.T) {
 		cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
 		localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
 		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:1", "viewer3", "user:jon"),
+			TupleKey:           tuple.NewTupleKey("document:1", "viewer1", "user:1"),
 			ContextualTuples:   nil,
 			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 		})
 
 		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetAllowed())
 	})
 }
