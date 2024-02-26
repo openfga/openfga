@@ -985,7 +985,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(nil, storage.ErrNotFound)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
@@ -1005,8 +1005,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(
 			&openfgav1.AuthorizationModel{
 				Id:            modelID,
 				SchemaVersion: typesystem.SchemaVersion1_1,
