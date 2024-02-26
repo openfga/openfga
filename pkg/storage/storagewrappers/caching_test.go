@@ -3,6 +3,8 @@ package storagewrappers
 import (
 	"context"
 	"fmt"
+	"go.uber.org/goleak"
+	"golang.org/x/sync/errgroup"
 
 	"testing"
 
@@ -20,7 +22,6 @@ func TestReadAuthorizationModel(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ctx := context.Background()
 	mockController := gomock.NewController(t)
 	mockController.Finish()
 
@@ -44,6 +45,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Times(1).Return(nil),
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, model.GetId()).Times(1).Return(model, nil),
 		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).Times(1).Return(model, nil),
+		mockDatastore.EXPECT().Close().Times(1),
 	)
 
 	err := cachingBackend.WriteAuthorizationModel(ctx, storeID, model)
@@ -68,4 +70,51 @@ func TestReadAuthorizationModel(t *testing.T) {
 	latestModel, err := cachingBackend.FindLatestAuthorizationModel(ctx, storeID)
 	require.NoError(t, err)
 	require.Equal(t, model, latestModel)
+}
+
+func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
+	const numGoroutines = 2
+
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	mockController := gomock.NewController(t)
+	mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	t.Cleanup(cachingBackend.Close)
+	model := &openfgav1.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "documents",
+				Relations: map[string]*openfgav1.Userset{
+					"admin": typesystem.This(),
+				},
+			},
+		},
+	}
+
+	storeID := ulid.Make().String()
+	gomock.InOrder(
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).Times(1).Return(model, nil),
+		mockDatastore.EXPECT().Close().Times(1),
+	)
+
+	var wg errgroup.Group
+	for i := 0; i < numGoroutines; i++ {
+		wg.Go(func() error {
+			latestModel, err := cachingBackend.FindLatestAuthorizationModel(context.Background(), storeID)
+			if err != nil {
+				return err
+			}
+			require.NoError(t, err)
+			require.Equal(t, model, latestModel)
+			return nil
+		})
+	}
+	err := wg.Wait()
+	require.NoError(t, err)
 }
