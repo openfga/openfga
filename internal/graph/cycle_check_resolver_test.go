@@ -17,7 +17,12 @@ import (
 )
 
 func TestCycleDetectionCheckResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ds := memory.New()
+	t.Cleanup(ds.Close)
 	storeID := ulid.Make().String()
 
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
@@ -41,13 +46,9 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	t.Cleanup(cycleDetectionCheckResolver.Close)
 	localCheckResolver := NewLocalChecker()
-
-	t.Cleanup(func() {
-		cycleDetectionCheckResolver.Close()
-		localCheckResolver.Close()
-		goleak.VerifyNone(t)
-	})
+	t.Cleanup(localCheckResolver.Close)
 
 	t.Run("detects_cycle_and_returns_no_error_with_local_check_resolver", func(t *testing.T) {
 		cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
