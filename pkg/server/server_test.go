@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -231,14 +233,258 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestCheckResolverOuterLayerDefault(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
 	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
+		WithDatastore(ds),
 	)
+	t.Cleanup(s.Close)
 
 	// the default (outer most layer) of the CheckResolver
 	// composition should always be CycleDetectionCheckResolver.
 	_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 	require.True(t, ok)
+}
+
+func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+
+	type user
+
+	type document
+	  relations
+			define viewer: [user, document#viewer] or editor
+			define editor: [user, document#viewer]`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
+				tuple.NewTupleKey("document:1", "editor", "document:1#viewer"),
+				tuple.NewTupleKey("document:1", "editor", "user:andres"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	var resp1 *openfgav1.CheckResponse
+	var err1 error
+	go func() {
+		defer wg.Done()
+
+		resp1, err1 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "editor", "user:jon"),
+		})
+	}()
+
+	var resp2 *openfgav1.CheckResponse
+	var err2 error
+	go func() {
+		defer wg.Done()
+
+		resp2, err2 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
+		})
+	}()
+
+	wg.Wait()
+
+	require.NoError(t, err1)
+	require.False(t, resp1.GetAllowed())
+
+	require.NoError(t, err2)
+	require.False(t, resp2.GetAllowed())
+}
+
+func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+			schema 1.1
+
+		  type user
+
+		  type document
+			relations
+			  define editor1: [user, document#viewer1]
+
+			  define viewer2: [document#viewer1] or editor1
+			  define viewer1: [user] or viewer2
+			  define can_view: viewer1 or editor1`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "editor1", "document:1#viewer1"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	resp, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "can_view", "user:jon"),
+	})
+	require.NoError(t, err)
+	require.False(t, resp.GetAllowed())
+}
+
+func TestThreeProngThroughVariousLayers(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(func() {
+		s.Close()
+	})
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+
+  type user
+  type module
+  relations
+	  define owner: [user] or owner from parent
+	  define parent: [document, module]
+	  define viewer: [user] or owner or viewer from parent
+  type folder
+  relations
+	  define owner: [user] or owner from parent
+	  define parent: [module, folder]
+	  define viewer: [user] or owner or viewer from parent
+  type document
+  relations
+	  define owner: [user] or owner from parent
+	  define parent: [folder, document]
+	  define viewer: [user] or owner or viewer from parent`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("module:a", "owner", "user:anne"),
+				tuple.NewTupleKey("folder:a", "parent", "module:a"),
+				tuple.NewTupleKey("document:a", "parent", "folder:a"),
+				tuple.NewTupleKey("module:b", "parent", "document:a"),
+				tuple.NewTupleKey("folder:b", "parent", "module:b"),
+				tuple.NewTupleKey("document:b", "parent", "folder:b"),
+				tuple.NewTupleKey("module:a", "parent", "document:b"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			tupleKeys := []*openfgav1.CheckRequestTupleKey{
+				tuple.NewCheckRequestTupleKey("module:a", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("module:b", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("folder:a", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("folder:b", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("document:a", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("document:b", "viewer", "user:anne"),
+			}
+
+			for _, tupleKey := range tupleKeys {
+				resp, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey:             tupleKey,
+				})
+				require.NoError(t, err)
+				require.True(t, resp.GetAllowed())
+			}
+		})
+	}
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
@@ -739,7 +985,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(nil, storage.ErrNotFound)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
@@ -759,8 +1005,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(
 			&openfgav1.AuthorizationModel{
 				Id:            modelID,
 				SchemaVersion: typesystem.SchemaVersion1_1,

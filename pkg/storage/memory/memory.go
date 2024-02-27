@@ -610,9 +610,9 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 	return res, []byte(continuationToken), nil
 }
 
-// FindLatestAuthorizationModelID see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
-func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	_, span := tracer.Start(ctx, "memory.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
+func (s *MemoryBackend) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	_, span := tracer.Start(ctx, "memory.FindLatestAuthorizationModel")
 	defer span.End()
 
 	s.mu.Lock()
@@ -621,16 +621,16 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return "", storage.ErrNotFound
+		return nil, storage.ErrNotFound
 	}
 
 	// Find latest model.
 	nsc, ok := findAuthorizationModelByID("", tm)
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return "", storage.ErrNotFound
+		return nil, storage.ErrNotFound
 	}
-	return nsc.Id, nil
+	return nsc, nil
 }
 
 // WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.

@@ -191,9 +191,9 @@ type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
-	// FindLatestAuthorizationModelID returns the last model `id` written for a store.
+	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
-	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
+	FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error)
 }
 
 // TypeDefinitionWriteBackend provides a write interface for managing typed definition.
