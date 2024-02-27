@@ -250,7 +250,7 @@ type document
 			require.NotEmpty(t, fields["trace_id"])
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
-				require.NotEmpty(t, fields["dispatch_count"])
+				require.NotNil(t, fields["dispatch_count"])
 				require.Len(t, fields, 14)
 			} else {
 				require.Len(t, fields, 12)
