@@ -110,12 +110,12 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	}
 }
 
-func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGADatastore) {
+func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
 	t.Run("find_latest_authorization_model_should_return_not_found_when_no_models", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		_, err := datastore.FindLatestAuthorizationModelID(ctx, store)
+		_, err := datastore.FindLatestAuthorizationModel(ctx, store)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -156,8 +156,10 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		err = datastore.WriteAuthorizationModel(ctx, store, newModel)
 		require.NoError(t, err)
 
-		latestID, err := datastore.FindLatestAuthorizationModelID(ctx, store)
+		latestModel, err := datastore.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
-		require.Equal(t, newModel.Id, latestID)
+		if diff := cmp.Diff(newModel, latestModel, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
