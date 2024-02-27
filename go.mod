@@ -52,6 +52,8 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
+replace github.com/openfga/api/proto => ../api-openfga/proto
+
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
