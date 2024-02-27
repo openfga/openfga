@@ -1000,9 +1000,10 @@ func TestCheckDispatchCount(t *testing.T) {
 	ds := memory.New()
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 
-	storeID := ulid.Make().String()
+	t.Run("dispatch_direct_lookup", func(t *testing.T) {
+		storeID := ulid.Make().String()
 
-	model := parser.MustTransformDSLToProto(`model
+		model := parser.MustTransformDSLToProto(`model
   schema 1.1
 
 type user
@@ -1018,51 +1019,131 @@ type doc
 		define parent: [folder]
 `)
 
-	err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
-		// Folder B => Folder A => doc:readme
-		{
-			User:     "user:jon",
-			Relation: "viewer",
-			Object:   "folder:C",
-		},
-		{
-			User:     "folder:C",
-			Relation: "parent",
-			Object:   "folder:B",
-		},
-		{
-			User:     "folder:B",
-			Relation: "parent",
-			Object:   "folder:A",
-		},
-		{
-			User:     "folder:A",
-			Relation: "parent",
-			Object:   "doc:readme",
-		},
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			// Folder B => Folder A => doc:readme
+			{
+				User:     "user:jon",
+				Relation: "viewer",
+				Object:   "folder:C",
+			},
+			{
+				User:     "folder:C",
+				Relation: "parent",
+				Object:   "folder:B",
+			},
+			{
+				User:     "folder:B",
+				Relation: "parent",
+				Object:   "folder:A",
+			},
+			{
+				User:     "folder:A",
+				Relation: "parent",
+				Object:   "doc:readme",
+			},
+		})
+		require.NoError(t, err)
+
+		checker := NewLocalChecker()
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
+			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Allowed)
+
+		require.Equal(t, uint32(3), resp.GetResolutionMetadata().DispatchCount)
 	})
-	require.NoError(t, err)
 
-	checker := NewLocalChecker()
+	t.Run("dispatch_direct_userset_lookups", func(t *testing.T) {
+		storeID := ulid.Make().String()
 
-	typesys, err := typesystem.NewAndValidate(
-		context.Background(),
-		model,
-	)
-	require.NoError(t, err)
+		model := parser.MustTransformDSLToProto(`model
+	  schema 1.1
+	
+	type user
+	
+	type group
+	  relations
+	    define member: [user, group#member]
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+	type document
+	  relations
+		define viewer: [group#member]
+	`)
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
-		ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{
+				User:     "user:jon",
+				Relation: "member",
+				Object:   "group:1",
+			},
+			{
+				User:     "group:1#member",
+				Relation: "member",
+				Object:   "group:eng",
+			},
+			{
+				User:     "group:2#member",
+				Relation: "member",
+				Object:   "group:eng",
+			},
+			{
+				User:     "group:3#member",
+				Relation: "member",
+				Object:   "group:eng",
+			},
+			{
+				User:     "group:eng#member",
+				Relation: "viewer",
+				Object:   "document:1",
+			},
+		})
+		require.NoError(t, err)
+
+		checker := NewLocalChecker()
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Allowed)
+
+		require.Equal(t, uint32(2), resp.GetResolutionMetadata().DispatchCount)
+
+		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:other"),
+			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.Allowed)
+
+		require.Equal(t, uint32(4), resp.GetResolutionMetadata().DispatchCount)
 	})
-	require.NoError(t, err)
-	require.True(t, resp.Allowed)
-
-	require.Equal(t, uint32(3), resp.GetResolutionMetadata().DispatchCount)
 }
 
 func TestUnionCheckFuncReducer(t *testing.T) {
