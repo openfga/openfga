@@ -21,7 +21,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 
-	t.Run("detects_cycle_and_cycle_detected_error", func(t *testing.T) {
+	t.Run("detects_cycle_and_returns_cycle_detected_error", func(t *testing.T) {
 		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:will")
 
 		visitedPaths := make(map[string]struct{}, 0)
