@@ -51,6 +51,7 @@ type ResolutionMetadata struct {
 	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreQueryCount uint32
 
+        // The number of Check subproblems that had to be dispatched to resolve the parent subproblem this response is associated with.
 	DispatchCount uint32
 }
 
