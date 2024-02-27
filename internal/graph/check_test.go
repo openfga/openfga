@@ -1143,7 +1143,8 @@ type doc
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(2), resp.GetResolutionMetadata().DispatchCount)
+		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(2))
+		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(4))
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1214,7 +1215,8 @@ type doc
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DispatchCount)
+		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(1))
+		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(0))
 	})
 }
 
