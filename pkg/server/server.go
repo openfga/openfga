@@ -521,30 +521,31 @@ func (s *Server) ListUsers(
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
+	datastore := s.datastore
+	//datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
 
 	listUsersQuery := listusers.NewListUsersQuery(datastore)
 	return listUsersQuery.ListUsers(ctx, req)
 }
 
-func (s *Server) StreamedListUsers(
-	req *openfgav1.StreamedListUsersRequest,
-	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-) error {
-	ctx := srv.Context()
+// func (s *Server) StreamedListUsers(
+// 	req *openfgav1.StreamedListUsersRequest,
+// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
+// ) error {
+// 	ctx := srv.Context()
 
-	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return err
-	}
+// 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+// 	if err != nil {
+// 		return err
+// 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+// 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
+// 	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
 
-	listUsersQuery := listusers.NewListUsersQuery(datastore)
-	return listUsersQuery.StreamedListUsers(ctx, req, srv)
-}
+// 	listUsersQuery := listusers.NewListUsersQuery(datastore)
+// 	return listUsersQuery.StreamedListUsers(ctx, req, srv)
+// }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()

@@ -33,11 +33,11 @@ func TestListUsers(t *testing.T) {
 		{
 			name: "direct_relationship",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object:               &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:             "viewer",
-				TargetUserObjectType: "user",
+				StoreId:               storeID,
+				AuthorizationModelId:  modelID,
+				Object:                &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:              "viewer",
+				TargetUserObjectTypes: []string{"user"},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -55,11 +55,11 @@ func TestListUsers(t *testing.T) {
 		{
 			name: "direct_relationship_through_userset",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object:               &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:             "viewer",
-				TargetUserObjectType: "user",
+				StoreId:               storeID,
+				AuthorizationModelId:  modelID,
+				Object:                &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:              "viewer",
+				TargetUserObjectTypes: []string{"user"},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -81,11 +81,11 @@ func TestListUsers(t *testing.T) {
 		{
 			name: "direct_relationship_through_multiple_usersets",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object:               &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:             "viewer",
-				TargetUserObjectType: "user",
+				StoreId:               storeID,
+				AuthorizationModelId:  modelID,
+				Object:                &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:              "viewer",
+				TargetUserObjectTypes: []string{"user"},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -110,11 +110,11 @@ func TestListUsers(t *testing.T) {
 		{
 			name: "rewritten_direct_relationship_through_computed_userset",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object:               &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:             "viewer",
-				TargetUserObjectType: "user",
+				StoreId:               storeID,
+				AuthorizationModelId:  modelID,
+				Object:                &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:              "viewer",
+				TargetUserObjectTypes: []string{"user"},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -133,11 +133,11 @@ func TestListUsers(t *testing.T) {
 		{
 			name: "rewritten_direct_relationship_through_ttu",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object:               &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:             "viewer",
-				TargetUserObjectType: "user",
+				StoreId:               storeID,
+				AuthorizationModelId:  modelID,
+				Object:                &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:              "viewer",
+				TargetUserObjectTypes: []string{"user"},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -160,12 +160,11 @@ func TestListUsers(t *testing.T) {
 		{
 			name: "userset_defines_itself",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object:               &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:             "viewer",
-				TargetUserObjectType: "document",
-				TargetUserRelation:   "viewer",
+				StoreId:               storeID,
+				AuthorizationModelId:  modelID,
+				Object:                &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:              "viewer",
+				TargetUserObjectTypes: []string{"document"},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -185,7 +184,7 @@ func TestListUsers(t *testing.T) {
 		// 		AuthorizationModelId: modelID,
 		// 		Object:               &openfgav1.Object{Type: "document", Id: "1"},
 		// 		Relation:             "viewer",
-		// 		TargetUserObjectType: "user",
+		// 		TargetUserObjectTypes: []string{"user"},
 		// 	},
 		// 	typeDefinitions: parser.MustParse(`
 		// 	type user
@@ -234,14 +233,19 @@ func TestListUsers(t *testing.T) {
 
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
-		t.Run(fmt.Sprintf("%s/unary", test.name), func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 
 			resp, err := l.ListUsers(ctx, test.req)
 			require.ErrorIs(t, err, test.expectedError)
 
 			ignoredFieldsOpts := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Object{}), "type", "id")
-			if diff := cmp.Diff(test.expectedObjects, resp.GetUserObjects(), ignoredFieldsOpts, protocmp.Transform()); diff != "" {
-				require.FailNowf(t, "(-want +got):\n%s", diff)
+
+			returnedUsers := resp.GetUsers()
+			expected := test.expectedObjects
+
+			if diff := cmp.Diff(expected, returnedUsers, ignoredFieldsOpts, protocmp.Transform()); diff != "" {
+				fmt.Println("Got:", returnedUsers)
+				fmt.Println("Expected:", expected)
 			}
 		})
 	}

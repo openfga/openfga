@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
@@ -49,29 +48,26 @@ func (l *listUsersQuery) ListUsers(
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
 
-	foundObjectsCh := make(chan *openfgav1.Object, 1)
+	foundUsersCh := make(chan *openfgav1.Object, 1)
 	expandErrCh := make(chan error, 1)
 
-	var foundObjects []*openfgav1.Object
+	var foundUsers []*openfgav1.Object
 	done := make(chan struct{}, 1)
 	go func() {
-		for foundObject := range foundObjectsCh {
-			log.Printf("foundObject '%v'\n", foundObject)
-			foundObjects = append(foundObjects, foundObject)
+		for foundObject := range foundUsersCh {
+			foundUsers = append(foundUsers, foundObject)
 		}
 
 		done <- struct{}{}
-		log.Printf("ListUsers expand is done\n")
 	}()
 
 	go func() {
-		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
+		if err := l.expand(ctx, req, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
 		}
 
-		close(foundObjectsCh)
-		log.Printf("foundObjectsCh is closed\n")
+		close(foundUsersCh)
 	}()
 
 	select {
@@ -82,52 +78,52 @@ func (l *listUsersQuery) ListUsers(
 	}
 
 	return &openfgav1.ListUsersResponse{
-		UserObjects: foundObjects,
+		Users: foundUsers,
 	}, nil
 }
 
-func (l *listUsersQuery) StreamedListUsers(
-	ctx context.Context,
-	req *openfgav1.StreamedListUsersRequest,
-	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-) error {
-	foundObjectsCh := make(chan *openfgav1.Object, 1)
-	expandErrCh := make(chan error, 1)
+// func (l *listUsersQuery) StreamedListUsers(
+// 	ctx context.Context,
+// 	req *openfgav1.StreamedListUsersRequest,
+// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
+// ) error {
+// 	foundObjectsCh := make(chan *openfgav1.Object, 1)
+// 	expandErrCh := make(chan error, 1)
 
-	done := make(chan struct{}, 1)
-	go func() {
-		for foundObject := range foundObjectsCh {
-			log.Printf("foundObject '%v'\n", foundObject)
-			if err := srv.Send(&openfgav1.StreamedListUsersResponse{
-				UserObject: foundObject,
-			}); err != nil {
-				// handle error
-			}
-		}
+// 	done := make(chan struct{}, 1)
+// 	go func() {
+// 		for foundObject := range foundObjectsCh {
+// 			log.Printf("foundObject '%v'\n", foundObject)
+// 			if err := srv.Send(&openfgav1.StreamedListUsersResponse{
+// 				UserObject: foundObject,
+// 			}); err != nil {
+// 				// handle error
+// 			}
+// 		}
 
-		done <- struct{}{}
-		log.Printf("ListUsers expand is done\n")
-	}()
+// 		done <- struct{}{}
+// 		log.Printf("ListUsers expand is done\n")
+// 	}()
 
-	go func() {
-		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
-			expandErrCh <- err
-			return
-		}
+// 	go func() {
+// 		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
+// 			expandErrCh <- err
+// 			return
+// 		}
 
-		close(foundObjectsCh)
-		log.Printf("foundObjectsCh is closed\n")
-	}()
+// 		close(foundObjectsCh)
+// 		log.Printf("foundObjectsCh is closed\n")
+// 	}()
 
-	select {
-	case err := <-expandErrCh:
-		return err
-	case <-done:
-		break
-	}
+// 	select {
+// 	case err := <-expandErrCh:
+// 		return err
+// 	case <-done:
+// 		break
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
@@ -135,9 +131,9 @@ func (l *listUsersQuery) expand(
 	foundObjectsChan chan<- *openfgav1.Object,
 ) error {
 
-	if req.GetObject().GetType() == req.GetTargetUserObjectType() && req.GetRelation() == req.GetTargetUserRelation() {
-		foundObjectsChan <- req.GetObject()
-	}
+	// if req.GetObject().GetType() == req.GetTargetUserObjectType() && req.GetRelation() == req.GetTargetUserRelation() {
+	// 	foundObjectsChan <- req.GetObject()
+	// }
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -164,12 +160,12 @@ func (l *listUsersQuery) expandRewrite(
 		return l.expandDirect(ctx, req, foundObjectsChan)
 	case *openfgav1.Userset_ComputedUserset:
 		return l.expand(ctx, &openfgav1.ListUsersRequest{
-			StoreId:              req.GetStoreId(),
-			AuthorizationModelId: req.GetAuthorizationModelId(),
-			Object:               req.GetObject(),
-			Relation:             rewrite.ComputedUserset.GetRelation(),
-			TargetUserObjectType: req.GetTargetUserObjectType(),
-			ContextualTuples:     req.GetContextualTuples(),
+			StoreId:               req.GetStoreId(),
+			AuthorizationModelId:  req.GetAuthorizationModelId(),
+			Object:                req.GetObject(),
+			Relation:              rewrite.ComputedUserset.GetRelation(),
+			TargetUserObjectTypes: req.GetTargetUserObjectTypes(),
+			ContextualTuples:      req.GetContextualTuples(),
 		}, foundObjectsChan)
 	case *openfgav1.Userset_TupleToUserset:
 		return l.expandTTU(ctx, req, rewrite, foundObjectsChan)
@@ -223,7 +219,7 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	for {
-		tupleKey, err := filteredIter.Next()
+		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -239,7 +235,7 @@ func (l *listUsersQuery) expandDirect(
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		if userRelation == "" {
-			if userObjectType == req.GetTargetUserObjectType() {
+			if req.GetTargetUserObjectTypes()[0] == userObjectType {
 				// we found one, time to return it!
 				foundObjectsChan <- &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			}
@@ -250,13 +246,12 @@ func (l *listUsersQuery) expandDirect(
 		pool.Go(func(ctx context.Context) error {
 
 			return l.expand(ctx, &openfgav1.ListUsersRequest{
-				StoreId:              req.GetStoreId(),
-				AuthorizationModelId: req.GetAuthorizationModelId(),
-				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
-				Relation:             userRelation,
-				TargetUserObjectType: req.GetTargetUserObjectType(),
-				TargetUserRelation:   req.GetTargetUserRelation(),
-				ContextualTuples:     req.GetContextualTuples(),
+				StoreId:               req.GetStoreId(),
+				AuthorizationModelId:  req.GetAuthorizationModelId(),
+				Object:                &openfgav1.Object{Type: userObjectType, Id: userObjectID},
+				Relation:              userRelation,
+				TargetUserObjectTypes: req.GetTargetUserObjectTypes(),
+				ContextualTuples:      req.GetContextualTuples(),
 			}, foundObjectsChan)
 		})
 
@@ -299,7 +294,7 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	for {
-		tupleKey, err := filteredIter.Next()
+		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -313,13 +308,11 @@ func (l *listUsersQuery) expandTTU(
 
 		pool.Go(func(ctx context.Context) error {
 			return l.expand(ctx, &openfgav1.ListUsersRequest{
-				StoreId:              req.GetStoreId(),
-				AuthorizationModelId: req.GetAuthorizationModelId(),
-				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
-				Relation:             computedRelation,
-				TargetUserObjectType: req.GetTargetUserObjectType(),
-				TargetUserRelation:   req.GetTargetUserRelation(),
-				ContextualTuples:     req.GetContextualTuples(),
+				StoreId:               req.GetStoreId(),
+				AuthorizationModelId:  req.GetAuthorizationModelId(),
+				Object:                &openfgav1.Object{Type: userObjectType, Id: userObjectID},
+				Relation:              computedRelation,
+				TargetUserObjectTypes: req.GetTargetUserObjectTypes(),
 			}, foundObjectsChan)
 		})
 	}
