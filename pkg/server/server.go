@@ -52,6 +52,18 @@ const (
 var tracer = otel.Tracer("openfga/pkg/server")
 
 var (
+	dispatchCountHistogramName = "dispatch_count"
+
+	dispatchCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            dispatchCountHistogramName,
+		Help:                            "The number of dispatches required to resolve a query (e.g. Check).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
 	datastoreQueryCountHistogramName = "datastore_query_count"
 
 	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -658,6 +670,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.serviceName,
 		methodName,
 	).Observe(queryCount)
+
+	dispatchCount := float64(resp.GetResolutionMetadata().DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
