@@ -20,6 +20,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 	ctx := context.Background()
 
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	t.Cleanup(cycleDetectionCheckResolver.Close)
 
 	t.Run("detects_cycle_and_returns_cycle_detected_error", func(t *testing.T) {
 		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:will")
