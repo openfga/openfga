@@ -1000,7 +1000,7 @@ func TestCheckDispatchCount(t *testing.T) {
 	ds := memory.New()
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 
-	t.Run("dispatch_count_tuples_to_usersets", func(t *testing.T) {
+	t.Run("dispatch_count_ttu", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		model := parser.MustTransformDSLToProto(`model
