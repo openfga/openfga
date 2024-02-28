@@ -1096,31 +1096,11 @@ type doc
 	`)
 
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
-			{
-				User:     "user:jon",
-				Relation: "member",
-				Object:   "group:1",
-			},
-			{
-				User:     "group:1#member",
-				Relation: "member",
-				Object:   "group:eng",
-			},
-			{
-				User:     "group:2#member",
-				Relation: "member",
-				Object:   "group:eng",
-			},
-			{
-				User:     "group:3#member",
-				Relation: "member",
-				Object:   "group:eng",
-			},
-			{
-				User:     "group:eng#member",
-				Relation: "viewer",
-				Object:   "document:1",
-			},
+			tuple.NewTupleKey("group:1", "member", "user:jon"),
+			tuple.NewTupleKey("group:eng", "member", "group:1#member"),
+			tuple.NewTupleKey("group:eng", "member", "group:2#member"),
+			tuple.NewTupleKey("group:eng", "member", "group:3#member"),
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 		})
 		require.NoError(t, err)
 
