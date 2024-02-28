@@ -3,6 +3,8 @@ package graph
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -27,13 +29,20 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "CycleDetectionCheckResolver"))
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
 	if req.VisitedPaths == nil {
 		req.VisitedPaths = map[string]struct{}{}
 	}
 
-	if _, ok := req.VisitedPaths[key]; ok {
+	_, cycleDetected := req.VisitedPaths[key]
+	span.SetAttributes(attribute.Bool("cycle_detected", cycleDetected))
+	if cycleDetected {
 		return nil, ErrCycleDetected
 	}
 
