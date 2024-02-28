@@ -1172,16 +1172,8 @@ type doc
 		   		define editor: [user] or owner`)
 
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
-			{
-				User:     "user:jon",
-				Relation: "owner",
-				Object:   "document:1",
-			},
-			{
-				User:     "user:will",
-				Relation: "editor",
-				Object:   "document:2",
-			},
+			tuple.NewTupleKey("document:1", "owner", "user:jon"),
+			tuple.NewTupleKey("document:2", "editor", "user:will"),
 		})
 		require.NoError(t, err)
 
@@ -1217,6 +1209,16 @@ type doc
 
 		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(1))
 		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(0))
+
+		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:jon"),
+			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+		})
+		require.NoError(t, err)
+		require.False(t, resp.Allowed)
+		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DispatchCount)
 	})
 }
 
