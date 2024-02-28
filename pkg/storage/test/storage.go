@@ -45,7 +45,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	// Authorization models.
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, ds) })
-	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, ds) })
+	t.Run("TestFindLatestAuthorizationModel", func(t *testing.T) { FindLatestAuthorizationModelTest(t, ds) })
 
 	// Assertions.
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, ds) })
