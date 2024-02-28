@@ -39,7 +39,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		require.False(t, resp.GetAllowed())
 	})
 
-	t.Run("correctly_undetects_cycle_and_returns_no_error", func(t *testing.T) {
+	t.Run("no_cycle_detected_delegates_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
