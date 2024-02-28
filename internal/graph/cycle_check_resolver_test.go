@@ -43,7 +43,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 
 		mockLocalChecker := NewMockCheckResolver(ctrl)
-		mockLocalChecker.EXPECT().ResolveCheck(ctx, gomock.Any()).Return(&ResolveCheckResponse{
+		mockLocalChecker.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: true,
 		}, nil).Times(1)
 		cycleDetectionCheckResolver.SetDelegate(mockLocalChecker)
