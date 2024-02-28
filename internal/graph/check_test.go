@@ -1020,26 +1020,10 @@ type doc
 `)
 
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
-			{
-				User:     "user:jon",
-				Relation: "viewer",
-				Object:   "folder:C",
-			},
-			{
-				User:     "folder:C",
-				Relation: "parent",
-				Object:   "folder:B",
-			},
-			{
-				User:     "folder:B",
-				Relation: "parent",
-				Object:   "folder:A",
-			},
-			{
-				User:     "folder:A",
-				Relation: "parent",
-				Object:   "doc:readme",
-			},
+			tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
+			tuple.NewTupleKey("folder:B", "parent", "folder:C"),
+			tuple.NewTupleKey("folder:A", "parent", "folder:B"),
+			tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
 		})
 		require.NoError(t, err)
 
