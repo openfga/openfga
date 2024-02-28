@@ -33,7 +33,7 @@ s
 
 ## Overview
 
-OpenFGA is a high performance and flexible authorization/permission engine. It incorporates Relationship-Based Access Control (ReBAC) and Attribute Based Access Control (ABAC) concepts with a domain-specific language that makes it easy to craft authorization and permission solutions that can grow and evolve to any use case, at any scale. 
+OpenFGA is a high performance and flexible authorization/permission engine. It incorporates Relationship-Based Access Control (ReBAC) and Attribute Based Access Control (ABAC) concepts with a domain-specific language that makes it easy to craft authorization and permission solutions that can grow and evolve to any use case, at any scale.
 
 It's inspired on the idea described in the [Google Zanzibar paper](https://research.google/pubs/pub48190/).
 
@@ -53,7 +53,7 @@ model
 
 type user
 type group
-  relations 
+  relations
     define member: [user]
 type folder
   relations
@@ -62,7 +62,7 @@ type folder
     define viewer: [user, group#member] or owner or viewer from parent
 
 type document
-  relations 
+  relations
     define parent: [folder]
     define owner: [user]
     define viewer: [user, group#member] or owner or viewer from parent
@@ -84,7 +84,7 @@ With this information, OpenFGA can be queried in different ways:
 
 OpenFGA was accepted as a CNCF sandbox project in June 2022. Since our inclusion in the CNCF, it has been promising community contribution, growth, and adoption. Companies such as [Canonical](https://canonical.com) or [Okta](https://fga.dev) are building products and integrations on top of the OpenFGA, while others, like [Wolt](https://wolt.com) and [Read.ai](https://www.read.ai/) are using OpenFGA to implement authorization for their products.
 
-OpenFGA has an active community, with 500+ Discord members, 40 unique contributors, and an average of [850 commits per month](https://openfga.devstats.cncf.io/d/2/commits-repository-groups?orgId=1&var-period=m&var-repogroups=All&from=now-1y%2Fy&to=now-1y%2Fy). 
+OpenFGA has an active community, with 650+ Discord members, 30+ members in our brand new CNCF Slack channel, 40 unique contributors, and an average of [850 commits per month](https://openfga.devstats.cncf.io/d/2/commits-repository-groups?orgId=1&var-period=m&var-repogroups=All&from=now-1y%2Fy&to=now-1y%2Fy).
 
 ### Actors
 
@@ -92,7 +92,7 @@ OpenFGA has an active community, with 500+ Discord members, 40 unique contributo
 
 The OpenFGA server is responsible for storing and querying relationship tuples and authorization models.
 
-Given that it's going to be used to know if a user can perform an action on a resource, any potential bug in the OpenFGA server logic can have security implications. 
+Given that it's going to be used to know if a user can perform an action on a resource, any potential bug in the OpenFGA server logic can have security implications.
 
 The server can be configured without authentication, with a shared key, or using the OAuth client credentials flow.
 
@@ -108,7 +108,7 @@ The CLI/API clients are used to make API requests to the OpenFGA server. This in
 
 They authenticate using any of the mechanisms supported by the server (no authentication, shared key, OAuth client credentials).
 
-If the credentials were compromised, the attacker would be able to perform any action granted to those credentials. This would include: 
+If the credentials were compromised, the attacker would be able to perform any action granted to those credentials. This would include:
 
 * Changing the authorization model.
 * Adding tuples to give the attacker access to a resource.
@@ -130,10 +130,10 @@ Every time a server endpoint is invoked, OpenFGA validates that:
   - Ensures that the input is a semantically valid, e.g. that a tuple is valid according to the authorization model or that the model does not have disallowed cyclical or problematic definitions
 
   - The payload of the API call:
-  
+
     - Matches the Protobuf API definitions.
     - Validates the parameters have the proper structure, e.g. users need to be written this way 'user:<userid>'
-  
+
 **Writing an Authorization Model**
 
 OpenFGA validates that the Authorization Models are semantically valid from the server standpoint, as in they do not have cyclical or problematic definitions, or other disallowed criteria.
@@ -195,13 +195,13 @@ OpenFGA's code coverage is 83%, and it has a [A+ Go rating](https://goreportcard
 
 ### Ecosystem
 
-OpenFGA uses [Chainguard images](https://www.chainguard.dev/chainguard-images), it supports [OpenTelemetry](https://github.com/open-telemetry), and can be monitored with tools like [Grafana](https://grafana.com/), [Prometheus](https://prometheus.io/) and [Jaeger](https://www.jaegertracing.io/). 
+OpenFGA uses [Chainguard images](https://www.chainguard.dev/chainguard-images), it supports [OpenTelemetry](https://github.com/open-telemetry), and can be monitored with tools like [Grafana](https://grafana.com/), [Prometheus](https://prometheus.io/) and [Jaeger](https://www.jaegertracing.io/).
 
 It provides [Helm Charts](https://github.com/openfga/helm-charts) that are available in [Artifact Hub](https://artifacthub.io/packages/helm/openfga/openfga).
 
 ### Development Pipeline
 
-All code is maintained on [Github](https://github.com/openfga). Changes must be reviewed and merged by the project maintainers. Before changes are merged, all the changes must pass static checks, license checks, [multiple linters](https://github.com/openfga/openfga/blob/main/.golangci.yaml) including `gofmt` and `govet`, and pass all unit tests and e2e tests. 
+All code is maintained on [Github](https://github.com/openfga). Changes must be reviewed and merged by the project maintainers. Before changes are merged, all the changes must pass static checks, license checks, [multiple linters](https://github.com/openfga/openfga/blob/main/.golangci.yaml) including `gofmt` and `govet`, and pass all unit tests and e2e tests.
 
 Changes are scanned by Snyk, FOSSA, semgrep and CodeQL. Code changes are submitted via Pull Requests and contributors need to sign a CLA through [EasyCLA](https://easycla.lfx.linuxfoundation.org). Commits to the main branch directly are not allowed.
 
@@ -211,7 +211,7 @@ OpenFGA published container images are based on Chainguard's and are scanned usi
 
 #### Internal
 
-Team and users members communicate with each other through the [OpenFGA Discord](https://discord.gg/8naAwJfWN6), a Okta internal Slack channel, and discuss in Github [discussions](https://github.com/orgs/openfga/discussions), Github [issues](https://github.com/openfga/openfga/issues) or [pull requests](https://github.com/openfga/openfga/pulls).
+Team and users members communicate with each other through the #openfga channel in the CNCF Slack community, an Okta internal Slack channel, and discuss in [Github discussions](https://github.com/orgs/openfga/discussions), [Github issues](https://github.com/openfga/openfga/issues) or [pull requests](https://github.com/openfga/openfga/pulls).
 
 #### Security Email Group
 
@@ -226,11 +226,11 @@ The OpenFGA maintainers are responsible for responding within 5 working days. It
 
 ### Incident Response
 
-See [OpenFGA Security Doc](https://github.com/openfga/.github/blob/main/SECURITY.md) for a description for how incidents should be communicated. 
+See [OpenFGA Security Doc](https://github.com/openfga/.github/blob/main/SECURITY.md) for a description for how incidents should be communicated.
 
-OpenFGA maintainers are responsible for tracking any vulnerabilities reported. 
+OpenFGA maintainers are responsible for tracking any vulnerabilities reported.
 
-Issues are triaged with high priority, and are escalated if confirmed. Issues are triaged in private channels. 
+Issues are triaged with high priority, and are escalated if confirmed. Issues are triaged in private channels.
 
 OpenFGA follows the Github security advisory process. When an issue is identified, a CVE is requested, and the fix is worked out in a private branch linked to the CVE.
 
@@ -246,9 +246,9 @@ All OpenFGA security issues can be found on the [Github advisories page](https:/
 
 Given OpenFGA makes authorization decisions, bugs in OpenFGA can cause security issues for OpenFGA's adopters. Each product bug where OpenFGA returns a positive authorization result when it should not is treated as a security vulnerability.
 
-OpenFGA [passes OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374). 
+OpenFGA [passes OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374).
 
-### Case Studies. 
+### Case Studies.
 
 - [Okta Fine Grained Authorization](https://fga.dev) is a SaaS product built on top of OpenFGA. It provisions and operates a set of OpenFGA nodes for their customers in a multi-tenant environment.
 
@@ -266,4 +266,4 @@ The list of companies that publicly acknowledged using OpenFGA can be found [her
 
 [OPA](https://github.com/open-policy-agent) is a CNCF project that can be used to externalize authorization. It uses [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) as its policy language. The main difference with OpenFGA is that OpenFGA stores the data it needs to use to make authorization decisions as relationship tuples. OPA needs to be provided with that data when invoking the policies, or needs to query the data when evaluating the policy.
 
-[Kyverno](https://github.com/kyverno) is a CNCF project designed to implement security policies for Kubernetes deployments. 
+[Kyverno](https://github.com/kyverno) is a CNCF project designed to implement security policies for Kubernetes deployments.
