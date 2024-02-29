@@ -298,29 +298,6 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
-			// Replaced by computed_relation_has_no_entrypoints
-			name: "no_entrypoint_4",
-			request: &openfgav1.WriteAuthorizationModelRequest{
-				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-
-type folder
-  relations
-	define parent: [document]
-	define viewer: editor from parent
-
-type document
-  relations
-	define parent: [folder]
-	define editor: viewer
-	define viewer: editor from parent`).TypeDefinitions,
-			},
-			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
-		},
-		{
 			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
 			name: "self_referencing_type_restriction_with_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{

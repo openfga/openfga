@@ -12,12 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
-type RelationDetails struct {
-	hasEntrypoints bool
-	hasCycle       bool
-}
-
-func TestHasEntrypoints(t *testing.T) {
+func TestGetRelationDetails(t *testing.T) {
 	tests := map[string]struct {
 		model         string
 		inputType     string
@@ -131,18 +126,17 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "parent",
 			expectDetails: &RelationDetails{true, false},
 		},
-		// TODO fix
-		//`this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//	type folder
-		//		relations
-		//			define parent: [unknown]`,
-		//	inputType:     "folder",
-		//	inputRelation: "parent",
-		//	expectError:   "undefined type 'unknown'",
-		//},
+		`this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
+			model: `
+			model
+				schema 1.1
+			type folder
+				relations
+					define parent: [unknown]`,
+			inputType:     "folder",
+			inputRelation: "parent",
+			expectError:   "undefined type 'unknown'",
+		},
 		`this_has_no_entrypoints`: {
 			model: `
 			model
@@ -395,51 +389,50 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "action1",
 			expectDetails: &RelationDetails{false, true},
 		},
-		// TODO fix
-		//`issue_1385`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//
-		//	type user
-		//
-		//	type entity
-		//		relations
-		//			define member : [user]
-		//			define contextual_user: [user]
-		//			define contextual_member : member and contextual_user
-		//			define has_logging_product: [entity]
-		//			define block_logging : [user] and contextual_user
-		//			define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
-		//			define can_enable_logging : has_access_to_logging
-		//	`,
-		//	inputType:     "entity",
-		//	inputRelation: "can_enable_logging",
-		//	expectDetails: &RelationDetails{true, false},
-		//},
-		//`issue_1260_parallel_edges_mean_entrypoints`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//
-		//	type user
-		//
-		//	type state
-		//		relations
-		//			define can_view: [user]
-		//			define associated_transition: [transition]
-		//			define can_transition_with: can_apply from associated_transition
-		//
-		//	type transition
-		//		relations
-		//			define start: [state]
-		//			define end: [state]
-		//			define can_apply: [user] and can_view from start and can_view from end
-		//	`,
-		//	inputType:     "state",
-		//	inputRelation: "can_transition_with",
-		//	expectDetails: &RelationDetails{true, false},
-		//},
+		`issue_1385_revisited_computed_userset_has_entrypoints`: {
+			model: `
+			model
+				schema 1.1
+		
+			type user
+		
+			type entity
+				relations
+					define member : [user]
+					define contextual_user: [user]
+					define contextual_member : member and contextual_user
+					define has_logging_product: [entity]
+					define block_logging : [user] and contextual_user
+					define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
+					define can_enable_logging : has_access_to_logging
+			`,
+			inputType:     "entity",
+			inputRelation: "can_enable_logging",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`issue_1260_revisited_ttu_has_entrypoints`: {
+			model: `
+			model
+				schema 1.1
+		
+			type user
+		
+			type state
+				relations
+					define can_view: [user]
+					define associated_transition: [transition]
+					define can_transition_with: can_apply from associated_transition
+		
+			type transition
+				relations
+					define start: [state]
+					define end: [state]
+					define can_apply: [user] and can_view from start and can_view from end
+			`,
+			inputType:     "state",
+			inputRelation: "can_transition_with",
+			expectDetails: &RelationDetails{true, false},
+		},
 		`ttu_has_entrypoint`: {
 			model: `
 			model
@@ -474,23 +467,38 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "d",
 			expectDetails: &RelationDetails{true, false},
 		},
+		`undefined_computed_relation_in_ttu_has_entrypoints`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define writer: [user]
+			type document
+				relations
+					define viewer: writer from parent
+					define parent: [document,folder]
+			`,
+			inputType:     "document",
+			inputRelation: "viewer", // `document#writer` is undefined
+			expectDetails: &RelationDetails{true, false},
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			ts := New(model)
-			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
 
-			rewrite := inputRelation.GetRewrite()
-			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]struct{}{})
+			relationDetails, err := ts.GetRelationDetails(test.inputType, test.inputRelation)
 
 			if test.expectError != "" {
 				require.ErrorContains(t, err, test.expectError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
-				require.Equal(t, test.expectDetails.hasCycle, hasCycle, "unexpected value for hasCycle")
+				require.Equal(t, test.expectDetails.hasEntrypoints, relationDetails.hasEntrypoints, "unexpected value for hasEntrypoints")
+				require.Equal(t, test.expectDetails.hasLoop, relationDetails.hasLoop, "unexpected value for hasLoop")
 			}
 		})
 	}
@@ -774,26 +782,6 @@ type document
   relations
 	define viewer: [document#viewer] but not editor
 	define editor: [user]`,
-			expectedError: ErrNoEntrypoints,
-		},
-		{
-			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
-			// Replaced by computed_relation_has_no_entrypoints
-			name: "no_entrypoint_4",
-			model: `model
-	schema 1.1
-type user
-
-type folder
-  relations
-	define parent: [document]
-	define viewer: editor from parent
-
-type document
-  relations
-	define parent: [folder]
-	define editor: viewer
-	define viewer: editor from parent`,
 			expectedError: ErrNoEntrypoints,
 		},
 		{
