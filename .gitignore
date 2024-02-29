@@ -9,3 +9,5 @@ openfga
 coverage*.out
 *.swp
 
+.DS_Store
+test.db
