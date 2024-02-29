@@ -124,13 +124,27 @@ func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADat
 
 		oldModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
 				{
 					Type: "folder",
 					Relations: map[string]*openfgav1.Userset{
 						"viewer": {
 							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -139,15 +153,66 @@ func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADat
 		err := datastore.WriteAuthorizationModel(ctx, store, oldModel)
 		require.NoError(t, err)
 
+		updatedModel := &openfgav1.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgav1.Userset{
+						"owner": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"owner": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		err = datastore.WriteAuthorizationModel(ctx, store, updatedModel)
+		require.NoError(t, err)
+
+		latestModel, err := datastore.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
+		if diff := cmp.Diff(updatedModel, latestModel, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+
 		newModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
 				{
 					Type: "folder",
 					Relations: map[string]*openfgav1.Userset{
 						"reader": {
 							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -156,7 +221,7 @@ func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADat
 		err = datastore.WriteAuthorizationModel(ctx, store, newModel)
 		require.NoError(t, err)
 
-		latestModel, err := datastore.FindLatestAuthorizationModel(ctx, store)
+		latestModel, err = datastore.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
 		if diff := cmp.Diff(newModel, latestModel, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-want +got):\n%s", diff)
