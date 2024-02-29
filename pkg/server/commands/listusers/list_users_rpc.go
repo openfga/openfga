@@ -19,6 +19,15 @@ type listUsersQuery struct {
 	resolveNodeBreadthLimit uint32
 }
 
+/*
+ - Optimize entrypoint pruning
+ - Intersection, exclusion, etc. (see: listobjects)
+ - Max results
+ - BCTR
+ - Contextual tuples
+ -
+*/
+
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
@@ -131,9 +140,9 @@ func (l *listUsersQuery) expand(
 	foundObjectsChan chan<- *openfgav1.Object,
 ) error {
 
-	// if req.GetObject().GetType() == req.GetTargetUserObjectType() && req.GetRelation() == req.GetTargetUserRelation() {
-	// 	foundObjectsChan <- req.GetObject()
-	// }
+	if req.GetObject().GetType() == req.GetTargetUserObjectTypes()[0] {
+		foundObjectsChan <- req.GetObject()
+	}
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -157,8 +166,10 @@ func (l *listUsersQuery) expandRewrite(
 ) error {
 	switch rewrite := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
+		fmt.Println("expand because", "*openfgav1.Userset_This:")
 		return l.expandDirect(ctx, req, foundObjectsChan)
 	case *openfgav1.Userset_ComputedUserset:
+		fmt.Println("expand because", "*openfgav1.Userset_ComputedUserset:", rewrite.ComputedUserset.GetRelation())
 		return l.expand(ctx, &openfgav1.ListUsersRequest{
 			StoreId:               req.GetStoreId(),
 			AuthorizationModelId:  req.GetAuthorizationModelId(),
@@ -168,8 +179,10 @@ func (l *listUsersQuery) expandRewrite(
 			ContextualTuples:      req.GetContextualTuples(),
 		}, foundObjectsChan)
 	case *openfgav1.Userset_TupleToUserset:
+		fmt.Println("expand because", "*openfgav1.Userset_TupleToUserset:")
 		return l.expandTTU(ctx, req, rewrite, foundObjectsChan)
 	case *openfgav1.Userset_Union:
+		fmt.Println("expand because", "*openfgav1.Userset_Union:")
 
 		pool := pool.New().WithContext(ctx)
 		pool.WithCancelOnError()

@@ -2,7 +2,6 @@ package listusers
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -244,8 +243,7 @@ func TestListUsers(t *testing.T) {
 			expected := test.expectedObjects
 
 			if diff := cmp.Diff(expected, returnedUsers, ignoredFieldsOpts, protocmp.Transform()); diff != "" {
-				fmt.Println("Got:", returnedUsers)
-				fmt.Println("Expected:", expected)
+				require.FailNowf(t, "(-want +got):\n%s", diff)
 			}
 		})
 	}
