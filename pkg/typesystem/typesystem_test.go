@@ -98,14 +98,14 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "parent",
 			expectDetails: &RelationDetails{true, false},
 		},
-		// TOOD fix
+		// TODO fix
 		//`this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
 		//	model: `
 		//	model
-		//	  schema 1.1
+		//		schema 1.1
 		//	type folder
-		//	  relations
-		//		define parent: [unknown]`,
+		//		relations
+		//			define parent: [unknown]`,
 		//	inputType:     "folder",
 		//	inputRelation: "parent",
 		//	expectError:   "undefined type 'unknown'",
@@ -162,7 +162,7 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "a1",
 			expectDetails: &RelationDetails{false, true},
 		},
-		`computed_relation_has_no_entrypoints_because_cycle`: {
+		`computed_relation_has_no_entrypoints`: {
 			model: `
 			model
 				schema 1.1
@@ -180,7 +180,7 @@ func TestHasEntrypoints(t *testing.T) {
 					define viewer: viewer from parent`,
 			inputType:     "folder",
 			inputRelation: "viewer",
-			expectDetails: &RelationDetails{false, false}, // but it DOES have a cycle...
+			expectDetails: &RelationDetails{false, false},
 		},
 		`union_has_entrypoint_through_user`: {
 			model: `
@@ -208,7 +208,7 @@ func TestHasEntrypoints(t *testing.T) {
 					define viewer: [document#viewer] or editor`,
 			inputType:     "document",
 			inputRelation: "viewer",
-			expectDetails: &RelationDetails{false, false}, // but it DOES have a cycle...
+			expectDetails: &RelationDetails{false, false},
 		},
 		`ttu_has_entrypoint_through_user`: {
 			model: `
@@ -366,19 +366,19 @@ func TestHasEntrypoints(t *testing.T) {
 		//`issue_1385`: {
 		//	model: `
 		//	model
-		//	  schema 1.1
+		//		schema 1.1
 		//
 		//	type user
 		//
 		//	type entity
-		//	  relations
-		//		define member : [user]
-		//		define contextual_user: [user]
-		//		define contextual_member : member and contextual_user
-		//		define has_logging_product: [entity]
-		//		define block_logging : [user] and contextual_user
-		//		define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
-		//		define can_enable_logging : has_access_to_logging
+		//		relations
+		//			define member : [user]
+		//			define contextual_user: [user]
+		//			define contextual_member : member and contextual_user
+		//			define has_logging_product: [entity]
+		//			define block_logging : [user] and contextual_user
+		//			define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
+		//			define can_enable_logging : has_access_to_logging
 		//	`,
 		//	inputType:     "entity",
 		//	inputRelation: "can_enable_logging",
@@ -387,21 +387,21 @@ func TestHasEntrypoints(t *testing.T) {
 		//`issue_1260_parallel_edges_mean_entrypoints`: {
 		//	model: `
 		//	model
-		//	  schema 1.1
+		//		schema 1.1
 		//
 		//	type user
 		//
 		//	type state
-		//	  relations
-		//		define can_view: [user]
-		//		define associated_transition: [transition]
-		//		define can_transition_with: can_apply from associated_transition
+		//		relations
+		//			define can_view: [user]
+		//			define associated_transition: [transition]
+		//			define can_transition_with: can_apply from associated_transition
 		//
 		//	type transition
-		//	  relations
-		//		define start: [state]
-		//		define end: [state]
-		//		define can_apply: [user] and can_view from start and can_view from end
+		//		relations
+		//			define start: [state]
+		//			define end: [state]
+		//			define can_apply: [user] and can_view from start and can_view from end
 		//	`,
 		//	inputType:     "state",
 		//	inputRelation: "can_transition_with",
@@ -422,8 +422,8 @@ func TestHasEntrypoints(t *testing.T) {
 				require.ErrorContains(t, err, test.expectError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints)
-				require.Equal(t, test.expectDetails.hasCycle, hasCycle)
+				require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
+				require.Equal(t, test.expectDetails.hasCycle, hasCycle, "unexpected value for hasCycle")
 			}
 		})
 	}
@@ -711,7 +711,7 @@ type document
 		},
 		{
 			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
-			// Replaced by computed_relation_has_no_entrypoints_because_cycle
+			// Replaced by computed_relation_has_no_entrypoints
 			name: "no_entrypoint_4",
 			model: `model
 	schema 1.1

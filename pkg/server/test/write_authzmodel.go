@@ -299,7 +299,7 @@ type document
 		},
 		{
 			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
-			// Replaced by computed_relation_has_no_entrypoints_because_cycle
+			// Replaced by computed_relation_has_no_entrypoints
 			name: "no_entrypoint_4",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
