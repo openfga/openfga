@@ -42,6 +42,9 @@ func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 }
 
 type ResolutionMetadata struct {
+	// Thinking of a Check as a tree of evaluations:
+	// Depth is the current level in the tree in the current path that we are exploring.
+	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
 	Depth uint32
 
 	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read.
@@ -52,6 +55,8 @@ type ResolutionMetadata struct {
 	DatastoreQueryCount uint32
 
 	// The number of Check subproblems that had to be dispatched to resolve the parent subproblem this response is associated with.
+	// Thinking of a Check as a tree of evaluations:
+	// DispatchCount will be, at one node, the sum of all the children node's DispatchCount.
 	DispatchCount uint32
 }
 
