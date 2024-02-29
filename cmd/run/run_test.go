@@ -688,6 +688,10 @@ func TestServerMetricsReporting(t *testing.T) {
 	t.Run("postgres", func(t *testing.T) {
 		testServerMetricsReporting(t, "postgres")
 	})
+
+	t.Run("sqlite", func(t *testing.T) {
+		testServerMetricsReporting(t, "sqlite")
+	})
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {

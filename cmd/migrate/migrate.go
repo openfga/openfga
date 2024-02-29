@@ -72,6 +72,23 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
+	case "sqlite":
+		driver = "sqlite3"
+		dialect = "sqlite3"
+		migrationsPath = assets.SQLiteMigrationDir
+
+		if uri == "" {
+			uri = "file::memory:?cache=shared"
+		}
+
+		// Parse the database uri with the sqlite drivers function for it and update username/password, if set via flags
+		dbURI, err := url.Parse(uri)
+
+		if err != nil {
+			log.Fatalf("invalid database uri: %v\n", err)
+		}
+
+		uri = dbURI.String()
 	case "mysql":
 		driver = "mysql"
 		dialect = "mysql"

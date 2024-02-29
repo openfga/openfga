@@ -11,6 +11,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/pressly/goose/v3"

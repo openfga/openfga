@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -59,6 +60,8 @@ func runValidate(_ *cobra.Command, _ []string) error {
 		err error
 	)
 	switch engine {
+	case "sqlite":
+		db, err = sqlite.New(uri, sqlcommon.NewConfig())
 	case "mysql":
 		db, err = mysql.New(uri, sqlcommon.NewConfig())
 	case "postgres":

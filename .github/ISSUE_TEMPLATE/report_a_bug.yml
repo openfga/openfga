@@ -124,6 +124,7 @@ body:
         - In-Memory
         - MySQL
         - Postgres
+        - SQLite
     validations:
       required: true
 
