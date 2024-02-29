@@ -12,6 +12,423 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
+type RelationDetails struct {
+	hasEntrypoints bool
+	hasCycle       bool
+}
+
+func TestHasEntrypoints(t *testing.T) {
+	tests := map[string]struct {
+		model         string
+		inputType     string
+		inputRelation string
+		expectError   string
+		expectDetails *RelationDetails
+	}{
+		`undefined_input_relation`: {
+			model: `
+			model
+				schema 1.1
+			type document
+				relations
+					define viewer: [folder]`,
+			inputType:     "document",
+			inputRelation: "unknown",
+			expectError:   "undefined type definition for 'document#unknown'",
+		},
+		`this_has_entrypoints_through_user`: {
+			model: `
+			model
+				schema 1.1
+			type document
+				relations
+					define viewer: [document]`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`this_has_entrypoints_through_user_wildcard`: {
+			model: `
+			model
+				schema 1.1
+			type document
+				relations
+					define viewer: [document:*]`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`this_has_entrypoints_through_userset`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type org
+				relations
+					define member: [user]
+			type folder
+				relations
+					define parent: [org#member]`,
+			inputType:     "folder",
+			inputRelation: "parent",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`this_with_two_assignable_types_has_entrypoints_through_first`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define parent: [user, folder#parent]`,
+			inputType:     "folder",
+			inputRelation: "parent",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`this_with_two_assignable_types_has_entrypoints_through_second`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define editor: [user]
+					define parent: [folder#parent, folder#editor]`,
+			inputType:     "folder",
+			inputRelation: "parent",
+			expectDetails: &RelationDetails{true, false},
+		},
+		// TOOD fix
+		//`this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
+		//	model: `
+		//	model
+		//	  schema 1.1
+		//	type folder
+		//	  relations
+		//		define parent: [unknown]`,
+		//	inputType:     "folder",
+		//	inputRelation: "parent",
+		//	expectError:   "undefined type 'unknown'",
+		//},
+		`this_has_no_entrypoints`: {
+			model: `
+			model
+				schema 1.1
+			type folder
+				relations
+					define parent: [folder#parent]`,
+			inputType:     "folder",
+			inputRelation: "parent",
+			expectDetails: &RelationDetails{false, false},
+		},
+		`computed_relation_has_entrypoint_through_user`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define editor: [user]
+					define viewer: editor`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`computed_relation_has_entrypoint_through_userset`: {
+			model: `
+			model
+			  schema 1.1
+			type user
+			type org
+			  relations
+				define member: [user]
+			type folder
+			  relations
+				define a2: [org#member]
+				define a1: a2`,
+			inputType:     "folder",
+			inputRelation: "a1",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`computed_relation_has_no_entrypoints_because_no_terminal_node`: {
+			model: `
+			model
+				schema 1.1
+			type folder
+				relations
+					define a2: a1
+					define a1: a2`,
+			inputType:     "folder",
+			inputRelation: "a1",
+			expectDetails: &RelationDetails{false, true},
+		},
+		`computed_relation_has_no_entrypoints_because_cycle`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type folder
+				relations
+					define parent: [document]
+					define viewer: editor from parent
+			
+			type document
+				relations
+					define parent: [folder]
+					define editor: viewer
+					define viewer: viewer from parent`,
+			inputType:     "folder",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{false, false}, // but it DOES have a cycle...
+		},
+		`union_has_entrypoint_through_user`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define editor: [user]
+					define viewer: [document#viewer] or editor`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`union_has_no_entrypoint`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define editor: [document#viewer]
+					define viewer: [document#viewer] or editor`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{false, false}, // but it DOES have a cycle...
+		},
+		`ttu_has_entrypoint_through_user`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type org
+				relations
+					define viewer: [user]
+			type folder
+				relations
+					define parent: [org]
+					define viewer: viewer from parent`,
+			inputType:     "folder",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`ttu_has_entrypoint_through_userset`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type org
+				relations
+					define viewer: [user]
+					define member: [user]
+			type folder
+				relations
+					define parent: [org#member]
+					define viewer: viewer from parent`,
+			inputType:     "folder",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`ttu_has_no_entrypoint`: {
+			model: `
+			model
+			  schema 1.1
+			type folder
+				relations
+					define parent: [folder]
+					define viewer: viewer from parent`,
+			inputType:     "folder",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{false, false},
+		},
+		`intersection_has_entrypoint_and_no_cycle`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define action1: admin and editor
+					define admin: [user]
+					define editor: [user]`,
+			inputType:     "document",
+			inputRelation: "action1",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`intersection_has_no_entrypoint_and_no_cycle`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define action1: [document#action1] and editor
+					define editor: [user]`,
+			inputType:     "document",
+			inputRelation: "action1",
+			expectDetails: &RelationDetails{false, false},
+		},
+		`intersection_has_no_entrypoint_and_has_cycle_2`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define admin: [user]
+					define action1: admin and action2 and action3
+					define action2: admin and action1 and action3
+					define action3: admin and action1 and action2`,
+			inputType:     "document",
+			inputRelation: "action1",
+			expectDetails: &RelationDetails{false, true},
+		},
+		`difference_has_entrypoints_and_no_cycle`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define action1: admin but not editor
+					define admin: [user]
+					define editor: [user]`,
+			inputType:     "document",
+			inputRelation: "action1",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`difference_has_entrypoints_and_no_cycle_2`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define restricted: [user]
+					define editor: [user]
+					define viewer: [document#viewer] or editor
+					define can_view: viewer but not restricted
+					define can_view_actual: can_view`,
+			inputType:     "document",
+			inputRelation: "can_view_actual",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`difference_has_no_entrypoint_and_no_cycle`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define action1: [document#action1] but not editor
+					define editor: [user]`,
+			inputType:     "document",
+			inputRelation: "action1",
+			expectDetails: &RelationDetails{false, false},
+		},
+		`difference_has_no_entrypoint_and_has_cycle`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define admin: [user]
+					define action1: admin but not action2
+					define action2: admin but not action3
+					define action3: admin but not action1`,
+			inputType:     "document",
+			inputRelation: "action1",
+			expectDetails: &RelationDetails{false, true},
+		},
+		// TODO fix
+		//`issue_1385`: {
+		//	model: `
+		//	model
+		//	  schema 1.1
+		//
+		//	type user
+		//
+		//	type entity
+		//	  relations
+		//		define member : [user]
+		//		define contextual_user: [user]
+		//		define contextual_member : member and contextual_user
+		//		define has_logging_product: [entity]
+		//		define block_logging : [user] and contextual_user
+		//		define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
+		//		define can_enable_logging : has_access_to_logging
+		//	`,
+		//	inputType:     "entity",
+		//	inputRelation: "can_enable_logging",
+		//	expectDetails: &RelationDetails{true, false},
+		//},
+		//`issue_1260_parallel_edges_mean_entrypoints`: {
+		//	model: `
+		//	model
+		//	  schema 1.1
+		//
+		//	type user
+		//
+		//	type state
+		//	  relations
+		//		define can_view: [user]
+		//		define associated_transition: [transition]
+		//		define can_transition_with: can_apply from associated_transition
+		//
+		//	type transition
+		//	  relations
+		//		define start: [state]
+		//		define end: [state]
+		//		define can_apply: [user] and can_view from start and can_view from end
+		//	`,
+		//	inputType:     "state",
+		//	inputRelation: "can_transition_with",
+		//	expectDetails: &RelationDetails{true, false},
+		//},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			ts := New(model)
+			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
+
+			rewrite := inputRelation.GetRewrite()
+			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]struct{}{})
+
+			if test.expectError != "" {
+				require.ErrorContains(t, err, test.expectError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints)
+				require.Equal(t, test.expectDetails.hasCycle, hasCycle)
+			}
+		})
+	}
+}
+
 func TestHasCycle(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -21,7 +438,7 @@ func TestHasCycle(t *testing.T) {
 		expected   bool
 	}{
 		{
-			name: "test_1",
+			name: "computed_userset_1",
 			model: `model
 	schema 1.1
 type resource
@@ -33,7 +450,7 @@ type resource
 			expected:   true,
 		},
 		{
-			name: "test_2",
+			name: "computed_userset_2",
 			model: `model
 	schema 1.1
 type resource
@@ -46,7 +463,7 @@ type resource
 			expected:   true,
 		},
 		{
-			name: "test_3",
+			name: "union_1",
 			model: `model
 	schema 1.1
 type user
@@ -61,7 +478,7 @@ type resource
 			expected:   true,
 		},
 		{
-			name: "test_4",
+			name: "union_2",
 			model: `model
 	schema 1.1
 type user
@@ -76,7 +493,23 @@ type resource
 			expected:   true,
 		},
 		{
-			name: "test_5",
+			name: "intersection_and_union",
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type resource
+				relations
+					define x: [user] and y
+					define y: [user] and z
+					define z: [user] or x`,
+			objectType: "resource",
+			relation:   "x",
+			expected:   true,
+		},
+		{
+			name: "exclusion_and_union",
 			model: `model
 	schema 1.1
 type user
@@ -91,7 +524,7 @@ type resource
 			expected:   true,
 		},
 		{
-			name: "test_6",
+			name: "union_3",
 			model: `model
 	schema 1.1
 type user
@@ -107,7 +540,7 @@ type group
 			expected:   true,
 		},
 		{
-			name: "test_7",
+			name: "union_4",
 			model: `model
 	schema 1.1
 type user
@@ -123,7 +556,7 @@ type account
 			expected:   true,
 		},
 		{
-			name: "test_8",
+			name: "union_5",
 			model: `model
 	schema 1.1
 type user
@@ -139,7 +572,7 @@ type account
 			expected:   false,
 		},
 		{
-			name: "test_9",
+			name: "union_6",
 			model: `model
 	schema 1.1
 type user
@@ -151,6 +584,30 @@ type document
 			objectType: "document",
 			relation:   "viewer",
 			expected:   false,
+		},
+		{
+			name: "many_circular_computed_relations",
+			model: `
+			model
+				schema 1.1
+			type user
+			
+			type canvas
+				relations
+					define can_edit: editor or owner
+					define editor: [user, account#member]
+					define owner: [user]
+					define viewer: [user, account#member]
+			
+			type account
+				relations
+					define admin: [user] or member or super_admin or owner
+					define member: [user] or owner or admin or super_admin
+					define owner: [user]
+					define super_admin: [user] or admin or member`,
+			objectType: "account",
+			relation:   "admin",
+			expected:   true,
 		},
 	}
 
@@ -174,6 +631,7 @@ func TestNewAndValidate(t *testing.T) {
 		expectedError error
 	}{
 		{
+			// TODO remove - same as this_has_entrypoints_through_user
 			name: "direct_relationship_with_entrypoint",
 			model: `model
 	schema 1.1
@@ -184,6 +642,7 @@ type document
 	define viewer: [user]`,
 		},
 		{
+			// TODO remove - same as computed_relation_has_entrypoint_through_user
 			name: "computed_relationship_with_entrypoint",
 			model: `model
 	schema 1.1
@@ -195,6 +654,7 @@ type document
 	define viewer: editor`,
 		},
 		{
+			// TODO remove - same as intersection_has_no_entrypoint_and_has_cycle_2
 			name: "no_entrypoint_1",
 			model: `model
 	schema 1.1
@@ -209,6 +669,7 @@ type document
 			expectedError: ErrNoEntryPointsLoop,
 		},
 		{
+			// TODO remove - same as difference_has_no_entrypoint_and_has_cycle
 			name: "no_entrypoint_2",
 			model: `model
 	schema 1.1
@@ -223,6 +684,7 @@ type document
 			expectedError: ErrNoEntryPointsLoop,
 		},
 		{
+			// TODO remove - same as intersection_has_no_entrypoint_and_no_cycle
 			name: "no_entrypoint_3a",
 			model: `model
 	schema 1.1
@@ -235,6 +697,7 @@ type document
 			expectedError: ErrNoEntrypoints,
 		},
 		{
+			// TODO remove - same as difference_has_no_entrypoint_and_no_cycle
 			name: "no_entrypoint_3b",
 			model: `model
 	schema 1.1
@@ -247,6 +710,8 @@ type document
 			expectedError: ErrNoEntrypoints,
 		},
 		{
+			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
+			// Replaced by computed_relation_has_no_entrypoints_because_cycle
 			name: "no_entrypoint_4",
 			model: `model
 	schema 1.1
@@ -265,6 +730,7 @@ type document
 			expectedError: ErrNoEntrypoints,
 		},
 		{
+			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
 			name: "self_referencing_type_restriction_with_entrypoint_1",
 			model: `model
 	schema 1.1
@@ -279,6 +745,7 @@ type document
 	define can_view_actual: can_view`,
 		},
 		{
+			// TODO remove - same as union_has_entrypoint_through_user
 			name: "self_referencing_type_restriction_with_entrypoint_2",
 			model: `model
 	schema 1.1

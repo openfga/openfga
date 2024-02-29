@@ -226,6 +226,11 @@ func (t *TypeSystem) GetSchemaVersion() string {
 	return t.schemaVersion
 }
 
+// GetAllRelations returns a map [objectType] => [relationName] => relation.
+func (t *TypeSystem) GetAllRelations() map[string]map[string]*openfgav1.Relation {
+	return t.relations
+}
+
 // GetConditions retrieves a map of condition names to their corresponding
 // EvaluableCondition instances within the TypeSystem.
 func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {
@@ -820,7 +825,7 @@ func hasEntrypoints(
 		return true, false, nil
 	}
 
-	return false, false, nil
+	panic("unexpected userset rewrite encountered")
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
