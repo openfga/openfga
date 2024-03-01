@@ -36,6 +36,39 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "unknown",
 			expectError:   "undefined type definition for 'document#unknown'",
 		},
+		`undefined_relation_in_assignable_type`: {
+			model: `
+			model
+				schema 1.1
+			type document
+				relations
+					define viewer: [document#unknown]`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectError:   "undefined type definition for 'document#unknown'",
+		},
+		`undefined_computed_userset`: {
+			model: `
+			model
+				schema 1.1
+			type document
+				relations
+					define viewer: unknown`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectError:   "undefined type definition for 'document#unknown'",
+		},
+		`undefined_tupleset`: {
+			model: `
+			model
+				schema 1.1
+			type document
+				relations
+					define viewer: viewer from unknown`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectError:   "undefined type definition for 'document#unknown'",
+		},
 		`this_has_entrypoints_through_user`: {
 			model: `
 			model
@@ -407,6 +440,40 @@ func TestHasEntrypoints(t *testing.T) {
 		//	inputRelation: "can_transition_with",
 		//	expectDetails: &RelationDetails{true, false},
 		//},
+		`ttu_has_entrypoint`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define viewer: [user]
+			type folder
+				relations
+					define parent: [folder, group]
+					define viewer: viewer from parent`,
+			inputType:     "folder",
+			inputRelation: "viewer",
+			expectDetails: &RelationDetails{true, false},
+		},
+		`revisited_direct_has_entrypoints`: {
+			model: `
+			model
+				schema 1.1
+		
+			type user
+		
+			type document
+				relations
+					define a: [user]
+					define b: a
+					define c: a
+					define d: b and c
+			`,
+			inputType:     "document",
+			inputRelation: "d",
+			expectDetails: &RelationDetails{true, false},
+		},
 	}
 
 	for name, test := range tests {
