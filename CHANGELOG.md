@@ -25,6 +25,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 The `AuthorizationModelReadBackend` interface method `FindLatestAuthorizationModelID` has changed to `FindLatestAuthorizationModel` for performance improvements. [#1387](https://github.com/openfga/openfga/pull/1387)
 
+If you implement your own data store, you will need to make the following change:
+
 <table>
 <tr>
 <th>Before</th>
