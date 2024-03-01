@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -647,6 +648,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			Depth:               s.resolveNodeLimit,
 			DatastoreQueryCount: 0,
 		},
+		DispatchCounter: &atomic.Uint32{},
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)

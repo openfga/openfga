@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		StoreID:              "12",
 		AuthorizationModelID: "33",
 		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+		DispatchCounter:      &atomic.Uint32{},
 	}
 	result := &ResolveCheckResponse{Allowed: true}
 
@@ -45,6 +47,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -59,6 +62,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "22",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -73,6 +77,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -87,6 +92,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -101,6 +107,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -115,6 +122,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -136,6 +144,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -150,6 +159,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
@@ -176,6 +186,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -193,6 +204,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -219,6 +231,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -236,6 +249,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -257,6 +271,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -269,6 +284,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -295,6 +311,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -317,6 +334,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -343,12 +361,14 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
+				DispatchCounter: &atomic.Uint32{},
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				ContextualTuples:     []*openfgav1.TupleKey{},
+				DispatchCounter:      &atomic.Uint32{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -409,6 +429,7 @@ func TestResolveCheckExpired(t *testing.T) {
 			Relation: "reader",
 			User:     "user:XYZ",
 		},
+		DispatchCounter: &atomic.Uint32{},
 	}
 
 	result := &ResolveCheckResponse{Allowed: true}
@@ -504,6 +525,7 @@ type document
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		DispatchCounter:    &atomic.Uint32{},
 	})
 
 	require.NoError(t, err)
@@ -514,6 +536,7 @@ type document
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		DispatchCounter:    &atomic.Uint32{},
 	})
 
 	require.NoError(t, err)
@@ -531,6 +554,7 @@ type document
 		TupleKey:           tuple.NewTupleKey("document:x", "ttu", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		DispatchCounter:    &atomic.Uint32{},
 	})
 
 	ttuLocalChecker.Close()
@@ -547,6 +571,7 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -557,6 +582,7 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 		ContextualTuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		},
+		DispatchCounter: &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -570,6 +596,7 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
 		Context:              contextStruct,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -602,6 +629,7 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples1,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -610,6 +638,7 @@ func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples2,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -639,6 +668,7 @@ func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples1,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -647,6 +677,7 @@ func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples2,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -686,6 +717,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct1,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -694,6 +726,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct2,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -702,6 +735,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct3,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -710,6 +744,7 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct4,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 
@@ -732,6 +767,7 @@ func BenchmarkCheckRequestCacheKey(b *testing.B) {
 			StoreID:              storeID,
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(b, err)
 	}
@@ -755,6 +791,7 @@ func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			ContextualTuples:     tuples,
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(b, err)
 	}
@@ -784,6 +821,7 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			Context:              contextStruct,
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(b, err)
 	}

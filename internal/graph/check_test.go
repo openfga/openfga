@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -445,6 +446,7 @@ type document
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+			DispatchCounter:    &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -453,6 +455,7 @@ type document
 			StoreID:            storeID,
 			TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
 			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+			DispatchCounter:    &atomic.Uint32{},
 		})
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
@@ -501,6 +504,7 @@ condition condX(x: int) {
 				StoreID:            storeID,
 				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
 				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+				DispatchCounter:    &atomic.Uint32{},
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -549,6 +553,7 @@ condition condX(x: int) {
 				StoreID:            storeID,
 				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
 				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+				DispatchCounter:    &atomic.Uint32{},
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -597,6 +602,7 @@ type document
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		DispatchCounter:    &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
@@ -796,6 +802,7 @@ type document
 						TupleKey:           test.check,
 						ContextualTuples:   test.contextualTuples,
 						ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+						DispatchCounter:    &atomic.Uint32{},
 					})
 					require.NoError(t, err)
 					require.Equal(t, res.Allowed, test.allowed)
@@ -892,6 +899,7 @@ type resource
 				StoreID:            storeID,
 				TupleKey:           test.tupleKey,
 				ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+				DispatchCounter:    &atomic.Uint32{},
 			})
 
 			require.NoError(t, err)
@@ -971,6 +979,7 @@ condition condition1(param1: string) {
 		TupleKey:             tuple.NewTupleKey("document:x", "parent", "folder:x"),
 		ResolutionMetadata:   &ResolutionMetadata{Depth: 1},
 		Context:              conditionContext,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
@@ -981,6 +990,7 @@ condition condition1(param1: string) {
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		ResolutionMetadata:   &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 		Context:              conditionContext,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
@@ -991,6 +1001,7 @@ condition condition1(param1: string) {
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:bob"),
 		ResolutionMetadata:   &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 		Context:              conditionContext,
+		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
@@ -1042,6 +1053,7 @@ type doc
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
 			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1054,6 +1066,7 @@ type doc
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
 				ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+				DispatchCounter:      &atomic.Uint32{},
 			})
 			require.NoError(t, err)
 			require.True(t, resp.Allowed)
@@ -1103,6 +1116,7 @@ type doc
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1115,6 +1129,7 @@ type doc
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:other"),
 			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
@@ -1156,6 +1171,7 @@ type doc
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "owner", "user:jon"),
 			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1167,6 +1183,7 @@ type doc
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:will"),
 			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1179,6 +1196,7 @@ type doc
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:jon"),
 			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
+			DispatchCounter:      &atomic.Uint32{},
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -38,6 +39,7 @@ type ResolveCheckRequest struct {
 	Context              *structpb.Struct
 	ResolutionMetadata   *ResolutionMetadata
 	VisitedPaths         map[string]struct{}
+	DispatchCounter      *atomic.Uint32
 }
 
 type ResolveCheckResponse struct {
@@ -106,6 +108,16 @@ func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
 		return r.Context
 	}
 	return nil
+}
+
+func (r *ResolveCheckRequest) GetDispatchCounter() *atomic.Uint32 {
+	if r != nil {
+		if r.DispatchCounter == nil {
+			panic("Dispatch counter not initialized")
+		}
+		return r.DispatchCounter
+	}
+	panic("revolve check request itself is null")
 }
 
 type setOperatorType int
@@ -736,8 +748,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 								Depth:               req.GetResolutionMetadata().Depth - 1,
 								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
 							},
-							VisitedPaths: maps.Clone(req.VisitedPaths),
-							Context:      req.GetContext(),
+							VisitedPaths:    maps.Clone(req.VisitedPaths),
+							Context:         req.GetContext(),
+							DispatchCounter: req.GetDispatchCounter(),
 						}))
 				}
 			}
@@ -806,8 +819,9 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 					Depth:               req.GetResolutionMetadata().Depth - 1,
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
 				},
-				VisitedPaths: maps.Clone(req.VisitedPaths),
-				Context:      req.GetContext(),
+				VisitedPaths:    maps.Clone(req.VisitedPaths),
+				Context:         req.GetContext(),
+				DispatchCounter: req.GetDispatchCounter(),
 			})(ctx)
 	}
 }
@@ -927,8 +941,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 						Depth:               req.GetResolutionMetadata().Depth - 1,
 						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
 					},
-					VisitedPaths: maps.Clone(req.VisitedPaths),
-					Context:      req.GetContext(),
+					VisitedPaths:    maps.Clone(req.VisitedPaths),
+					Context:         req.GetContext(),
+					DispatchCounter: req.GetDispatchCounter(),
 				}))
 		}
 

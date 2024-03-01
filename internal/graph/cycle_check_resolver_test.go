@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -33,6 +34,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 			TupleKey:           cyclicalTuple,
 			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 			VisitedPaths:       visitedPaths,
+			DispatchCounter:    &atomic.Uint32{},
 		})
 
 		require.ErrorIs(t, err, ErrCycleDetected)
@@ -54,6 +56,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 			TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:will"),
 			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
 			VisitedPaths:       map[string]struct{}{},
+			DispatchCounter:    &atomic.Uint32{},
 		})
 
 		require.NoError(t, err)

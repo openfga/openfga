@@ -56,6 +56,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 		ResolutionMetadata:   req.GetResolutionMetadata(),
 		VisitedPaths:         req.VisitedPaths,
 		Context:              req.GetContext(),
+		DispatchCounter:      req.GetDispatchCounter(),
 	})
 }
 

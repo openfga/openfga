@@ -313,6 +313,7 @@ func (q *ListObjectsQuery) evaluate(
 						ResolutionMetadata: &graph.ResolutionMetadata{
 							Depth: q.resolveNodeLimit,
 						},
+						DispatchCounter: &atomic.Uint32{},
 					})
 					if err != nil {
 						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
