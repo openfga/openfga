@@ -21,8 +21,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 - Fix incorrect path for gPRC health check ([#1321](https://github.com/openfga/openfga/pull/1321))
 
-
-### :warning: Breaking Change
+### Breaking Change :warning:
 
 The `AuthorizationModelReadBackend` interface method `FindLatestAuthorizationModelID` has changed to `FindLatestAuthorizationModel` for performance improvements. [#1387](https://github.com/openfga/openfga/pull/1387)
 
