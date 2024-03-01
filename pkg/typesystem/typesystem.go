@@ -805,6 +805,8 @@ func getRelationDetailsRecursive(
 					hasEntrypoints = true
 					break
 				}
+			} else {
+				return nil, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, computedRelationName)
 			}
 		}
 

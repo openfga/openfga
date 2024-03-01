@@ -100,7 +100,7 @@ func TestHasEntrypoints(t *testing.T) {
 					define viewer: viewer from parent`,
 			inputType:     "document",
 			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, //TODO this should be an error
+			expectError:   "undefined type definition for 'folder#viewer'",
 		},
 		`this_has_entrypoints_to_same_type`: {
 			model: `
@@ -851,7 +851,7 @@ type document
 	define parent: [folder]
 	define editor: viewer
 	define viewer: editor from parent`,
-			expectedError: ErrNoEntrypoints,
+			expectedError: fmt.Errorf("undefined type definition for 'folder#editor"),
 		},
 		{
 			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
@@ -886,7 +886,11 @@ type document
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			_, err := NewAndValidate(context.Background(), model)
-			require.ErrorIs(t, err, test.expectedError)
+			if test.expectedError != nil {
+				require.ErrorContains(t, err, test.expectedError.Error())
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }
