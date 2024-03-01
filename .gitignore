@@ -11,3 +11,18 @@ coverage*.out
 
 .DS_Store
 test.db
+Openfgamobile.xcframework/Info.plist
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Headers
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Modules
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Openfgamobile
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Resources
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/Current
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Openfgamobile
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Headers/Openfgamobile.h
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Headers/Openfgamobile.objc.h
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Headers/ref.h
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Headers/Universe.objc.h
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Modules/module.modulemap
+Openfgamobile.xcframework/ios-arm64_x86_64-simulator/Openfgamobile.framework/Versions/A/Resources/Info.plist
+Openfgamobile.aar
+Openfgamobile-sources.jar
