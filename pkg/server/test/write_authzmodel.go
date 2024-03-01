@@ -137,6 +137,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
+			//TODO remove, same as union_has_entrypoint
 			name: "self_referencing_type_restriction_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -152,6 +153,7 @@ type document
 			},
 		},
 		{
+			//TODO remove, same as this_has_no_entrypoints
 			name: "self_referencing_type_restriction_without_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -166,6 +168,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			//TODO remove, same as intersection_has_no_entrypoint_and_no_cycle
 			name: "self_referencing_type_restriction_without_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -181,6 +184,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			//TODO remove - same as difference_has_no_entrypoint_and_no_cycle
 			name: "self_referencing_type_restriction_without_entrypoint_3",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -196,6 +200,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as intersection_has_no_entrypoint_and_has_cycle_2
 			name: "rewritten_relation_in_intersection_unresolvable",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -214,6 +219,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as this_has_entrypoints_through_user
 			name: "direct_relationship_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -227,6 +233,7 @@ type document
 			},
 		},
 		{
+			// TODO remove - same as computed_relation_has_entrypoint_through_user
 			name: "computed_relationship_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -241,6 +248,7 @@ type document
 			},
 		},
 		{
+			// TODO remove - same as difference_has_no_entrypoint_and_has_cycle
 			name: "rewritten_relation_in_exclusion_unresolvable",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -258,6 +266,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as intersection_has_no_entrypoint_and_no_cycle
 			name: "no_entrypoint_3a",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -273,6 +282,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as difference_has_no_entrypoint_and_no_cycle
 			name: "no_entrypoint_3b",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -288,6 +298,8 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
+			// Replaced by computed_relation_has_no_entrypoints
 			name: "no_entrypoint_4",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -309,6 +321,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
 			name: "self_referencing_type_restriction_with_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -326,6 +339,7 @@ type document
 			},
 		},
 		{
+			// TODO remove - same as union_has_entrypoint_through_user
 			name: "self_referencing_type_restriction_with_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -391,6 +405,7 @@ type feature
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - it's in TestHasCycle
 			name: "many_circular_computed_relations",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -415,6 +430,7 @@ type account
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - it's in TestHasCycle (intersection_and_union)
 			name: "circular_relations_involving_intersection",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -431,6 +447,7 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - it's in TestHasCycle (exclusion_and_union)
 			name: "circular_relations_involving_exclusion",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -455,13 +472,7 @@ type other
 				),
 				TypeDefinitions: parser.MustTransformDSLToProto(`model
   schema 1.1
-type user
-
-type other
-  relations
-	define x: [user] but not y
-	define y: [user] but not z
-	define z: [user] or x`).TypeDefinitions,
+type user`).TypeDefinitions,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
 		},
