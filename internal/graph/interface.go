@@ -7,8 +7,8 @@ import "context"
 type CheckResolverCloser func()
 
 type CheckResolver interface {
-	// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
-	// evaluation is aborted and an error must be returned.
+	// ResolveCheck resolves a node (a single subproblem) out of a tree of problems.
+	// If the depth of the tree has gotten too large, resolution is aborted and an error must be returned.
 	//
 	// It is expected that callers pass in, contextually:
 	// - a [[storage.RelationshipTupleReader]] using [[storage.ContextWithRelationshipTupleReader]]. This is by design because this method is called by
