@@ -20,6 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 
+- Cycles detected during check now deterministically return with `{allowed:false}` ([#1371](https://github.com/openfga/openfga/pull/1371), [#1372](https://github.com/openfga/openfga/pull/1372))
 - Fix incorrect path for gPRC health check ([#1321](https://github.com/openfga/openfga/pull/1321))
 
 ### Breaking Change :warning:
