@@ -701,12 +701,18 @@ func getRelationDetailsRecursive(
 ) (*relationDetails, error) {
 	v := maps.Clone(visitedRelations)
 
+	if _, ok := v[typeName]; !ok {
+		// first time visiting this type
+		v[typeName] = map[string]*relationDetails{}
+	}
+	if _, ok := v[typeName][relationName]; !ok {
+		// first time visiting this relation
+		v[typeName][relationName] = &relationDetails{false, false}
+	}
 	relation, ok := typedefs[typeName][relationName]
 	if !ok {
 		return nil, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
 	}
-
-	updateVisited(v, typeName, relationName)
 
 	switch rw := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
@@ -716,11 +722,10 @@ func getRelationDetailsRecursive(
 
 			if _, ok := typedefs[assignableTypeName]; !ok {
 				return nil, fmt.Errorf("undefined type '%s'", assignableTypeName)
-			} else {
-				if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
-					v[typeName][relationName].hasEntrypoints = true
-					break
-				}
+			}
+			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
+				v[typeName][relationName].hasEntrypoints = true
+				break
 			}
 
 			assignableRelationName := assignableType.GetRelation()
@@ -861,17 +866,6 @@ func getRelationDetailsRecursive(
 	}
 
 	panic("unexpected userset rewrite encountered")
-}
-
-func updateVisited(visited map[string]map[string]*relationDetails, typeName string, relationName string) {
-	if _, ok := visited[typeName]; !ok {
-		// first time visiting this type
-		visited[typeName] = map[string]*relationDetails{}
-	}
-	if _, ok := visited[typeName][relationName]; !ok {
-		// first time visiting this relation
-		visited[typeName][relationName] = &relationDetails{false, false}
-	}
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
