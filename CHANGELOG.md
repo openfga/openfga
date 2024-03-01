@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Added 
 
+- Override option for timestamp in JSON logs ([#1330](https://github.com/openfga/openfga/pull/1330)) - thank you, @raj-saxena!
 - OpenTelemetry tracing and attributes to check algorithm ([#1331](https://github.com/openfga/openfga/pull/1331), [#1388](https://github.com/openfga/openfga/pull/1388))
 - Dispatch count to check response metadata as a query complexity heuristic ([#1343](https://github.com/openfga/openfga/pull/1343))
 
@@ -36,7 +37,7 @@ If you implement your own data store, you will need to make the following change
 <td>
 
 ```go
-func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
+func (...) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
   //...get model ID
   return modelID, nil
 }
@@ -46,7 +47,7 @@ func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Cont
 <td>
 
 ```go
-func (c *cachedOpenFGADatastore) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
+func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
   //...get model
   return model.(*openfgav1.AuthorizationModel), nil
 }
