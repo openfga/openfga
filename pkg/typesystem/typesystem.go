@@ -672,6 +672,7 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 // could lead to at least one relationship with some object type, then false is returned along with an error indicating
 // no entrypoints were found. If at least one relationship with a specific object type is found while walking the rewrite,
 // then true is returned along with a nil error.
+// This function assumes that all other model validations have run.
 func hasEntrypoints(
 	typedefs map[string]map[string]*openfgav1.Relation,
 	typeName, relationName string,

@@ -91,22 +91,22 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "viewer",
 			expectError:   "undefined type definition for 'document#unknown'",
 		},
-		//`undefined_computed_relation_on_tupleset_target`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//	type user
-		//	type folder
-		//		relations
-		//			define owner: [user]
-		//	type document
-		//		relations
-		//			define parent: [folder]
-		//			define viewer: viewer from parent`,
-		//	inputType:     "document",
-		//	inputRelation: "viewer",
-		//	expectDetails: &relationDetails{false, false}, //TODO this should be an error
-		//},
+		`undefined_computed_relation_on_tupleset_target`: {
+			model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define owner: [user]
+			type document
+				relations
+					define parent: [folder]
+					define viewer: viewer from parent`,
+			inputType:     "document",
+			inputRelation: "viewer",
+			expectDetails: &relationDetails{false, false}, //TODO this should be an error
+		},
 		`this_has_entrypoints_to_same_type`: {
 			model: `
 			model
