@@ -506,7 +506,7 @@ func TestHasEntrypoints(t *testing.T) {
 		//	inputRelation: "can_transition_with",
 		//	expectDetails: &relationDetails{true, false},
 		//},
-		`ttu_has_entrypoint`: {
+		`ttu_has_entrypoint_through_second_tupleset`: {
 			model: `
 			model
 				schema 1.1
