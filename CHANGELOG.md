@@ -8,6 +8,23 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.0] - 2024-03-01
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
+
+### Added 
+
+- OpenTelemetry tracing and attributes to check algorithm [#1331](https://github.com/openfga/openfga/pull/1331),[#1388](https://github.com/openfga/openfga/pull/1388)
+- Dispatch count to check response metadata as a query complexity heuristic [#1343](https://github.com/openfga/openfga/pull/1343)
+
+### Fixed
+
+- Fix incorrect path for grpc-health-probe in default healthcheck command [#1321](https://github.com/openfga/openfga/pull/1321)
+
+### [!WARNING] Breaking Changes
+
+- Data store interface function `FindLatestAuthorizationModelID` has changed to `FindLatestAuthorizationModel` for performance improvements. [#1387](https://github.com/openfga/openfga/pull/1387)
+
 ## [1.4.3] - 2024-01-26
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.2...v1.4.3)
@@ -897,7 +914,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/openfga/openfga/releases/tag/v1.5.0
 [1.4.3]: https://github.com/openfga/openfga/releases/tag/v1.4.3
 [1.4.2]: https://github.com/openfga/openfga/releases/tag/v1.4.2
 [1.4.1]: https://github.com/openfga/openfga/releases/tag/v1.4.1
