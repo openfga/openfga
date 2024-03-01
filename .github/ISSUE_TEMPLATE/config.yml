@@ -3,9 +3,9 @@ contact_links:
   - name: 📖 OpenFGA's Documentation
     url: https://openfga.dev/docs
     about: Check OpenFGA's documentation for an in-depth overview
-  - name: 👽 Discord
-    url: https://discord.gg/8naAwJfWN6
-    about: Join OpenFGA's active Discord community
+  - name: 👽 Community
+    url: https://openfga.dev/community
+    about: Join OpenFGA's active Slack and GitHub community
   - name: 📝 RFCs
     url: https://github.com/openfga/rfcs
     about: Check existing RFCs to understand where the project is headed

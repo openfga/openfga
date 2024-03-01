@@ -108,7 +108,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 		// validate each store
 		for _, store := range stores {
-			latestModelID, err := db.FindLatestAuthorizationModelID(ctx, store.GetId())
+      latestModel, err := db.FindLatestAuthorizationModel(ctx, store.GetId())
 			if err != nil {
 				fmt.Printf("no models in store %s \n", store.GetId())
 			}
@@ -132,7 +132,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 					validationResult := validationResult{
 						StoreID:       store.GetId(),
 						ModelID:       model.GetId(),
-						IsLatestModel: model.GetId() == latestModelID,
+						IsLatestModel: model.GetId() == latestModel.GetId(),
 					}
 
 					if err != nil {
