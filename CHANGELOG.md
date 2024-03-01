@@ -14,16 +14,46 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Added 
 
-- OpenTelemetry tracing and attributes to check algorithm [#1331](https://github.com/openfga/openfga/pull/1331),[#1388](https://github.com/openfga/openfga/pull/1388)
-- Dispatch count to check response metadata as a query complexity heuristic [#1343](https://github.com/openfga/openfga/pull/1343)
+- OpenTelemetry tracing and attributes to check algorithm ([#1331](https://github.com/openfga/openfga/pull/1331), [#1388](https://github.com/openfga/openfga/pull/1388))
+- Dispatch count to check response metadata as a query complexity heuristic ([#1343](https://github.com/openfga/openfga/pull/1343))
 
 ### Fixed
 
-- Fix incorrect path for grpc-health-probe in default healthcheck command [#1321](https://github.com/openfga/openfga/pull/1321)
+- Fix incorrect path for gPRC health check ([#1321](https://github.com/openfga/openfga/pull/1321))
 
-### [!WARNING] Breaking Changes
 
-- Data store interface function `FindLatestAuthorizationModelID` has changed to `FindLatestAuthorizationModel` for performance improvements. [#1387](https://github.com/openfga/openfga/pull/1387)
+### :warning: Breaking Change
+
+The `AuthorizationModelReadBackend` interface method `FindLatestAuthorizationModelID` has changed to `FindLatestAuthorizationModel` for performance improvements. [#1387](https://github.com/openfga/openfga/pull/1387)
+
+<table>
+<tr>
+<th>Before</th>
+<th>After</th>
+</tr>
+<tr>
+<td>
+
+```go
+func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
+  //...get model ID
+  return modelID, nil
+}
+```
+
+</td>
+<td>
+
+```go
+func (c *cachedOpenFGADatastore) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
+  //...get model
+  return model.(*openfgav1.AuthorizationModel), nil
+}
+```
+
+</td>
+</tr>
+</table>
 
 ## [1.4.3] - 2024-01-26
 
