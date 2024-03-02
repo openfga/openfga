@@ -165,11 +165,11 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NotNil(t, continuationToken)
 
 			for _, change := range changes {
-				if _, ok := seenObjects[change.TupleKey.Object]; ok {
-					require.FailNowf(t, "duplicate changelog entry encountered", change.TupleKey.Object)
+				if _, ok := seenObjects[change.GetTupleKey().GetObject()]; ok {
+					require.FailNowf(t, "duplicate changelog entry encountered", change.GetTupleKey().GetObject())
 				}
 
-				seenObjects[change.TupleKey.Object] = struct{}{}
+				seenObjects[change.GetTupleKey().GetObject()] = struct{}{}
 			}
 
 			if string(continuationToken) == "" {
@@ -389,9 +389,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		// Second write of the same tuple but conditioned should still fail.
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 			{
-				Object:   tk.Object,
-				Relation: tk.Relation,
-				User:     tk.User,
+				Object:   tk.GetObject(),
+				Relation: tk.GetRelation(),
+				User:     tk.GetUser(),
 				Condition: &openfgav1.RelationshipCondition{
 					Name: "condition",
 				},
@@ -406,9 +406,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		writes := []*openfgav1.TupleKey{
 			{
-				Object:   tk.Object,
-				Relation: tk.Relation,
-				User:     tk.User,
+				Object:   tk.GetObject(),
+				Relation: tk.GetRelation(),
+				User:     tk.GetUser(),
 				Condition: &openfgav1.RelationshipCondition{
 					Name: "condition",
 				},
@@ -417,9 +417,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		deletes := []*openfgav1.TupleKeyWithoutCondition{
 			{
-				Object:   tk.Object,
-				Relation: tk.Relation,
-				User:     tk.User,
+				Object:   tk.GetObject(),
+				Relation: tk.GetRelation(),
+				User:     tk.GetUser(),
 			},
 		}
 
@@ -451,28 +451,28 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(tuple1, gotTuple.Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuple1, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(tuple2, gotTuple.Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuple2, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(tuple3, gotTuple.Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuple3, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple4)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(tuple4, gotTuple.Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuple4, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -892,7 +892,7 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 		require.Len(t, tuples0, 1)
 		require.NotEmpty(t, contToken0)
 
-		if diff := cmp.Diff(tk0, tuples0[0].Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tk0, tuples0[0].GetKey(), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
@@ -901,7 +901,7 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 		require.Len(t, tuples1, 1)
 		require.Empty(t, contToken1)
 
-		if diff := cmp.Diff(tk1, tuples1[0].Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tk1, tuples1[0].GetKey(), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -926,7 +926,7 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 		require.Len(t, tuple0, 1)
 		require.NotEmpty(t, contToken0)
 
-		if diff := cmp.Diff(tk0, tuple0[0].Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tk0, tuple0[0].GetKey(), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
@@ -935,7 +935,7 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 		require.Len(t, tuple1, 1)
 		require.Empty(t, contToken1)
 
-		if diff := cmp.Diff(tk1, tuple1[0].Key, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tk1, tuple1[0].GetKey(), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -1288,8 +1288,8 @@ func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore stora
 		require.NoError(t, err)
 
 		require.Len(t, firstRead, 1)
-		require.Equal(t, "document:1", firstRead[0].Key.Object)
-		require.Equal(t, "user:anne", firstRead[0].Key.User)
+		require.Equal(t, "document:1", firstRead[0].GetKey().GetObject())
+		require.Equal(t, "user:anne", firstRead[0].GetKey().GetUser())
 		require.NotEmpty(t, contToken)
 
 		// use the token
@@ -1306,9 +1306,9 @@ func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore stora
 		require.NoError(t, err)
 
 		require.Len(t, secondRead, 1)
-		require.Equal(t, "document:1", secondRead[0].Key.Object)
-		require.Equal(t, "user:anne", secondRead[0].Key.User)
-		require.NotEqual(t, firstRead[0].Key.Relation, secondRead[0].Key.Relation)
+		require.Equal(t, "document:1", secondRead[0].GetKey().GetObject())
+		require.Equal(t, "user:anne", secondRead[0].GetKey().GetUser())
+		require.NotEqual(t, firstRead[0].GetKey().GetRelation(), secondRead[0].GetKey().GetRelation())
 		require.Empty(t, contToken)
 	})
 }

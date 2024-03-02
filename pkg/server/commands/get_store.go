@@ -46,9 +46,9 @@ func (q *GetStoreQuery) Execute(ctx context.Context, req *openfgav1.GetStoreRequ
 		return nil, serverErrors.HandleError("", err)
 	}
 	return &openfgav1.GetStoreResponse{
-		Id:        store.Id,
-		Name:      store.Name,
-		CreatedAt: store.CreatedAt,
-		UpdatedAt: store.UpdatedAt,
+		Id:        store.GetId(),
+		Name:      store.GetName(),
+		CreatedAt: store.GetCreatedAt(),
+		UpdatedAt: store.GetUpdatedAt(),
 	}, nil
 }

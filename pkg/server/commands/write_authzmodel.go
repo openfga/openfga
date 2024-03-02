@@ -59,7 +59,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
-	if req.SchemaVersion == "" {
+	if req.GetSchemaVersion() == "" {
 		req.SchemaVersion = typesystem.SchemaVersion1_1
 	}
 
@@ -91,6 +91,6 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	return &openfgav1.WriteAuthorizationModelResponse{
-		AuthorizationModelId: model.Id,
+		AuthorizationModelId: model.GetId(),
 	}, nil
 }
