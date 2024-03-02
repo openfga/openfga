@@ -782,6 +782,7 @@ func getRelationDetailsRecursive(
 		}
 
 		hasEntrypoints := false
+
 		// At least one type must have an entrypoint.
 		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			assignableTypeName := assignableType.GetType()
@@ -805,9 +806,9 @@ func getRelationDetailsRecursive(
 					hasEntrypoints = true
 					break
 				}
-			} else {
-				return nil, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, computedRelationName)
 			}
+			// No else block needed here. Since this function assumes that other validations have run,
+			// we are guaranteed to enter the "if" at least once.
 		}
 
 		return &relationDetails{hasEntrypoints, false}, nil

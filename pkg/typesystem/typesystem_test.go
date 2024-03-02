@@ -87,6 +87,9 @@ func TestHasEntrypoints(t *testing.T) {
 			expectError:   "undefined type definition for 'document#unknown'",
 		},
 		`undefined_computed_relation_on_tupleset_target`: {
+			// Note: this model is invalid and should never be an input to [[getRelationDetails]].
+			// The computed userset relation on a TTU has to be defined in one of the types declared by the tupleset's list of allowed types.
+			// This isn't the case here: folder#viewer isn't defined.
 			model: `
 			model
 				schema 1.1
@@ -100,7 +103,7 @@ func TestHasEntrypoints(t *testing.T) {
 					define viewer: viewer from parent`,
 			inputType:     "document",
 			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'folder#viewer'",
+			expectDetails: &relationDetails{false, false},
 		},
 		`this_has_entrypoints_to_same_type`: {
 			model: `
@@ -851,7 +854,7 @@ type document
 	define parent: [folder]
 	define editor: viewer
 	define viewer: editor from parent`,
-			expectedError: fmt.Errorf("undefined type definition for 'folder#editor"),
+			expectedError: ErrNoEntrypoints,
 		},
 		{
 			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
