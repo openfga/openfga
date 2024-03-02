@@ -33,8 +33,8 @@ type staticIterator struct {
 // doesn't specify an ID, only the Object Types are compared. If a field
 // in the input parameter is empty, it is ignored in the comparison.
 func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
-	if target.Object != "" {
-		td, objectid := tupleUtils.SplitObject(target.Object)
+	if target.GetObject() != "" {
+		td, objectid := tupleUtils.SplitObject(target.GetObject())
 		if objectid == "" {
 			if td != t.ObjectType {
 				return false
@@ -45,10 +45,10 @@ func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
 			}
 		}
 	}
-	if target.Relation != "" && t.Relation != target.Relation {
+	if target.GetRelation() != "" && t.Relation != target.GetRelation() {
 		return false
 	}
-	if target.User != "" && t.User != target.User {
+	if target.GetUser() != "" && t.User != target.GetUser() {
 		return false
 	}
 	return true
@@ -233,8 +233,8 @@ func (s *MemoryBackend) ReadChanges(
 	var allChanges []*openfgav1.TupleChange
 	now := time.Now().UTC()
 	for _, change := range s.changes[store] {
-		if objectType == "" || (objectType != "" && strings.HasPrefix(change.TupleKey.Object, objectType+":")) {
-			if change.Timestamp.AsTime().After(now.Add(-horizonOffset)) {
+		if objectType == "" || (objectType != "" && strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
+			if change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
 				break
 			}
 			allChanges = append(allChanges, change)
@@ -353,18 +353,18 @@ Write:
 		var conditionName string
 		var conditionContext *structpb.Struct
 		if condition := t.GetCondition(); condition != nil {
-			conditionName = condition.Name
-			conditionContext = condition.Context
+			conditionName = condition.GetName()
+			conditionContext = condition.GetContext()
 		}
 
-		objectType, objectID := tupleUtils.SplitObject(t.Object)
+		objectType, objectID := tupleUtils.SplitObject(t.GetObject())
 
 		records = append(records, &storage.TupleRecord{
 			Store:            store,
 			ObjectType:       objectType,
 			ObjectID:         objectID,
-			Relation:         t.Relation,
-			User:             t.User,
+			Relation:         t.GetRelation(),
+			User:             t.GetUser(),
 			ConditionName:    conditionName,
 			ConditionContext: conditionContext,
 			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
@@ -373,8 +373,8 @@ Write:
 
 		tk := tupleUtils.NewTupleKeyWithCondition(
 			tupleUtils.BuildObject(objectType, objectID),
-			t.Relation,
-			t.User,
+			t.GetRelation(),
+			t.GetUser(),
 			conditionName,
 			conditionContext,
 		)
@@ -462,7 +462,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 			userType := tupleUtils.GetType(t.User)
 			_, userRelation := tupleUtils.SplitObjectRelation(t.User)
 			for _, allowedType := range filter.AllowedUserTypeRestrictions {
-				if allowedType.Type == userType && allowedType.GetRelation() == userRelation {
+				if allowedType.GetType() == userType && allowedType.GetRelation() == userRelation {
 					matches = append(matches, t)
 					continue
 				}
@@ -578,7 +578,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 
 	// From newest to oldest.
 	sort.Slice(models, func(i, j int) bool {
-		return models[i].Id > models[j].Id
+		return models[i].GetId() > models[j].GetId()
 	})
 
 	var from int64 = 0
@@ -649,7 +649,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store strin
 		entry.latest = false
 	}
 
-	s.authorizationModels[store][model.Id] = &AuthorizationModelEntry{
+	s.authorizationModels[store][model.GetId()] = &AuthorizationModelEntry{
 		model:  model,
 		latest: true,
 	}
@@ -665,19 +665,19 @@ func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfgav1.Sto
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.stores[newStore.Id]; ok {
+	if _, ok := s.stores[newStore.GetId()]; ok {
 		return nil, storage.ErrCollision
 	}
 
 	now := timestamppb.New(time.Now().UTC())
-	s.stores[newStore.Id] = &openfgav1.Store{
-		Id:        newStore.Id,
-		Name:      newStore.Name,
+	s.stores[newStore.GetId()] = &openfgav1.Store{
+		Id:        newStore.GetId(),
+		Name:      newStore.GetName(),
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 
-	return s.stores[newStore.Id], nil
+	return s.stores[newStore.GetId()], nil
 }
 
 // DeleteStore removes a store from the [MemoryBackend].
@@ -762,7 +762,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 
 	// From oldest to newest.
 	sort.SliceStable(stores, func(i, j int) bool {
-		return stores[i].Id < stores[j].Id
+		return stores[i].GetId() < stores[j].GetId()
 	})
 
 	var err error

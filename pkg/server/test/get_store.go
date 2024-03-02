@@ -64,11 +64,11 @@ func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 	require.NoError(t, err)
 
 	query := commands.NewGetStoreQuery(datastore)
-	actualResponse, actualError := query.Execute(ctx, &openfgav1.GetStoreRequest{StoreId: createStoreResponse.Id})
+	actualResponse, actualError := query.Execute(ctx, &openfgav1.GetStoreRequest{StoreId: createStoreResponse.GetId()})
 	require.NoError(t, actualError)
 
 	expectedResponse := &openfgav1.GetStoreResponse{
-		Id:   createStoreResponse.Id,
+		Id:   createStoreResponse.GetId(),
 		Name: store,
 	}
 

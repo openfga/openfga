@@ -886,7 +886,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			require.NoError(t, err)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = test.model.Id
+			test.request.AuthorizationModelId = test.model.GetId()
 
 			// act
 			query := commands.NewExpandQuery(datastore)
@@ -1048,7 +1048,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			require.NoError(t, err)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = test.model.Id
+			test.request.AuthorizationModelId = test.model.GetId()
 
 			// act
 			query := commands.NewExpandQuery(datastore)
