@@ -120,7 +120,7 @@ func (q *ExpandQuery) resolveUserset(
 	ctx, span := tracer.Start(ctx, "resolveUserset")
 	defer span.End()
 
-	switch us := userset.Userset.(type) {
+	switch us := userset.GetUserset().(type) {
 	case nil, *openfgav1.Userset_This:
 		return q.resolveThis(ctx, store, tk, typesys)
 	case *openfgav1.Userset_ComputedUserset:
@@ -195,12 +195,12 @@ func (q *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openf
 		Relation: userset.GetRelation(),
 	}
 
-	if len(computed.Object) == 0 {
-		computed.Object = tk.Object
+	if len(computed.GetObject()) == 0 {
+		computed.Object = tk.GetObject()
 	}
 
-	if len(computed.Relation) == 0 {
-		computed.Relation = tk.Relation
+	if len(computed.GetRelation()) == 0 {
+		computed.Relation = tk.GetRelation()
 	}
 
 	return &openfgav1.UsersetTree_Node{
@@ -240,7 +240,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 		}
 
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return nil, serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(tk.Object, tupleset, tk.User))
+			return nil, serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(tk.GetObject(), tupleset, tk.GetUser()))
 		}
 	}
 
@@ -321,7 +321,7 @@ func (q *ExpandQuery) resolveUnionUserset(
 	ctx, span := tracer.Start(ctx, "resolveUnionUserset")
 	defer span.End()
 
-	nodes, err := q.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, usersets.GetChild(), tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (q *ExpandQuery) resolveIntersectionUserset(
 	ctx, span := tracer.Start(ctx, "resolveIntersectionUserset")
 	defer span.End()
 
-	nodes, err := q.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, usersets.GetChild(), tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +371,7 @@ func (q *ExpandQuery) resolveDifferenceUserset(
 	ctx, span := tracer.Start(ctx, "resolveDifferenceUserset")
 	defer span.End()
 
-	nodes, err := q.resolveUsersets(ctx, store, []*openfgav1.Userset{userset.Base, userset.Subtract}, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, []*openfgav1.Userset{userset.GetBase(), userset.GetSubtract()}, tk, typesys)
 	if err != nil {
 		return nil, err
 	}

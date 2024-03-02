@@ -355,7 +355,7 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
   ],
   "schema_version": "1.1"
 }`)
-	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/authorization-models", httpAddr, createStoreResponse.Id), authModelPayload)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/authorization-models", httpAddr, createStoreResponse.GetId()), authModelPayload)
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
@@ -364,7 +364,7 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)
-	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", httpAddr, createStoreResponse.Id), listObjectsPayload)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", httpAddr, createStoreResponse.GetId()), listObjectsPayload)
 	require.NoError(t, err, "Failed to construct request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", test.authHeader)
@@ -1173,7 +1173,7 @@ type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
+	define viewer: [user]`).GetTypeDefinitions(),
 	})
 	require.NoError(t, err)
 

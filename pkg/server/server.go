@@ -414,9 +414,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			ContextualTuples:     req.GetContextualTuples(),
 			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 			Type:                 targetObjectType,
-			Relation:             req.Relation,
-			User:                 req.User,
-			Context:              req.Context,
+			Relation:             req.GetRelation(),
+			User:                 req.GetUser(),
+			Context:              req.GetContext(),
 		},
 	)
 	if err != nil {
@@ -570,7 +570,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	typesys, err := s.resolveTypesystem(ctx, storeID, req.AuthorizationModelId)
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +641,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
 			Depth:               s.resolveNodeLimit,

@@ -42,16 +42,16 @@ func NewCreateStoreCommand(
 func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
 	store, err := s.storesBackend.CreateStore(ctx, &openfgav1.Store{
 		Id:   ulid.Make().String(),
-		Name: req.Name,
+		Name: req.GetName(),
 	})
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
 	return &openfgav1.CreateStoreResponse{
-		Id:        store.Id,
-		Name:      store.Name,
-		CreatedAt: store.CreatedAt,
-		UpdatedAt: store.UpdatedAt,
+		Id:        store.GetId(),
+		Name:      store.GetName(),
+		CreatedAt: store.GetCreatedAt(),
+		UpdatedAt: store.GetUpdatedAt(),
 	}, nil
 }

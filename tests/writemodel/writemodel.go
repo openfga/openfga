@@ -379,8 +379,8 @@ func runTests(t *testing.T, client ClientInterface) {
 			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: model.TypeDefinitions,
-				Conditions:      model.Conditions,
+				TypeDefinitions: model.GetTypeDefinitions(),
+				Conditions:      model.GetConditions(),
 			})
 
 			if test.code == 0 {

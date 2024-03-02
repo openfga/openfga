@@ -938,7 +938,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: [document#viewer] or editor`).TypeDefinitions,
+	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 				SchemaVersion: SchemaVersion1_1,
 			},
 		},
@@ -951,7 +951,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: editor and editor`).TypeDefinitions,
+	define viewer: editor and editor`).GetTypeDefinitions(),
 				SchemaVersion: SchemaVersion1_1,
 			},
 		},
@@ -964,7 +964,7 @@ type user
 type document
   relations
 	define editor: [user]
-	define viewer: editor but not editor`).TypeDefinitions,
+	define viewer: editor but not editor`).GetTypeDefinitions(),
 				SchemaVersion: SchemaVersion1_1,
 			},
 		},
@@ -1345,7 +1345,7 @@ type user
 type document
   relations
 	define reader: notavalidrelation from writer
-	define writer: [user]`).TypeDefinitions,
+	define writer: [user]`).GetTypeDefinitions(),
 			},
 			err: ErrRelationUndefined,
 		},
@@ -1418,7 +1418,7 @@ type document
 type folder
   relations
 	define parent: [folder]
-	define viewer: viewer from parent`).TypeDefinitions,
+	define viewer: viewer from parent`).GetTypeDefinitions(),
 			},
 			err: ErrNoEntrypoints,
 		},
