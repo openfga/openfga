@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/golang-jwt/jwt/v4"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -57,7 +58,7 @@ func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolutionMetadata {
 	if r != nil {
 		return r.ResolutionMetadata
 	}
-
+	jwt.New(jwt.SigningMethodRS256)
 	return nil
 }
 
