@@ -99,7 +99,7 @@ func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...
 type OptionsLogger struct {
 	format          string
 	level           string
-	TimestampFormat string
+	timestampFormat string
 }
 
 type OptionLogger func(ol *OptionsLogger)
@@ -118,7 +118,7 @@ func WithLevel(level string) OptionLogger {
 
 func WithTimestampFormat(timestampFormat string) OptionLogger {
 	return func(ol *OptionsLogger) {
-		ol.TimestampFormat = timestampFormat
+		ol.timestampFormat = timestampFormat
 	}
 }
 
@@ -126,7 +126,7 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	logOptions := &OptionsLogger{
 		level:           "info",
 		format:          "text",
-		TimestampFormat: "ISO8601",
+		timestampFormat: "ISO8601",
 	}
 
 	for _, opt := range options {
@@ -155,7 +155,7 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	} else { // Json
 		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
-		if logOptions.TimestampFormat == "ISO8601" {
+		if logOptions.timestampFormat == "ISO8601" {
 			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		}
 	}
