@@ -16,11 +16,8 @@ import (
 
 func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 	t.Run("when_the_authorization_header_is_missing_from_the_gRPC_metadata_of_the_request,_returns_'missing_bearer_token'_error", func(t *testing.T) {
-		//given
 		authenticator := &RemoteOidcAuthenticator{}
-		//when
 		_, err := authenticator.Authenticate(context.Background())
-		////then
 		require.Equal(t, authn.ErrMissingBearerToken, err)
 	})
 	testCases := []struct {
@@ -97,18 +94,14 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 
 	for _, testC := range testCases {
 		t.Run(testC.testDescription, func(t *testing.T) {
-			//given
 			oidc, requestContext, err := testC.testSetup()
-			//when
 			_, err = oidc.Authenticate(requestContext)
-			//then
 			require.Contains(t, err.Error(), testC.expectedError)
 		})
 	}
 
 	// Success testcases
 	t.Run("when_the_token_is_valid,_it_MUST_return_the_token_subject_and_its_associated_scopes", func(t *testing.T) {
-		// given
 		scopes := "offline_access read write delete"
 		oidc, requestContext, err := quickConfigSetup(
 			"kid_1",
@@ -126,9 +119,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// when
 		authClaims, err := oidc.Authenticate(requestContext)
-		// then
 		require.Nil(t, err)
 		require.Equal(t, "openfga client", authClaims.Subject)
 		scopesList := strings.Split(scopes, " ")
