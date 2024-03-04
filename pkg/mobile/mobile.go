@@ -1,38 +1,13 @@
-package openfgamobile
+package mobile
 
 import (
 	"database/sql"
 	"log"
 	"net/url"
-	"os"
 
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/pressly/goose/v3"
 )
-
-func StartServer() {
-
-	println("Starting server...")
-
-	rootCmd := cmd.NewRootCommand()
-
-	runCmd := run.NewRunCommand()
-	rootCmd.AddCommand(runCmd)
-
-	os.Args = append(os.Args, "run",
-		"--datastore-engine",
-		"sqlite",
-		"--datastore-uri", "file:test.db",
-	)
-
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
-
-	println("Server started!")
-}
 
 func MigrateDatabase() {
 	println("Migrating database...")
