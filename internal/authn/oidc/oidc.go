@@ -41,7 +41,7 @@ var (
 	errInvalidSubject  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
 	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
 
-	fetchJWKs = fetchKeys
+	fetchJWKs = fetchJWK
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
@@ -120,7 +120,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	return principal, nil
 }
 
-func fetchKeys(oidc *RemoteOidcAuthenticator) error {
+func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 	oidcConfig, err := oidc.GetConfiguration()
 	if err != nil {
 		return fmt.Errorf("error fetching OIDC configuration: %w", err)

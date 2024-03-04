@@ -57,6 +57,7 @@ func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolutionMetadata {
 	if r != nil {
 		return r.ResolutionMetadata
 	}
+
 	return nil
 }
 
