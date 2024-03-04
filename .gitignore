@@ -9,3 +9,8 @@ openfga
 coverage*.out
 *.swp
 
+.DS_Store
+test.db
+Mobile.xcframework
+Mobile.aar
+outputs/Mobile-sources.jar

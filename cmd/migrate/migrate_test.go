@@ -16,7 +16,7 @@ import (
 const defaultDuration = 1 * time.Minute
 
 func TestMigrateCommandRollbacks(t *testing.T) {
-	engines := []string{"postgres", "mysql"}
+	engines := []string{"postgres", "mysql", "sqlite"}
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {

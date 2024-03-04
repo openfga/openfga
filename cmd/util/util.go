@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/mysql"
@@ -64,6 +65,8 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
+	case "sqlite":
+		ds, err = sqlite.New(uri, sqlcommon.NewConfig())
 	default:
 		t.Fatalf("unsupported datastore engine: %q", engine)
 	}

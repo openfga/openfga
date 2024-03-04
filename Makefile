@@ -27,6 +27,18 @@ build: ## Build the OpenFGA service
 run: build ## Run the OpenFGA server with in-memory storage
 	./openfga run
 
+.PHONY: build-ios-simulator
+build-ios-simulator: ## Build the OpenFGA service for iOS Simulator
+	gomobile bind -o ./outputs/Mobile.xcframework -ldflags='-s -w' -target=iossimulator -tags=netgo ./pkg/mobile
+
+.PHONY: build-ios
+build-ios: ## Build the OpenFGA service for iOS Simulator
+	gomobile bind -o ./outputs/Mobile.xcframework -ldflags='-s -w' -target=ios -tags=netgo ./pkg/mobile
+
+.PHONY: build-android
+build-android: ## Build the OpenFGA service for Android
+	CGO_CFLAGS= gomobile bind -o ./outputs/Mobile.aar -ldflags='-s -w' -androidapi 26 -target=android -tags=netgo ./pkg/mobile
+
 .PHONY: start-postgres
 start-postgres: ## Start a Postgres Docker container
 	docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14

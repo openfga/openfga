@@ -131,7 +131,7 @@ func TestServerPanicIfNoDatastore(t *testing.T) {
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
-	engines := []string{"postgres", "mysql"}
+	engines := []string{"postgres", "mysql", "sqlite"}
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
@@ -208,6 +208,15 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithSqliteDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
 
 	test.RunAllTests(t, ds)
 }
@@ -509,6 +518,16 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
+		require.NoError(b, err)
+		defer ds.Close()
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkSQLiteDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
+
+		uri := testDatastore.GetConnectionURI(true)
+		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
