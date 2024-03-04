@@ -143,6 +143,11 @@ func HandleTupleValidateError(err error) error {
 		return TypeNotFound(t.TypeName)
 	case *tuple.RelationNotFoundError:
 		return RelationNotFound(t.Relation, t.TypeName, t.TupleKey)
+	case *tuple.InvalidConditionalTupleError:
+		return status.Error(
+			codes.Code(openfgav1.ErrorCode_validation_error),
+			err.Error(),
+		)
 	}
 
 	return HandleError("", err)
