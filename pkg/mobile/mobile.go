@@ -6,12 +6,15 @@ import (
 	"net/url"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/server"
 	"github.com/pressly/goose/v3"
 )
 
-func MigrateDatabase() {
-	println("Migrating database...")
+func GetServer() *server.Server {
+	return getInstance()
+}
 
+func MigrateDatabase() {
 	var uri, driver, dialect, migrationsPath string
 
 	driver = "sqlite3"
@@ -54,6 +57,7 @@ func MigrateDatabase() {
 	goose.SetBaseFS(assets.EmbedMigrations)
 
 	currentVersion, err := goose.GetDBVersion(db)
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,6 +67,4 @@ func MigrateDatabase() {
 	if err := goose.Up(db, migrationsPath); err != nil {
 		log.Fatal(err)
 	}
-
-	println("Database migrated!")
 }
