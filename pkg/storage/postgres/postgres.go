@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/url"
 	"strings"
 	"time"
@@ -29,6 +30,9 @@ import (
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/postgres")
+
+const artificalDelay = 5
+const maxRandomness = 5
 
 // Postgres provides a Postgres based implementation of [storage.OpenFGADatastore].
 type Postgres struct {
@@ -145,6 +149,8 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
+	time.Sleep(time.Duration(artificalDelay+rand.IntN(maxRandomness)) * time.Millisecond)
+
 	return p.read(ctx, store, tupleKey, nil)
 }
 
@@ -152,6 +158,8 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
+
+	time.Sleep(time.Duration(artificalDelay+rand.IntN(maxRandomness)) * time.Millisecond)
 
 	iter, err := p.read(ctx, store, tupleKey, &opts)
 	if err != nil {
@@ -201,6 +209,8 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
+	time.Sleep(time.Duration(artificalDelay+rand.IntN(maxRandomness)) * time.Millisecond)
+
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
@@ -233,6 +243,8 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
+	time.Sleep(time.Duration(artificalDelay+rand.IntN(maxRandomness)) * time.Millisecond)
+
 	err := p.stbl.
 		Select(
 			"object_type", "object_id", "relation", "_user",
@@ -279,6 +291,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
+	time.Sleep(time.Duration(artificalDelay+rand.IntN(maxRandomness)) * time.Millisecond)
 
 	sb := p.stbl.
 		Select(
@@ -332,6 +345,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		}
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
+	time.Sleep(time.Duration(artificalDelay+rand.IntN(maxRandomness)) * time.Millisecond)
 
 	rows, err := p.stbl.
 		Select(

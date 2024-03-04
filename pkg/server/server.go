@@ -317,6 +317,22 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
+	/*
+		// For now, hard code the config
+		rateLimitConfig := graph.RateLimitedCheckResolverConfig{
+			NonImpedingDispatchNum: 50,
+			LowPriorityLevel:       200,
+			LowPriorityWait:        10,
+		}
+
+		rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
+		rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+		cycleDetectionCheckResolver.SetDelegate(localChecker)
+		localChecker.SetDelegate(rateLimitedCheckResolver)
+
+	*/
+
 	cycleDetectionCheckResolver.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 

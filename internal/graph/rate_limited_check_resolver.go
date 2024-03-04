@@ -11,6 +11,7 @@ type RateLimitedCheckResolverConfig struct {
 	LowPriorityWait        uint32
 }
 
+// RateLimitedCheckResolver will prioritize
 type RateLimitedCheckResolver struct {
 	delegate         CheckResolver
 	config           RateLimitedCheckResolverConfig
@@ -20,21 +21,27 @@ type RateLimitedCheckResolver struct {
 	done             chan bool
 }
 
-func NewRateLimitedCheckResolver(delegate CheckResolver,
+var _ CheckResolver = (*RateLimitedCheckResolver)(nil)
+
+func NewRateLimitedCheckResolver(
 	config RateLimitedCheckResolverConfig) *RateLimitedCheckResolver {
 	ticker := time.NewTicker(10 * time.Microsecond)
 	rateLimitedCheckResolver := &RateLimitedCheckResolver{
-		delegate:         delegate,
 		config:           config,
 		ticker:           ticker,
 		lowPriorityQueue: make(chan bool, 1),
 		medPriorityQueue: make(chan bool, 1),
 	}
+	rateLimitedCheckResolver.delegate = rateLimitedCheckResolver
 	go rateLimitedCheckResolver.Ticker()
 	return rateLimitedCheckResolver
 }
 
-func (r *RateLimitedCheckResolver) Done() {
+func (r *RateLimitedCheckResolver) SetDelegate(delegate CheckResolver) {
+	r.delegate = delegate
+}
+
+func (r *RateLimitedCheckResolver) Close() {
 	r.done <- true
 }
 
