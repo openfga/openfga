@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"fmt"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -94,10 +95,10 @@ func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...
 	l.Logger.Fatal(msg, fields...)
 }
 
-// OptionsLogger Implement options for logger
+// OptionsLogger Implements options for logger
 type OptionsLogger struct {
-	Format          string
-	Level           string
+	format          string
+	level           string
 	TimestampFormat string
 }
 
@@ -105,13 +106,13 @@ type OptionLogger func(ol *OptionsLogger)
 
 func WithFormat(format string) OptionLogger {
 	return func(ol *OptionsLogger) {
-		ol.Format = format
+		ol.format = format
 	}
 }
 
 func WithLevel(level string) OptionLogger {
 	return func(ol *OptionsLogger) {
-		ol.Level = level
+		ol.level = level
 	}
 }
 
@@ -123,8 +124,8 @@ func WithTimestampFormat(timestampFormat string) OptionLogger {
 
 func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	logOptions := &OptionsLogger{
-		Level:           "info",
-		Format:          "text",
+		level:           "info",
+		format:          "text",
 		TimestampFormat: "ISO8601",
 	}
 
@@ -132,13 +133,13 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		opt(logOptions)
 	}
 
-	if logOptions.Level == "none" {
+	if logOptions.level == "none" {
 		return NewNoopLogger(), nil
 	}
 
-	level, err := zap.ParseAtomicLevel(logOptions.Level)
+	level, err := zap.ParseAtomicLevel(logOptions.level)
 	if err != nil {
-		return nil, fmt.Errorf("unknown log level: %s, error: %w", logOptions.Level, err)
+		return nil, fmt.Errorf("unknown log level: %s, error: %w", logOptions.level, err)
 	}
 
 	cfg := zap.NewProductionConfig()
@@ -147,7 +148,7 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
-	if logOptions.Format == "text" {
+	if logOptions.format == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -164,7 +165,7 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 		return nil, err
 	}
 
-	if logOptions.Format == "json" {
+	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
