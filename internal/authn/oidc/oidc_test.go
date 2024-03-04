@@ -15,7 +15,7 @@ import (
 )
 
 func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
-	t.Run("When the authorization header is missing from the gRPC metadata of the request, returns 'missing bearer token' error.", func(t *testing.T) {
+	t.Run("when_the_authorization_header_is_missing_from_the_gRPC_metadata_of_the_request,_returns_'missing_bearer_token'_error", func(t *testing.T) {
 		//given
 		authenticator := &RemoteOidcAuthenticator{}
 		//when
@@ -29,14 +29,14 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		expectedError   string
 	}{
 		{
-			testDescription: "When JWT and JWK kid don't match, returns 'invalid bearer token'",
+			testDescription: "when_JWT_and_JWK_kid_don't_match,_returns_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup("kid_1", "kid_2", "", "", jwt.MapClaims{}, nil)
 			},
 			expectedError: "invalid bearer token",
 		},
 		{
-			testDescription: "When token is signed using different public/private key pairs, returns  'invalid bearer token'",
+			testDescription: "when_token_is_signed_using_different_public/private_key_pairs,_returns__'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				privateKey, _ := generateJWTSignatureKeys()
 				return quickConfigSetup("kid_1", "kid_1", "", "", jwt.MapClaims{}, privateKey)
@@ -44,7 +44,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			expectedError: "invalid bearer token",
 		},
 		{
-			testDescription: "When token's issuer does not match the one provided in the server configuration, MUST return 'invalid issuer' error.",
+			testDescription: "when_token's_issuer_does_not_match_the_one_provided_in_the_server_configuration,_MUST_return_'invalid_issuer'_error",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup(
 					"kid_1",
@@ -60,7 +60,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			expectedError: "invalid issuer",
 		},
 		{
-			testDescription: "When token's audience does not match the one provided in the server configuration, MUST return 'invalid audience' error.",
+			testDescription: "when_token's_audience_does_not_match_the_one_provided_in_the_server_configuration,_MUST_return_'invalid_audience'_error",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup(
 					"kid_1",
@@ -76,7 +76,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			},
 		},
 		{
-			testDescription: "When the subject of the token is not a string, MUST return 'invalid subject' error.",
+			testDescription: "when_the_subject_of_the_token_is_not_a_string,_MUST_return_'invalid_subject'_error",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup(
 					"kid_1",
@@ -107,7 +107,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 	}
 
 	// Success testcases
-	t.Run("When the token is valid, it MUST return the token subject and its associated scopes.", func(t *testing.T) {
+	t.Run("when_the_token_is_valid,_it_MUST_return_the_token_subject_and_its_associated_scopes", func(t *testing.T) {
 		// given
 		scopes := "offline_access read write delete"
 		oidc, requestContext, err := quickConfigSetup(
