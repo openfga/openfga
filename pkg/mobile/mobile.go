@@ -1,20 +1,95 @@
 package mobile
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/url"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/pressly/goose/v3"
 )
 
-func GetServer() *server.Server {
-	return getInstance()
+var serverInstance *server.Server
+
+var ctx = context.Background()
+
+func InitServer(dbPath string) {
+	var datastore storage.OpenFGADatastore
+	var err error
+
+	datastoreOptions := []sqlcommon.DatastoreOption{}
+
+	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
+
+	datastore, err = sqlite.New(dbPath, dsCfg)
+
+	if err != nil {
+		println("error: ", err)
+		panic(err)
+	}
+
+	serverInstance = server.MustNewServerWithOpts(
+		server.WithDatastore(datastore),
+	)
+
+	println("serverInstance: ", serverInstance)
 }
 
-func MigrateDatabase() {
+func CreateStore(storeName string) {
+	if serverInstance == nil {
+		log.Fatalf("server instance is nil")
+	}
+
+	req := openfgav1.CreateStoreRequest{
+		Name: storeName,
+	}
+
+	resp, err := serverInstance.CreateStore(ctx, &req)
+
+	if err != nil {
+		println("CreateStoreRequest error: ", err.Error())
+	}
+
+	println("CreateStoreResponse: ", resp)
+}
+
+func ListObjects(storeId string,
+	authorizationModelId string,
+	objectType string,
+	relation string,
+	user string,
+) {
+	if serverInstance == nil {
+		log.Fatalf("server instance is nil")
+	}
+
+	req := openfgav1.ListObjectsRequest{
+		StoreId:              storeId,
+		AuthorizationModelId: authorizationModelId,
+		Type:                 objectType,
+		Relation:             relation,
+		User:                 user,
+	}
+
+	println("ListObjectsRequest: ", req.User)
+
+	resp, err := serverInstance.ListObjects(ctx, &req)
+
+	if err != nil {
+		println("ListObjectsRequest error: ", err.Error())
+	}
+
+	println("ListObjectsResponse: ", resp)
+}
+
+func MigrateDatabase(dbPath string) {
 	var uri, driver, dialect, migrationsPath string
 
 	driver = "sqlite3"
@@ -22,7 +97,7 @@ func MigrateDatabase() {
 	migrationsPath = assets.SQLiteMigrationDir
 
 	if uri == "" {
-		uri = "file:test.db"
+		uri = dbPath
 	}
 
 	// Parse the database uri with the sqlite drivers function for it and update username/password, if set via flags
