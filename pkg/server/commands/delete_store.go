@@ -39,7 +39,7 @@ func NewDeleteStoreCommand(
 }
 
 func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	store, err := s.storesBackend.GetStore(ctx, req.StoreId)
+	store, err := s.storesBackend.GetStore(ctx, req.GetStoreId())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1.DeleteStoreResponse{}, nil
@@ -48,7 +48,7 @@ func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgav1.DeleteS
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	if err := s.storesBackend.DeleteStore(ctx, store.Id); err != nil {
+	if err := s.storesBackend.DeleteStore(ctx, store.GetId()); err != nil {
 		return nil, serverErrors.HandleError("Error deleting store", err)
 	}
 	return &openfgav1.DeleteStoreResponse{}, nil

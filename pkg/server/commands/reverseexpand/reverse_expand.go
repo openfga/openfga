@@ -58,7 +58,7 @@ var _ IsUserRef = (*UserRefObject)(nil)
 func (u *UserRefObject) isUserRef() {}
 
 func (u *UserRefObject) GetObjectType() string {
-	return u.Object.Type
+	return u.Object.GetType()
 }
 
 func (u *UserRefObject) String() string {
@@ -89,7 +89,7 @@ type UserRefObjectRelation struct {
 func (*UserRefObjectRelation) isUserRef() {}
 
 func (u *UserRefObjectRelation) GetObjectType() string {
-	return tuple.GetType(u.ObjectRelation.Object)
+	return tuple.GetType(u.ObjectRelation.GetObject())
 }
 
 func (u *UserRefObjectRelation) String() string {
@@ -260,7 +260,7 @@ func (c *ReverseExpandQuery) execute(
 	// e.g. 'group:eng#member'
 	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
-		sourceUserObj = val.ObjectRelation.Object
+		sourceUserObj = val.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 
 		if req.edge != nil {
@@ -430,7 +430,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		// e.g. 'user:bob'
 		if val, ok := req.User.(*UserRefObject); ok {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
+				Object: tuple.BuildObject(val.Object.GetType(), val.Object.GetId()),
 			})
 		}
 
@@ -444,7 +444,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		// e.g. 'group:eng#member'
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: val.ObjectRelation.Object,
+				Object: val.ObjectRelation.GetObject(),
 			})
 		} else {
 			panic("unexpected source for reverse expansion of tuple to userset")

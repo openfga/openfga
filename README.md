@@ -1,16 +1,16 @@
 # OpenFGA
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
-[![Container Image](https://img.shields.io/github/v/release/openfga/openfga?color=blueviolet&label=container&logo=docker "Container Image")](https://hub.docker.com/r/openfga/openfga/tags)
+[![Docker Pulls](https://img.shields.io/docker/pulls/openfga/openfga)](https://hub.docker.com/r/openfga/openfga/tags)
 [![Codecov](https://img.shields.io/codecov/c/github/openfga/openfga)](https://app.codecov.io/gh/openfga/openfga)
 [![Go Report](https://goreportcard.com/badge/github.com/openfga/openfga)](https://goreportcard.com/report/github.com/openfga/openfga)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374/badge)](https://bestpractices.coreinfrastructure.org/projects/6374)
-[![Discord Server](https://img.shields.io/discord/759188666072825867?color=7289da&logo=discord "Discord Server")](https://discord.gg/8naAwJfWN6)
+[![Join our community](https://img.shields.io/badge/slack-cncf_%23openfga-40abb8.svg?logo=slack)](https://openfga.dev/community)
 [![Twitter](https://img.shields.io/twitter/follow/openfga?color=%23179CF0&logo=twitter&style=flat-square "@openfga on Twitter")](https://twitter.com/openfga)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga?ref=badge_shield)
 [![Artifact HUB](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/openfga)](https://artifacthub.io/packages/helm/openfga/openfga)
-[![OpenSSF
-Scorecard](https://api.securityscorecards.dev/projects/github.com/openfga/openfga/badge)](https://api.securityscorecards.dev/projects/github.com/openfga/openfga)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/openfga/openfga/badge)](https://securityscorecards.dev/viewer/?uri=github.com/openfga/openfga)
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 
 A high-performance and flexible authorization/permission engine built for developers and inspired by [Google Zanzibar](https://research.google/pubs/pub48190/).
@@ -39,6 +39,9 @@ OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), s
 docker pull openfga/openfga
 docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
+
+> [!TIP]
+> The `OPENFGA_HTTP_ADDR` environment variable can used to configure the address at which [the playground](https://openfga.dev/docs/getting-started/setup-openfga/playground) expects the OpenFGA server to be. For example, `docker run -e OPENFGA_PLAYGROUND_ENABLED=true -e OPENFGA_HTTP_ADDR=0.0.0.0:4000 -p 4000:4000 -p 3000:3000 openfga/openfga run` will start the OpenFGA server on port 4000, and configure the playground too.
 
 #### Docker Compose
 

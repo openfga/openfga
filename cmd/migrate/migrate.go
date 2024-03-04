@@ -141,6 +141,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		log.Fatalf("failed to initialize database connection: %v", err)
 	}
 
+	// TODO use goose.OpenDBWithDriver which already sets the dialect
 	if err := goose.SetDialect(dialect); err != nil {
 		log.Fatalf("failed to initialize the migrate command: %v", err)
 	}

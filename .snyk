@@ -1,0 +1,6 @@
+exclude:
+  global:
+    - .github/**
+    - docs/**
+    - internal/**/*_test.go
+    - pkg/**/*_test.go

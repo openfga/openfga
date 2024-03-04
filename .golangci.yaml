@@ -25,6 +25,7 @@ linters:
     - unparam
     - wastedassign
     - whitespace
+    - protogetter
     # - gocritic
     # - exhaustive
     # - noctx

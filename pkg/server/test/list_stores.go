@@ -21,23 +21,23 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	deleteCmd := commands.NewDeleteStoreCommand(datastore)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {
-		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+		listStoresResponse, err := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 			ContinuationToken: deleteContinuationToken,
 		})
-		for _, store := range listStoresResponse.Stores {
-			if _, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
-				StoreId: store.Id,
-			}); err != nil {
-				t.Fatalf("failed cleaning stores with %v", err)
-			}
+		require.NoError(t, err)
+		for _, store := range listStoresResponse.GetStores() {
+			_, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
+				StoreId: store.GetId(),
+			})
+			require.NoError(t, err)
 		}
-		deleteContinuationToken = listStoresResponse.ContinuationToken
+		deleteContinuationToken = listStoresResponse.GetContinuationToken()
 	}
 
 	// ensure there are actually no stores
 	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{})
 	require.NoError(t, actualError)
-	require.Empty(t, listStoresResponse.Stores)
+	require.Empty(t, listStoresResponse.GetStores())
 
 	// create two stores
 	createStoreQuery := commands.NewCreateStoreCommand(datastore)
@@ -54,18 +54,18 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 		ContinuationToken: "",
 	})
 	require.NoError(t, actualError)
-	require.Len(t, listStoresResponse.Stores, 1)
-	require.Equal(t, firstStoreName, listStoresResponse.Stores[0].Name)
-	require.NotEmpty(t, listStoresResponse.ContinuationToken)
+	require.Len(t, listStoresResponse.GetStores(), 1)
+	require.Equal(t, firstStoreName, listStoresResponse.GetStores()[0].GetName())
+	require.NotEmpty(t, listStoresResponse.GetContinuationToken())
 
 	// first page: 2nd store
 	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: listStoresResponse.ContinuationToken,
+		ContinuationToken: listStoresResponse.GetContinuationToken(),
 	})
 	require.NoError(t, actualError)
-	require.Len(t, secondListStoresResponse.Stores, 1)
-	require.Equal(t, secondStoreName, secondListStoresResponse.Stores[0].Name)
+	require.Len(t, secondListStoresResponse.GetStores(), 1)
+	require.Equal(t, secondStoreName, secondListStoresResponse.GetStores()[0].GetName())
 	// no token <=> no more results
-	require.Empty(t, secondListStoresResponse.ContinuationToken)
+	require.Empty(t, secondListStoresResponse.GetContinuationToken())
 }

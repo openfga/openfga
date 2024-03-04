@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -37,6 +39,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -81,10 +84,10 @@ func ExampleNewServerWithOpts() {
 
 	// write the model to the store
 	authorizationModel, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         store.Id,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
-		SchemaVersion:   model.SchemaVersion,
+		StoreId:         store.GetId(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+		SchemaVersion:   model.GetSchemaVersion(),
 	})
 	if err != nil {
 		panic(err)
@@ -92,7 +95,7 @@ func ExampleNewServerWithOpts() {
 
 	// write tuples to the store
 	_, err = openfga.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId: store.Id,
+		StoreId: store.GetId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "document:budget", Relation: "reader", User: "user:anne"},
@@ -106,8 +109,8 @@ func ExampleNewServerWithOpts() {
 
 	// make an authorization check
 	checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
-		StoreId:              store.Id,
-		AuthorizationModelId: authorizationModel.AuthorizationModelId, // optional, but recommended for speed
+		StoreId:              store.GetId(),
+		AuthorizationModelId: authorizationModel.GetAuthorizationModelId(), // optional, but recommended for speed
 		TupleKey: &openfgav1.CheckRequestTupleKey{
 			User:     "user:anne",
 			Relation: "reader",
@@ -117,7 +120,7 @@ func ExampleNewServerWithOpts() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(checkResponse.Allowed)
+	fmt.Println(checkResponse.GetAllowed())
 	// Output: true
 }
 
@@ -132,9 +135,7 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
-			defer stopFunc()
-			require.NoError(t, err)
+			_, ds, uri := util.MustBootstrapDatastore(t, engine)
 
 			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
 
@@ -142,7 +143,7 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 
 			migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(targetVersion))})
 
-			err = migrateCommand.Execute()
+			err := migrateCommand.Execute()
 			require.NoError(t, err)
 
 			status, _ := ds.IsReady(context.Background())
@@ -165,21 +166,19 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	ds, stopFunc := MustBootstrapDatastore(t, "postgres")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := postgres.New(
@@ -196,31 +195,28 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds, stopFunc := MustBootstrapDatastore(t, "memory")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
-	ds, stopFunc := MustBootstrapDatastore(t, "mysql")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "mysql")
-	defer func() {
-		stopFunc()
+	t.Cleanup(func() {
 		goleak.VerifyNone(t)
-	}()
+	})
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := mysql.New(
@@ -236,10 +232,264 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
+func TestCheckResolverOuterLayerDefault(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(s.Close)
+
+	// the default (outer most layer) of the CheckResolver
+	// composition should always be CycleDetectionCheckResolver.
+	_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+	require.True(t, ok)
+}
+
+func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+
+	type user
+
+	type document
+	  relations
+			define viewer: [user, document#viewer] or editor
+			define editor: [user, document#viewer]`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
+				tuple.NewTupleKey("document:1", "editor", "document:1#viewer"),
+				tuple.NewTupleKey("document:1", "editor", "user:andres"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	var resp1 *openfgav1.CheckResponse
+	var err1 error
+	go func() {
+		defer wg.Done()
+
+		resp1, err1 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "editor", "user:jon"),
+		})
+	}()
+
+	var resp2 *openfgav1.CheckResponse
+	var err2 error
+	go func() {
+		defer wg.Done()
+
+		resp2, err2 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
+		})
+	}()
+
+	wg.Wait()
+
+	require.NoError(t, err1)
+	require.False(t, resp1.GetAllowed())
+
+	require.NoError(t, err2)
+	require.False(t, resp2.GetAllowed())
+}
+
+func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+			schema 1.1
+
+		  type user
+
+		  type document
+			relations
+			  define editor1: [user, document#viewer1]
+
+			  define viewer2: [document#viewer1] or editor1
+			  define viewer1: [user] or viewer2
+			  define can_view: viewer1 or editor1`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "editor1", "document:1#viewer1"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	resp, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "can_view", "user:jon"),
+	})
+	require.NoError(t, err)
+	require.False(t, resp.GetAllowed())
+}
+
+func TestThreeProngThroughVariousLayers(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+	)
+	t.Cleanup(func() {
+		s.Close()
+	})
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+
+  type user
+  type module
+  relations
+	  define owner: [user] or owner from parent
+	  define parent: [document, module]
+	  define viewer: [user] or owner or viewer from parent
+  type folder
+  relations
+	  define owner: [user] or owner from parent
+	  define parent: [module, folder]
+	  define viewer: [user] or owner or viewer from parent
+  type document
+  relations
+	  define owner: [user] or owner from parent
+	  define parent: [folder, document]
+	  define viewer: [user] or owner or viewer from parent`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("module:a", "owner", "user:anne"),
+				tuple.NewTupleKey("folder:a", "parent", "module:a"),
+				tuple.NewTupleKey("document:a", "parent", "folder:a"),
+				tuple.NewTupleKey("module:b", "parent", "document:a"),
+				tuple.NewTupleKey("folder:b", "parent", "module:b"),
+				tuple.NewTupleKey("document:b", "parent", "folder:b"),
+				tuple.NewTupleKey("module:a", "parent", "document:b"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < 100; i++ {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			tupleKeys := []*openfgav1.CheckRequestTupleKey{
+				tuple.NewCheckRequestTupleKey("module:a", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("module:b", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("folder:a", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("folder:b", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("document:a", "viewer", "user:anne"),
+				tuple.NewCheckRequestTupleKey("document:b", "viewer", "user:anne"),
+			}
+
+			for _, tupleKey := range tupleKeys {
+				resp, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey:             tupleKey,
+				})
+				require.NoError(t, err)
+				require.True(t, resp.GetAllowed())
+			}
+		})
+	}
+}
+
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "postgres")
-		defer stopFunc()
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
@@ -255,8 +505,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
-		testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(b, "mysql")
-		defer stopFunc()
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
@@ -278,7 +527,7 @@ type user
 type repo
   relations
 	define reader: [user]
-`).TypeDefinitions
+`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -321,12 +570,11 @@ type repo
 		AuthorizationModelId: modelID,
 	})
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := postgres.New(uri, sqlcommon.NewConfig(
@@ -351,7 +599,7 @@ type user
 
 type document
   relations
-	define editor: [user]`).TypeDefinitions,
+	define editor: [user]`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
@@ -409,7 +657,7 @@ type repo
 	define admin: [user]
 	define r1: [user] and r2 and r3
 	define r2: [user] and r1 and r3
-	define r3: [user] and r1 and r2`).TypeDefinitions
+	define r3: [user] and r1 and r2`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
@@ -469,7 +717,7 @@ type repo
 	_, err = s.Expand(ctx, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
-		TupleKey:             tuple.NewExpandRequestTupleKey(tk.Object, tk.Relation),
+		TupleKey:             tuple.NewExpandRequestTupleKey(tk.GetObject(), tk.GetRelation()),
 	})
 	require.Error(t, err)
 	e, ok = status.FromError(err)
@@ -489,7 +737,7 @@ type user
 
 type repo
   relations
-	define reader: [user:*]`).TypeDefinitions
+	define reader: [user:*]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -545,7 +793,7 @@ type repo
 	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
 	require.Lessf(t, end, 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestCheckWithCachedResolution(t *testing.T) {
@@ -560,7 +808,7 @@ type user
 
 type repo
   relations
-	define reader: [user]`).TypeDefinitions
+	define reader: [user]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -597,7 +845,7 @@ type repo
 	})
 
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 
 	// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
@@ -607,7 +855,7 @@ type repo
 	})
 
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestWriteAssertionModelDSError(t *testing.T) {
@@ -622,7 +870,7 @@ type user
 
 type repo
   relations
-	define reader: [user]`).TypeDefinitions
+	define reader: [user]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -737,7 +985,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(nil, storage.ErrNotFound)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
@@ -757,8 +1005,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(
 			&openfgav1.AuthorizationModel{
 				Id:            modelID,
 				SchemaVersion: typesystem.SchemaVersion1_1,
@@ -826,7 +1073,7 @@ type user
 type repo
   relations
 	define allowed: [user]
-	define viewer: [user] and allowed`).TypeDefinitions
+	define viewer: [user] and allowed`).GetTypeDefinitions()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -888,7 +1135,7 @@ type user
 
 type document
   relations
-	define viewer: [user, user:*]`).TypeDefinitions,
+	define viewer: [user, user:*]`).GetTypeDefinitions(),
 		}, nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
@@ -944,7 +1191,7 @@ type group
 
 type document
   relations
-	define viewer: [group#member]`).TypeDefinitions,
+	define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -1089,7 +1336,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type repo
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)
@@ -1123,30 +1370,4 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
-}
-
-func MustBootstrapDatastore(t testing.TB, engine string) (storage.OpenFGADatastore, func()) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, engine)
-
-	uri := testDatastore.GetConnectionURI(true)
-
-	var ds storage.OpenFGADatastore
-	var err error
-
-	switch engine {
-	case "memory":
-		ds = memory.New()
-	case "postgres":
-		ds, err = postgres.New(uri, sqlcommon.NewConfig())
-	case "mysql":
-		ds, err = mysql.New(uri, sqlcommon.NewConfig())
-	default:
-		t.Fatalf("'%s' is not a supported datastore engine", engine)
-	}
-	require.NoError(t, err)
-
-	return ds, func() {
-		ds.Close()
-		stopFunc()
-	}
 }

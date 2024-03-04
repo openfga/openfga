@@ -10,11 +10,13 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
@@ -115,13 +117,13 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
 // NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup
-func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverOpt) *CachedCheckResolver {
+func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
-		delegate:     delegate,
 		maxCacheSize: defaultMaxCacheSize,
 		cacheTTL:     defaultCacheTTL,
 		logger:       logger.NewNoopLogger(),
 	}
+	checker.delegate = checker
 
 	for _, opt := range opts {
 		opt(checker)
@@ -137,6 +139,11 @@ func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverO
 	return checker
 }
 
+// SetDelegate sets this CachedCheckResolver's dispatch delegate.
+func (c *CachedCheckResolver) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
+}
+
 // Close will deallocate resource allocated by the CachedCheckResolver
 // It will not deallocate cache if it has been passed in from WithExistingCache
 func (c *CachedCheckResolver) Close() {
@@ -150,22 +157,31 @@ func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "CachedCheckResolver"))
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
 	if cachedResp != nil && !cachedResp.Expired() {
 		checkCacheHitCounter.Inc()
+		span.SetAttributes(attribute.Bool("is_cached", true))
 		return cachedResp.Value().convertToResolveCheckResponse(), nil
 	}
+	span.SetAttributes(attribute.Bool("is_cached", false))
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 

@@ -50,6 +50,9 @@ type ResolutionMetadata struct {
 	// evaluated and potentially discarded
 	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreQueryCount uint32
+
+	// The number of Check subproblems that had to be dispatched to resolve the parent subproblem this response is associated with.
+	DispatchCount uint32
 }
 
 type RelationshipEdgeType int
@@ -383,5 +386,45 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		return edges, nil
 	default:
 		panic("unexpected userset rewrite encountered")
+	}
+}
+
+// NewLayeredCheckResolver constructs a CheckResolver that is composed of various CheckResolver layers.
+// Specifically, it constructs a CheckResolver with the following composition:
+//
+//	CycleDetectionCheckResolver  <-----|
+//		CachedCheckResolver              |
+//			LocalChecker                   |
+//				CycleDetectionCheckResolver -|
+//
+// The returned CheckResolverCloser should be used to close all resolvers involved in the
+// composition after you are done with the CheckResolver.
+func NewLayeredCheckResolver(
+	localResolverOpts []LocalCheckerOption,
+	cacheEnabled bool,
+	cachedResolverOpts []CachedCheckResolverOpt,
+) (CheckResolver, CheckResolverCloser) {
+	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	localCheckResolver := NewLocalChecker(localResolverOpts...)
+
+	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+
+	var cachedCheckResolver *CachedCheckResolver
+	if cacheEnabled {
+		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		cachedCheckResolver.SetDelegate(localCheckResolver)
+	}
+
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+	return cycleDetectionCheckResolver, func() {
+		localCheckResolver.Close()
+
+		if cachedCheckResolver != nil {
+			cachedCheckResolver.Close()
+		}
+
+		cycleDetectionCheckResolver.Close()
 	}
 }

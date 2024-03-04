@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"sort"
 	"strconv"
 	"testing"
@@ -35,16 +36,16 @@ var (
 		out := append([]*openfgav1.Tuple(nil), in...) // Copy input to avoid mutating it
 
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].GetKey().Object != out[j].GetKey().Object {
-				return out[i].GetKey().Object < out[j].GetKey().Object
+			if out[i].GetKey().GetObject() != out[j].GetKey().GetObject() {
+				return out[i].GetKey().GetObject() < out[j].GetKey().GetObject()
 			}
 
-			if out[i].GetKey().Relation != out[j].GetKey().Relation {
-				return out[i].GetKey().Relation < out[j].GetKey().Relation
+			if out[i].GetKey().GetRelation() != out[j].GetKey().GetRelation() {
+				return out[i].GetKey().GetRelation() < out[j].GetKey().GetRelation()
 			}
 
-			if out[i].GetKey().User != out[j].GetKey().User {
-				return out[i].GetKey().User < out[j].GetKey().User
+			if out[i].GetKey().GetUser() != out[j].GetKey().GetUser() {
+				return out[i].GetKey().GetUser() < out[j].GetKey().GetUser()
 			}
 
 			return true
@@ -56,16 +57,16 @@ var (
 		out := append([]*openfgav1.TupleKey(nil), in...) // Copy input to avoid mutating it
 
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Object != out[j].Object {
-				return out[i].Object < out[j].Object
+			if out[i].GetObject() != out[j].GetObject() {
+				return out[i].GetObject() < out[j].GetObject()
 			}
 
-			if out[i].Relation != out[j].Relation {
-				return out[i].Relation < out[j].Relation
+			if out[i].GetRelation() != out[j].GetRelation() {
+				return out[i].GetRelation() < out[j].GetRelation()
 			}
 
-			if out[i].User != out[j].User {
-				return out[i].User < out[j].User
+			if out[i].GetUser() != out[j].GetUser() {
+				return out[i].GetUser() < out[j].GetUser()
 			}
 
 			return true
@@ -127,6 +128,28 @@ func MustTransformDSLToProtoWithID(s string) *openfgav1.AuthorizationModel {
 	return model
 }
 
+// CreateGrpcConnection creates a grpc connection to an address and closes it when the test ends.
+func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOption) *grpc.ClientConn {
+	t.Helper()
+
+	defaultOptions := []grpc.DialOption{
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	defaultOptions = append(defaultOptions, opts...)
+
+	conn, err := grpc.Dial(
+		grpcAddress, defaultOptions...,
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		conn.Close()
+	})
+
+	return conn
+}
+
 // EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
 // ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
 func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
@@ -138,18 +161,23 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}
 
 	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	t.Log("creating connection to address", grpcAddr)
 	conn, err := grpc.DialContext(
-		context.Background(),
+		ctx,
 		grpcAddr,
 		dialOpts...,
 	)
-	require.NoError(t, err)
-	defer conn.Close()
+	require.NoError(t, err, "error creating grpc connection to server")
+	t.Cleanup(func() {
+		conn.Close()
+	})
 
 	client := healthv1pb.NewHealthClient(conn)
 
@@ -161,20 +189,22 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		})
 		if err != nil {
+			t.Log(time.Now(), "not serving yet at address", grpcAddr, err)
 			return err
 		}
 
 		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
+			t.Log(time.Now(), resp.GetStatus())
 			return errors.New("not serving")
 		}
 
 		return nil
 	}, policy)
-	require.NoError(t, err)
+	require.NoError(t, err, "server did not reach healthy status")
 
 	if httpHealthCheck {
 		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
-		require.Equal(t, 200, resp.StatusCode)
-		require.NoError(t, err)
+		require.NoError(t, err, "http endpoint not healthy")
+		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 	}
 }

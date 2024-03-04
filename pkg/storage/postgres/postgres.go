@@ -34,6 +34,7 @@ var tracer = otel.Tracer("openfga/pkg/storage/postgres")
 type Postgres struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
@@ -117,10 +118,13 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}
 	}
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"))
 
 	return &Postgres{
-		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
+		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -215,7 +219,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	now := time.Now().UTC()
-	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, deletes, writes, now)
+	return sqlcommon.Write(ctx, p.dbInfo, store, deletes, writes, now)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -298,11 +302,11 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	if len(filter.AllowedUserTypeRestrictions) > 0 {
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				orConditions = append(orConditions, sq.Like{"_user": userset.GetType() + ":%#" + userset.GetRelation()})
 			}
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
+				orConditions = append(orConditions, sq.Eq{"_user": userset.GetType() + ":*"})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -358,7 +362,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, p.dbInfo, store, modelID)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -431,25 +435,12 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	return models, token, nil
 }
 
-// FindLatestAuthorizationModelID see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
-func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
+func (p *Postgres) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModel")
 	defer span.End()
 
-	var modelID string
-	err := p.stbl.
-		Select("authorization_model_id").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		Limit(1).
-		QueryRowContext(ctx).
-		Scan(&modelID)
-	if err != nil {
-		return "", sqlcommon.HandleSQLError(err)
-	}
-
-	return modelID, nil
+	return sqlcommon.FindLatestAuthorizationModel(ctx, p.dbInfo, store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -468,7 +459,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerModelField)
 	}
 
-	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, p.dbInfo, store, model)
 }
 
 // CreateStore adds a new store to the Postgres storage.
@@ -481,7 +472,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgav1.Store) (*op
 	err := p.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.Id, store.Name, "NOW()", "NOW()").
+		Values(store.GetId(), store.GetName(), "NOW()", "NOW()").
 		Suffix("returning id, name, created_at").
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
@@ -658,7 +649,7 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 		return nil, err
 	}
 
-	return assertions.Assertions, nil
+	return assertions.GetAssertions(), nil
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.

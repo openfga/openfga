@@ -26,7 +26,7 @@ body:
           required: true
         - label: I have upgraded to the [latest version](https://github.com/openfga/openfga/releases/latest) of OpenFGA and the issue still persists.
           required: true
-        - label: I have searched the [Discord](https://discord.gg/8naAwJfWN6) community and have not found a suitable solution or answer.
+        - label: I have searched the [OpenFGA Community](https://openfga.dev/community) and have not found a suitable solution or answer.
           required: true
         - label: I agree to the terms within the [OpenFGA Code of Conduct](https://github.com/openfga/.github/blob/main/CODE_OF_CONDUCT.md).
           required: true

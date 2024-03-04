@@ -20,9 +20,7 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			container, _, stopFunc, uri, err := util.MustBootstrapDatastore(t, engine)
-			defer stopFunc()
-			require.NoError(t, err)
+			container, _, uri := util.MustBootstrapDatastore(t, engine)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
 			version := container.GetDatabaseSchemaVersion() + 1
@@ -32,7 +30,7 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 			for version >= 0 {
 				t.Logf("migrating to version %d", version)
 				migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
-				err = migrateCommand.Execute()
+				err := migrateCommand.Execute()
 				require.NoError(t, err)
 				version--
 			}
