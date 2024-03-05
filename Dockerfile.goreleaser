@@ -1,4 +1,4 @@
-FROM cgr.dev/chainguard/static@sha256:5ef2713be4309954b594d0b575b746b44b25786ab924894b6b156e73ce48583b
+FROM cgr.dev/chainguard/static@sha256:67ed8ca8d99e12e8778c038cf88ef7c27d44f08247d317c7135a66ca9d8a7652
 COPY assets /assets
 COPY openfga /
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.24 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe

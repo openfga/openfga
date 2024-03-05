@@ -95,14 +95,51 @@ func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...
 	l.Logger.Fatal(msg, fields...)
 }
 
-func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, error) {
-	if logLevel == "none" {
+// OptionsLogger Implements options for logger
+type OptionsLogger struct {
+	format          string
+	level           string
+	timestampFormat string
+}
+
+type OptionLogger func(ol *OptionsLogger)
+
+func WithFormat(format string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.format = format
+	}
+}
+
+func WithLevel(level string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.level = level
+	}
+}
+
+func WithTimestampFormat(timestampFormat string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.timestampFormat = timestampFormat
+	}
+}
+
+func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
+	logOptions := &OptionsLogger{
+		level:           "info",
+		format:          "text",
+		timestampFormat: "ISO8601",
+	}
+
+	for _, opt := range options {
+		opt(logOptions)
+	}
+
+	if logOptions.level == "none" {
 		return NewNoopLogger(), nil
 	}
 
-	level, err := zap.ParseAtomicLevel(logLevel)
+	level, err := zap.ParseAtomicLevel(logOptions.level)
 	if err != nil {
-		return nil, fmt.Errorf("unknown log level: %s, error: %w", logLevel, err)
+		return nil, fmt.Errorf("unknown log level: %s, error: %w", logOptions.level, err)
 	}
 
 	cfg := zap.NewProductionConfig()
@@ -111,14 +148,14 @@ func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, erro
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
-	if logFormat == "text" {
+	if logOptions.format == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	} else { // Json
 		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
-		if logTimestampFormat == "ISO8601" {
+		if logOptions.timestampFormat == "ISO8601" {
 			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 		}
 	}
@@ -128,7 +165,7 @@ func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, erro
 		return nil, err
 	}
 
-	if logFormat == "json" {
+	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
@@ -136,7 +173,10 @@ func NewLogger(logFormat, logLevel, logTimestampFormat string) (*ZapLogger, erro
 }
 
 func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
-	logger, err := NewLogger(logFormat, logLevel, logTimestampFormat)
+	logger, err := NewLogger(
+		WithFormat(logFormat),
+		WithLevel(logLevel),
+		WithTimestampFormat(logTimestampFormat))
 	if err != nil {
 		panic(err)
 	}
