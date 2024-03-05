@@ -134,6 +134,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 
 	for _, testC := range testCases {
 		t.Run(testC.testDescription, func(t *testing.T) {
+			if testC.expectedError == "" {
+				t.Fatal("this suite is to test error cases and this test didn't have an error expectation")
+			}
 			oidc, requestContext, err := testC.testSetup()
 			_, err = oidc.Authenticate(requestContext)
 			require.Contains(t, err.Error(), testC.expectedError)
