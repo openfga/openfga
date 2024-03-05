@@ -54,7 +54,8 @@ jobs:
         with:
           files: ./coverageunit.out
           verbose: true
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
 
   govulncheck:
     runs-on: ubuntu-latest
