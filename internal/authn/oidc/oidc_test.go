@@ -12,6 +12,7 @@ import (
 	"log"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
@@ -25,6 +26,44 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		testSetup       func() (*RemoteOidcAuthenticator, context.Context, error)
 		expectedError   string
 	}{
+		{
+			testDescription: "when_the_token_has_expired,_return_'invalid_bearer_token'",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "right_audience",
+						"sub": "openfga client",
+						"exp": time.Now().Add(-10 * time.Minute).Unix(),
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid bearer token",
+		},
+		{
+			testDescription: "when_the_JWT_contains_a_future_'iat',_return_'invalid_bearer_token'",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "right_audience",
+						"sub": "openfga client",
+						"iat": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid bearer token",
+		},
 		{
 			testDescription: "when_JWT_and_JWK_kid_don't_match,_returns_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
