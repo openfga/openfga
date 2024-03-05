@@ -317,24 +317,22 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	/*
-		// For now, hard code the config
-		rateLimitConfig := graph.RateLimitedCheckResolverConfig{
-			NonImpedingDispatchNum: 50,
-			LowPriorityLevel:       200,
-			LowPriorityWait:        10,
-		}
+	// For now, hard code the config
+	rateLimitConfig := graph.RateLimitedCheckResolverConfig{
+		NonImpedingDispatchNum: 50,
+		LowPriorityLevel:       100,
+		//LowPriorityWait:        200,
+		LowPriorityWait: 30,
+	}
 
-		rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
-		rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
-
-		cycleDetectionCheckResolver.SetDelegate(localChecker)
-		localChecker.SetDelegate(rateLimitedCheckResolver)
-
-	*/
+	rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
+	rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
 	cycleDetectionCheckResolver.SetDelegate(localChecker)
-	localChecker.SetDelegate(cycleDetectionCheckResolver)
+	localChecker.SetDelegate(rateLimitedCheckResolver)
+
+	//cycleDetectionCheckResolver.SetDelegate(localChecker)
+	//localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",

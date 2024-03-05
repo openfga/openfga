@@ -86,6 +86,5 @@ func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
 			<-r.medPriorityQueue
 		}
 	}
-
 	return r.delegate.ResolveCheck(ctx, req)
 }
