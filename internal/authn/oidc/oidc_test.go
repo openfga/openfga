@@ -71,6 +71,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 				)
 			},
+			expectedError: "invalid audienc",
 		},
 		{
 			testDescription: "when_the_subject_of_the_token_is_not_a_string,_MUST_return_'invalid_subject'_error",
