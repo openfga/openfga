@@ -406,132 +406,7 @@ func (t *TypeSystem) HasTypeInfo(objectType, relation string) (bool, error) {
 // the provided relation are defined by one or more direct or indirect intersections.
 func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (bool, error) {
 	visited := map[string]struct{}{}
-	return t.relationInvolvesIntersection(objectType, relation, visited)
-}
-
-func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, visited map[string]struct{}) (bool, error) {
-	key := tuple.ToObjectRelationString(objectType, relation)
-	if _, ok := visited[key]; ok {
-		return false, nil
-	}
-
-	visited[key] = struct{}{}
-
-	rel, err := t.GetRelation(objectType, relation)
-	if err != nil {
-		return false, err
-	}
-
-	rewrite := rel.GetRewrite()
-
-	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		switch rw := r.GetUserset().(type) {
-		case *openfgav1.Userset_ComputedUserset:
-			rewrittenRelation := rw.ComputedUserset.GetRelation()
-			rewritten, err := t.GetRelation(objectType, rewrittenRelation)
-			if err != nil {
-				return err
-			}
-
-			containsIntersection, err := t.relationInvolvesIntersection(
-				objectType,
-				rewritten.GetName(),
-				visited,
-			)
-			if err != nil {
-				return err
-			}
-
-			if containsIntersection {
-				return true
-			}
-
-		case *openfgav1.Userset_TupleToUserset:
-			tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
-			rewrittenRelation := rw.TupleToUserset.GetComputedUserset().GetRelation()
-
-			tuplesetRel, err := t.GetRelation(objectType, tupleset)
-			if err != nil {
-				return err
-			}
-
-			directlyRelatedTypes := tuplesetRel.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			for _, relatedType := range directlyRelatedTypes {
-				// Must be of the form 'objectType' by this point since we disallow `tupleset` relations of the form `objectType:id#relation`.
-				r := relatedType.GetRelation()
-				if r != "" {
-					return fmt.Errorf(
-						"invalid type restriction '%s#%s' specified on tupleset relation '%s#%s': %w",
-						relatedType.GetType(),
-						relatedType.GetRelation(),
-						objectType,
-						tupleset,
-						ErrInvalidModel,
-					)
-				}
-
-				rel, err := t.GetRelation(relatedType.GetType(), rewrittenRelation)
-				if err != nil {
-					if errors.Is(err, ErrObjectTypeUndefined) || errors.Is(err, ErrRelationUndefined) {
-						continue
-					}
-
-					return err
-				}
-
-				containsIntersection, err := t.relationInvolvesIntersection(
-					relatedType.GetType(),
-					rel.GetName(),
-					visited,
-				)
-				if err != nil {
-					return err
-				}
-
-				if containsIntersection {
-					return true
-				}
-			}
-
-			return nil
-
-		case *openfgav1.Userset_Intersection:
-			return true
-		}
-
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-
-	if result != nil && result.(bool) {
-		return true, nil
-	}
-
-	for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if typeRestriction.GetRelation() != "" {
-			key := tuple.ToObjectRelationString(typeRestriction.GetType(), typeRestriction.GetRelation())
-			if _, ok := visited[key]; ok {
-				continue
-			}
-
-			containsIntersection, err := t.relationInvolvesIntersection(
-				typeRestriction.GetType(),
-				typeRestriction.GetRelation(),
-				visited,
-			)
-			if err != nil {
-				return false, err
-			}
-
-			if containsIntersection {
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
+	return t.relationInvolves(objectType, relation, visited, intersectionSetOperator)
 }
 
 // RelationInvolvesExclusion returns true if the provided relation's userset rewrite
@@ -539,10 +414,15 @@ func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, v
 // the provided relation are defined by one or more direct or indirect exclusions.
 func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (bool, error) {
 	visited := map[string]struct{}{}
-	return t.relationInvolvesExclusion(objectType, relation, visited)
+	return t.relationInvolves(objectType, relation, visited, exclusionSetOperator)
 }
 
-func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visited map[string]struct{}) (bool, error) {
+const (
+	intersectionSetOperator uint = iota
+	exclusionSetOperator
+)
+
+func (t *TypeSystem) relationInvolves(objectType, relation string, visited map[string]struct{}, target uint) (bool, error) {
 	key := tuple.ToObjectRelationString(objectType, relation)
 	if _, ok := visited[key]; ok {
 		return false, nil
@@ -566,16 +446,12 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 				return err
 			}
 
-			containsExclusion, err := t.relationInvolvesExclusion(
-				objectType,
-				rewritten.GetName(),
-				visited,
-			)
+			containsTarget, err := t.relationInvolves(objectType, rewritten.GetName(), visited, target)
 			if err != nil {
 				return err
 			}
 
-			if containsExclusion {
+			if containsTarget {
 				return true
 			}
 
@@ -612,24 +488,21 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 					return err
 				}
 
-				containsExclusion, err := t.relationInvolvesExclusion(
-					relatedType.GetType(),
-					rel.GetName(),
-					visited,
-				)
+				containsTarget, err := t.relationInvolves(relatedType.GetType(), rel.GetName(), visited, target)
 				if err != nil {
 					return err
 				}
 
-				if containsExclusion {
+				if containsTarget {
 					return true
 				}
 			}
 
 			return nil
-
+		case *openfgav1.Userset_Intersection:
+			return target == intersectionSetOperator
 		case *openfgav1.Userset_Difference:
-			return true
+			return target == exclusionSetOperator
 		}
 
 		return nil
@@ -649,16 +522,12 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 				continue
 			}
 
-			containsExclusion, err := t.relationInvolvesExclusion(
-				typeRestriction.GetType(),
-				typeRestriction.GetRelation(),
-				visited,
-			)
+			containsTarget, err := t.relationInvolves(typeRestriction.GetType(), typeRestriction.GetRelation(), visited, target)
 			if err != nil {
 				return false, err
 			}
 
-			if containsExclusion {
+			if containsTarget {
 				return true, nil
 			}
 		}
@@ -1150,40 +1019,6 @@ func (t *TypeSystem) IsDirectlyAssignable(relation *openfgav1.Relation) bool {
 func RewriteContainsSelf(rewrite *openfgav1.Userset) bool {
 	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
 		if _, ok := r.GetUserset().(*openfgav1.Userset_This); ok {
-			return true
-		}
-
-		return nil
-	})
-	if err != nil {
-		panic("unexpected error during rewrite evaluation")
-	}
-
-	return result != nil && result.(bool) // Type-cast matches the return from the WalkRelationshipRewriteHandler above.
-}
-
-// RewriteContainsIntersection returns true if the provided userset rewrite
-// is defined by one or more direct or indirect intersections.
-func RewriteContainsIntersection(rewrite *openfgav1.Userset) bool {
-	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.GetUserset().(*openfgav1.Userset_Intersection); ok {
-			return true
-		}
-
-		return nil
-	})
-	if err != nil {
-		panic("unexpected error during rewrite evaluation")
-	}
-
-	return result != nil && result.(bool) // Type-cast matches the return from the WalkRelationshipRewriteHandler above.
-}
-
-// RewriteContainsExclusion returns true if the provided userset rewrite
-// is defined by one or more direct or indirect exclusions.
-func RewriteContainsExclusion(rewrite *openfgav1.Userset) bool {
-	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.GetUserset().(*openfgav1.Userset_Difference); ok {
 			return true
 		}
 
