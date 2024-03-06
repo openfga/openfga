@@ -551,7 +551,7 @@ func hasEntrypoints(
 	v := maps.Clone(visitedRelations)
 
 	// Presence of a key represents that we've visited that object and relation. We keep track of this to avoid stack overflows.
-	// The value of the key represents hasEntrypoints for that relation. We set this to true only with a directly assignable type.
+	// The value of the key represents hasEntrypoints for that relation. We set this to true only when the relation is directly assignable.
 	if val, ok := v[typeName]; ok {
 		val[relationName] = false
 	} else {
