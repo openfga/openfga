@@ -508,16 +508,10 @@ func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) Che
 	}
 }
 
-// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
-// evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
-//
-// It is expected that callers pass in, contextually, a [[storage.RelationshipTupleReader]] using
-// [[storage.ContextWithRelationshipTupleReader]]. This is by design because this method is called by
-// [[server.Check]], but each time it is called there are invariants that must be met that relate
-// to the concurrency of the underlying RelationshipTupleReader as well as contextual tuples per
-// parent request. Since [[server.Check]] shares a single instance of a [[LocalChecker]], and to
-// meet the invariants mentioned above, we contextually define the datastore used to serve the
-// ResolveCheck request.
+var _ CheckResolver = (*LocalChecker)(nil)
+
+// ResolveCheck implements [[CheckResolver.ResolveCheck]].
+// If the typesystem isn't set in the context, it will panic.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
