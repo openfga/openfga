@@ -1,6 +1,6 @@
 module github.com/openfga/openfga
 
-go 1.21.7
+go 1.21.8
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
@@ -48,7 +48,7 @@ require (
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
 	golang.org/x/sync v0.6.0
 	google.golang.org/grpc v1.62.0
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 	sigs.k8s.io/yaml v1.4.0
 )
 
