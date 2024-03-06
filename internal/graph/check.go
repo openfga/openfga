@@ -508,16 +508,10 @@ func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) Che
 	}
 }
 
-// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
-// evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
-//
-// It is expected that callers pass in, contextually, a [[storage.RelationshipTupleReader]] using
-// [[storage.ContextWithRelationshipTupleReader]]. This is by design because this method is called by
-// [[server.Check]], but each time it is called there are invariants that must be met that relate
-// to the concurrency of the underlying RelationshipTupleReader as well as contextual tuples per
-// parent request. Since [[server.Check]] shares a single instance of a [[LocalChecker]], and to
-// meet the invariants mentioned above, we contextually define the datastore used to serve the
-// ResolveCheck request.
+var _ CheckResolver = (*LocalChecker)(nil)
+
+// ResolveCheck implements [[CheckResolver.ResolveCheck]].
+// If the typesystem isn't set in the context, it will panic.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
@@ -642,7 +636,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.Object, reqTupleKey.Relation))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
 			defer span.End()
 
 			if ctx.Err() != nil {
@@ -657,8 +651,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      reqTupleKey.Object,
-				Relation:                    reqTupleKey.Relation,
+				Object:                      reqTupleKey.GetObject(),
+				Relation:                    reqTupleKey.GetRelation(),
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
@@ -790,9 +784,9 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 		}
 
 		rewrittenTupleKey := tuple.NewTupleKey(
-			req.TupleKey.GetObject(),
+			req.GetTupleKey().GetObject(),
 			rewrite.ComputedUserset.GetRelation(),
-			req.TupleKey.GetUser(),
+			req.GetTupleKey().GetUser(),
 		)
 
 		return c.dispatch(
@@ -1004,7 +998,7 @@ func (c *LocalChecker) checkRewrite(
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
-	switch rw := rewrite.Userset.(type) {
+	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:

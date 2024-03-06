@@ -151,7 +151,7 @@ func NewExpandRequestTupleKey(object, relation string) *openfgav1.ExpandRequestT
 // ObjectKey returns the canonical key for the provided Object. The ObjectKey of an object
 // is the string 'objectType:objectId'.
 func ObjectKey(obj *openfgav1.Object) string {
-	return fmt.Sprintf("%s:%s", obj.Type, obj.Id)
+	return fmt.Sprintf("%s:%s", obj.GetType(), obj.GetId())
 }
 
 // SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string

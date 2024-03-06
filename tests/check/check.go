@@ -137,7 +137,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			if err != nil {
 				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = model.TypeDefinitions
+				typedefs = model.GetTypeDefinitions()
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
@@ -157,7 +157,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId:              storeID,
-						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+						AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 						Writes: &openfgav1.WriteRequestWrites{
 							TupleKeys: writeChunk,
 						},
@@ -180,14 +180,14 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				var tupleKey *openfgav1.CheckRequestTupleKey
 				if assertion.Tuple != nil {
 					tupleKey = &openfgav1.CheckRequestTupleKey{
-						User:     assertion.Tuple.User,
-						Relation: assertion.Tuple.Relation,
-						Object:   assertion.Tuple.Object,
+						User:     assertion.Tuple.GetUser(),
+						Relation: assertion.Tuple.GetRelation(),
+						Object:   assertion.Tuple.GetObject(),
 					}
 				}
 				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
 					StoreId:              storeID,
-					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 					TupleKey:             tupleKey,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
@@ -198,7 +198,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				if assertion.ErrorCode == 0 {
 					require.NoError(t, err, detailedInfo)
-					require.Equal(t, assertion.Expectation, resp.Allowed, detailedInfo)
+					require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
 				} else {
 					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)

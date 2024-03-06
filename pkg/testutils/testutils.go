@@ -36,16 +36,16 @@ var (
 		out := append([]*openfgav1.Tuple(nil), in...) // Copy input to avoid mutating it
 
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].GetKey().Object != out[j].GetKey().Object {
-				return out[i].GetKey().Object < out[j].GetKey().Object
+			if out[i].GetKey().GetObject() != out[j].GetKey().GetObject() {
+				return out[i].GetKey().GetObject() < out[j].GetKey().GetObject()
 			}
 
-			if out[i].GetKey().Relation != out[j].GetKey().Relation {
-				return out[i].GetKey().Relation < out[j].GetKey().Relation
+			if out[i].GetKey().GetRelation() != out[j].GetKey().GetRelation() {
+				return out[i].GetKey().GetRelation() < out[j].GetKey().GetRelation()
 			}
 
-			if out[i].GetKey().User != out[j].GetKey().User {
-				return out[i].GetKey().User < out[j].GetKey().User
+			if out[i].GetKey().GetUser() != out[j].GetKey().GetUser() {
+				return out[i].GetKey().GetUser() < out[j].GetKey().GetUser()
 			}
 
 			return true
@@ -57,16 +57,16 @@ var (
 		out := append([]*openfgav1.TupleKey(nil), in...) // Copy input to avoid mutating it
 
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Object != out[j].Object {
-				return out[i].Object < out[j].Object
+			if out[i].GetObject() != out[j].GetObject() {
+				return out[i].GetObject() < out[j].GetObject()
 			}
 
-			if out[i].Relation != out[j].Relation {
-				return out[i].Relation < out[j].Relation
+			if out[i].GetRelation() != out[j].GetRelation() {
+				return out[i].GetRelation() < out[j].GetRelation()
 			}
 
-			if out[i].User != out[j].User {
-				return out[i].User < out[j].User
+			if out[i].GetUser() != out[j].GetUser() {
+				return out[i].GetUser() < out[j].GetUser()
 			}
 
 			return true
