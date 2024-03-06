@@ -582,11 +582,7 @@ func hasEntrypoints(
 				return false, false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
 			}
 
-			if hasEntrypoint, ok := v[assignableTypeName][assignableRelationName]; ok {
-				if hasEntrypoint {
-					return true, false, nil
-				}
-
+			if _, ok := v[assignableTypeName][assignableRelationName]; ok {
 				continue
 			}
 
@@ -609,8 +605,8 @@ func hasEntrypoints(
 			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
 		}
 
-		if r, ok := v[typeName][computedRelationName]; ok {
-			return r, true, nil
+		if hasEntrypoint, ok := v[typeName][computedRelationName]; ok {
+			return hasEntrypoint, true, nil
 		}
 
 		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
