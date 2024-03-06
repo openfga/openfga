@@ -226,6 +226,11 @@ func (t *TypeSystem) GetSchemaVersion() string {
 	return t.schemaVersion
 }
 
+// GetAllRelations returns a map [objectType] => [relationName] => relation.
+func (t *TypeSystem) GetAllRelations() map[string]map[string]*openfgav1.Relation {
+	return t.relations
+}
+
 // GetConditions retrieves a map of condition names to their corresponding
 // EvaluableCondition instances within the TypeSystem.
 func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {
@@ -286,10 +291,10 @@ func GetRelationReferenceAsString(rr *openfgav1.RelationReference) string {
 	if rr == nil {
 		return ""
 	}
-	if _, ok := rr.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
+	if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
 		return fmt.Sprintf("%s#%s", rr.GetType(), rr.GetRelation())
 	}
-	if _, ok := rr.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
+	if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
 		return fmt.Sprintf("%s:*", rr.GetType())
 	}
 
@@ -443,7 +448,7 @@ func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, v
 
 		case *openfgav1.Userset_TupleToUserset:
 			tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
-			rewrittenRelation := rw.TupleToUserset.ComputedUserset.GetRelation()
+			rewrittenRelation := rw.TupleToUserset.GetComputedUserset().GetRelation()
 
 			tuplesetRel, err := t.GetRelation(objectType, tupleset)
 			if err != nil {
@@ -576,7 +581,7 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 
 		case *openfgav1.Userset_TupleToUserset:
 			tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
-			rewrittenRelation := rw.TupleToUserset.ComputedUserset.GetRelation()
+			rewrittenRelation := rw.TupleToUserset.GetComputedUserset().GetRelation()
 
 			tuplesetRel, err := t.GetRelation(objectType, tupleset)
 			if err != nil {
@@ -667,6 +672,7 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 // could lead to at least one relationship with some object type, then false is returned along with an error indicating
 // no entrypoints were found. If at least one relationship with a specific object type is found while walking the rewrite,
 // then true is returned along with a nil error.
+// This function assumes that all other model validations have run.
 func hasEntrypoints(
 	typedefs map[string]map[string]*openfgav1.Relation,
 	typeName, relationName string,
@@ -688,7 +694,7 @@ func hasEntrypoints(
 		return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
 	}
 
-	switch rw := rewrite.Userset.(type) {
+	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
@@ -738,7 +744,7 @@ func hasEntrypoints(
 		return hasEntrypoint, loop, nil
 	case *openfgav1.Userset_TupleToUserset:
 		tuplesetRelationName := rw.TupleToUserset.GetTupleset().GetRelation()
-		computedRelationName := rw.TupleToUserset.ComputedUserset.GetRelation()
+		computedRelationName := rw.TupleToUserset.GetComputedUserset().GetRelation()
 
 		tuplesetRelation, ok := typedefs[typeName][tuplesetRelationName]
 		if !ok {
@@ -769,7 +775,7 @@ func hasEntrypoints(
 	case *openfgav1.Userset_Union:
 
 		loop := false
-		for _, child := range rw.Union.Child {
+		for _, child := range rw.Union.GetChild() {
 			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return false, false, err
@@ -784,7 +790,7 @@ func hasEntrypoints(
 		return false, loop, nil
 	case *openfgav1.Userset_Intersection:
 
-		for _, child := range rw.Intersection.Child {
+		for _, child := range rw.Intersection.GetChild() {
 			// All the children must have an entrypoint.
 			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
@@ -820,7 +826,7 @@ func hasEntrypoints(
 		return true, false, nil
 	}
 
-	return false, false, nil
+	panic("unexpected userset rewrite encountered")
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
@@ -1048,12 +1054,12 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 			}
 		}
 	case *openfgav1.Userset_Difference:
-		err := t.isUsersetRewriteValid(objectType, relation, r.Difference.Base)
+		err := t.isUsersetRewriteValid(objectType, relation, r.Difference.GetBase())
 		if err != nil {
 			return err
 		}
 
-		err = t.isUsersetRewriteValid(objectType, relation, r.Difference.Subtract)
+		err = t.isUsersetRewriteValid(objectType, relation, r.Difference.GetSubtract())
 		if err != nil {
 			return err
 		}
@@ -1106,12 +1112,12 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 			}
 		}
 
-		if related.Condition != "" {
+		if related.GetCondition() != "" {
 			// Validate the conditions referenced by the relations are included in the model.
-			if _, ok := t.conditions[related.Condition]; !ok {
+			if _, ok := t.conditions[related.GetCondition()]; !ok {
 				return &RelationConditionError{
 					Relation:  relationName,
-					Condition: related.Condition,
+					Condition: related.GetCondition(),
 					Err:       ErrNoConditionForRelation,
 				}
 			}
@@ -1143,7 +1149,7 @@ func (t *TypeSystem) IsDirectlyAssignable(relation *openfgav1.Relation) bool {
 // is defined by one or more self referencing definitions.
 func RewriteContainsSelf(rewrite *openfgav1.Userset) bool {
 	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.Userset.(*openfgav1.Userset_This); ok {
+		if _, ok := r.GetUserset().(*openfgav1.Userset_This); ok {
 			return true
 		}
 
@@ -1160,7 +1166,7 @@ func RewriteContainsSelf(rewrite *openfgav1.Userset) bool {
 // is defined by one or more direct or indirect intersections.
 func RewriteContainsIntersection(rewrite *openfgav1.Userset) bool {
 	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.Userset.(*openfgav1.Userset_Intersection); ok {
+		if _, ok := r.GetUserset().(*openfgav1.Userset_Intersection); ok {
 			return true
 		}
 
@@ -1177,7 +1183,7 @@ func RewriteContainsIntersection(rewrite *openfgav1.Userset) bool {
 // is defined by one or more direct or indirect exclusions.
 func RewriteContainsExclusion(rewrite *openfgav1.Userset) bool {
 	result, err := WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) interface{} {
-		if _, ok := r.Userset.(*openfgav1.Userset_Difference); ok {
+		if _, ok := r.GetUserset().(*openfgav1.Userset_Difference); ok {
 			return true
 		}
 
@@ -1201,11 +1207,11 @@ func (t *TypeSystem) hasCycle(
 
 	var children []*openfgav1.Userset
 
-	switch rw := rewrite.Userset.(type) {
+	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This, *openfgav1.Userset_TupleToUserset:
 		return false, nil
 	case *openfgav1.Userset_ComputedUserset:
-		rewrittenRelation := rw.ComputedUserset.Relation
+		rewrittenRelation := rw.ComputedUserset.GetRelation()
 
 		if _, ok := visited[fmt.Sprintf("%s#%s", objectType, rewrittenRelation)]; ok {
 			return true, nil
@@ -1262,7 +1268,7 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 
 	for _, ttuDefinitions := range t.ttuRelations[objectType] {
 		for _, ttuDef := range ttuDefinitions {
-			if ttuDef.Tupleset.Relation == relation {
+			if ttuDef.GetTupleset().GetRelation() == relation {
 				return true, nil
 			}
 		}
@@ -1306,7 +1312,7 @@ func WalkUsersetRewrite(rewrite *openfgav1.Userset, handler WalkUsersetRewriteHa
 		return result, nil
 	}
 
-	switch t := rewrite.Userset.(type) {
+	switch t := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return handler(rewrite), nil
 	case *openfgav1.Userset_ComputedUserset:

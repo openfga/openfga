@@ -49,7 +49,7 @@ func (c *combinedTupleReader) Read(
 	storeID string,
 	tk *openfgav1.TupleKey,
 ) (storage.TupleIterator, error) {
-	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.Object, tk.Relation))
+	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation()))
 
 	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk)
 	if err != nil {
@@ -76,7 +76,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 	store string,
 	tk *openfgav1.TupleKey,
 ) (*openfgav1.Tuple, error) {
-	filteredContextualTuples := filterTuples(c.contextualTuples, tk.Object, tk.Relation)
+	filteredContextualTuples := filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation())
 
 	for _, t := range filteredContextualTuples {
 		if t.GetKey().GetUser() == tk.GetUser() {

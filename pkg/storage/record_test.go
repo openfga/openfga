@@ -21,8 +21,8 @@ func TestAsTuple(t *testing.T) {
 	}
 
 	tuple := tr.AsTuple()
-	require.Equal(t, "user-id", tuple.Key.GetUser())
-	require.Equal(t, "object-type:object-id", tuple.Key.GetObject())
-	require.Equal(t, "relation", tuple.Key.GetRelation())
+	require.Equal(t, "user-id", tuple.GetKey().GetUser())
+	require.Equal(t, "object-type:object-id", tuple.GetKey().GetObject())
+	require.Equal(t, "relation", tuple.GetKey().GetRelation())
 	require.Equal(t, now, tuple.GetTimestamp().AsTime().UTC())
 }

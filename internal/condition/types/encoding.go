@@ -7,22 +7,22 @@ import (
 )
 
 func DecodeParameterType(conditionParamType *openfgav1.ConditionParamTypeRef) (*ParameterType, error) {
-	paramTypedef, ok := paramTypeDefinitions[conditionParamType.TypeName]
+	paramTypedef, ok := paramTypeDefinitions[conditionParamType.GetTypeName()]
 	if !ok {
-		return nil, fmt.Errorf("unknown condition parameter type `%s`", conditionParamType.TypeName)
+		return nil, fmt.Errorf("unknown condition parameter type `%s`", conditionParamType.GetTypeName())
 	}
 
-	if len(conditionParamType.GenericTypes) != int(paramTypedef.genericTypeCount) {
+	if len(conditionParamType.GetGenericTypes()) != int(paramTypedef.genericTypeCount) {
 		return nil, fmt.Errorf(
 			"condition parameter type `%s` requires %d generic types; found %d",
-			conditionParamType.TypeName,
-			len(conditionParamType.GenericTypes),
+			conditionParamType.GetTypeName(),
+			len(conditionParamType.GetGenericTypes()),
 			paramTypedef.genericTypeCount,
 		)
 	}
 
 	genericTypes := make([]ParameterType, 0, paramTypedef.genericTypeCount)
-	for _, encodedGenericType := range conditionParamType.GenericTypes {
+	for _, encodedGenericType := range conditionParamType.GetGenericTypes() {
 		genericType, err := DecodeParameterType(encodedGenericType)
 		if err != nil {
 			return nil, err
