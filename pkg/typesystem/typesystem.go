@@ -667,47 +667,55 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 	return false, nil
 }
 
-type entrypointDetails struct {
-
+type EntrypointDetails struct {
 	// hasEntrypoints is true when a particular object+relation relates to at least one assignable object type.
-	// A relation such as `define document#viewer: [document#viewer]` implies that `hasEntrypoints=false`.
-	// A relation such as `define document#viewer: [user, document#viewer]` implies that `hasEntrypoints=true`.
+	// A relation such as `define document#viewer: [document#viewer]` implies that `GetEntrypointsDetails=false`.
+	// A relation such as `define document#viewer: [user, document#viewer]` implies that `GetEntrypointsDetails=true`.
+	// hasEntrypoints is meant for 1.1 models and it is here to make sure that the relation resolves to at least one terminal type.
 	hasEntrypoints bool
-
-	// hasLoop is true when a particular object+relation introduces a loop in the model.
-	// hasEntrypoints=true implies that hasLoop=false.
-	// If hasEntrypoints=false, nothing can be said about hasLoop.
-	// Loops are introduced by computed usersets.
-	hasLoop bool
 }
 
-// getEntrypointDetails returns information about a particular type and relation.
-// This function assumes that all other model validations have run.
-func (t *TypeSystem) getEntrypointDetails(
+// GetEntrypointsDetails first runs cycle detection on the type and relation.
+// If there is a cycle, it returns that as an error.
+// If there are no cycles, this function returns entrypoint information about a particular type and relation.
+func (t *TypeSystem) GetEntrypointsDetails(
 	typeName string,
 	relationName string,
-) (*entrypointDetails, error) {
+) (*EntrypointDetails, error) {
+	hasCycle, err := t.HasCycle(typeName, relationName)
+	if err != nil {
+		return nil, err
+	}
+	if hasCycle {
+		return nil, &InvalidRelationError{
+			ObjectType: typeName,
+			Relation:   relationName,
+			Cause:      ErrCycle,
+		}
+	}
+
 	inputRelation, _ := t.GetRelation(typeName, relationName)
-	// we can ignore the error because the getEntrypointDetailsRecursive will check for it
+	// we can ignore the error because getEntrypointsDetailsRecursive will check for it
 	rewrite := inputRelation.GetRewrite()
-	return getEntrypointDetailsRecursive(t.GetAllRelations(), typeName, relationName, rewrite, map[string]map[string]*entrypointDetails{})
+	return getEntrypointsDetailsRecursive(t.GetAllRelations(), typeName, relationName, rewrite, map[string]map[string]*EntrypointDetails{})
 }
 
-func getEntrypointDetailsRecursive(
+// getEntrypointsDetailsRecursive returns either nil and an error, or non-nil and a nil error.
+func getEntrypointsDetailsRecursive(
 	typedefs map[string]map[string]*openfgav1.Relation,
 	typeName, relationName string,
 	rewrite *openfgav1.Userset,
-	visitedRelations map[string]map[string]*entrypointDetails,
-) (*entrypointDetails, error) {
+	visitedRelations map[string]map[string]*EntrypointDetails,
+) (*EntrypointDetails, error) {
 	v := maps.Clone(visitedRelations)
 
 	if _, ok := v[typeName]; !ok {
 		// first time visiting this type
-		v[typeName] = map[string]*entrypointDetails{}
+		v[typeName] = map[string]*EntrypointDetails{}
 	}
 	if _, ok := v[typeName][relationName]; !ok {
 		// first time visiting this relation
-		v[typeName][relationName] = &entrypointDetails{false, false}
+		v[typeName][relationName] = &EntrypointDetails{false}
 	}
 	relation, ok := typedefs[typeName][relationName]
 	if !ok {
@@ -736,11 +744,11 @@ func getEntrypointDetailsRecursive(
 			}
 
 			if _, ok := v[assignableTypeName][assignableRelationName]; ok {
-				// we entered a potential cycle, so keep on looking
+				// We entered a potential loop, so keep on looking to avoid a stack overflow.
 				continue
 			}
 
-			entrypointDetails, err := getEntrypointDetailsRecursive(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
+			entrypointDetails, err := getEntrypointsDetailsRecursive(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
 			if err != nil {
 				return nil, err
 			}
@@ -760,13 +768,7 @@ func getEntrypointDetailsRecursive(
 			return nil, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
 		}
 
-		if r, ok := v[typeName][computedRelationName]; ok {
-			// we entered a definitive cycle, so return
-			r.hasLoop = true
-			return r, nil
-		}
-
-		entrypointDetails, err := getEntrypointDetailsRecursive(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
+		entrypointDetails, err := getEntrypointsDetailsRecursive(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
 		if err != nil {
 			return nil, err
 		}
@@ -789,15 +791,15 @@ func getEntrypointDetailsRecursive(
 
 			if assignableRelation, ok := typedefs[assignableTypeName][computedRelationName]; ok {
 				if r, ok := v[assignableTypeName][computedRelationName]; ok {
-					// We entered a potential cycle, so keep on looking.
+					// We entered a potential loop, so keep on looking to avoid a stack overflow.
 					// Note that, unlike the "This" case above, one TTU can add a parallel edge in the graph.
 					// For example: `define viewer: can_view from start and can_view from end`.
-					// So we need to remember if any of the edges led to "hasEntrypoints=true"
+					// So we need to remember if any of the edges led to "getEntrypointsDetailsRecursive=true"
 					hasEntrypoints = hasEntrypoints || r.hasEntrypoints
 					continue
 				}
 
-				entrypointDetails, err := getEntrypointDetailsRecursive(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
+				entrypointDetails, err := getEntrypointsDetailsRecursive(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
 				if err != nil {
 					return nil, err
 				}
@@ -811,13 +813,12 @@ func getEntrypointDetailsRecursive(
 			// we are guaranteed to enter the "if" at least once.
 		}
 
-		return &entrypointDetails{hasEntrypoints, false}, nil
+		return &EntrypointDetails{hasEntrypoints}, nil
 
 	case *openfgav1.Userset_Union:
-		loop := false
 		for _, child := range rw.Union.GetChild() {
 			// At least one child must have an entrypoint.
-			childDetails, err := getEntrypointDetailsRecursive(typedefs, typeName, relationName, child, visitedRelations)
+			childDetails, err := getEntrypointsDetailsRecursive(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return nil, err
 			}
@@ -825,15 +826,13 @@ func getEntrypointDetailsRecursive(
 			if childDetails.hasEntrypoints {
 				return childDetails, nil
 			}
-			loop = loop || childDetails.hasLoop
 		}
 
-		return &entrypointDetails{false, loop}, nil
+		return &EntrypointDetails{false}, nil
 	case *openfgav1.Userset_Intersection:
-		loop := false
 		for _, child := range rw.Intersection.GetChild() {
 			// All the children must have an entrypoint.
-			entrypointDetails, err := getEntrypointDetailsRecursive(typedefs, typeName, relationName, child, visitedRelations)
+			entrypointDetails, err := getEntrypointsDetailsRecursive(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return nil, err
 			}
@@ -841,20 +840,18 @@ func getEntrypointDetailsRecursive(
 			if !entrypointDetails.hasEntrypoints {
 				return entrypointDetails, nil
 			}
-			loop = loop || entrypointDetails.hasLoop
 		}
 
-		return &entrypointDetails{true, loop}, nil
+		return &EntrypointDetails{true}, nil
 	case *openfgav1.Userset_Difference:
 		children := []*openfgav1.Userset{
 			rw.Difference.GetBase(),
 			rw.Difference.GetSubtract(),
 		}
 
-		loop := false
 		for _, child := range children {
 			// All the children must have an entrypoint.
-			entrypointDetails, err := getEntrypointDetailsRecursive(typedefs, typeName, relationName, child, visitedRelations)
+			entrypointDetails, err := getEntrypointsDetailsRecursive(typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return nil, err
 			}
@@ -862,10 +859,9 @@ func getEntrypointDetailsRecursive(
 			if !entrypointDetails.hasEntrypoints {
 				return entrypointDetails, nil
 			}
-			loop = loop || entrypointDetails.hasLoop
 		}
 
-		return &entrypointDetails{true, loop}, nil
+		return &EntrypointDetails{true}, nil
 	}
 
 	panic("unexpected userset rewrite encountered")
@@ -957,36 +953,18 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 		return err
 	}
 
-	entrypointDetails, err := t.getEntrypointDetails(typeName, relationName)
+	entrypointDetails, err := t.GetEntrypointsDetails(typeName, relationName)
 	if err != nil {
 		return err
 	}
 
 	if !entrypointDetails.hasEntrypoints {
-		cause := ErrNoEntrypoints
-		if entrypointDetails.hasLoop {
-			cause = ErrNoEntryPointsLoop
-		}
 		return &InvalidRelationError{
 			ObjectType: typeName,
 			Relation:   relationName,
-			Cause:      cause,
+			Cause:      ErrNoEntrypoints,
 		}
 	}
-
-	hasCycle, err := t.HasCycle(typeName, relationName)
-	if err != nil {
-		return err
-	}
-
-	if hasCycle {
-		return &InvalidRelationError{
-			ObjectType: typeName,
-			Relation:   relationName,
-			Cause:      ErrCycle,
-		}
-	}
-
 	return nil
 }
 

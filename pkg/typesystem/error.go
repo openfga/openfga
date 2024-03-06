@@ -41,10 +41,6 @@ var (
 	// model are not accessible via a direct edge, for example from another objectType.
 	ErrNoEntrypoints = errors.New("no entrypoints defined")
 
-	// ErrNoEntryPointsLoop is returned when an authorization model contains a cycle
-	// because at least one objectType and relation returned ErrNoEntrypoints.
-	ErrNoEntryPointsLoop = errors.New("potential loop")
-
 	// ErrNoConditionForRelation is returned when no condition is defined for a relation in the authorization model.
 	ErrNoConditionForRelation = errors.New("no condition defined for relation")
 )
