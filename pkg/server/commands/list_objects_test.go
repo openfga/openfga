@@ -2,13 +2,15 @@ package commands
 
 import (
 	"context"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 
@@ -112,7 +114,6 @@ type folder
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			storeID := ulid.Make().String()
 			model := parser.MustTransformDSLToProto(test.model)
 
@@ -131,7 +132,7 @@ type folder
 				graph.WithMaxConcurrentReads(1),
 			)
 
-			q, err := NewListObjectsQuery(
+			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
 			)
