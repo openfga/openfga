@@ -623,8 +623,8 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 			expectedStatusCode: 401,
 		},
 		{
-			_name:              "Correct_token_succeeds",
-			authHeader:         "Bearer " + trustedToken,
+			_name:              "Token_with_issuer_equal_to_alias_is_accepted",
+			authHeader:         "Bearer " + trustedTokenFromAlias,
 			expectedStatusCode: 200,
 		},
 	}

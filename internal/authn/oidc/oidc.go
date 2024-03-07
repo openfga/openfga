@@ -24,7 +24,8 @@ import (
 )
 
 type RemoteOidcAuthenticator struct {
-	IssuerURLs []string
+	MainIssuer string
+	IssuerAliases []string
 	Audience   string
 
 	JwksURI string
@@ -87,7 +88,8 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
-	ok = slices.ContainsFunc(oidc.IssuerURLs, func(issuer string) bool {
+	validIssuers := []string{oidc.MainIssuer, oidc.IssuerAliases...}
+	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
 		return claims.VerifyIssuer(issuer, true)
 	})
 
@@ -154,7 +156,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 }
 
 func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, error) {
-	wellKnown := strings.TrimSuffix(oidc.IssuerURLs[0], "/") + "/.well-known/openid-configuration"
+	wellKnown := strings.TrimSuffix(oidc.MainIssuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error forming request to get OIDC: %w", err)
