@@ -138,7 +138,6 @@ func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 }
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
-
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
 		Client:          oidc.httpClient,
 		RefreshInterval: jwkRefreshInterval,

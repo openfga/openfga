@@ -4,15 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"github.com/MicahParks/keyfunc"
-	"github.com/golang-jwt/jwt/v4"
-	"github.com/openfga/openfga/internal/authn"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/metadata"
 	"log"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MicahParks/keyfunc"
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
+
+	"github.com/openfga/openfga/internal/authn"
 )
 
 func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
@@ -137,8 +139,8 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			if testC.expectedError == "" {
 				t.Fatal("this suite is to test error cases and this test didn't have an error expectation")
 			}
-			oidc, requestContext, err := testC.testSetup()
-			_, err = oidc.Authenticate(requestContext)
+			oidc, requestContext, _ := testC.testSetup()
+			_, err := oidc.Authenticate(requestContext)
 			require.Contains(t, err.Error(), testC.expectedError)
 		})
 	}
@@ -147,8 +149,8 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 	t.Run("when_the_token_is_valid,_it_MUST_return_the_token_subject_and_its_associated_scopes", func(t *testing.T) {
 		scopes := "offline_access read write delete"
 		oidc, requestContext, err := quickConfigSetup(
-			"kid_1",
-			"kid_1",
+			"kid_2",
+			"kid_2",
 			"right_issuer",
 			"right_audience",
 			jwt.MapClaims{
@@ -163,7 +165,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			t.Fatal(err)
 		}
 		authClaims, err := oidc.Authenticate(requestContext)
-		require.Nil(t, err)
+		require.NoError(t, err)
 		require.Equal(t, "openfga client", authClaims.Subject)
 		scopesList := strings.Split(scopes, " ")
 		require.Equal(t, len(scopesList), len(authClaims.Scopes))
@@ -171,7 +173,6 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			_, ok := authClaims.Scopes[scope]
 			require.True(t, ok)
 		}
-
 	})
 }
 
