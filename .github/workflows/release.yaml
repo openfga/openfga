@@ -205,4 +205,5 @@ jobs:
         with:
           formula-name: openfga
         env:
+          # token belongs to @miparnisari and expires on March 6, 2025.
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_COMMITTER_TOKEN }}
