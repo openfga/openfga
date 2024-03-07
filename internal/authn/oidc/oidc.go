@@ -24,9 +24,9 @@ import (
 )
 
 type RemoteOidcAuthenticator struct {
-	MainIssuer string
+	MainIssuer    string
 	IssuerAliases []string
-	Audience   string
+	Audience      string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -49,13 +49,14 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(issuerURLs []string, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
-		IssuerURLs: issuerURLs,
-		Audience:   audience,
-		httpClient: client.StandardClient(),
+		MainIssuer:    mainIssuer,
+		IssuerAliases: issuerAliases,
+		Audience:      audience,
+		httpClient:    client.StandardClient(),
 	}
 	err := fetchJWKs(oidc)
 	if err != nil {
@@ -88,7 +89,11 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
-	validIssuers := []string{oidc.MainIssuer, oidc.IssuerAliases...}
+	validIssuers := []string{
+		oidc.MainIssuer,
+	}
+	validIssuers = append(validIssuers, oidc.IssuerAliases...)
+
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
 		return claims.VerifyIssuer(issuer, true)
 	})

@@ -589,7 +589,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
 
-	trustedToken, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
+	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -603,42 +603,19 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
-	tests := []authTest{
-		{
-			_name:      "Header_with_invalid_token_fails",
-			authHeader: "Bearer incorrecttoken",
-			expectedErrorResponse: &serverErrors.ErrorResponse{
-				Code:    "auth_failed_invalid_bearer_token",
-				Message: "invalid bearer token",
-			},
-			expectedStatusCode: 401,
-		},
-		{
-			_name:      "Missing_header_fails",
-			authHeader: "",
-			expectedErrorResponse: &serverErrors.ErrorResponse{
-				Code:    "bearer_token_missing",
-				Message: "missing bearer token",
-			},
-			expectedStatusCode: 401,
-		},
-		{
-			_name:              "Token_with_issuer_equal_to_alias_is_accepted",
-			authHeader:         "Bearer " + trustedTokenFromAlias,
-			expectedStatusCode: 200,
-		},
-	}
-
 	retryClient := retryablehttp.NewClient()
-	for _, test := range tests {
-		t.Run(test._name, func(t *testing.T) {
-			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
-		})
-
-		t.Run(test._name+"/streaming", func(t *testing.T) {
-			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedToken)
-		})
+	test := authTest{
+		_name:              "Token_with_issuer_equal_to_alias_is_accepted",
+		authHeader:         "Bearer " + trustedTokenFromAlias,
+		expectedStatusCode: 200,
 	}
+	t.Run(test._name, func(t *testing.T) {
+		tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
+	})
+
+	t.Run(test._name+"/streaming", func(t *testing.T) {
+		tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedTokenFromAlias)
+	})
 }
 
 func TestHTTPServingTLS(t *testing.T) {

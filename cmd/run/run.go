@@ -390,9 +390,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		issuers := []string{config.Authn.Issuer}
-		issuers = append(issuers, config.Authn.IssuerAliases...)
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases..., config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
 	default:
 		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
