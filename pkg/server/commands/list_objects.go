@@ -324,6 +324,7 @@ func (q *ListObjectsQuery) evaluate(
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
+					atomic.AddUint32(resolutionMetadata.DispatchCount, resp.GetResolutionMetadata().DispatchCount)
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)

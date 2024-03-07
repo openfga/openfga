@@ -442,6 +442,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		utils.Bucketize(uint(*result.ResolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	dispatchCount := float64(*result.ResolutionMetadata.DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
