@@ -3,12 +3,32 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+    groups:
+     dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: "gomod"
+    directory: "/tools"
+    schedule:
+      interval: "weekly"
+    groups:
+      dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+    groups:
+     dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
+    groups:
+     dependencies:
+        patterns:
+          - "*"

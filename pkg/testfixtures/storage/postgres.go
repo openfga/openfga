@@ -15,17 +15,14 @@ import (
 	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/assets"
 )
 
 const (
 	postgresImage = "postgres:14"
-)
-
-var (
-	expireTimeout = 10 * time.Minute //benchmarks take a while to run
 )
 
 type postgresTestContainer struct {
@@ -54,6 +51,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		dockerClient.Close()
+	})
 
 	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
 		All: true,
@@ -93,6 +93,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
+		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
 	}
 
 	name := fmt.Sprintf("postgres-%s", ulid.Make().String())
@@ -100,8 +101,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
 
-	stopContainer := func() {
-
+	t.Cleanup(func() {
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -110,13 +110,11 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 			t.Logf("failed to stop postgres container: %v", err)
 		}
 
-		dockerClient.Close()
 		t.Logf("stopped container %s", name)
-	}
+	})
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
+	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
 	if err != nil {
-		stopContainer()
 		t.Fatalf("failed to start postgres container: %v", err)
 	}
 
@@ -127,23 +125,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	if !ok || len(m) == 0 {
 		t.Fatalf("failed to get host port mapping from postgres container")
 	}
-
-	// spin up a goroutine to survive any test panics to expire/stop the running container
-	go func() {
-		time.Sleep(expireTimeout)
-		timeoutSec := 0
-
-		t.Logf("expiring container %s", name)
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
-		if err != nil && !client.IsErrNotFound(err) {
-			t.Logf("failed to expire postgres container: %v", err)
-		}
-		t.Logf("expired container %s", name)
-	}()
-
-	t.Cleanup(func() {
-		stopContainer()
-	})
 
 	pgTestContainer := &postgresTestContainer{
 		addr:     fmt.Sprintf("localhost:%s", m[0].HostPort),
@@ -157,6 +138,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
+	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
@@ -166,10 +148,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		},
 		backoffPolicy,
 	)
-	if err != nil {
-		stopContainer()
-		t.Fatalf("failed to connect to postgres container: %v", err)
-	}
+	require.NoError(t, err, "failed to connect to postgres container")
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
@@ -179,9 +158,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	version, err := goose.GetDBVersion(db)
 	require.NoError(t, err)
 	pgTestContainer.version = version
-
-	err = db.Close()
-	require.NoError(t, err)
 
 	return pgTestContainer
 }

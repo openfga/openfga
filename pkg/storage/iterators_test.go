@@ -1,29 +1,31 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
+
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestStaticTupleKeyIterator(t *testing.T) {
-	expected := []*openfgapb.TupleKey{
+	expected := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "bill"),
 		tuple.NewTupleKey("document:doc2", "editor", "bob"),
 	}
 
 	iter := NewStaticTupleKeyIterator(expected)
 
-	var actual []*openfgapb.TupleKey
+	var actual []*openfgav1.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -38,19 +40,18 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 }
 
 func TestCombinedIterator(t *testing.T) {
-
-	expected := []*openfgapb.TupleKey{
+	expected := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "bill"),
 		tuple.NewTupleKey("document:doc2", "editor", "bob"),
 	}
 
-	iter1 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[0]})
-	iter2 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[1]})
+	iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]})
+	iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1]})
 	iter := NewCombinedIterator(iter1, iter2)
 
-	var actual []*openfgapb.TupleKey
+	var actual []*openfgav1.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -62,8 +63,8 @@ func TestCombinedIterator(t *testing.T) {
 	}
 
 	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(openfgapb.TupleKey{}),
 		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
 	}
 
 	if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
@@ -71,103 +72,15 @@ func TestCombinedIterator(t *testing.T) {
 	}
 }
 
-func TestUniqueObjectIterator(t *testing.T) {
-
-	expected := []string{
-		"document:1",
-		"document:2",
-		"document:3",
-		"document:4",
-	}
-
-	iter1 := NewStaticObjectIterator([]*openfgapb.Object{
-		{Type: "document", Id: "1"},
-		{Type: "document", Id: "2"},
-		{Type: "document", Id: "2"},
-	})
-	iter2 := NewStaticObjectIterator([]*openfgapb.Object{
-		{Type: "document", Id: "2"},
-		{Type: "document", Id: "3"},
-		{Type: "document", Id: "4"},
-	})
-
-	iter := NewUniqueObjectIterator(iter1, iter2)
-	defer iter.Stop()
-
-	var actual []string
-	for {
-		obj, err := iter.Next()
-		if err != nil {
-			if errors.Is(err, ErrIteratorDone) {
-				break
-			}
-
-			require.Fail(t, "no error was expected")
-		}
-
-		actual = append(actual, tuple.ObjectKey(obj))
-	}
-
-	require.Equal(t, expected, actual)
-}
-
-func ExampleNewUniqueObjectIterator() {
-
-	contextualTuples := []*openfgapb.TupleKey{
-		tuple.NewTupleKey("document:doc1", "viewer", "jon"),
-		tuple.NewTupleKey("document:doc1", "viewer", "elbuo"),
-	}
-
-	iter1 := NewTupleKeyObjectIterator(contextualTuples)
-
-	// this would generally be a database call
-	iter2 := NewStaticObjectIterator([]*openfgapb.Object{
-		{
-			Type: "document",
-			Id:   "doc1",
-		},
-		{
-			Type: "document",
-			Id:   "doc2",
-		},
-	})
-
-	// pass the contextual tuples iterator (iter1) first since it's more
-	// constrained than the other iterator (iter2). In practice iter2 will
-	// be coming from a database that should guarantee uniqueness over the
-	// objects yielded.
-	iter := NewUniqueObjectIterator(iter1, iter2)
-	defer iter.Stop()
-
-	var objects []string
-	for {
-		obj, err := iter.Next()
-		if err != nil {
-			if err == ErrIteratorDone {
-				break
-			}
-
-			// handle the error in some way
-			panic(err)
-		}
-
-		objects = append(objects, tuple.ObjectKey(obj))
-	}
-
-	fmt.Println(objects)
-	// Output: [document:doc1 document:doc2]
-}
-
 func ExampleNewFilteredTupleKeyIterator() {
-
-	tuples := []*openfgapb.TupleKey{
+	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 		tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
 	}
 
 	iter := NewFilteredTupleKeyIterator(
 		NewStaticTupleKeyIterator(tuples),
-		func(tk *openfgapb.TupleKey) bool {
+		func(tk *openfgav1.TupleKey) bool {
 			return tk.GetRelation() == "editor"
 		},
 	)
@@ -175,13 +88,13 @@ func ExampleNewFilteredTupleKeyIterator() {
 
 	var filtered []string
 	for {
-		tuple, err := iter.Next()
+		tuple, err := iter.Next(context.Background())
 		if err != nil {
 			if err == ErrIteratorDone {
 				break
 			}
 
-			// handle the error in some way
+			// Handle the error in some way.
 			panic(err)
 		}
 

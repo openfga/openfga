@@ -11,28 +11,29 @@ import (
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/openfga/openfga/pkg/server/errors"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/openfga/openfga/pkg/server/errors"
 )
 
-// XHttpCode is used for overriding the standard HTTP code
+// XHttpCode is used to set the header for the response HTTP code.
 const XHttpCode = "x-http-code"
 
-// HTTPResponseModifier is a helper function to override the HTTP status code
+// HTTPResponseModifier is a helper function designed to modify the status code in the context of HTTP responses.
 func HTTPResponseModifier(ctx context.Context, w http.ResponseWriter, p proto.Message) error {
 	md, ok := runtime.ServerMetadataFromContext(ctx)
 	if !ok {
 		return nil
 	}
 
-	// set http status code
+	// Set http status code.
 	if vals := md.HeaderMD.Get(XHttpCode); len(vals) > 0 {
 		code, err := strconv.Atoi(vals[0])
 		if err != nil {
 			return err
 		}
-		// delete the headers to not expose any grpc-metadata in http response
+		// Delete the headers to not expose any grpc-metadata in http response.
 		delete(md.HeaderMD, XHttpCode)
 		delete(w.Header(), "Grpc-Metadata-X-Http-Code")
 		w.WriteHeader(code)
@@ -62,10 +63,10 @@ func handleForwardResponseTrailer(w http.ResponseWriter, md runtime.ServerMetada
 	}
 }
 
-// CustomHTTPErrorHandler provides handling of custom error object
-// It is very similar to runtime.DefaultHTTPErrorHandler except it takes in the EncodedError object
+// CustomHTTPErrorHandler handles custom error objects in the context of HTTP requests.
+// It is similar to [runtime.DefaultHTTPErrorHandler] but accepts an [*errors.EncodedError] object.
 func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err *errors.EncodedError) {
-	// convert as error object
+	// Convert as error object.
 	pb := err.ActualError
 
 	w.Header().Del("Trailer")
@@ -100,7 +101,6 @@ func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.
 	doForwardTrailers := requestAcceptsTrailers(r)
 
 	if doForwardTrailers {
-
 		handleForwardResponseTrailerHeader(w, md)
 		w.Header().Set("Transfer-Encoding", "chunked")
 	}

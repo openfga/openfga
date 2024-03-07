@@ -10,11 +10,11 @@ permissions:
 jobs:
   go-bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172
     steps:
-      - uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
 
-      - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -26,23 +26,28 @@ jobs:
           set -o pipefail
           make bench | tee bench_output.txt
 
-      # Download previous benchmark result from cache (if exists)
-      - name: Download previous benchmark data
-        uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
-        with:
-          path: ./cache
-          key: ${{ runner.os }}-go-benchmark
-
-      - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@29e55772d85cc51b2a291bde13f33ef9014d2d1f # v1.17.0
+      - name: Get benchmark as JSON
+        uses: benchmark-action/github-action-benchmark@cc9ac13ce81036c9b67fcfe2cb95ca366684b9ea # v1.19.3
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
           # Where the output from the benchmark tool is stored
           output-file-path: bench_output.txt
-          # Where the previous data file is stored
+          # Write benchmarks to this file
           external-data-json-path: ./cache/benchmark-data.json
           # Workflow will fail when an alert happens
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
+
+      - name: Get CPU information
+        uses: kenchan0130/actions-system-info@19ac84a24678e27ef7e91016765c221f97b1dc28 # v1
+        id: system-info
+
+      - name: Save benchmark JSON to cache
+        uses: actions/cache/save@ab5e6d0c87105b4c9c2047343972218f562e4319 # v4.0.1
+        with:
+          path: ./cache/benchmark-data.json
+          # Save with commit hash to avoid "cache already exists"
+          # Save with OS & CPU info to prevent comparing against results from different CPUs
+          key: ${{ github.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark

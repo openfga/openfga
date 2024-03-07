@@ -3,11 +3,12 @@ package authn
 import (
 	"context"
 
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+
 	"github.com/openfga/openfga/internal/authn"
 )
 
-func AuthFunc(authenticator authn.Authenticator) grpc_auth.AuthFunc {
+func AuthFunc(authenticator authn.Authenticator) grpcauth.AuthFunc {
 	return func(ctx context.Context) (context.Context, error) {
 		claims, err := authenticator.Authenticate(ctx)
 		if err != nil {

@@ -12,6 +12,24 @@
             "default": 100,
             "x-env-variable": "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL"
         },
+        "maxAuthorizationModelSizeInBytes": {
+            "description": "The maximum size in bytes allowed for persisting an Authorization Model (default is 256KB).",
+            "type": "integer",
+            "default": 262144,
+            "x-env-variable": "OPENFGA_MAX_AUTHORIZATION_MODEL_SIZE_IN_BYTES"
+        },
+        "maxConcurrentReadsForCheck": {
+            "description": "The maximum allowed number of concurrent reads in a single Check query (default is MaxUint32).",
+            "type": "integer",
+            "default": 4294967295,
+            "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_CHECK"
+        },
+        "maxConcurrentReadsForListObjects": {
+            "description": "The maximum allowed number of concurrent reads in a single ListObjects query (default is MaxUint32).",
+            "type": "integer",
+            "default": 4294967295,
+            "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_OBJECTS"
+        },
         "changelogHorizonOffset": {
             "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
             "type": "integer",
@@ -19,10 +37,16 @@
             "x-env-variable": "OPENFGA_CHANGELOG_HORIZON_OFFSET"
         },
         "resolveNodeLimit": {
-            "description": "Defines how deeply nested an authorization model can be.",
+            "description": "Maximum resolution depth to attempt before throwing an error (defines how deeply nested an authorization model can be before a query errors out).",
             "type": "integer",
             "default": 25,
             "x-env-variable": "OPENFGA_RESOLVE_NODE_LIMIT"
+        },
+        "resolveNodeBreadthLimit": {
+            "description": "Defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree.",
+            "type": "integer",
+            "default": 100,
+            "x-env-variable": "OPENFGA_RESOLVE_NODE_BREADTH_LIMIT"
         },
         "listObjectsDeadline": {
             "description": "The timeout deadline for serving ListObjects requests",
@@ -38,12 +62,23 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
+        "requestDurationDatastoreQueryCountBuckets": {
+            "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",
+            "type": "array",
+            "items": {
+                "minimum": 0,
+                "type": "integer"
+            },
+            "minItems": 1,
+            "default": [50, 200],
+            "x-env-variable": "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS"
+        },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["otel-metrics"]
+                "enum": []
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -140,6 +175,17 @@
                     "type": "duration",
                     "default": "connections are not closed due to connection's age - database/sql default",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
+                },
+                "metrics": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "enable/disable sql metrics for the datastore",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_DATASTORE_METRICS_ENABLED"
+                        }
+                    }
                 }
             }
         },
@@ -272,6 +318,13 @@
                     "enum": ["none", "debug", "info", "warn", "error", "panic", "fatal"],
                     "default": "info",
                     "x-env-variable": "OPENFGA_LOG_LEVEL"
+                },
+                "timestampFormat": {
+                    "description": "The timestamp format to use for the log output.",
+                    "type": "string",
+                    "enum": ["Unix", "ISO8601"],
+                    "default": "Unix",
+                    "x-env-variable": "OPENFGA_LOG_TIMESTAMP_FORMAT"
                 }
             }
         },
@@ -292,6 +345,17 @@
                             "type": "string",
                             "default": "0.0.0.0:4317",
                             "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
+                        },
+                        "tls": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "description": "Whether to use TLS connection for the trace collector",
+                                    "type": "boolean",
+                                    "default": false,
+                                    "x-env-variable": "OPENFGA_TRACE_OTLP_TLS_ENABLED"
+                                }
+                            }
                         }
                     }
                 },
@@ -329,6 +393,30 @@
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS"
+                }
+            }
+        },
+        "checkQueryCache": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
+                },
+                "limit": {
+                    "description": "if caching of Check and ListObjects calls is enabled, this is the size limit (in items) of the cache",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_LIMIT"
+                },
+                "ttl": {
+                    "description": "if caching of Check and ListObjects is enabled, this is the TTL of each value",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10s",
+                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_TTL"
                 }
             }
         }

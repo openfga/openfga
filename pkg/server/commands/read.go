@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // A ReadQuery can be used to read one or many tuplesets
@@ -23,18 +24,37 @@ type ReadQuery struct {
 	encoder   encoder.Encoder
 }
 
-// NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
-func NewReadQuery(datastore storage.OpenFGADatastore, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
-	return &ReadQuery{
-		datastore: datastore,
-		logger:    logger,
-		encoder:   encoder,
+type ReadQueryOption func(*ReadQuery)
+
+func WithReadQueryLogger(l logger.Logger) ReadQueryOption {
+	return func(rq *ReadQuery) {
+		rq.logger = l
 	}
+}
+
+func WithReadQueryEncoder(e encoder.Encoder) ReadQueryOption {
+	return func(rq *ReadQuery) {
+		rq.encoder = e
+	}
+}
+
+// NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
+func NewReadQuery(datastore storage.OpenFGADatastore, opts ...ReadQueryOption) *ReadQuery {
+	rq := &ReadQuery{
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
+		encoder:   encoder.NewBase64Encoder(),
+	}
+
+	for _, opt := range opts {
+		opt(rq)
+	}
+	return rq
 }
 
 // Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tuple. Return all tuples if the tuple is
 // nil or empty.
-func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
+func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 
@@ -55,7 +75,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 
-	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tk, paginationOptions)
+	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), paginationOptions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -65,7 +85,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgapb.ReadResponse{
+	return &openfgav1.ReadResponse{
 		Tuples:            tuples,
 		ContinuationToken: encodedContToken,
 	}, nil

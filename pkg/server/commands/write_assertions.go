@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type WriteAssertionsCommand struct {
@@ -17,17 +19,28 @@ type WriteAssertionsCommand struct {
 	logger    logger.Logger
 }
 
-func NewWriteAssertionsCommand(
-	datastore storage.OpenFGADatastore,
-	logger logger.Logger,
-) *WriteAssertionsCommand {
-	return &WriteAssertionsCommand{
-		datastore: datastore,
-		logger:    logger,
+type WriteAssertionsCmdOption func(*WriteAssertionsCommand)
+
+func WithWriteAssertCmdLogger(l logger.Logger) WriteAssertionsCmdOption {
+	return func(c *WriteAssertionsCommand) {
+		c.logger = l
 	}
 }
 
-func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
+func NewWriteAssertionsCommand(
+	datastore storage.OpenFGADatastore, opts ...WriteAssertionsCmdOption) *WriteAssertionsCommand {
+	cmd := &WriteAssertionsCommand{
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
+}
+
+func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
@@ -48,7 +61,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
-		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {
+		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.GetTupleKey())); err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
 	}
@@ -58,5 +71,5 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgapb.WriteAssertionsResponse{}, nil
+	return &openfgav1.WriteAssertionsResponse{}, nil
 }

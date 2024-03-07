@@ -9,12 +9,17 @@ import (
 	"io"
 )
 
+// Ensure GCMEncrypter implements the Encrypter interface.
+var _ Encrypter = (*GCMEncrypter)(nil)
+
+// GCMEncrypter is an implementation of the Encrypter interface
+// that uses the AES-GCM encryption algorithm.
 type GCMEncrypter struct {
 	cipherMode cipher.AEAD
 }
 
-var _ Encrypter = (*GCMEncrypter)(nil)
-
+// NewGCMEncrypter creates a new instance of GCMEncrypter with the provided key.
+// It initializes the AES-GCM cipher mode for encryption and decryption.
 func NewGCMEncrypter(key string) (*GCMEncrypter, error) {
 	c, err := aes.NewCipher(create32ByteKey(key))
 	if err != nil {
@@ -29,7 +34,7 @@ func NewGCMEncrypter(key string) (*GCMEncrypter, error) {
 	return &GCMEncrypter{cipherMode: gcm}, nil
 }
 
-// Decrypt decrypts an GCM encrypted byte array
+// Decrypt decrypts an AES-GCM encrypted byte array.
 func (e *GCMEncrypter) Decrypt(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
@@ -44,7 +49,7 @@ func (e *GCMEncrypter) Decrypt(data []byte) ([]byte, error) {
 	return e.cipherMode.Open(nil, nonce, ciphertext, nil)
 }
 
-// Encrypt encrypts the given byte array using cipher.NewGCM block cipher
+// Encrypt encrypts the given byte array using the AES-GCM block cipher.
 func (e *GCMEncrypter) Encrypt(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
@@ -58,7 +63,8 @@ func (e *GCMEncrypter) Encrypt(data []byte) ([]byte, error) {
 	return e.cipherMode.Seal(nonce, nonce, data, nil), nil
 }
 
-// create32ByteKey creates a 32 byte key by taking the hex representation of the sha256 hash of a string.
+// create32ByteKey creates a 32-byte key by taking the
+// hex representation of the SHA-256 hash of a string.
 func create32ByteKey(s string) []byte {
 	sum := sha256.Sum256([]byte(s))
 	return sum[:]

@@ -1,3 +1,4 @@
+// Package storage contains containers that can be used to test all available data stores.
 package storage
 
 import (
@@ -36,7 +37,7 @@ func (m memoryTestContainer) GetDatabaseSchemaVersion() int64 {
 	return 1
 }
 
-// RunDatastoreTestContainer constructs and runs a specifc DatastoreTestContainer for the provided
+// RunDatastoreTestContainer constructs and runs a specific DatastoreTestContainer for the provided
 // datastore engine. If applicable, it also runs all existing database migrations.
 // The resources used by the test engine will be cleaned up after the test has finished.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
@@ -48,7 +49,7 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 	case "memory":
 		return memoryTestContainer{}
 	default:
-		t.Fatalf("'%s' engine is not supported by RunDatastoreTestContainer", engine)
+		t.Fatalf("unsupported datastore engine: %q", engine)
 		return nil
 	}
 }

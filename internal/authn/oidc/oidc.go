@@ -12,12 +12,14 @@ import (
 
 	"github.com/MicahParks/keyfunc"
 	"github.com/golang-jwt/jwt/v4"
-	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/openfga/openfga/internal/authn"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/internal/authn"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -31,23 +33,25 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	jwkRefreshInterval, _ = time.ParseDuration("48h")
+	jwkRefreshInterval = 48 * time.Hour
 
-	errInvalidAudience = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
-	errInvalidClaims   = status.Error(codes.Code(openfgapb.AuthErrorCode_invalid_claims), "invalid claims")
-	errInvalidIssuer   = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
-	errInvalidSubject  = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
-	errInvalidToken    = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+	errInvalidAudience = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
+	errInvalidClaims   = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
+	errInvalidIssuer   = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
+	errInvalidSubject  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
+	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
 func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
+	client := retryablehttp.NewClient()
+	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
 		IssuerURL:  issuerURL,
 		Audience:   audience,
-		httpClient: retryablehttp.NewClient().StandardClient(),
+		httpClient: client.StandardClient(),
 	}
 	err := oidc.fetchKeys()
 	if err != nil {
