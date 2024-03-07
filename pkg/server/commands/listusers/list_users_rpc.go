@@ -149,12 +149,17 @@ func (l *listUsersQuery) expand(
 		return err
 	}
 
-	relation, err := typesys.GetRelation(req.GetObject().GetType(), req.GetRelation())
+	targetObjectType := req.GetObject().GetType()
+	targetRelation := req.GetRelation()
+
+	relation, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		return err
 	}
 
 	relationRewrite := relation.GetRewrite()
+	fmt.Println("relationRewrite", relationRewrite)
+	_ = relationRewrite
 	return l.expandRewrite(ctx, req, relationRewrite, foundObjectsChan)
 }
 
@@ -223,7 +228,7 @@ func (l *listUsersQuery) expandDirect(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(typesys),
+		validation.FilterInvalidTuples(typesys), // why filter invalid here?
 	)
 	defer filteredIter.Stop()
 
