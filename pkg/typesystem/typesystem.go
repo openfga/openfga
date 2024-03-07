@@ -546,15 +546,17 @@ func hasEntrypoints(
 	typedefs map[string]map[string]*openfgav1.Relation,
 	typeName, relationName string,
 	rewrite *openfgav1.Userset,
-	visitedRelations map[string]map[string]struct{},
+	visitedRelations map[string]map[string]bool,
 ) (bool, bool, error) {
 	v := maps.Clone(visitedRelations)
 
+	// Presence of a key represents that we've visited that object and relation. We keep track of this to avoid stack overflows.
+	// The value of the key represents hasEntrypoints for that relation. We set this to true only when the relation is directly assignable.
 	if val, ok := v[typeName]; ok {
-		val[relationName] = struct{}{}
+		val[relationName] = false
 	} else {
-		v[typeName] = map[string]struct{}{
-			relationName: {},
+		v[typeName] = map[string]bool{
+			relationName: false,
 		}
 	}
 
@@ -565,8 +567,10 @@ func hasEntrypoints(
 
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
+		// At least one type must have an entrypoint.
 		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
+				v[typeName][relationName] = true
 				return true, false, nil
 			}
 
@@ -601,8 +605,8 @@ func hasEntrypoints(
 			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
 		}
 
-		if _, ok := v[typeName][computedRelationName]; ok {
-			return false, true, nil
+		if hasEntrypoint, ok := v[typeName][computedRelationName]; ok {
+			return hasEntrypoint, true, nil
 		}
 
 		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
@@ -620,11 +624,15 @@ func hasEntrypoints(
 			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, tuplesetRelationName)
 		}
 
+		// At least one type must have an entrypoint.
 		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			assignableTypeName := assignableType.GetType()
 
 			if assignableRelation, ok := typedefs[assignableTypeName][computedRelationName]; ok {
-				if _, ok := v[assignableTypeName][computedRelationName]; ok {
+				if hasEntrypoint, ok := v[assignableTypeName][computedRelationName]; ok {
+					if hasEntrypoint {
+						return true, false, nil
+					}
 					continue
 				}
 
@@ -642,7 +650,7 @@ func hasEntrypoints(
 		return false, false, nil
 
 	case *openfgav1.Userset_Union:
-
+		// At least one type must have an entrypoint.
 		loop := false
 		for _, child := range rw.Union.GetChild() {
 			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
@@ -673,7 +681,7 @@ func hasEntrypoints(
 
 		return true, false, nil
 	case *openfgav1.Userset_Difference:
-
+		// All the children must have an entrypoint.
 		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), visitedRelations)
 		if err != nil {
 			return false, false, err
@@ -784,7 +792,7 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 		return err
 	}
 
-	visitedRelations := map[string]map[string]struct{}{}
+	visitedRelations := map[string]map[string]bool{}
 
 	hasEntrypoints, loop, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
 	if err != nil {
