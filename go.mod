@@ -25,7 +25,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20240201160513-05de9d8be3ee
+	github.com/openfga/api/proto v0.0.0-20240307222341-ef4f351f1215
 	github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993
 	github.com/pressly/goose/v3 v3.18.0
 	github.com/prometheus/client_golang v1.18.0
@@ -48,11 +48,9 @@ require (
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
 	golang.org/x/sync v0.6.0
 	google.golang.org/grpc v1.62.0
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 	sigs.k8s.io/yaml v1.4.0
 )
-
-replace github.com/openfga/api/proto => ../api-openfga/proto
 
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
