@@ -461,51 +461,50 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation: "action1",
 			expectDetails: &relationDetails{false, true},
 		},
-		// TODO fix
-		//`issue_1385`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//
-		//	type user
-		//
-		//	type entity
-		//		relations
-		//			define member : [user]
-		//			define contextual_user: [user]
-		//			define contextual_member : member and contextual_user
-		//			define has_logging_product: [entity]
-		//			define block_logging : [user] and contextual_user
-		//			define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
-		//			define can_enable_logging : has_access_to_logging
-		//	`,
-		//	inputType:     "entity",
-		//	inputRelation: "can_enable_logging",
-		//	expectDetails: &relationDetails{true, false},
-		//},
-		//`issue_1260_parallel_edges_mean_entrypoints`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//
-		//	type user
-		//
-		//	type state
-		//		relations
-		//			define can_view: [user]
-		//			define associated_transition: [transition]
-		//			define can_transition_with: can_apply from associated_transition
-		//
-		//	type transition
-		//		relations
-		//			define start: [state]
-		//			define end: [state]
-		//			define can_apply: [user] and can_view from start and can_view from end
-		//	`,
-		//	inputType:     "state",
-		//	inputRelation: "can_transition_with",
-		//	expectDetails: &relationDetails{true, false},
-		//},
+		`issue_1385`: {
+			model: `
+			model
+				schema 1.1
+		
+			type user
+		
+			type entity
+				relations
+					define member : [user]
+					define contextual_user: [user]
+					define contextual_member : member and contextual_user
+					define has_logging_product: [entity]
+					define block_logging : [user] and contextual_user
+					define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
+					define can_enable_logging : has_access_to_logging
+			`,
+			inputType:     "entity",
+			inputRelation: "can_enable_logging",
+			expectDetails: &relationDetails{true, false},
+		},
+		`issue_1260_parallel_edges_mean_entrypoints`: {
+			model: `
+			model
+				schema 1.1
+		
+			type user
+		
+			type state
+				relations
+					define can_view: [user]
+					define associated_transition: [transition]
+					define can_transition_with: can_apply from associated_transition
+		
+			type transition
+				relations
+					define start: [state]
+					define end: [state]
+					define can_apply: [user] and can_view from start and can_view from end
+			`,
+			inputType:     "state",
+			inputRelation: "can_transition_with",
+			expectDetails: &relationDetails{true, false},
+		},
 		`ttu_has_entrypoint_through_second_tupleset`: {
 			model: `
 			model
@@ -549,7 +548,7 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
 
 			rewrite := inputRelation.GetRewrite()
-			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]struct{}{})
+			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
 
 			if test.expectError != "" {
 				require.ErrorContains(t, err, test.expectError)
