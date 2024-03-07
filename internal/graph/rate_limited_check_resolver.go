@@ -33,7 +33,7 @@ func NewRateLimitedCheckResolver(
 		medPriorityQueue: make(chan bool, 1),
 	}
 	rateLimitedCheckResolver.delegate = rateLimitedCheckResolver
-	go rateLimitedCheckResolver.Ticker()
+	go rateLimitedCheckResolver.runTicker()
 	return rateLimitedCheckResolver
 }
 
@@ -54,7 +54,7 @@ func (r *RateLimitedCheckResolver) nonBlockingSend(signalChan chan bool) {
 	}
 }
 
-func (r *RateLimitedCheckResolver) Ticker() {
+func (r *RateLimitedCheckResolver) runTicker() {
 	count := uint32(0)
 	for {
 		select {
@@ -75,6 +75,21 @@ func (r *RateLimitedCheckResolver) Ticker() {
 	}
 }
 
+func (r *RateLimitedCheckResolver) shouldWait(currentNumDispatch uint32) bool {
+	delta := currentNumDispatch - r.config.NonImpedingDispatchNum
+	if delta < 32 {
+		return delta%8 == 0
+	}
+	if delta < 64 {
+		return delta%4 == 0
+	}
+	if delta < 128 {
+		return delta%2 == 0
+	}
+	return true
+
+}
+
 func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
@@ -83,7 +98,10 @@ func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
 		if currentNumDispatch >= r.config.LowPriorityLevel {
 			<-r.lowPriorityQueue
 		} else {
-			<-r.medPriorityQueue
+			if r.shouldWait(currentNumDispatch) {
+				<-r.medPriorityQueue
+			}
+
 		}
 	}
 	return r.delegate.ResolveCheck(ctx, req)
