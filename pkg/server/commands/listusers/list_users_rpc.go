@@ -158,8 +158,6 @@ func (l *listUsersQuery) expand(
 	}
 
 	relationRewrite := relation.GetRewrite()
-	fmt.Println("relationRewrite", relationRewrite)
-	_ = relationRewrite
 	return l.expandRewrite(ctx, req, relationRewrite, foundObjectsChan)
 }
 
@@ -171,10 +169,8 @@ func (l *listUsersQuery) expandRewrite(
 ) error {
 	switch rewrite := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
-		fmt.Println("expand because", "*openfgav1.Userset_This:")
 		return l.expandDirect(ctx, req, foundObjectsChan)
 	case *openfgav1.Userset_ComputedUserset:
-		fmt.Println("expand because", "*openfgav1.Userset_ComputedUserset:", rewrite.ComputedUserset.GetRelation())
 		return l.expand(ctx, &openfgav1.ListUsersRequest{
 			StoreId:               req.GetStoreId(),
 			AuthorizationModelId:  req.GetAuthorizationModelId(),
@@ -184,10 +180,8 @@ func (l *listUsersQuery) expandRewrite(
 			ContextualTuples:      req.GetContextualTuples(),
 		}, foundObjectsChan)
 	case *openfgav1.Userset_TupleToUserset:
-		fmt.Println("expand because", "*openfgav1.Userset_TupleToUserset:")
 		return l.expandTTU(ctx, req, rewrite, foundObjectsChan)
 	case *openfgav1.Userset_Union:
-		fmt.Println("expand because", "*openfgav1.Userset_Union:")
 
 		pool := pool.New().WithContext(ctx)
 		pool.WithCancelOnError()
