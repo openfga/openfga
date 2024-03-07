@@ -521,6 +521,15 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		methodName,
 	).Observe(queryCount)
 
+	dispatchCount := float64(*resolutionMetadata.DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
+
 	requestDurationByQueryHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
