@@ -167,11 +167,15 @@ type ReverseExpandResult struct {
 
 type ResolutionMetadata struct {
 	QueryCount *uint32
+
+	// The number of times we are expanding from each node to find set of objects
+	DispatchCount *uint32
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		QueryCount: new(uint32),
+		QueryCount:    new(uint32),
+		DispatchCount: new(uint32),
 	}
 }
 
@@ -321,6 +325,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
+			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = multierror.Append(errs, err)
@@ -525,6 +530,7 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
+			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
 			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
