@@ -65,7 +65,7 @@ type ResolutionMetadata struct {
 	DispatchCount *uint32
 }
 
-func NewResolutionMetadata() *ResolutionMetadata {
+func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ResolutionMetadata{
 		QueryCount:    new(uint32),
 		DispatchCount: new(uint32),
