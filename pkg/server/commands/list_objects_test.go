@@ -32,7 +32,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 	})
 }
 
-func TestCheckDispatchCount(t *testing.T) {
+func TestListObjectsDispatchCount(t *testing.T) {
 	ds := memory.New()
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 
