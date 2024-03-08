@@ -111,7 +111,24 @@ type folder
 			expectedDispatchCount: 2,
 		},
 	}
+{
+			name: "no_tuples",
+			model: `model
+schema 1.1
 
+type user
+
+type folder
+  	relations
+		define editor: [user]
+		define can_delete: [user] and editor 
+`,
+			tuples:                []*openfgav1.TupleKey{},
+			objectType:            "folder",
+			relation:              "can_delete",
+			user:                  "user:jon",
+			expectedDispatchCount: 0,
+		},
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			storeID := ulid.Make().String()
