@@ -55,7 +55,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			type folder
 				relations
 					define viewer: [user] 
-`,
+			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
@@ -77,7 +77,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				 relations
 					  define editor: [user]
 					  define viewer: [user] or editor 
-`,
+			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:C", "editor", "user:jon"),
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
@@ -99,7 +99,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				 relations
 					  define editor: [user]
 					  define can_delete: [user] and editor 
-`,
+			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:C", "can_delete", "user:jon"),
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
@@ -121,12 +121,52 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				 relations
 					  define editor: [user]
 					  define can_delete: [user] and editor 
-`,
+			`,
 			tuples:                []*openfgav1.TupleKey{},
 			objectType:            "folder",
 			relation:              "can_delete",
 			user:                  "user:jon",
 			expectedDispatchCount: 0,
+		},
+		{
+			name: "no_tuples",
+			model: `model
+			schema 1.1
+
+			type user
+
+			type group
+			  relations
+				define member: [user, group#member]
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng#member", "member", "group:fga#member"),
+				tuple.NewTupleKey("group:fga", "member", "user:jon"),
+			},
+			objectType:            "group",
+			relation:              "member",
+			user:                  "user:jon",
+			expectedDispatchCount: 2,
+		},
+		{
+			name: "no_tuples",
+			model: `model
+			schema 1.1
+
+			type user
+
+			type document
+			  relations
+				define editor: [user]
+				define viewer: editor
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "editor", "user:jon"),
+			},
+			objectType:            "document",
+			relation:              "viewer",
+			user:                  "user:jon",
+			expectedDispatchCount: 2,
 		},
 	}
 	for _, test := range tests {
