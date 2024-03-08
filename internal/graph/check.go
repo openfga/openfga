@@ -264,6 +264,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	}()
 
 	var dbReads uint32
+	var dispatchCount uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -276,9 +277,11 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				continue
 			}
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
+			dispatchCount += result.resp.GetResolutionMetadata().DispatchCount
 
 			if result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
+				result.resp.GetResolutionMetadata().DispatchCount = dispatchCount
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -290,6 +293,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		Allowed: false,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
+			DispatchCount:       dispatchCount,
 		},
 	}, err
 }
@@ -318,6 +322,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	}()
 
 	var dbReads uint32
+	var dispatchCount uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -339,8 +344,11 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 			}
 
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
+			dispatchCount += result.resp.GetResolutionMetadata().DispatchCount
+
 			if !result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
+				result.resp.GetResolutionMetadata().DispatchCount = dispatchCount
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -352,6 +360,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
+			DispatchCount:       dispatchCount,
 		},
 	}, err
 }
@@ -413,6 +422,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	var subErr error
 
 	var dbReads uint32
+	var dispatchCount uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
@@ -433,9 +443,11 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			}
 
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
+			dispatchCount += baseResult.resp.GetResolutionMetadata().DispatchCount
 
 			if !baseResult.resp.GetAllowed() {
 				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
+				response.GetResolutionMetadata().DispatchCount = dispatchCount
 				return response, nil
 			}
 
@@ -453,6 +465,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 			if subResult.resp.GetAllowed() {
 				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
+				response.GetResolutionMetadata().DispatchCount = dispatchCount
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -473,6 +486,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
+			DispatchCount:       dispatchCount,
 		},
 	}, nil
 }
@@ -485,20 +499,19 @@ func (c *LocalChecker) Close() {
 // was constructed with.
 func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		return c.delegate.ResolveCheck(ctx, req)
+		resp, err := c.delegate.ResolveCheck(ctx, req)
+		if err != nil {
+			return resp, err
+		}
+		resp.GetResolutionMetadata().DispatchCount++
+		return resp, nil
 	}
 }
 
-// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
-// evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
-//
-// It is expected that callers pass in, contextually, a [[storage.RelationshipTupleReader]] using
-// [[storage.ContextWithRelationshipTupleReader]]. This is by design because this method is called by
-// [[server.Check]], but each time it is called there are invariants that must be met that relate
-// to the concurrency of the underlying RelationshipTupleReader as well as contextual tuples per
-// parent request. Since [[server.Check]] shares a single instance of a [[LocalChecker]], and to
-// meet the invariants mentioned above, we contextually define the datastore used to serve the
-// ResolveCheck request.
+var _ CheckResolver = (*LocalChecker)(nil)
+
+// ResolveCheck implements [[CheckResolver.ResolveCheck]].
+// If the typesystem isn't set in the context, it will panic.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
@@ -623,7 +636,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.Object, reqTupleKey.Relation))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
 			defer span.End()
 
 			if ctx.Err() != nil {
@@ -638,8 +651,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      reqTupleKey.Object,
-				Relation:                    reqTupleKey.Relation,
+				Object:                      reqTupleKey.GetObject(),
+				Relation:                    reqTupleKey.GetRelation(),
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
@@ -771,9 +784,9 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 		}
 
 		rewrittenTupleKey := tuple.NewTupleKey(
-			req.TupleKey.GetObject(),
+			req.GetTupleKey().GetObject(),
 			rewrite.ComputedUserset.GetRelation(),
-			req.TupleKey.GetUser(),
+			req.GetTupleKey().GetUser(),
 		)
 
 		return c.dispatch(
@@ -985,7 +998,7 @@ func (c *LocalChecker) checkRewrite(
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
-	switch rw := rewrite.Userset.(type) {
+	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:

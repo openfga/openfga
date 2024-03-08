@@ -35,7 +35,7 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			_name: "Execute_Succeeds",
 			request: &openfgav1.DeleteStoreRequest{
-				StoreId: createStoreResponse.Id,
+				StoreId: createStoreResponse.GetId(),
 			},
 		},
 	}

@@ -53,7 +53,7 @@ func TestValidationResult(t *testing.T) {
 type document
   relations
 	define viewer:[user]
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 				})
 				require.NoError(t, err)
 				t.Logf("added model %s for store %s\n", modelID, storeID)

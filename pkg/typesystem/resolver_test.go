@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -31,7 +30,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 type user
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
+	define viewer: [user]`).GetTypeDefinitions()
 
 	gomock.InOrder(
 		mockDatastore.EXPECT().
@@ -43,11 +42,7 @@ type document
 			}, nil),
 
 		mockDatastore.EXPECT().
-			FindLatestAuthorizationModelID(gomock.Any(), storeID).
-			Return(modelID2, nil),
-
-		mockDatastore.EXPECT().
-			ReadAuthorizationModel(gomock.Any(), storeID, modelID2).
+			FindLatestAuthorizationModel(gomock.Any(), storeID).
 			Return(&openfgav1.AuthorizationModel{
 				Id:              modelID2,
 				SchemaVersion:   SchemaVersion1_1,
@@ -89,22 +84,12 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	gomock.InOrder(
-		mockDatastore.EXPECT().
-			FindLatestAuthorizationModelID(gomock.Any(), storeID).
-			DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
-				time.Sleep(1 * time.Second)
-				return modelID, nil
-			}).
-			Times(1),
-
-		mockDatastore.EXPECT().
-			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-			Return(&openfgav1.AuthorizationModel{
-				Id:            modelID,
-				SchemaVersion: SchemaVersion1_1,
-			}, nil).MinTimes(1).MaxTimes(numGoroutines),
-	)
+	mockDatastore.EXPECT().
+		FindLatestAuthorizationModel(gomock.Any(), storeID).
+		Return(&openfgav1.AuthorizationModel{
+			Id:            modelID,
+			SchemaVersion: SchemaVersion1_1,
+		}, nil).MinTimes(1).MaxTimes(numGoroutines)
 
 	resolver, resolverStop := MemoizedTypesystemResolverFunc(
 		mockDatastore,

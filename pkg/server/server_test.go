@@ -84,10 +84,10 @@ func ExampleNewServerWithOpts() {
 
 	// write the model to the store
 	authorizationModel, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         store.Id,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
-		SchemaVersion:   model.SchemaVersion,
+		StoreId:         store.GetId(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+		SchemaVersion:   model.GetSchemaVersion(),
 	})
 	if err != nil {
 		panic(err)
@@ -95,7 +95,7 @@ func ExampleNewServerWithOpts() {
 
 	// write tuples to the store
 	_, err = openfga.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId: store.Id,
+		StoreId: store.GetId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "document:budget", Relation: "reader", User: "user:anne"},
@@ -109,8 +109,8 @@ func ExampleNewServerWithOpts() {
 
 	// make an authorization check
 	checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
-		StoreId:              store.Id,
-		AuthorizationModelId: authorizationModel.AuthorizationModelId, // optional, but recommended for speed
+		StoreId:              store.GetId(),
+		AuthorizationModelId: authorizationModel.GetAuthorizationModelId(), // optional, but recommended for speed
 		TupleKey: &openfgav1.CheckRequestTupleKey{
 			User:     "user:anne",
 			Relation: "reader",
@@ -120,7 +120,7 @@ func ExampleNewServerWithOpts() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(checkResponse.Allowed)
+	fmt.Println(checkResponse.GetAllowed())
 	// Output: true
 }
 
@@ -527,7 +527,7 @@ type user
 type repo
   relations
 	define reader: [user]
-`).TypeDefinitions
+`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -570,7 +570,7 @@ type repo
 		AuthorizationModelId: modelID,
 	})
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
@@ -599,7 +599,7 @@ type user
 
 type document
   relations
-	define editor: [user]`).TypeDefinitions,
+	define editor: [user]`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
@@ -657,7 +657,7 @@ type repo
 	define admin: [user]
 	define r1: [user] and r2 and r3
 	define r2: [user] and r1 and r3
-	define r3: [user] and r1 and r2`).TypeDefinitions
+	define r3: [user] and r1 and r2`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
@@ -717,7 +717,7 @@ type repo
 	_, err = s.Expand(ctx, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
-		TupleKey:             tuple.NewExpandRequestTupleKey(tk.Object, tk.Relation),
+		TupleKey:             tuple.NewExpandRequestTupleKey(tk.GetObject(), tk.GetRelation()),
 	})
 	require.Error(t, err)
 	e, ok = status.FromError(err)
@@ -737,7 +737,7 @@ type user
 
 type repo
   relations
-	define reader: [user:*]`).TypeDefinitions
+	define reader: [user:*]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -793,7 +793,7 @@ type repo
 	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
 	require.Lessf(t, end, 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestCheckWithCachedResolution(t *testing.T) {
@@ -808,7 +808,7 @@ type user
 
 type repo
   relations
-	define reader: [user]`).TypeDefinitions
+	define reader: [user]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -845,7 +845,7 @@ type repo
 	})
 
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 
 	// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
@@ -855,7 +855,7 @@ type repo
 	})
 
 	require.NoError(t, err)
-	require.True(t, checkResponse.Allowed)
+	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestWriteAssertionModelDSError(t *testing.T) {
@@ -870,7 +870,7 @@ type user
 
 type repo
   relations
-	define reader: [user]`).TypeDefinitions
+	define reader: [user]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -985,7 +985,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(nil, storage.ErrNotFound)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
@@ -1005,8 +1005,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).Return(
 			&openfgav1.AuthorizationModel{
 				Id:            modelID,
 				SchemaVersion: typesystem.SchemaVersion1_1,
@@ -1074,7 +1073,7 @@ type user
 type repo
   relations
 	define allowed: [user]
-	define viewer: [user] and allowed`).TypeDefinitions
+	define viewer: [user] and allowed`).GetTypeDefinitions()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -1136,7 +1135,7 @@ type user
 
 type document
   relations
-	define viewer: [user, user:*]`).TypeDefinitions,
+	define viewer: [user, user:*]`).GetTypeDefinitions(),
 		}, nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
@@ -1192,7 +1191,7 @@ type group
 
 type document
   relations
-	define viewer: [group#member]`).TypeDefinitions,
+	define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -1337,7 +1336,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			TypeDefinitions: language.MustTransformDSLToProto(`model
 	schema 1.1
 type repo
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)

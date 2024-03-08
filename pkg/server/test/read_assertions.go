@@ -39,7 +39,7 @@ func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			query := commands.NewReadAssertionsQuery(datastore)
 			test.request.StoreId = store
-			actualResponse, actualError := query.Execute(ctx, test.request.StoreId, test.request.AuthorizationModelId)
+			actualResponse, actualError := query.Execute(ctx, test.request.GetStoreId(), test.request.GetAuthorizationModelId())
 
 			if test.expectedError != nil {
 				require.ErrorIs(t, actualError, test.expectedError)

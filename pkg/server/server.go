@@ -53,6 +53,18 @@ const (
 var tracer = otel.Tracer("openfga/pkg/server")
 
 var (
+	dispatchCountHistogramName = "dispatch_count"
+
+	dispatchCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            dispatchCountHistogramName,
+		Help:                            "The number of dispatches required to resolve a query (e.g. Check).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
 	datastoreQueryCountHistogramName = "datastore_query_count"
 
 	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -403,9 +415,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			ContextualTuples:     req.GetContextualTuples(),
 			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 			Type:                 targetObjectType,
-			Relation:             req.Relation,
-			User:                 req.User,
-			Context:              req.Context,
+			Relation:             req.GetRelation(),
+			User:                 req.GetUser(),
+			Context:              req.GetContext(),
 		},
 	)
 	if err != nil {
@@ -596,7 +608,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	typesys, err := s.resolveTypesystem(ctx, storeID, req.AuthorizationModelId)
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -667,7 +679,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
 			Depth:               s.resolveNodeLimit,
@@ -696,6 +708,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.serviceName,
 		methodName,
 	).Observe(queryCount)
+
+	dispatchCount := float64(resp.GetResolutionMetadata().DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,

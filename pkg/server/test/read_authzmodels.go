@@ -57,7 +57,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 			require.NoError(t, err)
 
 			require.Len(t, resp.GetAuthorizationModels(), test.expectedNumModelsReturned)
-			require.Empty(t, resp.ContinuationToken, "expected an empty continuation token")
+			require.Empty(t, resp.GetContinuationToken(), "expected an empty continuation token")
 		})
 	}
 }
@@ -105,20 +105,20 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	}
 	firstResponse, err := query.Execute(ctx, firstRequest)
 	require.NoError(t, err)
-	require.Len(t, firstResponse.AuthorizationModels, 1)
-	require.Equal(t, firstResponse.AuthorizationModels[0].Id, model2.Id)
-	require.NotEmpty(t, firstResponse.ContinuationToken, "Expected continuation token")
+	require.Len(t, firstResponse.GetAuthorizationModels(), 1)
+	require.Equal(t, firstResponse.GetAuthorizationModels()[0].GetId(), model2.GetId())
+	require.NotEmpty(t, firstResponse.GetContinuationToken(), "Expected continuation token")
 
 	secondRequest := &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: firstResponse.ContinuationToken,
+		ContinuationToken: firstResponse.GetContinuationToken(),
 	}
 	secondResponse, err := query.Execute(ctx, secondRequest)
 	require.NoError(t, err)
-	require.Len(t, secondResponse.AuthorizationModels, 1)
-	require.Equal(t, secondResponse.AuthorizationModels[0].Id, model1.Id)
-	require.Empty(t, secondResponse.ContinuationToken, "Expected empty continuation token")
+	require.Len(t, secondResponse.GetAuthorizationModels(), 1)
+	require.Equal(t, secondResponse.GetAuthorizationModels()[0].GetId(), model1.GetId())
+	require.Empty(t, secondResponse.GetContinuationToken(), "Expected empty continuation token")
 
 	thirdRequest := &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           store,
