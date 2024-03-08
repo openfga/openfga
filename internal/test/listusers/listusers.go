@@ -1,6 +1,7 @@
 package listuserstest
 
 import (
+	"fmt"
 	"strings"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -20,7 +21,11 @@ type Assertion struct {
 type TestListUsersRequest struct {
 	Object   string
 	Relation string
-	Filters  []*string `json:"filters"`
+	Filters  []string `json:"filters"`
+}
+
+func (t *TestListUsersRequest) ToString() string {
+	return fmt.Sprintf("object=%s, relation=%s, filters=%v", t.Object, t.Relation, strings.Join(t.Filters, ", "))
 }
 
 func FromProtoResponse(r *openfgav1.ListUsersResponse) []string {
@@ -37,7 +42,7 @@ func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
 	var protoFilters []*openfgav1.ListUsersFilter
 
 	for _, filterString := range t.Filters {
-		parts := strings.Split(*filterString, " ")
+		parts := strings.Split(filterString, " ")
 		if len(parts) != 1 {
 			panic("unexpected filter")
 		}

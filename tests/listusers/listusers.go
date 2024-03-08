@@ -3,6 +3,7 @@ package listusers
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -170,6 +171,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 
 			for _, assertion := range stage.ListUsersAssertions {
+				detailedInfo := fmt.Sprintf("ListUsers request: %v. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request.ToString(), stage.Model, stage.Tuples, assertion.ContextualTuples)
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
 					ctxTuples = append(ctxTuples, stage.Tuples...)
@@ -189,28 +191,29 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				})
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, err)
-					require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp))
+					require.NoError(t, err, detailedInfo)
+					require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp), detailedInfo)
 
 					// assert 2: each object in the response of ListUsers should return check -> true
 					for _, user := range resp.GetUsers() {
+						checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user.GetObject()))
 						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 							StoreId:              storeID,
-							TupleKey:             tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user.GetObject())),
+							TupleKey:             checkRequestTupleKey,
 							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
 							Context: assertion.Context,
 						})
-						require.NoError(t, err)
-						require.True(t, checkResp.GetAllowed())
+						require.NoError(t, err, detailedInfo)
+						require.True(t, checkResp.GetAllowed(), "Expected allowed = true", checkRequestTupleKey)
 					}
 				} else {
-					require.Error(t, err)
+					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 
 				// TODO assert on StreamingListUsers endpoint
