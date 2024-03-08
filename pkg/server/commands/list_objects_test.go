@@ -67,7 +67,7 @@ type folder
 			expectedDispatchCount: 3,
 		},
 		{
-			name: "Test union relation",
+			name: "test_union_relation",
 			model: `model
 schema 1.1
 
@@ -89,7 +89,7 @@ type folder
 			expectedDispatchCount: 4,
 		},
 		{
-			name: "Test intersection relation",
+			name: "test_intersection_relation",
 			model: `model
 schema 1.1
 
