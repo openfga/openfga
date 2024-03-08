@@ -46,7 +46,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		expectedDispatchCount uint32
 	}{
 		{
-			name: "Test direct relation",
+			name: "test_direct_relation",
 			model: `model
 schema 1.1
 
