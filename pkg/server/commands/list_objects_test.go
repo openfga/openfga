@@ -129,7 +129,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			expectedDispatchCount: 0,
 		},
 		{
-			name: "no_tuples",
+			name: "test_subject_member_case",
 			model: `model
 			schema 1.1
 
@@ -149,7 +149,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			expectedDispatchCount: 2,
 		},
 		{
-			name: "no_tuples",
+			name: "test_computed_subjectset_dispatch",
 			model: `model
 			schema 1.1
 
