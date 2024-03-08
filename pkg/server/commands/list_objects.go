@@ -57,7 +57,7 @@ type ListObjectsQuery struct {
 	checkResolver graph.CheckResolver
 }
 
-type ResolutionMetadata struct {
+type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
 	QueryCount *uint32
 
