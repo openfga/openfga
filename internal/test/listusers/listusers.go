@@ -37,20 +37,13 @@ func FromProtoResponse(r *openfgav1.ListUsersResponse) []string {
 }
 
 func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
-	objectType, objectID := tuple.SplitObject(t.Object)
-
 	var protoFilters []*openfgav1.ListUsersFilter
 
 	for _, filterString := range t.Filters {
-		parts := strings.Split(filterString, " ")
-		if len(parts) != 1 {
-			panic("unexpected filter")
-		}
-
-		userDef := parts[0]
-		protoFilters = append(protoFilters, toProtoFilter(userDef))
+		protoFilters = append(protoFilters, toProtoFilter(filterString))
 	}
 
+	objectType, objectID := tuple.SplitObject(t.Object)
 	return &openfgav1.ListUsersRequest{
 		Object: &openfgav1.Object{
 			Type: objectType,
