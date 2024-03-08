@@ -369,9 +369,9 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", test.authHeader)
 	res, err = retryClient.Do(req)
-	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	require.NoError(t, err, "Failed to execute streaming request")
 	defer res.Body.Close()
+	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	body, err = io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read response")
 
