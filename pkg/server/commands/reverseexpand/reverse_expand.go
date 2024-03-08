@@ -169,7 +169,6 @@ type ResolutionMetadata struct {
 	QueryCount *uint32
 
 	// The number of times we are expanding from each node to find set of objects
-	// In case of intersection and exclusion, it also includes the dispatch counts done for Check calls to exclude Objects
 	DispatchCount *uint32
 }
 
