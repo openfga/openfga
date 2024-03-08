@@ -57,9 +57,23 @@ type ListObjectsQuery struct {
 	checkResolver graph.CheckResolver
 }
 
+type ResolutionMetadata struct {
+	QueryCount *uint32
+
+	// The total number of dispatch counts from reverse_expand and check resolution to complete the ListObjects request
+	DispatchCount *uint32
+}
+
+func NewResolutionMetadata() *ResolutionMetadata {
+	return &ResolutionMetadata{
+		QueryCount:    new(uint32),
+		DispatchCount: new(uint32),
+	}
+}
+
 type ListObjectsResponse struct {
 	Objects            []string
-	ResolutionMetadata reverseexpand.ResolutionMetadata
+	ResolutionMetadata ResolutionMetadata
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -167,7 +181,7 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
-	resolutionMetadata *reverseexpand.ResolutionMetadata,
+	resolutionMetadata *ResolutionMetadata,
 ) error {
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -251,6 +265,8 @@ func (q *ListObjectsQuery) evaluate(
 
 		errChan := make(chan error, 1)
 
+		reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -262,10 +278,11 @@ func (q *ListObjectsQuery) evaluate(
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 				Context:          req.GetContext(),
-			}, reverseExpandResultsChan, resolutionMetadata)
+			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
 				errChan <- err
 			}
+			atomic.AddUint32(resolutionMetadata.DispatchCount, *reverseExpandResolutionMetadata.DispatchCount)
 		}()
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -379,7 +396,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	resolutionMetadata := reverseexpand.NewResolutionMetadata()
+	resolutionMetadata := NewResolutionMetadata()
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
@@ -424,7 +441,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
-func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, error) {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -436,7 +453,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		defer cancel()
 	}
 
-	resolutionMetadata := reverseexpand.NewResolutionMetadata()
+	resolutionMetadata := NewResolutionMetadata()
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
