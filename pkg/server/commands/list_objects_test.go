@@ -110,8 +110,7 @@ type folder
 			user:                  "user:jon",
 			expectedDispatchCount: 2,
 		},
-	}
-{
+		{
 			name: "no_tuples",
 			model: `model
 schema 1.1
@@ -129,6 +128,7 @@ type folder
 			user:                  "user:jon",
 			expectedDispatchCount: 0,
 		},
+	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			storeID := ulid.Make().String()
