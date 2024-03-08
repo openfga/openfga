@@ -282,6 +282,7 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 			}
+			atomic.AddUint32(resolutionMetadata.QueryCount, *reverseExpandResolutionMetadata.QueryCount)
 			atomic.AddUint32(resolutionMetadata.DispatchCount, *reverseExpandResolutionMetadata.DispatchCount)
 		}()
 
