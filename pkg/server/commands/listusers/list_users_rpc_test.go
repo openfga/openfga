@@ -26,17 +26,21 @@ func TestListUsers(t *testing.T) {
 		req             *openfgav1.ListUsersRequest
 		typeDefinitions []*openfgav1.TypeDefinition
 		tuples          []*openfgav1.TupleKey
-		expectedObjects []*openfgav1.Object
+		expectedUsers   []*openfgav1.User
 		expectedError   error
 	}{
 		{
 			name: "direct_relationship",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:               storeID,
-				AuthorizationModelId:  modelID,
-				Object:                &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:              "viewer",
-				TargetUserObjectTypes: []string{"user"},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object:               &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:             "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -47,18 +51,26 @@ func TestListUsers(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			},
-			expectedObjects: []*openfgav1.Object{
-				{Type: "user", Id: "jon"},
+			expectedUsers: []*openfgav1.User{
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "user", Id: "jon"},
+					},
+				},
 			},
 		},
 		{
 			name: "direct_relationship_through_userset",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:               storeID,
-				AuthorizationModelId:  modelID,
-				Object:                &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:              "viewer",
-				TargetUserObjectTypes: []string{"user"},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object:               &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:             "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -73,18 +85,26 @@ func TestListUsers(t *testing.T) {
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:jon"),
 			},
-			expectedObjects: []*openfgav1.Object{
-				{Type: "user", Id: "jon"},
+			expectedUsers: []*openfgav1.User{
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "user", Id: "jon"},
+					},
+				},
 			},
 		},
 		{
 			name: "direct_relationship_through_multiple_usersets",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:               storeID,
-				AuthorizationModelId:  modelID,
-				Object:                &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:              "viewer",
-				TargetUserObjectTypes: []string{"user"},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object:               &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:             "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -101,19 +121,31 @@ func TestListUsers(t *testing.T) {
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
 			},
-			expectedObjects: []*openfgav1.Object{
-				{Type: "user", Id: "hawker"},
-				{Type: "user", Id: "jon"},
+			expectedUsers: []*openfgav1.User{
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "user", Id: "jon"},
+					},
+				},
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "user", Id: "hawker"},
+					},
+				},
 			},
 		},
 		{
 			name: "rewritten_direct_relationship_through_computed_userset",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:               storeID,
-				AuthorizationModelId:  modelID,
-				Object:                &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:              "viewer",
-				TargetUserObjectTypes: []string{"user"},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object:               &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:             "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -125,18 +157,26 @@ func TestListUsers(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "editor", "user:jon"),
 			},
-			expectedObjects: []*openfgav1.Object{
-				{Type: "user", Id: "jon"},
+			expectedUsers: []*openfgav1.User{
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "user", Id: "jon"},
+					},
+				},
 			},
 		},
 		{
 			name: "rewritten_direct_relationship_through_ttu",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:               storeID,
-				AuthorizationModelId:  modelID,
-				Object:                &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:              "viewer",
-				TargetUserObjectTypes: []string{"user"},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object:               &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:             "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -152,18 +192,26 @@ func TestListUsers(t *testing.T) {
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
 				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
 			},
-			expectedObjects: []*openfgav1.Object{
-				{Type: "user", Id: "jon"},
+			expectedUsers: []*openfgav1.User{
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "user", Id: "jon"},
+					},
+				},
 			},
 		},
 		{
 			name: "userset_defines_itself",
 			req: &openfgav1.ListUsersRequest{
-				StoreId:               storeID,
-				AuthorizationModelId:  modelID,
-				Object:                &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:              "viewer",
-				TargetUserObjectTypes: []string{"document"},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object:               &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:             "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "document",
+					},
+				},
 			},
 			typeDefinitions: parser.MustParse(`
 			type user
@@ -172,8 +220,12 @@ func TestListUsers(t *testing.T) {
 			    define viewer: [user] as self
 			`),
 			tuples: []*openfgav1.TupleKey{},
-			expectedObjects: []*openfgav1.Object{
-				{Type: "document", Id: "1"},
+			expectedUsers: []*openfgav1.User{
+				{
+					User: &openfgav1.User_Object{
+						Object: &openfgav1.Object{Type: "document", Id: "1"},
+					},
+				},
 			},
 		},
 		// {
@@ -240,7 +292,7 @@ func TestListUsers(t *testing.T) {
 			ignoredFieldsOpts := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Object{}), "type", "id")
 
 			returnedUsers := resp.GetUsers()
-			expected := test.expectedObjects
+			expected := test.expectedUsers
 
 			if diff := cmp.Diff(expected, returnedUsers, ignoredFieldsOpts, protocmp.Transform()); diff != "" {
 				require.FailNowf(t, "(-want +got):\n%s", diff)

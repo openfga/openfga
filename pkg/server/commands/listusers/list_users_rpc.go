@@ -57,10 +57,10 @@ func (l *listUsersQuery) ListUsers(
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
 
-	foundUsersCh := make(chan *openfgav1.Object, 1)
+	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
 
-	var foundUsers []*openfgav1.Object
+	var foundUsers []*openfgav1.User
 	done := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
@@ -137,11 +137,16 @@ func (l *listUsersQuery) ListUsers(
 func (l *listUsersQuery) expand(
 	ctx context.Context,
 	req listUsersRequest,
-	foundObjectsChan chan<- *openfgav1.Object,
+	foundUsersChan chan<- *openfgav1.User,
 ) error {
-
-	if req.GetObject().GetType() == req.GetTargetUserObjectTypes()[0] {
-		foundObjectsChan <- req.GetObject()
+	for _, f := range req.GetUserFilters() {
+		if req.GetObject().GetType() == f.GetType() {
+			foundUsersChan <- &openfgav1.User{
+				User: &openfgav1.User_Object{
+					Object: req.GetObject(),
+				},
+			}
+		}
 	}
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
@@ -158,29 +163,29 @@ func (l *listUsersQuery) expand(
 	}
 
 	relationRewrite := relation.GetRewrite()
-	return l.expandRewrite(ctx, req, relationRewrite, foundObjectsChan)
+	return l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
 }
 
 func (l *listUsersQuery) expandRewrite(
 	ctx context.Context,
 	req listUsersRequest,
 	rewrite *openfgav1.Userset,
-	foundObjectsChan chan<- *openfgav1.Object,
+	foundUsersChan chan<- *openfgav1.User,
 ) error {
 	switch rewrite := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
-		return l.expandDirect(ctx, req, foundObjectsChan)
+		return l.expandDirect(ctx, req, foundUsersChan)
 	case *openfgav1.Userset_ComputedUserset:
 		return l.expand(ctx, &openfgav1.ListUsersRequest{
-			StoreId:               req.GetStoreId(),
-			AuthorizationModelId:  req.GetAuthorizationModelId(),
-			Object:                req.GetObject(),
-			Relation:              rewrite.ComputedUserset.GetRelation(),
-			TargetUserObjectTypes: req.GetTargetUserObjectTypes(),
-			ContextualTuples:      req.GetContextualTuples(),
-		}, foundObjectsChan)
+			StoreId:              req.GetStoreId(),
+			AuthorizationModelId: req.GetAuthorizationModelId(),
+			Object:               req.GetObject(),
+			Relation:             rewrite.ComputedUserset.GetRelation(),
+			UserFilters:          req.GetUserFilters(),
+			ContextualTuples:     req.GetContextualTuples(),
+		}, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
-		return l.expandTTU(ctx, req, rewrite, foundObjectsChan)
+		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -190,7 +195,7 @@ func (l *listUsersQuery) expandRewrite(
 		children := rewrite.Union.GetChild()
 		for _, childRewrite := range children {
 			pool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, childRewrite, foundObjectsChan)
+				return l.expandRewrite(ctx, req, childRewrite, foundUsersChan)
 			})
 		}
 
@@ -203,7 +208,7 @@ func (l *listUsersQuery) expandRewrite(
 func (l *listUsersQuery) expandDirect(
 	ctx context.Context,
 	req listUsersRequest,
-	foundObjectsChan chan<- *openfgav1.Object,
+	foundUsersChan chan<- *openfgav1.User,
 ) error {
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
@@ -247,24 +252,32 @@ func (l *listUsersQuery) expandDirect(
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		if userRelation == "" {
-			if req.GetTargetUserObjectTypes()[0] == userObjectType {
-				// we found one, time to return it!
-				foundObjectsChan <- &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+			for _, f := range req.GetUserFilters() {
+				if f.GetType() == userObjectType {
+					// we found one, time to return it!
+					foundUsersChan <- &openfgav1.User{
+						User: &openfgav1.User_Object{
+							Object: &openfgav1.Object{
+								Type: userObjectType,
+								Id:   userObjectID,
+							},
+						},
+					}
+				}
 			}
-
 			continue
 		}
 
 		pool.Go(func(ctx context.Context) error {
 
 			return l.expand(ctx, &openfgav1.ListUsersRequest{
-				StoreId:               req.GetStoreId(),
-				AuthorizationModelId:  req.GetAuthorizationModelId(),
-				Object:                &openfgav1.Object{Type: userObjectType, Id: userObjectID},
-				Relation:              userRelation,
-				TargetUserObjectTypes: req.GetTargetUserObjectTypes(),
-				ContextualTuples:      req.GetContextualTuples(),
-			}, foundObjectsChan)
+				StoreId:              req.GetStoreId(),
+				AuthorizationModelId: req.GetAuthorizationModelId(),
+				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
+				Relation:             userRelation,
+				UserFilters:          req.GetUserFilters(),
+				ContextualTuples:     req.GetContextualTuples(),
+			}, foundUsersChan)
 		})
 
 	}
@@ -276,10 +289,10 @@ func (l *listUsersQuery) expandTTU(
 	ctx context.Context,
 	req listUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
-	foundObjectsChan chan<- *openfgav1.Object,
+	foundUsersChan chan<- *openfgav1.User,
 ) error {
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
-	computedRelation := rewrite.TupleToUserset.ComputedUserset.GetRelation()
+	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -320,12 +333,12 @@ func (l *listUsersQuery) expandTTU(
 
 		pool.Go(func(ctx context.Context) error {
 			return l.expand(ctx, &openfgav1.ListUsersRequest{
-				StoreId:               req.GetStoreId(),
-				AuthorizationModelId:  req.GetAuthorizationModelId(),
-				Object:                &openfgav1.Object{Type: userObjectType, Id: userObjectID},
-				Relation:              computedRelation,
-				TargetUserObjectTypes: req.GetTargetUserObjectTypes(),
-			}, foundObjectsChan)
+				StoreId:              req.GetStoreId(),
+				AuthorizationModelId: req.GetAuthorizationModelId(),
+				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
+				Relation:             computedRelation,
+				UserFilters:          req.GetUserFilters(),
+			}, foundUsersChan)
 		})
 	}
 

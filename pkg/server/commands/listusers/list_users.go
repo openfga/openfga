@@ -9,6 +9,6 @@ type listUsersRequest interface {
 	GetAuthorizationModelId() string
 	GetObject() *openfgav1.Object
 	GetRelation() string
-	GetTargetUserObjectTypes() []string
+	GetUserFilters() []*openfgav1.ListUsersFilter
 	GetContextualTuples() *openfgav1.ContextualTupleKeys
 }
