@@ -50,10 +50,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {
 			t.Parallel()
-			files := []string{
-				"tests/consolidated_1_1_tests.yaml",
-				//"tests/abac_tests.yaml", TODO add back
-			}
+			files := []string{"tests/consolidated_1_1_tests.yaml"}
 
 			var allTestCases []individualTest
 
@@ -73,8 +70,6 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			for _, test := range allTestCases {
 				test := test
 				runTest(t, test, client, false)
-				// TODO uncomment
-				// runTest(t, test, params, true)
 			}
 		})
 	})
@@ -190,8 +185,6 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 					require.True(t, ok, detailedInfo)
 					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
-
-				// TODO assert on StreamingListUsers endpoint
 			}
 		}
 	})
