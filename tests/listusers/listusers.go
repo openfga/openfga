@@ -176,13 +176,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 
 				// assert 1: on regular list users endpoint
-				convertedRequest := assertion.Request.ConvertTestListUsersRequest()
+				convertedRequest := assertion.Request.ToProtoRequest()
 				resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 					Object:               convertedRequest.GetObject(),
 					Relation:             convertedRequest.GetRelation(),
-					Filters:              convertedRequest.GetFilters(),
+					UserFilters:          convertedRequest.GetUserFilters(),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
@@ -190,13 +190,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				if assertion.ErrorCode == 0 {
 					require.NoError(t, err)
-					require.ElementsMatch(t, assertion.Expectation, resp.GetUsers())
+					require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp))
 
 					// assert 2: each object in the response of ListUsers should return check -> true
 					for _, user := range resp.GetUsers() {
 						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 							StoreId:              storeID,
-							TupleKey:             tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user)),
+							TupleKey:             tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user.GetObject())),
 							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,

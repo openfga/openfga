@@ -23,10 +23,18 @@ type TestListUsersRequest struct {
 	Filters  []*string `json:"filters"`
 }
 
-func (t *TestListUsersRequest) ConvertTestListUsersRequest() *openfgav1.ListUsersRequest {
+func FromProtoResponse(r *openfgav1.ListUsersResponse) []string {
+	var users []string
+	for _, user := range r.GetUsers() {
+		users = append(users, tuple.ObjectKey(user.GetObject()))
+	}
+	return users
+}
+
+func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
 	objectType, objectID := tuple.SplitObject(t.Object)
 
-	var convertedFilters []*openfgav1.RelationReference
+	var protoFilters []*openfgav1.ListUsersFilter
 
 	for _, filterString := range t.Filters {
 		parts := strings.Split(*filterString, " ")
@@ -35,7 +43,7 @@ func (t *TestListUsersRequest) ConvertTestListUsersRequest() *openfgav1.ListUser
 		}
 
 		userDef := parts[0]
-		convertedFilters = append(convertedFilters, parseRelationReference(userDef))
+		protoFilters = append(protoFilters, toProtoFilter(userDef))
 	}
 
 	return &openfgav1.ListUsersRequest{
@@ -43,22 +51,20 @@ func (t *TestListUsersRequest) ConvertTestListUsersRequest() *openfgav1.ListUser
 			Type: objectType,
 			Id:   objectID,
 		},
-		Relation: t.Relation,
-		Filters:  convertedFilters,
+		Relation:    t.Relation,
+		UserFilters: protoFilters,
 	}
 }
 
-func parseRelationReference(user string) *openfgav1.RelationReference {
+func toProtoFilter(user string) *openfgav1.ListUsersFilter {
 	userObjType, userRel := tuple.SplitObjectRelation(user)
 
-	sourceUserRef := openfgav1.RelationReference{
+	sourceUserRef := openfgav1.ListUsersFilter{
 		Type: userObjType,
 	}
 
 	if userRel != "" {
-		sourceUserRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
-			Relation: userRel,
-		}
+		sourceUserRef.Relation = userRel
 	}
 	return &sourceUserRef
 }
