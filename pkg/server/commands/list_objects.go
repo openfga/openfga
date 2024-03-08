@@ -61,7 +61,7 @@ type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
 	QueryCount *uint32
 
-	// The total number of dispatch counts from reverse_expand and check resolutions (if any) to complete the ListObjects request
+	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCount *uint32
 }
 
