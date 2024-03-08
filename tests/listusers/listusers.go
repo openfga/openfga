@@ -15,11 +15,11 @@ import (
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/yaml"
 
-	listuserstest "github.com/openfga/openfga/internal/test/listusers"
-
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/pkg/tuple"
+	listuserstest "github.com/openfga/openfga/internal/test/listusers"
 	"github.com/openfga/openfga/pkg/typesystem"
+
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/tests/check"
 )
 
@@ -32,11 +32,6 @@ type individualTest struct {
 
 type listUsersTests struct {
 	Tests []individualTest
-}
-
-type testParams struct {
-	schemaVersion string
-	client        ClientInterface
 }
 
 type stage struct {
@@ -55,57 +50,37 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {
 			t.Parallel()
-			testListUsers(t, client)
+			files := []string{
+				"tests/consolidated_1_1_tests.yaml",
+				//"tests/abac_tests.yaml", TODO add back
+			}
+
+			var allTestCases []individualTest
+
+			for _, file := range files {
+				var b []byte
+				var err error
+				b, err = assets.EmbedTests.ReadFile(file)
+				require.NoError(t, err)
+
+				var testCases listUsersTests
+				err = yaml.Unmarshal(b, &testCases)
+				require.NoError(t, err)
+
+				allTestCases = append(allTestCases, testCases.Tests...)
+			}
+
+			for _, test := range allTestCases {
+				test := test
+				runTest(t, test, client, false)
+				// TODO uncomment
+				// runTest(t, test, params, true)
+			}
 		})
 	})
 }
 
-func testListUsers(t *testing.T, client ClientInterface) {
-	t.Run("Schema1_1", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_1ListUsersTests(t, client)
-	})
-}
-
-func runSchema1_1ListUsersTests(t *testing.T, client ClientInterface) {
-	runTests(t, testParams{typesystem.SchemaVersion1_1, client})
-}
-
-func runTests(t *testing.T, params testParams) {
-	files := []string{
-		"tests/consolidated_1_1_tests.yaml",
-		//"tests/abac_tests.yaml", TODO add back
-	}
-
-	var allTestCases []individualTest
-
-	for _, file := range files {
-		var b []byte
-		var err error
-		schemaVersion := params.schemaVersion
-		if schemaVersion == typesystem.SchemaVersion1_1 {
-			b, err = assets.EmbedTests.ReadFile(file)
-		}
-		require.NoError(t, err)
-
-		var testCases listUsersTests
-		err = yaml.Unmarshal(b, &testCases)
-		require.NoError(t, err)
-
-		allTestCases = append(allTestCases, testCases.Tests...)
-	}
-
-	for _, test := range allTestCases {
-		test := test
-		runTest(t, test, params, false)
-		// TODO uncomment
-		// runTest(t, test, params, true)
-	}
-}
-
-func runTest(t *testing.T, test individualTest, params testParams, contextTupleTest bool) {
-	schemaVersion := params.schemaVersion
-	client := params.client
+func runTest(t *testing.T, test individualTest, client ClientInterface, contextTupleTest bool) {
 	ctx := context.Background()
 	name := test.Name
 
@@ -142,7 +117,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
-				SchemaVersion:   schemaVersion,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: typedefs,
 				Conditions:      model.GetConditions(),
 			})
