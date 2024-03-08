@@ -66,7 +66,7 @@ type ListObjectsResolutionMetadata struct {
 }
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
-	return &ResolutionMetadata{
+	return &ListObjectsResolutionMetadata{
 		QueryCount:    new(uint32),
 		DispatchCount: new(uint32),
 	}
@@ -74,7 +74,7 @@ func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 
 type ListObjectsResponse struct {
 	Objects            []string
-	ResolutionMetadata ResolutionMetadata
+	ResolutionMetadata ListObjectsResolutionMetadata
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -182,7 +182,7 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
-	resolutionMetadata *ResolutionMetadata,
+	resolutionMetadata *ListObjectsResolutionMetadata,
 ) error {
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -398,7 +398,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	resolutionMetadata := NewResolutionMetadata()
+	resolutionMetadata := NewListObjectsResolutionMetadata()
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
@@ -443,7 +443,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
-func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ResolutionMetadata, error) {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -455,7 +455,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		defer cancel()
 	}
 
-	resolutionMetadata := NewResolutionMetadata()
+	resolutionMetadata := NewListObjectsResolutionMetadata()
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {

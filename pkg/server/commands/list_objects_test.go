@@ -202,8 +202,6 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			})
 
 			require.NoError(t, err)
-			t.Log(resp.Objects)
-			t.Log(*resp.ResolutionMetadata.DispatchCount)
 
 			require.Equal(t, test.expectedDispatchCount, *resp.ResolutionMetadata.DispatchCount)
 		})
