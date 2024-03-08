@@ -111,7 +111,7 @@ func TestVerifyConfig(t *testing.T) {
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
-	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explict 100, because
+	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
 	require.GreaterOrEqual(t, DefaultMaxConditionEvaluationCost, 100)
 }
