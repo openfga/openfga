@@ -182,5 +182,23 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestDurationDatastoreQueryCountBuckets", flags.Lookup("request-duration-datastore-query-count-buckets"))
 		util.MustBindEnv("requestDurationDatastoreQueryCountBuckets", "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS")
+
+		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
+		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("dispatchThrottling.timeTickerFrequency", flags.Lookup("dispatch-throttling-time-ticker-frequency"))
+		util.MustBindEnv("dispatchThrottling.timeTickerFrequency", "OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY")
+
+		util.MustBindPFlag("dispatchThrottling.lowLevelPriorityLevel", flags.Lookup("dispatch-throttling-low-priority-level"))
+		util.MustBindEnv("dispatchThrottling.lowLevelPriorityLevel", "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL")
+
+		util.MustBindPFlag("dispatchThrottling.lowLevelPriorityShaper", flags.Lookup("dispatch-throttling-low-priority-shaper"))
+		util.MustBindEnv("dispatchThrottling.lowLevelPriorityShaper", "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER")
+
+		util.MustBindPFlag("dispatchThrottling.mediumLevelPriorityLevel", flags.Lookup("dispatch-throttling-medium-priority-level"))
+		util.MustBindEnv("dispatchThrottling.mediumLevelPriorityLevel", "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL")
+
+		util.MustBindPFlag("dispatchThrottling.mediumLevelPriorityShaper", flags.Lookup("dispatch-throttling-medium-priority-shaper"))
+		util.MustBindEnv("dispatchThrottling.mediumLevelPriorityShaper", "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_SHAPER")
 	}
 }

@@ -1040,6 +1040,30 @@ func TestDefaultConfig(t *testing.T) {
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
+
+	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.DispatchThrottlingConfig.Enabled)
+
+	val = res.Get("properties.dispatchThrottling.properties.timeTickerFrequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.DispatchThrottlingConfig.TimeTickerFrequency.String())
+
+	val = res.Get("properties.dispatchThrottling.properties.lowPriorityShaper.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.LowPriorityShaper)
+
+	val = res.Get("properties.dispatchThrottling.properties.lowPriorityLevel.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.LowPriorityLevel)
+
+	val = res.Get("properties.dispatchThrottling.properties.mediumPriorityShaper.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.MediumPriorityShaper)
+
+	val = res.Get("properties.dispatchThrottling.properties.mediumPriorityLevel.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.MediumPriorityLevel)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1119,6 +1143,12 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY", "1ms")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL", "120")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER", "110")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL", "60")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_SHAPER", "40")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1130,6 +1160,13 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
+		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
+		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-time-ticker-frequency"))
+		require.Equal(t, "120", viper.GetString("dispatch-throttling-low-priority-level"))
+		require.Equal(t, "110", viper.GetString("dispatch-throttling-low-priority-shaper"))
+		require.Equal(t, "60", viper.GetString("dispatch-throttling-medium-priority-level"))
+		require.Equal(t, "40", viper.GetString("dispatch-throttling-medium-priority-shaper"))
+
 		return nil
 	}
 

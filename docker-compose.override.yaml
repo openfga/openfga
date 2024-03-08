@@ -10,7 +10,7 @@ services:
       otel-collector:
         condition: service_started
     environment:
-      - OPENFGA_TRACE_ENABLED=true
+      - OPENFGA_TRACE_ENABLED=false
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true

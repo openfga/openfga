@@ -121,6 +121,13 @@ type Server struct {
 	checkResolver graph.CheckResolver
 
 	requestDurationByQueryHistogramBuckets []uint
+
+	rateLimitedCheckResolverEnabled              bool
+	rateLimitedCheckResolverTimerTickerFrequency time.Duration
+	rateLimitedCheckResolverLowPriorityLevel     uint32
+	rateLimitedCheckResolverLowPriorityShaper    uint32
+	rateLimitedCheckResolverMediumPriorityLevel  uint32
+	rateLimitedCheckResolverMediumPriorityShaper uint32
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -270,6 +277,48 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
+// WithRateLimitedCheckResolverEnabled sets whether dispatch throttling is enabled
+func WithRateLimitedCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.rateLimitedCheckResolverEnabled = enabled
+	}
+}
+
+// WithRateLimitedCheckResolverTimerTickerFrequency sets how frequent dispatch throttling is enabled
+func WithRateLimitedCheckResolverTimerTickerFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.rateLimitedCheckResolverTimerTickerFrequency = frequency
+	}
+}
+
+// WithRateLimitedCheckResolverLowPriorityLevel sets the number of dispatches a request incur before being placed on low priority shaper
+func WithRateLimitedCheckResolverLowPriorityLevel(level uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.rateLimitedCheckResolverLowPriorityLevel = level
+	}
+}
+
+// WithRateLimitedCheckResolverLowPriorityShaper sets the number of tickers required to dispatch a low priority work
+func WithRateLimitedCheckResolverLowPriorityShaper(shaper uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.rateLimitedCheckResolverLowPriorityShaper = shaper
+	}
+}
+
+// WithRateLimitedCheckResolverMediumPriorityLevel sets the number of dispatches a request incur before being placed on medium priority shaper
+func WithRateLimitedCheckResolverMediumPriorityLevel(level uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.rateLimitedCheckResolverMediumPriorityLevel = level
+	}
+}
+
+// WithRateLimitedCheckResolverMediumPriorityShaper sets tge initial frequency on un-throttled dispatches for medium priority jobs
+func WithRateLimitedCheckResolverMediumPriorityShaper(shaper uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.rateLimitedCheckResolverMediumPriorityShaper = shaper
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -304,6 +353,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		requestDurationByQueryHistogramBuckets: []uint{50, 200},
 		serviceName:                            openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+
+		rateLimitedCheckResolverEnabled:              serverconfig.DefaultCheckQueryCacheEnable,
+		rateLimitedCheckResolverTimerTickerFrequency: serverconfig.DefaultDispatchThrottlingTimeTickerFrequency,
+		rateLimitedCheckResolverLowPriorityLevel:     serverconfig.DefaultDispatchThrottlingLowPriorityLevel,
+		rateLimitedCheckResolverLowPriorityShaper:    serverconfig.DefaultDispatchThrottlingLowShaper,
+		rateLimitedCheckResolverMediumPriorityLevel:  serverconfig.DefaultDispatchThrottlingMediumPriorityLevel,
+		rateLimitedCheckResolverMediumPriorityShaper: serverconfig.DefaultDispatchThrottlingMediumShaper,
 	}
 
 	for _, opt := range opts {
@@ -317,22 +373,24 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	// For now, hard code the config
-	rateLimitConfig := graph.RateLimitedCheckResolverConfig{
-		NonImpedingDispatchNum: 50,
-		LowPriorityLevel:       100,
-		//LowPriorityWait:        200,
-		LowPriorityWait: 30,
+	if s.rateLimitedCheckResolverEnabled {
+		rateLimitConfig := graph.RateLimitedCheckResolverConfig{
+			TimerTickerFrequency: s.rateLimitedCheckResolverTimerTickerFrequency,
+			MediumPriorityLevel:  s.rateLimitedCheckResolverMediumPriorityLevel,
+			MediumPriorityShaper: s.rateLimitedCheckResolverMediumPriorityShaper,
+			LowPriorityLevel:     s.rateLimitedCheckResolverLowPriorityLevel,
+			LowPriorityShaper:    s.rateLimitedCheckResolverLowPriorityShaper,
+		}
+
+		rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
+		rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+		cycleDetectionCheckResolver.SetDelegate(localChecker)
+		localChecker.SetDelegate(rateLimitedCheckResolver)
+	} else {
+		cycleDetectionCheckResolver.SetDelegate(localChecker)
+		localChecker.SetDelegate(cycleDetectionCheckResolver)
 	}
-
-	rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
-	rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
-
-	cycleDetectionCheckResolver.SetDelegate(localChecker)
-	localChecker.SetDelegate(rateLimitedCheckResolver)
-
-	//cycleDetectionCheckResolver.SetDelegate(localChecker)
-	//localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",

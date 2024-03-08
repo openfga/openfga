@@ -200,6 +200,18 @@ func NewRunCommand() *cobra.Command {
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
 
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottlingConfig.Enabled, "enable throttling when request's number of dispatches is high")
+
+	flags.Duration("dispatch-throttling-time-ticker-frequency", defaultConfig.DispatchThrottlingConfig.TimeTickerFrequency, "defines how frequent dispatch throttling will be evaluated")
+
+	flags.Uint32("dispatch-throttling-low-priority-level", defaultConfig.DispatchThrottlingConfig.LowPriorityLevel, "define the number of dispatches to be considered in low priority throttling queue")
+
+	flags.Uint32("dispatch-throttling-low-priority-shaper", defaultConfig.DispatchThrottlingConfig.LowPriorityShaper, "number of tickers required to dispatch a low priority work")
+
+	flags.Uint32("dispatch-throttling-medium-priority-level", defaultConfig.DispatchThrottlingConfig.MediumPriorityLevel, "define the number of dispatches to be considered in medium priority throttling queue")
+
+	flags.Uint32("dispatch-throttling-medium-priority-shaper", defaultConfig.DispatchThrottlingConfig.MediumPriorityShaper, "initial frequency on un-throttled dispatches for medium priority jobs")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -510,6 +522,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithRateLimitedCheckResolverEnabled(config.DispatchThrottlingConfig.Enabled),
+		server.WithRateLimitedCheckResolverTimerTickerFrequency(config.DispatchThrottlingConfig.TimeTickerFrequency),
+		server.WithRateLimitedCheckResolverMediumPriorityShaper(config.DispatchThrottlingConfig.MediumPriorityShaper),
+		server.WithRateLimitedCheckResolverMediumPriorityLevel(config.DispatchThrottlingConfig.MediumPriorityLevel),
+		server.WithRateLimitedCheckResolverLowPriorityShaper(config.DispatchThrottlingConfig.LowPriorityShaper),
+		server.WithRateLimitedCheckResolverLowPriorityLevel(config.DispatchThrottlingConfig.LowPriorityLevel),
 		server.WithExperimentals(experimentals...),
 	)
 

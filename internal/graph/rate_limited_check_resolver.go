@@ -6,9 +6,11 @@ import (
 )
 
 type RateLimitedCheckResolverConfig struct {
-	NonImpedingDispatchNum uint32
-	LowPriorityLevel       uint32
-	LowPriorityWait        uint32
+	TimerTickerFrequency time.Duration
+	MediumPriorityLevel  uint32
+	MediumPriorityShaper uint32
+	LowPriorityLevel     uint32
+	LowPriorityShaper    uint32
 }
 
 // RateLimitedCheckResolver will prioritize
@@ -19,22 +21,39 @@ type RateLimitedCheckResolver struct {
 	lowPriorityQueue chan bool
 	medPriorityQueue chan bool
 	done             chan bool
+
+	// these are helper config value to reduce calculation needed for medium shaper
+	mediumPriorityLevel2      uint32
+	mediumPriorityLevel3      uint32
+	mediumPriorityLevel4      uint32
+	mediumPriorityShaperFreq2 uint32
+	mediumPriorityShaperFreq3 uint32
 }
 
 var _ CheckResolver = (*RateLimitedCheckResolver)(nil)
 
 func NewRateLimitedCheckResolver(
 	config RateLimitedCheckResolverConfig) *RateLimitedCheckResolver {
-	ticker := time.NewTicker(10 * time.Microsecond)
+	ticker := time.NewTicker(config.TimerTickerFrequency)
 	rateLimitedCheckResolver := &RateLimitedCheckResolver{
 		config:           config,
 		ticker:           ticker,
 		lowPriorityQueue: make(chan bool, 1),
 		medPriorityQueue: make(chan bool, 1),
 	}
+	rateLimitedCheckResolver.setMediumConfig(config)
 	rateLimitedCheckResolver.delegate = rateLimitedCheckResolver
 	go rateLimitedCheckResolver.runTicker()
 	return rateLimitedCheckResolver
+}
+
+func (r *RateLimitedCheckResolver) setMediumConfig(config RateLimitedCheckResolverConfig) {
+	mediumRange := config.LowPriorityLevel - config.MediumPriorityLevel
+	r.mediumPriorityLevel2 = config.MediumPriorityLevel + mediumRange/8
+	r.mediumPriorityLevel3 = config.MediumPriorityLevel + mediumRange/4
+	r.mediumPriorityLevel4 = config.MediumPriorityLevel + mediumRange/2
+	r.mediumPriorityShaperFreq2 = config.MediumPriorityShaper / 2
+	r.mediumPriorityShaperFreq3 = config.MediumPriorityShaper / 4
 }
 
 func (r *RateLimitedCheckResolver) SetDelegate(delegate CheckResolver) {
@@ -67,7 +86,7 @@ func (r *RateLimitedCheckResolver) runTicker() {
 		case <-r.ticker.C:
 			count++
 			r.nonBlockingSend(r.medPriorityQueue)
-			if count >= r.config.LowPriorityWait {
+			if count >= r.config.LowPriorityShaper {
 				count = 0
 				r.nonBlockingSend(r.lowPriorityQueue)
 			}
@@ -76,32 +95,30 @@ func (r *RateLimitedCheckResolver) runTicker() {
 }
 
 func (r *RateLimitedCheckResolver) shouldWait(currentNumDispatch uint32) bool {
-	delta := currentNumDispatch - r.config.NonImpedingDispatchNum
-	if delta < 32 {
-		return delta%8 == 0
+	delta := currentNumDispatch - r.config.MediumPriorityLevel
+	if currentNumDispatch < r.mediumPriorityLevel2 {
+		return delta%(r.config.MediumPriorityShaper) == 0
 	}
-	if delta < 64 {
-		return delta%4 == 0
+	if currentNumDispatch < r.mediumPriorityLevel3 {
+		return delta%(r.mediumPriorityShaperFreq2) == 0
 	}
-	if delta < 128 {
-		return delta%2 == 0
+	if currentNumDispatch < r.mediumPriorityLevel4 {
+		return delta%(r.mediumPriorityShaperFreq3) == 0
 	}
 	return true
-
 }
 
 func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	currentNumDispatch := req.DispatchCounter.Add(1)
-	if currentNumDispatch > r.config.NonImpedingDispatchNum {
+	if currentNumDispatch > r.config.MediumPriorityLevel {
 		if currentNumDispatch >= r.config.LowPriorityLevel {
 			<-r.lowPriorityQueue
 		} else {
 			if r.shouldWait(currentNumDispatch) {
 				<-r.medPriorityQueue
 			}
-
 		}
 	}
 	return r.delegate.ResolveCheck(ctx, req)

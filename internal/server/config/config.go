@@ -31,6 +31,13 @@ const (
 	// care should be taken here - decreasing can cause API compatibility problems with Conditions
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
+
+	DefaultDispatchThrottlingEnabled             = false
+	DefaultDispatchThrottlingTimeTickerFrequency = 10 * time.Microsecond
+	DefaultDispatchThrottlingMediumPriorityLevel = 50
+	DefaultDispatchThrottlingMediumShaper        = 8
+	DefaultDispatchThrottlingLowPriorityLevel    = 100
+	DefaultDispatchThrottlingLowShaper           = 30
 )
 
 type DatastoreMetricsConfig struct {
@@ -173,6 +180,16 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
+// DispatchThrottlingConfig defines configurations for dispatch throttling
+type DispatchThrottlingConfig struct {
+	Enabled              bool
+	TimeTickerFrequency  time.Duration
+	MediumPriorityLevel  uint32
+	MediumPriorityShaper uint32
+	LowPriorityLevel     uint32
+	LowPriorityShaper    uint32
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -221,16 +238,17 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore       DatastoreConfig
-	GRPC            GRPCConfig
-	HTTP            HTTPConfig
-	Authn           AuthnConfig
-	Log             LogConfig
-	Trace           TraceConfig
-	Playground      PlaygroundConfig
-	Profiler        ProfilerConfig
-	Metrics         MetricConfig
-	CheckQueryCache CheckQueryCache
+	Datastore                DatastoreConfig
+	GRPC                     GRPCConfig
+	HTTP                     HTTPConfig
+	Authn                    AuthnConfig
+	Log                      LogConfig
+	Trace                    TraceConfig
+	Playground               PlaygroundConfig
+	Profiler                 ProfilerConfig
+	Metrics                  MetricConfig
+	CheckQueryCache          CheckQueryCache
+	DispatchThrottlingConfig DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 }
@@ -295,6 +313,27 @@ func (cfg *Config) Verify() error {
 			return errors.New(
 				"request duration datastore query count bucket items must be non-negative integer",
 			)
+		}
+	}
+
+	if cfg.DispatchThrottlingConfig.Enabled {
+		if cfg.DispatchThrottlingConfig.TimeTickerFrequency <= 0 {
+			return errors.New("dispatch throttling time ticker frequency must be non-negative time duration")
+		}
+		if cfg.DispatchThrottlingConfig.LowPriorityLevel <= 0 {
+			return errors.New("dispatch throttling low priority level must be non-negative integer")
+		}
+		if cfg.DispatchThrottlingConfig.LowPriorityShaper <= 0 {
+			return errors.New("dispatch throttling low priority shaper must be non-negative integer")
+		}
+		if cfg.DispatchThrottlingConfig.MediumPriorityShaper <= 0 {
+			return errors.New("dispatch throttling medium priority level must be non-negative integer")
+		}
+		if cfg.DispatchThrottlingConfig.MediumPriorityLevel <= 0 {
+			return errors.New("dispatch throttling medium priority shaper must be non-negative integer")
+		}
+		if cfg.DispatchThrottlingConfig.LowPriorityLevel < cfg.DispatchThrottlingConfig.MediumPriorityLevel {
+			return errors.New("dispatch throttling low priority level must be lower or equal to medium priority level")
 		}
 	}
 
@@ -372,6 +411,14 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCheckQueryCacheEnable,
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
+		},
+		DispatchThrottlingConfig: DispatchThrottlingConfig{
+			Enabled:              DefaultDispatchThrottlingEnabled,
+			TimeTickerFrequency:  DefaultDispatchThrottlingTimeTickerFrequency,
+			LowPriorityLevel:     DefaultDispatchThrottlingLowPriorityLevel,
+			LowPriorityShaper:    DefaultDispatchThrottlingLowShaper,
+			MediumPriorityLevel:  DefaultDispatchThrottlingMediumPriorityLevel,
+			MediumPriorityShaper: DefaultDispatchThrottlingMediumShaper,
 		},
 	}
 }
