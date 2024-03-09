@@ -128,6 +128,8 @@ type Server struct {
 	rateLimitedCheckResolverLowPriorityShaper    uint32
 	rateLimitedCheckResolverMediumPriorityLevel  uint32
 	rateLimitedCheckResolverMediumPriorityShaper uint32
+
+	rateLimitedCheckResolverCloser func()
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -382,8 +384,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			LowPriorityShaper:    s.rateLimitedCheckResolverLowPriorityShaper,
 		}
 
+		s.logger.Info("Enabling dispatch throttling",
+			zap.Duration("TimerTickerFrequency", s.rateLimitedCheckResolverTimerTickerFrequency),
+			zap.Uint32("MediumPriorityLevel", s.rateLimitedCheckResolverMediumPriorityLevel),
+			zap.Uint32("MediumPriorityShaper", s.rateLimitedCheckResolverMediumPriorityShaper),
+			zap.Uint32("LowPriorityLevel", s.rateLimitedCheckResolverLowPriorityLevel),
+			zap.Uint32("LowPriorityShaper", s.rateLimitedCheckResolverLowPriorityShaper),
+		)
+
 		rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
 		rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+		s.rateLimitedCheckResolverCloser = rateLimitedCheckResolver.Close
 
 		cycleDetectionCheckResolver.SetDelegate(localChecker)
 		localChecker.SetDelegate(rateLimitedCheckResolver)
@@ -423,6 +434,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
+	if s.rateLimitedCheckResolverCloser != nil {
+		s.rateLimitedCheckResolverCloser()
+	}
+
 	if s.cachedCheckResolverCloser != nil {
 		s.cachedCheckResolverCloser()
 	}

@@ -111,7 +111,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("negative_dispatch_throttling_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottlingConfig = DispatchThrottlingConfig{
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
 			TimeTickerFrequency:  0,
 			MediumPriorityShaper: 30,
@@ -126,7 +126,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("negative_dispatch_medium_priority_shaper", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottlingConfig = DispatchThrottlingConfig{
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
 			TimeTickerFrequency:  10 * time.Microsecond,
 			MediumPriorityShaper: 0,
@@ -141,7 +141,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("negative_dispatch_medium_priority_level", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottlingConfig = DispatchThrottlingConfig{
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
 			TimeTickerFrequency:  10 * time.Microsecond,
 			MediumPriorityShaper: 30,
@@ -156,7 +156,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("negative_dispatch_low_priority_level", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottlingConfig = DispatchThrottlingConfig{
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
 			TimeTickerFrequency:  10 * time.Microsecond,
 			MediumPriorityShaper: 30,
@@ -171,7 +171,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("negative_dispatch_low_shaper_level", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottlingConfig = DispatchThrottlingConfig{
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
 			TimeTickerFrequency:  10 * time.Microsecond,
 			MediumPriorityShaper: 30,
@@ -186,7 +186,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("low_level_must_not_be_smaller_than_medium_level", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottlingConfig = DispatchThrottlingConfig{
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
 			TimeTickerFrequency:  10 * time.Microsecond,
 			MediumPriorityShaper: 30,

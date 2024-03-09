@@ -238,17 +238,17 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore                DatastoreConfig
-	GRPC                     GRPCConfig
-	HTTP                     HTTPConfig
-	Authn                    AuthnConfig
-	Log                      LogConfig
-	Trace                    TraceConfig
-	Playground               PlaygroundConfig
-	Profiler                 ProfilerConfig
-	Metrics                  MetricConfig
-	CheckQueryCache          CheckQueryCache
-	DispatchThrottlingConfig DispatchThrottlingConfig
+	Datastore          DatastoreConfig
+	GRPC               GRPCConfig
+	HTTP               HTTPConfig
+	Authn              AuthnConfig
+	Log                LogConfig
+	Trace              TraceConfig
+	Playground         PlaygroundConfig
+	Profiler           ProfilerConfig
+	Metrics            MetricConfig
+	CheckQueryCache    CheckQueryCache
+	DispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 }
@@ -316,23 +316,23 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if cfg.DispatchThrottlingConfig.Enabled {
-		if cfg.DispatchThrottlingConfig.TimeTickerFrequency <= 0 {
+	if cfg.DispatchThrottling.Enabled {
+		if cfg.DispatchThrottling.TimeTickerFrequency <= 0 {
 			return errors.New("dispatch throttling time ticker frequency must be non-negative time duration")
 		}
-		if cfg.DispatchThrottlingConfig.LowPriorityLevel <= 0 {
+		if cfg.DispatchThrottling.LowPriorityLevel <= 0 {
 			return errors.New("dispatch throttling low priority level must be non-negative integer")
 		}
-		if cfg.DispatchThrottlingConfig.LowPriorityShaper <= 0 {
+		if cfg.DispatchThrottling.LowPriorityShaper <= 0 {
 			return errors.New("dispatch throttling low priority shaper must be non-negative integer")
 		}
-		if cfg.DispatchThrottlingConfig.MediumPriorityShaper <= 0 {
+		if cfg.DispatchThrottling.MediumPriorityShaper <= 0 {
 			return errors.New("dispatch throttling medium priority level must be non-negative integer")
 		}
-		if cfg.DispatchThrottlingConfig.MediumPriorityLevel <= 0 {
+		if cfg.DispatchThrottling.MediumPriorityLevel <= 0 {
 			return errors.New("dispatch throttling medium priority shaper must be non-negative integer")
 		}
-		if cfg.DispatchThrottlingConfig.LowPriorityLevel < cfg.DispatchThrottlingConfig.MediumPriorityLevel {
+		if cfg.DispatchThrottling.LowPriorityLevel < cfg.DispatchThrottling.MediumPriorityLevel {
 			return errors.New("dispatch throttling low priority level must be lower or equal to medium priority level")
 		}
 	}
@@ -412,7 +412,7 @@ func DefaultConfig() *Config {
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
-		DispatchThrottlingConfig: DispatchThrottlingConfig{
+		DispatchThrottling: DispatchThrottlingConfig{
 			Enabled:              DefaultDispatchThrottlingEnabled,
 			TimeTickerFrequency:  DefaultDispatchThrottlingTimeTickerFrequency,
 			LowPriorityLevel:     DefaultDispatchThrottlingLowPriorityLevel,

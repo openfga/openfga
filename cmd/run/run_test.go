@@ -1043,27 +1043,27 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.DispatchThrottlingConfig.Enabled)
+	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
 
 	val = res.Get("properties.dispatchThrottling.properties.timeTickerFrequency.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.DispatchThrottlingConfig.TimeTickerFrequency.String())
+	require.Equal(t, val.String(), cfg.DispatchThrottling.TimeTickerFrequency.String())
 
 	val = res.Get("properties.dispatchThrottling.properties.lowPriorityShaper.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.LowPriorityShaper)
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.LowPriorityShaper)
 
 	val = res.Get("properties.dispatchThrottling.properties.lowPriorityLevel.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.LowPriorityLevel)
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.LowPriorityLevel)
 
 	val = res.Get("properties.dispatchThrottling.properties.mediumPriorityShaper.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.MediumPriorityShaper)
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MediumPriorityShaper)
 
 	val = res.Get("properties.dispatchThrottling.properties.mediumPriorityLevel.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottlingConfig.MediumPriorityLevel)
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MediumPriorityLevel)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
