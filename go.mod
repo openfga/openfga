@@ -26,7 +26,7 @@ require (
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20240201160513-05de9d8be3ee
-	github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993
+	github.com/openfga/language/pkg/go v0.0.0-20240205122832-cf938f8254bd
 	github.com/pressly/goose/v3 v3.18.0
 	github.com/prometheus/client_golang v1.19.0
 	github.com/rs/cors v1.10.1
@@ -82,6 +82,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0-rc6 // indirect
+	github.com/openfga/language v0.0.0-20240205122832-cf938f8254bd // indirect
 	github.com/pelletier/go-toml/v2 v2.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
