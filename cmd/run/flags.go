@@ -189,16 +189,16 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("dispatchThrottling.timeTickerFrequency", flags.Lookup("dispatch-throttling-time-ticker-frequency"))
 		util.MustBindEnv("dispatchThrottling.timeTickerFrequency", "OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY")
 
-		util.MustBindPFlag("dispatchThrottling.lowLevelPriorityLevel", flags.Lookup("dispatch-throttling-low-priority-level"))
-		util.MustBindEnv("dispatchThrottling.lowLevelPriorityLevel", "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL")
+		util.MustBindPFlag("dispatchThrottling.lowPriorityLevel", flags.Lookup("dispatch-throttling-low-priority-level"))
+		util.MustBindEnv("dispatchThrottling.lowPriorityLevel", "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL")
 
-		util.MustBindPFlag("dispatchThrottling.lowLevelPriorityShaper", flags.Lookup("dispatch-throttling-low-priority-shaper"))
-		util.MustBindEnv("dispatchThrottling.lowLevelPriorityShaper", "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER")
+		util.MustBindPFlag("dispatchThrottling.lowPriorityShaper", flags.Lookup("dispatch-throttling-low-priority-shaper"))
+		util.MustBindEnv("dispatchThrottling.lowPriorityShaper", "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER")
 
-		util.MustBindPFlag("dispatchThrottling.mediumLevelPriorityLevel", flags.Lookup("dispatch-throttling-medium-priority-level"))
-		util.MustBindEnv("dispatchThrottling.mediumLevelPriorityLevel", "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL")
+		util.MustBindPFlag("dispatchThrottling.mediumPriorityLevel", flags.Lookup("dispatch-throttling-medium-priority-level"))
+		util.MustBindEnv("dispatchThrottling.mediumPriorityLevel", "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL")
 
-		util.MustBindPFlag("dispatchThrottling.mediumLevelPriorityShaper", flags.Lookup("dispatch-throttling-medium-priority-shaper"))
-		util.MustBindEnv("dispatchThrottling.mediumLevelPriorityShaper", "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_SHAPER")
+		util.MustBindPFlag("dispatchThrottling.mediumPriorityShaper", flags.Lookup("dispatch-throttling-medium-priority-shaper"))
+		util.MustBindEnv("dispatchThrottling.mediumPriorityShaper", "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_SHAPER")
 	}
 }
