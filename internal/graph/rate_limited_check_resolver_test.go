@@ -84,9 +84,10 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 			defer goFuncDone.Done()
 			goFuncInitiated.Done()
 			_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{DispatchCounter: dispatchCounter})
+			//nolint:testifylint
 			require.NoError(t, err)
+			//nolint:testifylint
 			require.Equal(t, uint32(202), dispatchCounter.Load())
-
 		}()
 
 		goFuncInitiated.Wait()
@@ -104,7 +105,6 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		goFuncDone.Wait()
 		require.Equal(t, uint32(1), c.NumResolveCheck())
 		require.Equal(t, uint32(0), newCount)
-
 	})
 
 	t.Run("above medium shaping level (just past threshold) should be shaped slightly", func(t *testing.T) {
@@ -135,6 +135,8 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 				defer goFuncDone.Done()
 				goFuncInitiated.Done()
 				_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{DispatchCounter: dispatchCounter})
+
+				//nolint:testifylint
 				require.NoError(t, err)
 			}()
 		}
@@ -179,6 +181,8 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 				defer goFuncDone.Done()
 				goFuncInitiated.Done()
 				_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{DispatchCounter: dispatchCounter})
+
+				//nolint:testifylint
 				require.NoError(t, err)
 			}()
 		}
@@ -198,7 +202,6 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		goFuncDone.Wait()
 		require.Equal(t, uint32(8), c.NumResolveCheck())
 		require.Equal(t, uint32(0), newCount)
-
 	})
 
 	t.Run("above medium shaping level (over one quarter) should be shaped more aggressively", func(t *testing.T) {
@@ -229,6 +232,8 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 				defer goFuncDone.Done()
 				goFuncInitiated.Done()
 				_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{DispatchCounter: dispatchCounter})
+
+				//nolint:testifylint
 				require.NoError(t, err)
 			}()
 		}
@@ -258,7 +263,6 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		goFuncDone.Wait()
 		require.Equal(t, uint32(8), c.NumResolveCheck())
 		require.Equal(t, uint32(0), newCount)
-
 	})
 
 	t.Run("above medium shaping level (over half) should be shaped even more aggressively", func(t *testing.T) {
@@ -289,6 +293,8 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 				defer goFuncDone.Done()
 				goFuncInitiated.Done()
 				_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{DispatchCounter: dispatchCounter})
+
+				//nolint:testifylint
 				require.NoError(t, err)
 			}()
 		}
@@ -338,7 +344,5 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		goFuncDone.Wait()
 		require.Equal(t, uint32(8), c.NumResolveCheck())
 		require.Equal(t, uint32(0), newCount)
-
 	})
-
 }

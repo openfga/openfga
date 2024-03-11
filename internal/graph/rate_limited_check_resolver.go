@@ -3,8 +3,15 @@ package graph
 import (
 	"context"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
+// RateLimitedCheckResolverConfig encapsulates configuration for rate limited check resolver
 type RateLimitedCheckResolverConfig struct {
 	TimerTickerFrequency time.Duration
 	MediumPriorityLevel  uint32
@@ -13,7 +20,8 @@ type RateLimitedCheckResolverConfig struct {
 	LowPriorityShaper    uint32
 }
 
-// RateLimitedCheckResolver will prioritize
+// RateLimitedCheckResolver will prioritize high priority queue (requests with smaller number of dispatches) over
+// medium and low priority queue (requests with larger number of dispatches)
 type RateLimitedCheckResolver struct {
 	delegate         CheckResolver
 	config           RateLimitedCheckResolverConfig
@@ -31,6 +39,18 @@ type RateLimitedCheckResolver struct {
 }
 
 var _ CheckResolver = (*RateLimitedCheckResolver)(nil)
+
+var (
+	rateLimitedCheckResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            "rate_limited_check_resolver_delay_ms",
+		Help:                            "Time spent waiting for rate limited check resolver",
+		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method", "queue_name"})
+)
 
 func NewRateLimitedCheckResolver(
 	config RateLimitedCheckResolverConfig) *RateLimitedCheckResolver {
@@ -117,15 +137,30 @@ func (r *RateLimitedCheckResolver) shouldWait(currentNumDispatch uint32) bool {
 func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	start := time.Now()
+	queueName := "high_priority"
+
 	currentNumDispatch := req.DispatchCounter.Add(1)
 	if currentNumDispatch > r.config.MediumPriorityLevel {
 		if currentNumDispatch >= r.config.LowPriorityLevel {
+			queueName = "low_priority"
 			<-r.lowPriorityQueue
 		} else {
 			if r.shouldWait(currentNumDispatch) {
+				queueName = "medium_priority"
 				<-r.medPriorityQueue
 			}
 		}
 	}
+
+	end := time.Now()
+	timeWaiting := end.Sub(start).Milliseconds()
+	rpcInfo := telemetry.RPCInfoFromContext(ctx)
+	rateLimitedCheckResolverDelayMsHistogram.WithLabelValues(
+		rpcInfo.Service,
+		rpcInfo.Method,
+		queueName,
+	).Observe(float64(timeWaiting))
+
 	return r.delegate.ResolveCheck(ctx, req)
 }
