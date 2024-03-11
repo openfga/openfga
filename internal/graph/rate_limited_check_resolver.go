@@ -38,8 +38,9 @@ func NewRateLimitedCheckResolver(
 	rateLimitedCheckResolver := &RateLimitedCheckResolver{
 		config:           config,
 		ticker:           ticker,
-		lowPriorityQueue: make(chan bool, 1),
-		medPriorityQueue: make(chan bool, 1),
+		lowPriorityQueue: make(chan bool),
+		medPriorityQueue: make(chan bool),
+		done:             make(chan bool),
 	}
 	rateLimitedCheckResolver.setMediumConfig(config)
 	rateLimitedCheckResolver.delegate = rateLimitedCheckResolver
@@ -73,6 +74,16 @@ func (r *RateLimitedCheckResolver) nonBlockingSend(signalChan chan bool) {
 	}
 }
 
+func (r *RateLimitedCheckResolver) handleTimeTick(count uint32) uint32 {
+	count++
+	r.nonBlockingSend(r.medPriorityQueue)
+	if count >= r.config.LowPriorityShaper {
+		count = 0
+		r.nonBlockingSend(r.lowPriorityQueue)
+	}
+	return count
+}
+
 func (r *RateLimitedCheckResolver) runTicker() {
 	count := uint32(0)
 	for {
@@ -84,12 +95,7 @@ func (r *RateLimitedCheckResolver) runTicker() {
 			close(r.lowPriorityQueue)
 			return
 		case <-r.ticker.C:
-			count++
-			r.nonBlockingSend(r.medPriorityQueue)
-			if count >= r.config.LowPriorityShaper {
-				count = 0
-				r.nonBlockingSend(r.lowPriorityQueue)
-			}
+			count = r.handleTimeTick(count)
 		}
 	}
 }
