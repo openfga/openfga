@@ -524,13 +524,27 @@ Notice that when we first visit the subproblem `group:1#member@user:jon` we add 
 
 ### Concurrency Control
 #### Resolution Depth
-- [] todo: fill me out
+- [] todo: fill me out //TODO poovam Check only uses concurrent breadth limit and not concurrent depth limit. depth limit is used only in ListObjects. Also resolutionmetadata for check inside list object seems wrong. TODO Poovam verify
+
+//TODO Poovam - our current concurrency logic is not eager enough. We wait for the channel to receive the response and it has to be read to close the channel. Instead we should close this in the CheckHandlerFunc to close it as soon as possible incase of unions. This can avoid us doing more concurrent resolves than required but very small optimisation.
+//Probably we can send a flag saying closeEager and if set to true, it will close the channel prematurely.
+//Or we can send a seperate channel that keeps eagerly waiting for success. This way the success message doesn't wait in a queue waiting to be read.
 
 #### Resolution Breadth
-- [] todo: fill me out
+There is another resolveNodeBreadthLimit
 
 #### Bounding Concurrency at the Storage Layer
-- [] todo: fill me out
+OpenFGA has multiple abstractions before we read the data from the storage (Postgres/MySQL/In Memory)
+
+![storage-layer.png](images%2Fstorage-layer.png)
+
+Bounded Concurrency Tuple Reader is the first layer of our Storage abstraction, and it is responsible for avoiding multiple concurrent requests thundering to the storage layer causing contention
+
+The max number of requests can be configured using `maxConcurrentReadsForCheck`. There is a similar flag for ListObjects that can be set using `maxConcurrentReadsForListObjects`.
+
+The [limiter](https://github.com/openfga/openfga/blob/main/pkg/storage/storagewrappers/boundedconcurrency.go#L36) is a channel that is the size of the `maxConcurrentReadsForCheck` and it is written to everytime a database request is made. Once the request is completed, the channel is read from to make space for any new requests.
+
+Any time the channel is full, new data base requests have to wait until there is more space available to make the requests.
 
 ### CheckResolver
 The [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface establishes a contract that all implementations of a Check query resolver must implement. The interface allows for layered dispatch composition as well as remote dispatch semantics (though this is not implemented yet). 
