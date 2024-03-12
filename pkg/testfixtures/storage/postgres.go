@@ -48,10 +48,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	postgresContainer, err := testcontainerspostgres.RunContainer(ctx,
 		testcontainers.WithImage(postgresImage),
-		testcontainers.WithEnv(map[string]string{
-			"POSTGRES_DB":       "defaultdb",
-			"POSTGRES_PASSWORD": "secret",
-		}),
 		testcontainers.WithWaitStrategy(wait.
 			ForLog("database system is ready to accept connections").
 			WithOccurrence(2).

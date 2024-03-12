@@ -12,13 +12,11 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types/container"
 	"github.com/go-sql-driver/mysql"
+	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainersmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
-	"github.com/testcontainers/testcontainers-go/wait"
-
-	"github.com/openfga/openfga/assets"
 )
 
 const (
@@ -50,11 +48,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	mysqlContainer, err := testcontainersmysql.RunContainer(ctx,
 		testcontainers.WithImage(mySQLImage),
-		testcontainers.WithEnv(map[string]string{
-			"MYSQL_DATABASE":      "defaultdb",
-			"MYSQL_ROOT_PASSWORD": "secret",
-		}),
-		testcontainers.WithWaitStrategy(wait.ForLog("port: 3306  MySQL Community Server - GPL")),
 		testcontainers.WithHostConfigModifier(func(hostConfig *container.HostConfig) {
 			hostConfig.Tmpfs = map[string]string{"/var/lib/mysql": ""}
 		}),
