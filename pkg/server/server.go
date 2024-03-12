@@ -86,7 +86,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method", "datastore_query_count"})
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -119,7 +119,8 @@ type Server struct {
 
 	checkResolver graph.CheckResolver
 
-	requestDurationByQueryHistogramBuckets []uint
+	requestDurationByQueryHistogramBuckets         []uint
+	requestDurationByDispatchCountHistogramBuckets []uint
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -263,6 +264,14 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
+// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByDispatchCountHistogramBuckets
+func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		s.requestDurationByDispatchCountHistogramBuckets = buckets
+	}
+}
+
 func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxAuthorizationModelSizeInBytes = size
@@ -301,8 +310,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkResolver:          nil,
 
-		requestDurationByQueryHistogramBuckets: []uint{50, 200},
-		serviceName:                            openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
+		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
+		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 	}
 
 	for _, opt := range opts {
@@ -340,6 +350,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+	}
+
+	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
 
@@ -451,6 +465,12 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 	).Observe(dispatchCount)
 
+	requestDurationByQueryHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
@@ -534,6 +554,12 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(*resolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationByQueryHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return nil
@@ -707,6 +733,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationByQueryHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil

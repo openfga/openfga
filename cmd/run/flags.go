@@ -182,5 +182,8 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestDurationDatastoreQueryCountBuckets", flags.Lookup("request-duration-datastore-query-count-buckets"))
 		util.MustBindEnv("requestDurationDatastoreQueryCountBuckets", "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS")
+
+		util.MustBindPFlag("requestDurationDatastoreDispatchCountBuckets", flags.Lookup("request-duration-datastore-dispatch-count-buckets"))
+		util.MustBindEnv("requestDurationDatastoreDispatchCountBuckets", "OPENFGA_REQUEST_DURATION_DATASTORE_DISPATCH_COUNT_BUCKETS")
 	}
 }

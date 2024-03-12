@@ -232,7 +232,8 @@ type Config struct {
 	Metrics         MetricConfig
 	CheckQueryCache CheckQueryCache
 
-	RequestDurationDatastoreQueryCountBuckets []string
+	RequestDurationDatastoreQueryCountBuckets    []string
+	RequestDurationDatastoreDispatchCountBuckets []string
 }
 
 func (cfg *Config) Verify() error {
@@ -304,18 +305,19 @@ func (cfg *Config) Verify() error {
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxTuplesPerWrite:                         DefaultMaxTuplesPerWrite,
-		MaxTypesPerAuthorizationModel:             DefaultMaxTypesPerAuthorizationModel,
-		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
-		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
-		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
-		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
-		ResolveNodeLimit:                          DefaultResolveNodeLimit,
-		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
-		Experimentals:                             []string{},
-		ListObjectsDeadline:                       DefaultListObjectsDeadline,
-		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
-		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		MaxTuplesPerWrite:                            DefaultMaxTuplesPerWrite,
+		MaxTypesPerAuthorizationModel:                DefaultMaxTypesPerAuthorizationModel,
+		MaxAuthorizationModelSizeInBytes:             DefaultMaxAuthorizationModelSizeInBytes,
+		MaxConcurrentReadsForCheck:                   DefaultMaxConcurrentReadsForCheck,
+		MaxConcurrentReadsForListObjects:             DefaultMaxConcurrentReadsForListObjects,
+		ChangelogHorizonOffset:                       DefaultChangelogHorizonOffset,
+		ResolveNodeLimit:                             DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit:                      DefaultResolveNodeBreadthLimit,
+		Experimentals:                                []string{},
+		ListObjectsDeadline:                          DefaultListObjectsDeadline,
+		ListObjectsMaxResults:                        DefaultListObjectsMaxResults,
+		RequestDurationDatastoreQueryCountBuckets:    []string{"50", "200"},
+		RequestDurationDatastoreDispatchCountBuckets: []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
