@@ -1383,3 +1383,33 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
+
+func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
+
+	t.Run("rejects_request_with_schema_version_1.2", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_2,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) is not supported"))
+	})
+}
