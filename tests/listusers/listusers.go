@@ -96,96 +96,100 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 
 		storeID := resp.GetId()
 
-		for _, stage := range test.Stages {
-			if contextTupleTest && len(stage.Tuples) > 20 {
-				// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
-				t.Skipf("cannot send more than 20 contextual tuples in one request")
-			}
-			// arrange: write model
-			var typedefs []*openfgav1.TypeDefinition
-			model, err := parser.TransformDSLToProto(stage.Model)
-			if err != nil {
-				typedefs = oldparser.MustParse(stage.Model)
-			} else {
-				typedefs = model.GetTypeDefinitions()
-			}
-
-			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-				StoreId:         storeID,
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-				Conditions:      model.GetConditions(),
-			})
-			require.NoError(t, err)
-
-			tuples := stage.Tuples
-			tuplesLength := len(tuples)
-			// arrange: write tuples
-			if tuplesLength > 0 && !contextTupleTest {
-				for i := 0; i < tuplesLength; i += writeMaxChunkSize {
-					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-					writeChunk := (tuples)[i:end]
-					_, err = client.Write(ctx, &openfgav1.WriteRequest{
-						StoreId:              storeID,
-						AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-						Writes: &openfgav1.WriteRequestWrites{
-							TupleKeys: writeChunk,
-						},
-					})
-					require.NoError(t, err)
+		for stageNumber, stage := range test.Stages {
+			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
+				if contextTupleTest && len(stage.Tuples) > 20 {
+					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
+					t.Skipf("cannot send more than 20 contextual tuples in one request")
 				}
-			}
-
-			if len(stage.ListUsersAssertions) == 0 {
-				t.Skipf("no list users assertions defined")
-			}
-
-			for _, assertion := range stage.ListUsersAssertions {
-				detailedInfo := fmt.Sprintf("ListUsers request: %v. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request.ToString(), stage.Model, stage.Tuples, assertion.ContextualTuples)
-				ctxTuples := assertion.ContextualTuples
-				if contextTupleTest {
-					ctxTuples = append(ctxTuples, stage.Tuples...)
+				// arrange: write model
+				var typedefs []*openfgav1.TypeDefinition
+				model, err := parser.TransformDSLToProto(stage.Model)
+				if err != nil {
+					typedefs = oldparser.MustParse(stage.Model)
+				} else {
+					typedefs = model.GetTypeDefinitions()
 				}
 
-				// assert 1: on regular list users endpoint
-				convertedRequest := assertion.Request.ToProtoRequest()
-				resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
-					StoreId:              storeID,
-					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-					Object:               convertedRequest.GetObject(),
-					Relation:             convertedRequest.GetRelation(),
-					UserFilters:          convertedRequest.GetUserFilters(),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: ctxTuples,
-					},
+				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+					TypeDefinitions: typedefs,
+					Conditions:      model.GetConditions(),
 				})
+				require.NoError(t, err)
 
-				if assertion.ErrorCode == 0 {
-					require.NoError(t, err, detailedInfo)
-					require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp), detailedInfo)
-
-					// assert 2: each object in the response of ListUsers should return check -> true
-					for _, user := range resp.GetUsers() {
-						checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user.GetObject()))
-						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+				tuples := stage.Tuples
+				tuplesLength := len(tuples)
+				// arrange: write tuples
+				if tuplesLength > 0 && !contextTupleTest {
+					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+						writeChunk := (tuples)[i:end]
+						_, err = client.Write(ctx, &openfgav1.WriteRequest{
 							StoreId:              storeID,
-							TupleKey:             checkRequestTupleKey,
 							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+							Writes: &openfgav1.WriteRequestWrites{
+								TupleKeys: writeChunk,
+							},
+						})
+						require.NoError(t, err)
+					}
+				}
+
+				if len(stage.ListUsersAssertions) == 0 {
+					t.Skipf("no list users assertions defined")
+				}
+
+				for assertionNumber, assertion := range stage.ListUsersAssertions {
+					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
+						detailedInfo := fmt.Sprintf("ListUsers request: %v. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request.ToString(), stage.Model, stage.Tuples, assertion.ContextualTuples)
+						ctxTuples := assertion.ContextualTuples
+						if contextTupleTest {
+							ctxTuples = append(ctxTuples, stage.Tuples...)
+						}
+
+						// assert 1: on regular list users endpoint
+						convertedRequest := assertion.Request.ToProtoRequest()
+						resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+							Object:               convertedRequest.GetObject(),
+							Relation:             convertedRequest.GetRelation(),
+							UserFilters:          convertedRequest.GetUserFilters(),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
-							Context: assertion.Context,
 						})
-						require.NoError(t, err, detailedInfo)
-						require.True(t, checkResp.GetAllowed(), "Expected allowed = true", checkRequestTupleKey)
-					}
-				} else {
-					require.Error(t, err, detailedInfo)
-					e, ok := status.FromError(err)
-					require.True(t, ok, detailedInfo)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+
+						if assertion.ErrorCode == 0 {
+							require.NoError(t, err, detailedInfo)
+							require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp), detailedInfo)
+
+							// assert 2: each object in the response of ListUsers should return check -> true
+							for _, user := range resp.GetUsers() {
+								checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user.GetObject()))
+								checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+									StoreId:              storeID,
+									TupleKey:             checkRequestTupleKey,
+									AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+									ContextualTuples: &openfgav1.ContextualTupleKeys{
+										TupleKeys: ctxTuples,
+									},
+									Context: assertion.Context,
+								})
+								require.NoError(t, err, detailedInfo)
+								require.True(t, checkResp.GetAllowed(), "Expected allowed = true", checkRequestTupleKey)
+							}
+						} else {
+							require.Error(t, err, detailedInfo)
+							e, ok := status.FromError(err)
+							require.True(t, ok, detailedInfo)
+							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+						}
+					})
 				}
-			}
+			})
 		}
 	})
 }
