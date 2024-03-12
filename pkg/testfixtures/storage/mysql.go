@@ -12,11 +12,12 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types/container"
 	"github.com/go-sql-driver/mysql"
-	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainersmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
+
+	"github.com/openfga/openfga/assets"
 )
 
 const (
