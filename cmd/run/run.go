@@ -200,6 +200,8 @@ func NewRunCommand() *cobra.Command {
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
 
+	flags.StringSlice("request-duration-datastore-dispatch-count-buckets", defaultConfig.RequestDurationDatastoreDispatchCountBuckets, "datastore query count buckets used in labelling request duration by dispatch count histogram")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
