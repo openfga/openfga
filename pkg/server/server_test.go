@@ -1373,7 +1373,6 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 }
 
 func TestRateLimitedCheckResolver(t *testing.T) {
-
 	t.Run("default_rate_limited_check_resolver_disabled", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.DispatchThrottling.Enabled)
