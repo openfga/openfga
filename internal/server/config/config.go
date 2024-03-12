@@ -299,6 +299,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if len(cfg.RequestDurationDatastoreDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDatastoreDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration datastore dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
 	return nil
 }
 
