@@ -1371,3 +1371,37 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
+
+func TestRateLimitedCheckResolver(t *testing.T) {
+
+	t.Run("default_rate_limited_check_resolver_disabled", func(t *testing.T) {
+		cfg := serverconfig.DefaultConfig()
+		require.False(t, cfg.DispatchThrottling.Enabled)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+		)
+		require.Nil(t, s.rateLimitedCheckResolverCloser)
+		require.False(t, s.rateLimitedCheckResolverEnabled)
+
+		defer s.Close()
+	})
+	t.Run("enable_rate_limited_check_resolver_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithRateLimitedCheckResolverEnabled(true),
+			WithRateLimitedCheckResolverMediumPriorityShaper(20),
+			WithRateLimitedCheckResolverMediumPriorityLevel(30),
+			WithRateLimitedCheckResolverLowPriorityShaper(40),
+			WithRateLimitedCheckResolverLowPriorityLevel(50),
+		)
+		require.NotNil(t, s.rateLimitedCheckResolverCloser)
+		require.True(t, s.rateLimitedCheckResolverEnabled)
+		require.EqualValues(t, 20, s.rateLimitedCheckResolverMediumPriorityShaper)
+		require.EqualValues(t, 30, s.rateLimitedCheckResolverMediumPriorityLevel)
+		require.EqualValues(t, 40, s.rateLimitedCheckResolverLowPriorityShaper)
+		require.EqualValues(t, 50, s.rateLimitedCheckResolverLowPriorityLevel)
+
+		defer s.Close()
+	})
+}
