@@ -1040,6 +1040,13 @@ func TestDefaultConfig(t *testing.T) {
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
+
+	val = res.Get("properties.requestDurationDatastoreDispatchCountBuckets.default")
+	require.True(t, val.Exists())
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreDispatchCountBuckets))
+	for index, arrayVal := range val.Array() {
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreDispatchCountBuckets[index])
+	}
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1087,6 +1094,7 @@ func TestParseConfig(t *testing.T) {
     limit: 100
     TTL: 5s
 requestDurationDatastoreQueryCountBuckets: [33,44]
+requestDurationDatastoreDispatchCountBuckets: [32,42]
 `
 	util.PrepareTempConfigFile(t, config)
 
@@ -1105,6 +1113,7 @@ requestDurationDatastoreQueryCountBuckets: [33,44]
 	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
+	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDatastoreDispatchCountBuckets)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {

@@ -108,6 +108,30 @@ func TestVerifyConfig(t *testing.T) {
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
+
+	t.Run("empty_request_duration_datastore_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDatastoreDispatchCountBuckets = []string{}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_int_request_duration_datastore_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDatastoreDispatchCountBuckets = []string{"12", "45a", "66"}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("negative_request_duration_datastore_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDatastoreDispatchCountBuckets = []string{"12", "-45", "66"}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
