@@ -1041,6 +1041,13 @@ func TestDefaultConfig(t *testing.T) {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
 
+	val = res.Get("properties.requestDurationDispatchCountBuckets.default")
+	require.True(t, val.Exists())
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDispatchCountBuckets))
+	for index, arrayVal := range val.Array() {
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
+	}
+
 	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
@@ -1111,6 +1118,7 @@ func TestParseConfig(t *testing.T) {
     limit: 100
     TTL: 5s
 requestDurationDatastoreQueryCountBuckets: [33,44]
+requestDurationDispatchCountBuckets: [32,42]
 `
 	util.PrepareTempConfigFile(t, config)
 
@@ -1129,6 +1137,7 @@ requestDurationDatastoreQueryCountBuckets: [33,44]
 	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
+	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {

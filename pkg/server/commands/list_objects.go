@@ -59,7 +59,7 @@ type ListObjectsQuery struct {
 
 type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
-	QueryCount *uint32
+	DatastoreQueryCount *uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCount *uint32
@@ -67,8 +67,8 @@ type ListObjectsResolutionMetadata struct {
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ListObjectsResolutionMetadata{
-		QueryCount:    new(uint32),
-		DispatchCount: new(uint32),
+		DatastoreQueryCount: new(uint32),
+		DispatchCount:       new(uint32),
 	}
 }
 
@@ -283,7 +283,7 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 			}
-			atomic.AddUint32(resolutionMetadata.QueryCount, *reverseExpandResolutionMetadata.QueryCount)
+			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			atomic.AddUint32(resolutionMetadata.DispatchCount, *reverseExpandResolutionMetadata.DispatchCount)
 		}()
 
@@ -343,7 +343,7 @@ func (q *ListObjectsQuery) evaluate(
 						resultsChan <- ListObjectsResult{Err: err}
 						return
 					}
-					atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
+					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 					atomic.AddUint32(resolutionMetadata.DispatchCount, resp.GetResolutionMetadata().DispatchCount)
 
 					if resp.Allowed {

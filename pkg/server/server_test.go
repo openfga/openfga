@@ -165,6 +165,18 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 	})
 }
 
+func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
+		)
+	})
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

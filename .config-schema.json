@@ -73,6 +73,17 @@
             "default": [50, 200],
             "x-env-variable": "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS"
         },
+        "requestDurationDispatchCountBuckets": {
+            "description": "Dispatch count buckets used to label the histogram metric for measuring request duration.",
+            "type": "array",
+            "items": {
+                "minimum": 0,
+                "type": "integer"
+            },
+            "minItems": 1,
+            "default": [50, 200],
+            "x-env-variable": "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS"
+        },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",

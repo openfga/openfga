@@ -109,7 +109,31 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("negative_dispatch_throttling_duration", func(t *testing.T) {
+	t.Run("empty_request_duration_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDispatchCountBuckets = []string{}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_int_request_duration_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDispatchCountBuckets = []string{"12", "45a", "66"}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("negative_request_duration_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDispatchCountBuckets = []string{"12", "-45", "66"}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_dispatch_throttling_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
@@ -124,7 +148,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("negative_dispatch_medium_priority_shaper", func(t *testing.T) {
+	t.Run("non_positive_dispatch_medium_priority_shaper", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
@@ -139,7 +163,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("negative_dispatch_medium_priority_level", func(t *testing.T) {
+	t.Run("non_positive_dispatch_medium_priority_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
@@ -154,7 +178,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("negative_dispatch_low_priority_level", func(t *testing.T) {
+	t.Run("non_positive_dispatch_low_priority_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,
@@ -169,7 +193,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("negative_dispatch_low_shaper_level", func(t *testing.T) {
+	t.Run("non_positive_dispatch_low_shaper_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:              true,

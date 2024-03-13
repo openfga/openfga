@@ -251,6 +251,7 @@ type Config struct {
 	DispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
+	RequestDurationDispatchCountBuckets       []string
 }
 
 func (cfg *Config) Verify() error {
@@ -316,6 +317,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
 	if cfg.DispatchThrottling.Enabled {
 		if cfg.DispatchThrottling.TimeTickerFrequency <= 0 {
 			return errors.New("dispatch throttling time ticker frequency must be non-negative time duration")
@@ -355,6 +368,7 @@ func DefaultConfig() *Config {
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
