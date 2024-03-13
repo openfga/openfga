@@ -166,7 +166,7 @@ type ReverseExpandResult struct {
 }
 
 type ResolutionMetadata struct {
-	QueryCount *uint32
+	DatastoreQueryCount *uint32
 
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCount *uint32
@@ -174,8 +174,8 @@ type ResolutionMetadata struct {
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		QueryCount:    new(uint32),
-		DispatchCount: new(uint32),
+		DatastoreQueryCount: new(uint32),
+		DispatchCount:       new(uint32),
 	}
 }
 
@@ -466,7 +466,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		Relation:   relationFilter,
 		UserFilter: userFilter,
 	})
-	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
+	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err
 	}
