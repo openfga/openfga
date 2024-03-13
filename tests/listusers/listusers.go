@@ -161,6 +161,9 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 								TupleKeys: ctxTuples,
 							},
 						})
+						if assertion.ErrorCode != 0 && len(assertion.Expectation) > 0 {
+							t.Errorf("cannot have a test with the expectation of both an error code and a result")
+						}
 
 						if assertion.ErrorCode == 0 {
 							require.NoError(t, err, detailedInfo)
