@@ -354,7 +354,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
-		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
