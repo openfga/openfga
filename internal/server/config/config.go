@@ -306,7 +306,7 @@ func (cfg *Config) Verify() error {
 		valInt, err := strconv.Atoi(val)
 		if err != nil || valInt < 0 {
 			return errors.New(
-				"request duration datastore dispatch count bucket items must be non-negative integer",
+				"request duration dispatch count bucket items must be non-negative integer",
 			)
 		}
 	}

@@ -109,7 +109,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("empty_request_duration_datastore_dispatch_count_buckets", func(t *testing.T) {
+	t.Run("empty_request_duration_dispatch_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestDurationDispatchCountBuckets = []string{}
 
@@ -117,7 +117,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_int_request_duration_datastore_dispatch_count_buckets", func(t *testing.T) {
+	t.Run("non_int_request_duration_dispatch_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestDurationDispatchCountBuckets = []string{"12", "45a", "66"}
 
@@ -125,7 +125,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("negative_request_duration_datastore_dispatch_count_buckets", func(t *testing.T) {
+	t.Run("negative_request_duration_dispatch_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestDurationDispatchCountBuckets = []string{"12", "-45", "66"}
 
