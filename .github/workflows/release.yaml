@@ -45,7 +45,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@e1523de7571e31dbe865fd2e80c5c7c23ae71eb4 # v3.4.0
 
-      - uses: anchore/sbom-action/download-syft@b6a39da80722a2cb0ef5d197531764a89b5d48c3 # v0.15.8
+      - uses: anchore/sbom-action/download-syft@9fece9e20048ca9590af301449208b2b8861333b # v0.15.9
 
       - name: Run GoReleaser
         id: goreleaser
@@ -102,7 +102,7 @@ jobs:
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
-        uses: snyk/actions/docker@1d672a455ab3339ef0a0021e1ec809165ee12fad # pin@master
+        uses: snyk/actions/docker@8349f9043a8b7f0f3ee8885bf28f0b388d2446e8 # pin@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
