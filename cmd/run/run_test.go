@@ -1041,7 +1041,7 @@ func TestDefaultConfig(t *testing.T) {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
 
-	val = res.Get("properties.requestDurationDatastoreDispatchCountBuckets.default")
+	val = res.Get("properties.requestDurationDispatchCountBuckets.default")
 	require.True(t, val.Exists())
 	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDispatchCountBuckets))
 	for index, arrayVal := range val.Array() {
@@ -1094,7 +1094,7 @@ func TestParseConfig(t *testing.T) {
     limit: 100
     TTL: 5s
 requestDurationDatastoreQueryCountBuckets: [33,44]
-requestDurationDatastoreDispatchCountBuckets: [32,42]
+requestDurationDispatchCountBuckets: [32,42]
 `
 	util.PrepareTempConfigFile(t, config)
 
