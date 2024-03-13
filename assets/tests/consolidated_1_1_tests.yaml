@@ -6305,3 +6305,30 @@ tests:
               relation: viewer
             expectation:
               - document:1
+  - name: nested_usersets_are_recursively_expanded
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user, group#member]
+        tuples:
+          - user: group:fga#member
+            relation: member
+            object: group:eng
+          - user: group:fga-backend#member
+            relation: member
+            object: group:fga
+        listUsersAssertions:
+          - request:
+              filters:
+                - group#member
+              object: group:eng
+              relation: member
+            expectation:
+              - group:eng#member
+              - group:fga#member
+              - group:fga-backend#member
