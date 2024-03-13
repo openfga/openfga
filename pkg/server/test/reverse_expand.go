@@ -1264,7 +1264,7 @@ type document
 						t.Log("channel closed")
 						if test.expectedError == nil {
 							require.ElementsMatch(t, test.expectedResult, results)
-							require.Equal(t, test.expectedDSQueryCount, *resolutionMetadata.QueryCount)
+							require.Equal(t, test.expectedDSQueryCount, *resolutionMetadata.DatastoreQueryCount)
 						} else {
 							require.FailNow(t, "expected an error, got none")
 						}
