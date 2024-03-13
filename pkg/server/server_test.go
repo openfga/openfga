@@ -516,6 +516,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 }
 
 func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -563,6 +566,7 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(s.Close)
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -574,6 +578,10 @@ type repo
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
@@ -588,6 +596,7 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
 		WithMaxConcurrentReadsForListObjects(1),
 	)
+	t.Cleanup(s.Close)
 
 	storeID := ulid.Make().String()
 
@@ -643,6 +652,10 @@ type document
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -679,6 +692,7 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(s.Close)
 
 	_, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -726,6 +740,10 @@ type repo
 }
 
 func TestShortestPathToSolutionWins(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -781,6 +799,7 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(s.Close)
 
 	start := time.Now()
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -797,6 +816,10 @@ type repo
 }
 
 func TestCheckWithCachedResolution(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -837,6 +860,7 @@ type repo
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
+	t.Cleanup(s.Close)
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -859,6 +883,10 @@ type repo
 }
 
 func TestWriteAssertionModelDSError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -953,6 +981,10 @@ type repo
 }
 
 func TestReadAssertionModelDSError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -976,6 +1008,10 @@ func TestReadAssertionModelDSError(t *testing.T) {
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
@@ -990,6 +1026,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(s.Close)
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
@@ -1016,6 +1053,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(s.Close)
 
 		typesys, err := s.resolveTypesystem(ctx, store, "")
 		require.NoError(t, err)
@@ -1035,6 +1073,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(s.Close)
 
 		_, err := s.resolveTypesystem(ctx, store, modelID)
 		require.Equal(t, want, err)
@@ -1112,6 +1151,10 @@ type repo
 }
 
 func TestListObjects_ErrorCases(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -1124,6 +1167,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(s.Close)
 
 		modelID := ulid.Make().String()
 
@@ -1177,6 +1221,7 @@ type document
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),
 		)
+		t.Cleanup(s.Close)
 
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
@@ -1236,6 +1281,10 @@ type document
 }
 
 func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1263,6 +1312,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(s.Close)
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -1361,6 +1411,10 @@ type repo
 }
 
 func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	cfg := serverconfig.DefaultConfig()
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
@@ -1368,39 +1422,47 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
 	)
+	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
 func TestRateLimitedCheckResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("default_rate_limited_check_resolver_disabled", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.DispatchThrottling.Enabled)
 
+		ds := memory.New()
+		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(ds),
 		)
-		require.Nil(t, s.rateLimitedCheckResolverCloser)
+		t.Cleanup(s.Close)
+		require.Nil(t, s.rateLimitedCheckResolver)
 		require.False(t, s.rateLimitedCheckResolverEnabled)
-
-		defer s.Close()
 	})
+
 	t.Run("enable_rate_limited_check_resolver_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(ds),
 			WithRateLimitedCheckResolverEnabled(true),
 			WithRateLimitedCheckResolverMediumPriorityShaper(20),
 			WithRateLimitedCheckResolverMediumPriorityLevel(30),
 			WithRateLimitedCheckResolverLowPriorityShaper(40),
 			WithRateLimitedCheckResolverLowPriorityLevel(50),
 		)
-		require.NotNil(t, s.rateLimitedCheckResolverCloser)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.rateLimitedCheckResolver)
 		require.True(t, s.rateLimitedCheckResolverEnabled)
 		require.EqualValues(t, 20, s.rateLimitedCheckResolverMediumPriorityShaper)
 		require.EqualValues(t, 30, s.rateLimitedCheckResolverMediumPriorityLevel)
 		require.EqualValues(t, 40, s.rateLimitedCheckResolverLowPriorityShaper)
 		require.EqualValues(t, 50, s.rateLimitedCheckResolverLowPriorityLevel)
-
-		defer s.Close()
 	})
 }

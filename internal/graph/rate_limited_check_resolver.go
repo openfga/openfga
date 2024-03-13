@@ -20,8 +20,18 @@ type RateLimitedCheckResolverConfig struct {
 	LowPriorityShaper    uint32
 }
 
-// RateLimitedCheckResolver will prioritize high priority queue (requests with smaller number of dispatches) over
-// medium and low priority queue (requests with larger number of dispatches)
+// RateLimitedCheckResolver will prioritize requests with fewer dispatches over
+// requests with more dispatches.
+// Initially, request's dispatches will not be throttled and will be processed
+// immediately. As the number of dispatches increases (to beyond the config's MediumPriorityLevel),
+// selectively number (configure via config's MediumPriorityShaper) will be throttled by placing the
+// dispatch in the medium priority queue. One item from the medium priority queue will be processed
+// every ticker across the entire server. Request's dispatches will gradually be more frequently throttled as
+// the number of dispatches increase until every dispatch will be throttled by being placed in the medium priority
+// queue. When the number of request dispatches is above the LowPriorityLevel, the dispatches are placed
+// in the low priority queue. One item form the low priority queue will be processed every Nth ticker
+// (configured via config's LowPriorityShaper parameter).
+// This allows a check / list objects request to be gradually throttled.
 type RateLimitedCheckResolver struct {
 	delegate         CheckResolver
 	config           RateLimitedCheckResolverConfig
@@ -94,18 +104,18 @@ func (r *RateLimitedCheckResolver) nonBlockingSend(signalChan chan bool) {
 	}
 }
 
-func (r *RateLimitedCheckResolver) handleTimeTick(count uint32) uint32 {
-	count++
+func (r *RateLimitedCheckResolver) handleTimeTick(lowPriorityQueueCounter uint32) uint32 {
+	lowPriorityQueueCounter++
 	r.nonBlockingSend(r.medPriorityQueue)
-	if count >= r.config.LowPriorityShaper {
-		count = 0
+	if lowPriorityQueueCounter >= r.config.LowPriorityShaper {
+		lowPriorityQueueCounter = 0
 		r.nonBlockingSend(r.lowPriorityQueue)
 	}
-	return count
+	return lowPriorityQueueCounter
 }
 
 func (r *RateLimitedCheckResolver) runTicker() {
-	count := uint32(0)
+	lowPriorityQueueCounter := uint32(0)
 	for {
 		select {
 		case <-r.done:
@@ -115,7 +125,7 @@ func (r *RateLimitedCheckResolver) runTicker() {
 			close(r.lowPriorityQueue)
 			return
 		case <-r.ticker.C:
-			count = r.handleTimeTick(count)
+			lowPriorityQueueCounter = r.handleTimeTick(lowPriorityQueueCounter)
 		}
 	}
 }
@@ -142,7 +152,7 @@ func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
 
 	currentNumDispatch := req.DispatchCounter.Add(1)
 	if currentNumDispatch > r.config.MediumPriorityLevel {
-		if currentNumDispatch >= r.config.LowPriorityLevel {
+		if currentNumDispatch > r.config.LowPriorityLevel {
 			queueName = "low_priority"
 			<-r.lowPriorityQueue
 		} else {

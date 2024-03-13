@@ -200,17 +200,17 @@ func NewRunCommand() *cobra.Command {
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
 
-	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high")
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enable this feature will prioritize processing simple check and list objects requests (requests with low number of dispatches) over complex check and list objects (requests with high number of dispatches).")
 
-	flags.Duration("dispatch-throttling-time-ticker-frequency", defaultConfig.DispatchThrottling.TimeTickerFrequency, "defines how frequent dispatch throttling will be evaluated")
+	flags.Duration("dispatch-throttling-time-ticker-frequency", defaultConfig.DispatchThrottling.TimeTickerFrequency, "defines how frequent dispatch throttling will be evaluated. TimeTickerFrequency controls how frequently throttled dispatch requests are evaluated to determine whether it can be processed.")
 
-	flags.Uint32("dispatch-throttling-low-priority-level", defaultConfig.DispatchThrottling.LowPriorityLevel, "define the number of dispatches to be considered in low priority throttling queue")
+	flags.Uint32("dispatch-throttling-low-priority-level", defaultConfig.DispatchThrottling.LowPriorityLevel, "define the number of dispatches to be considered in low priority throttling queue. Requests with dispatch count above this threshold will be placed into the low priority queue. Low priority queue requests are processed less frequently than other requests.")
 
-	flags.Uint32("dispatch-throttling-low-priority-shaper", defaultConfig.DispatchThrottling.LowPriorityShaper, "number of tickers required to dispatch a low priority work")
+	flags.Uint32("dispatch-throttling-low-priority-shaper", defaultConfig.DispatchThrottling.LowPriorityShaper, "number of tickers required to dispatch a low priority work. System will release one job from the low priority queue every Nth tick (configured via this variable).")
 
-	flags.Uint32("dispatch-throttling-medium-priority-level", defaultConfig.DispatchThrottling.MediumPriorityLevel, "define the number of dispatches to be considered in medium priority throttling queue")
+	flags.Uint32("dispatch-throttling-medium-priority-level", defaultConfig.DispatchThrottling.MediumPriorityLevel, "define the number of dispatches to be considered in medium priority throttling queue. Check and list objects requests with dispatches higher than the medium priority level but lower than the low priority level will be placed in the medium priority queue. The medium priority queue are processed more frequently than the low priority queue.")
 
-	flags.Uint32("dispatch-throttling-medium-priority-shaper", defaultConfig.DispatchThrottling.MediumPriorityShaper, "initial frequency on un-throttled dispatches for medium priority jobs")
+	flags.Uint32("dispatch-throttling-medium-priority-shaper", defaultConfig.DispatchThrottling.MediumPriorityShaper, "initial frequency on un-throttled dispatches for medium priority jobs. When check and list objects requests are above the medium level. One out of Nth dispatch will be throttled. Frequency of throttling will increase as number of dispatches increase.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 

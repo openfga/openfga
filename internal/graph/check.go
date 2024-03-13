@@ -39,7 +39,12 @@ type ResolveCheckRequest struct {
 	Context              *structpb.Struct
 	ResolutionMetadata   *ResolutionMetadata
 	VisitedPaths         map[string]struct{}
-	DispatchCounter      *atomic.Uint32
+	// This is different from ResolutionMetadata dispatch counter in that this counter needs to be
+	// incremented before dispatches are processed (where the ResolutionMetadata dispatch counter
+	// are incremented after the dispatches are processed). As this counter needs to be updated
+	// synchronously are multiple concurrent go-routine, it needs to use shared counter within
+	// the same request.
+	DispatchCounter *atomic.Uint32
 }
 
 type ResolveCheckResponse struct {

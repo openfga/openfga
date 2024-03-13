@@ -10,12 +10,17 @@ services:
       otel-collector:
         condition: service_started
     environment:
-      - OPENFGA_TRACE_ENABLED=true
+      - OPENFGA_TRACE_ENABLED=false
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
       - OPENFGA_DATASTORE_METRICS_ENABLED=true
       - OPENFGA_METRICS_ENABLED=TRUE
+      - OPENFGA_DISPATCH_THROTTLING_ENABLED=TRUE
+      - OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER=1
+      - OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL=200
+      - OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL=50
+      - OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS=25,100,200
   otel-collector:
     image: otel/opentelemetry-collector:latest
     container_name: otel-collector
