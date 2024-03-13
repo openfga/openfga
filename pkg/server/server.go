@@ -450,12 +450,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 	).Observe(queryCount)
 
-	requestDurationByQueryHistogram.WithLabelValues(
-		s.serviceName,
-		methodName,
-		utils.Bucketize(uint(*result.ResolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
-	).Observe(float64(time.Since(start).Milliseconds()))
-
 	dispatchCount := float64(*result.ResolutionMetadata.DispatchCount)
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
@@ -468,6 +462,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	requestDurationByQueryHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
+		utils.Bucketize(uint(*result.ResolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
@@ -554,11 +549,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(*resolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
-	).Observe(float64(time.Since(start).Milliseconds()))
-
-	requestDurationByQueryHistogram.WithLabelValues(
-		s.serviceName,
-		methodName,
 		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
@@ -733,11 +723,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-	).Observe(float64(time.Since(start).Milliseconds()))
-
-	requestDurationByQueryHistogram.WithLabelValues(
-		s.serviceName,
-		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 

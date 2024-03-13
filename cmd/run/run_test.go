@@ -1043,9 +1043,9 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.requestDurationDatastoreDispatchCountBuckets.default")
 	require.True(t, val.Exists())
-	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreDispatchCountBuckets))
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDispatchCountBuckets))
 	for index, arrayVal := range val.Array() {
-		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreDispatchCountBuckets[index])
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
 }
 
@@ -1113,7 +1113,7 @@ requestDurationDatastoreDispatchCountBuckets: [32,42]
 	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
-	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDatastoreDispatchCountBuckets)
+	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {

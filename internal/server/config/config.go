@@ -232,8 +232,8 @@ type Config struct {
 	Metrics         MetricConfig
 	CheckQueryCache CheckQueryCache
 
-	RequestDurationDatastoreQueryCountBuckets    []string
-	RequestDurationDatastoreDispatchCountBuckets []string
+	RequestDurationDatastoreQueryCountBuckets []string
+	RequestDurationDispatchCountBuckets       []string
 }
 
 func (cfg *Config) Verify() error {
@@ -299,10 +299,10 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if len(cfg.RequestDurationDatastoreDispatchCountBuckets) == 0 {
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
 		return errors.New("request duration datastore dispatch count buckets must not be empty")
 	}
-	for _, val := range cfg.RequestDurationDatastoreDispatchCountBuckets {
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
 		valInt, err := strconv.Atoi(val)
 		if err != nil || valInt < 0 {
 			return errors.New(
@@ -317,19 +317,19 @@ func (cfg *Config) Verify() error {
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxTuplesPerWrite:                            DefaultMaxTuplesPerWrite,
-		MaxTypesPerAuthorizationModel:                DefaultMaxTypesPerAuthorizationModel,
-		MaxAuthorizationModelSizeInBytes:             DefaultMaxAuthorizationModelSizeInBytes,
-		MaxConcurrentReadsForCheck:                   DefaultMaxConcurrentReadsForCheck,
-		MaxConcurrentReadsForListObjects:             DefaultMaxConcurrentReadsForListObjects,
-		ChangelogHorizonOffset:                       DefaultChangelogHorizonOffset,
-		ResolveNodeLimit:                             DefaultResolveNodeLimit,
-		ResolveNodeBreadthLimit:                      DefaultResolveNodeBreadthLimit,
-		Experimentals:                                []string{},
-		ListObjectsDeadline:                          DefaultListObjectsDeadline,
-		ListObjectsMaxResults:                        DefaultListObjectsMaxResults,
-		RequestDurationDatastoreQueryCountBuckets:    []string{"50", "200"},
-		RequestDurationDatastoreDispatchCountBuckets: []string{"50", "200"},
+		MaxTuplesPerWrite:                         DefaultMaxTuplesPerWrite,
+		MaxTypesPerAuthorizationModel:             DefaultMaxTypesPerAuthorizationModel,
+		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
+		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
+		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
+		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
+		ResolveNodeLimit:                          DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
+		Experimentals:                             []string{},
+		ListObjectsDeadline:                       DefaultListObjectsDeadline,
+		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
