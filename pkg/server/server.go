@@ -265,7 +265,7 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
-// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByDispatchCountHistogramBuckets
+// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
 func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
