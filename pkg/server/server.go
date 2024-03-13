@@ -77,17 +77,18 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
+	//The name of the histogram is not referring to dispatch count, but we are not changing this as it will be a breaking change.
 	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
 
-	requestDurationByQueryHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	requestDurationByQueryAndDispatchHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            requestDurationByQueryHistogramName,
-		Help:                            "The request duration (in ms) labeled by method and buckets of datastore query counts. This allows for reporting percentiles based on the number of datastore queries required to resolve the request.",
+		Help:                            "The request duration (in ms) labeled by method and buckets of datastore query counts and number of dispatches. This allows for reporting percentiles based on the number of datastore queries and number of dispatches required to resolve the request.",
 		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method", "datastore_query_count"})
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -120,7 +121,8 @@ type Server struct {
 
 	checkResolver graph.CheckResolver
 
-	requestDurationByQueryHistogramBuckets []uint
+	requestDurationByQueryHistogramBuckets         []uint
+	requestDurationByDispatchCountHistogramBuckets []uint
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -256,11 +258,19 @@ func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryHistogram
+// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
 func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
 		s.requestDurationByQueryHistogramBuckets = buckets
+	}
+}
+
+// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		s.requestDurationByDispatchCountHistogramBuckets = buckets
 	}
 }
 
@@ -302,8 +312,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkResolver:          nil,
 
-		requestDurationByQueryHistogramBuckets: []uint{50, 200},
-		serviceName:                            openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
+		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
+		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 	}
 
 	for _, opt := range opts {
@@ -342,6 +353,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+	}
+
+	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
@@ -428,19 +443,29 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 		return nil, err
 	}
-	queryCount := float64(*result.ResolutionMetadata.QueryCount)
+	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
 
-	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-	).Observe(queryCount)
+	).Observe(datastoreQueryCount)
 
-	requestDurationByQueryHistogram.WithLabelValues(
+	dispatchCount := float64(*result.ResolutionMetadata.DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*result.ResolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
+	).Observe(dispatchCount)
+
+	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListObjectsResponse{
@@ -504,19 +529,29 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		telemetry.TraceError(span, err)
 		return err
 	}
-	queryCount := float64(*resolutionMetadata.QueryCount)
+	datastoreQueryCount := float64(*resolutionMetadata.DatastoreQueryCount)
 
-	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-	).Observe(queryCount)
+	).Observe(datastoreQueryCount)
 
-	requestDurationByQueryHistogram.WithLabelValues(
+	dispatchCount := float64(*resolutionMetadata.DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*resolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
+	).Observe(dispatchCount)
+
+	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return nil
@@ -723,10 +758,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
-	requestDurationByQueryHistogram.WithLabelValues(
+	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil
