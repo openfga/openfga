@@ -233,6 +233,7 @@ type Config struct {
 	CheckQueryCache CheckQueryCache
 
 	RequestDurationDatastoreQueryCountBuckets []string
+	RequestDurationDispatchCountBuckets       []string
 }
 
 func (cfg *Config) Verify() error {
@@ -298,6 +299,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
 	return nil
 }
 
@@ -316,6 +329,7 @@ func DefaultConfig() *Config {
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,

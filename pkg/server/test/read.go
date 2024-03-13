@@ -376,7 +376,7 @@ type repo
 			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
 			require.NoError(t, err)
 
-			if test.response.Tuples != nil {
+			if test.response.GetTuples() != nil {
 				require.Equal(t, len(test.response.GetTuples()), len(resp.GetTuples()))
 
 				for i, responseTuple := range test.response.GetTuples() {
