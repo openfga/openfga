@@ -567,6 +567,57 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	}
 }
 
+func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
+	oidcServerPort1, oidcServerPortReleaser1 := TCPRandomPort()
+	oidcServerPort2, oidcServerPortReleaser2 := TCPRandomPort()
+	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
+	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
+
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "oidc"
+	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
+		Audience:      "openfga.dev",
+		Issuer:        oidcServerURL1,
+		IssuerAliases: []string{oidcServerURL2},
+	}
+
+	oidcServerPortReleaser1()
+	oidcServerPortReleaser2()
+
+	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
+	require.NoError(t, err)
+
+	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+
+	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	retryClient := retryablehttp.NewClient()
+	test := authTest{
+		_name:              "Token_with_issuer_equal_to_alias_is_accepted",
+		authHeader:         "Bearer " + trustedTokenFromAlias,
+		expectedStatusCode: 200,
+	}
+	t.Run(test._name, func(t *testing.T) {
+		tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
+	})
+
+	t.Run(test._name+"/streaming", func(t *testing.T) {
+		tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedTokenFromAlias)
+	})
+}
+
 func TestHTTPServingTLS(t *testing.T) {
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
