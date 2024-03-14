@@ -202,7 +202,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_by_query_count_ms")
 
-	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enable this feature will prioritize processing simple check and list objects requests (requests with low number of dispatches) over complex check and list objects (requests with high number of dispatches).")
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize processing simple check and list objects requests (requests with low number of dispatches) over complex check and list objects requests (requests with high number of dispatches).")
 
 	flags.Duration("dispatch-throttling-time-ticker-frequency", defaultConfig.DispatchThrottling.TimeTickerFrequency, "defines how frequent dispatch throttling will be evaluated. TimeTickerFrequency controls how frequently throttled dispatch requests are evaluated to determine whether it can be processed.")
 
