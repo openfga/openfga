@@ -1107,21 +1107,13 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.DispatchThrottling.TimeTickerFrequency.String())
 
-	val = res.Get("properties.dispatchThrottling.properties.lowPriorityShaper.default")
+	val = res.Get("properties.dispatchThrottling.properties.rate.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.LowPriorityShaper)
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Rate)
 
-	val = res.Get("properties.dispatchThrottling.properties.lowPriorityLevel.default")
+	val = res.Get("properties.dispatchThrottling.properties.level.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.LowPriorityLevel)
-
-	val = res.Get("properties.dispatchThrottling.properties.mediumPriorityShaper.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MediumPriorityShaper)
-
-	val = res.Get("properties.dispatchThrottling.properties.mediumPriorityLevel.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MediumPriorityLevel)
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Level)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1205,10 +1197,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY", "1ms")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL", "120")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER", "110")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL", "60")
-	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_SHAPER", "40")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_LEVEL", "120")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_RATE", "110")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1222,10 +1212,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
 		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-time-ticker-frequency"))
-		require.Equal(t, "120", viper.GetString("dispatch-throttling-low-priority-level"))
-		require.Equal(t, "110", viper.GetString("dispatch-throttling-low-priority-shaper"))
-		require.Equal(t, "60", viper.GetString("dispatch-throttling-medium-priority-level"))
-		require.Equal(t, "40", viper.GetString("dispatch-throttling-medium-priority-shaper"))
+		require.Equal(t, "120", viper.GetString("dispatch-throttling-level"))
+		require.Equal(t, "110", viper.GetString("dispatch-throttling-rate"))
 
 		return nil
 	}

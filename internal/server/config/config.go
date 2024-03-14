@@ -34,10 +34,8 @@ const (
 
 	DefaultDispatchThrottlingEnabled             = false
 	DefaultDispatchThrottlingTimeTickerFrequency = 10 * time.Microsecond
-	DefaultDispatchThrottlingMediumPriorityLevel = 50
-	DefaultDispatchThrottlingMediumShaper        = 8
-	DefaultDispatchThrottlingLowPriorityLevel    = 100
-	DefaultDispatchThrottlingLowShaper           = 30
+	DefaultDispatchThrottlingLevel               = 100
+	DefaultDispatchThrottlingRate                = 1
 )
 
 type DatastoreMetricsConfig struct {
@@ -183,12 +181,10 @@ type CheckQueryCache struct {
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling
 type DispatchThrottlingConfig struct {
-	Enabled              bool
-	TimeTickerFrequency  time.Duration
-	MediumPriorityLevel  uint32
-	MediumPriorityShaper uint32
-	LowPriorityLevel     uint32
-	LowPriorityShaper    uint32
+	Enabled             bool
+	TimeTickerFrequency time.Duration
+	Level               uint32
+	Rate                uint32
 }
 
 type Config struct {
@@ -334,20 +330,11 @@ func (cfg *Config) Verify() error {
 		if cfg.DispatchThrottling.TimeTickerFrequency <= 0 {
 			return errors.New("dispatch throttling time ticker frequency must be non-negative time duration")
 		}
-		if cfg.DispatchThrottling.LowPriorityLevel <= 0 {
-			return errors.New("dispatch throttling low priority level must be non-negative integer")
+		if cfg.DispatchThrottling.Level <= 0 {
+			return errors.New("dispatch throttling level must be non-negative integer")
 		}
-		if cfg.DispatchThrottling.LowPriorityShaper <= 0 {
-			return errors.New("dispatch throttling low priority shaper must be non-negative integer")
-		}
-		if cfg.DispatchThrottling.MediumPriorityShaper <= 0 {
-			return errors.New("dispatch throttling medium priority level must be non-negative integer")
-		}
-		if cfg.DispatchThrottling.MediumPriorityLevel <= 0 {
-			return errors.New("dispatch throttling medium priority shaper must be non-negative integer")
-		}
-		if cfg.DispatchThrottling.LowPriorityLevel < cfg.DispatchThrottling.MediumPriorityLevel {
-			return errors.New("dispatch throttling low priority level must be lower or equal to medium priority level")
+		if cfg.DispatchThrottling.Rate <= 0 {
+			return errors.New("dispatch throttling rate must be non-negative integer")
 		}
 	}
 
@@ -428,12 +415,10 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:              DefaultDispatchThrottlingEnabled,
-			TimeTickerFrequency:  DefaultDispatchThrottlingTimeTickerFrequency,
-			LowPriorityLevel:     DefaultDispatchThrottlingLowPriorityLevel,
-			LowPriorityShaper:    DefaultDispatchThrottlingLowShaper,
-			MediumPriorityLevel:  DefaultDispatchThrottlingMediumPriorityLevel,
-			MediumPriorityShaper: DefaultDispatchThrottlingMediumShaper,
+			Enabled:             DefaultDispatchThrottlingEnabled,
+			TimeTickerFrequency: DefaultDispatchThrottlingTimeTickerFrequency,
+			Level:               DefaultDispatchThrottlingLevel,
+			Rate:                DefaultDispatchThrottlingRate,
 		},
 	}
 }

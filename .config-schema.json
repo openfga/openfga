@@ -446,29 +446,17 @@
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY"
                 },
-                "lowPriorityLevel": {
-                    "description": "define the number of dispatches to be considered in low priority throttling queue",
+                "level": {
+                    "description": "define the number of dispatches to be throttled",
                     "type": "integer",
                     "default": "100",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_LEVEL"
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_LEVEL"
                 },
-                "lowPriorityShaper": {
-                    "description": "number of tickers required to dispatch a low priority work",
+                "rate": {
+                    "description": "number of tickers required to launch a throttled dispatch",
                     "type": "integer",
-                    "default": "30",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_LOW_PRIORITY_SHAPER"
-                },
-                "mediumPriorityLevel": {
-                    "description": "define the number of dispatches to be considered in medium priority throttling queue",
-                    "type": "integer",
-                    "default": "50",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_LEVEL"
-                },
-                "mediumPriorityShaper": {
-                    "description": "initial frequency on un-throttled dispatches for medium priority jobs",
-                    "type": "integer",
-                    "default": "8",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_MEDIUM_PRIORITY_SHAPER"
+                    "default": "1",
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_RATE"
                 }
             }
         }

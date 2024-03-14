@@ -14,44 +14,23 @@ import (
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for rate limited check resolver
 type DispatchThrottlingCheckResolverConfig struct {
 	TimerTickerFrequency time.Duration
-	MediumPriorityLevel  uint32
-	MediumPriorityShaper uint32
-	LowPriorityLevel     uint32
-	LowPriorityShaper    uint32
+	Level                uint32
+	Rate                 uint32
 }
 
 // DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
 // requests with more dispatches.
 // Initially, request's dispatches will not be throttled and will be processed
-// immediately. As the number of dispatches increases (to beyond the config's MediumPriorityLevel),
-// selectively number (configure via config's MediumPriorityShaper) will be throttled by placing the
-// dispatch in the medium priority queue. One item from the medium priority queue will be processed
-// every ticker across the entire server. Request's dispatches will gradually be more frequently throttled as
-// the number of dispatches increase until every dispatch will be throttled by being placed in the medium priority
-// queue. When the number of request dispatches is above the LowPriorityLevel, the dispatches are placed
-// in the low priority queue. One item form the low priority queue will be processed every Nth ticker
-// (configured via config's LowPriorityShaper parameter).
+// immediately. When the number of request dispatches is above the Level, the dispatches are placed
+// in the throttling queue. One item form the throttling queue will be processed every Nth ticker
+// (configured via config's Rate parameter).
 // This allows a check / list objects request to be gradually throttled.
-//
-// At high level, as request's dispatch count increases, it will go from
-// [No Throttling, MediumPriorityShaper, mediumPriorityLevel2, mediumPriorityLevel3, mediumPriorityLevel4, lowPriority]
-//
-// This allows a more gradual throttling and results in a more gradual degradation in latency as the number of
-// dispatches increase rather than a sharp rise in latency.
 type DispatchThrottlingCheckResolver struct {
-	delegate         CheckResolver
-	config           DispatchThrottlingCheckResolverConfig
-	ticker           *time.Ticker
-	lowPriorityQueue chan bool
-	medPriorityQueue chan bool
-	done             chan bool
-
-	// these are helper config value to reduce calculation needed for medium shaper
-	mediumPriorityLevel2      uint32
-	mediumPriorityLevel3      uint32
-	mediumPriorityLevel4      uint32
-	mediumPriorityShaperFreq2 uint32
-	mediumPriorityShaperFreq3 uint32
+	delegate        CheckResolver
+	config          DispatchThrottlingCheckResolverConfig
+	ticker          *time.Ticker
+	throttlingQueue chan bool
+	done            chan bool
 }
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
@@ -65,32 +44,21 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method", "queue_name"})
+	}, []string{"grpc_service", "grpc_method"})
 )
 
 func NewDispatchThrottlingCheckResolver(
 	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
 	ticker := time.NewTicker(config.TimerTickerFrequency)
 	rateLimitedCheckResolver := &DispatchThrottlingCheckResolver{
-		config:           config,
-		ticker:           ticker,
-		lowPriorityQueue: make(chan bool),
-		medPriorityQueue: make(chan bool),
-		done:             make(chan bool),
+		config:          config,
+		ticker:          ticker,
+		throttlingQueue: make(chan bool),
+		done:            make(chan bool),
 	}
-	rateLimitedCheckResolver.setMediumConfig(config)
 	rateLimitedCheckResolver.delegate = rateLimitedCheckResolver
 	go rateLimitedCheckResolver.runTicker()
 	return rateLimitedCheckResolver
-}
-
-func (r *DispatchThrottlingCheckResolver) setMediumConfig(config DispatchThrottlingCheckResolverConfig) {
-	mediumRange := config.LowPriorityLevel - config.MediumPriorityLevel
-	r.mediumPriorityLevel2 = config.MediumPriorityLevel + mediumRange/8
-	r.mediumPriorityLevel3 = config.MediumPriorityLevel + mediumRange/4
-	r.mediumPriorityLevel4 = config.MediumPriorityLevel + mediumRange/2
-	r.mediumPriorityShaperFreq2 = config.MediumPriorityShaper / 2
-	r.mediumPriorityShaperFreq3 = config.MediumPriorityShaper / 4
 }
 
 func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
@@ -110,81 +78,46 @@ func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan bool) 
 	}
 }
 
-func (r *DispatchThrottlingCheckResolver) handleTimeTick(lowPriorityQueueCounter uint32) uint32 {
-	lowPriorityQueueCounter++
-	r.nonBlockingSend(r.medPriorityQueue)
-	if lowPriorityQueueCounter >= r.config.LowPriorityShaper {
-		lowPriorityQueueCounter = 0
-		r.nonBlockingSend(r.lowPriorityQueue)
+func (r *DispatchThrottlingCheckResolver) handleTimeTick(throttleCounter uint32) uint32 {
+	throttleCounter++
+	if throttleCounter >= r.config.Rate {
+		throttleCounter = 0
+		r.nonBlockingSend(r.throttlingQueue)
 	}
-	return lowPriorityQueueCounter
+	return throttleCounter
 }
 
 func (r *DispatchThrottlingCheckResolver) runTicker() {
-	lowPriorityQueueCounter := uint32(0)
+	throttleCounter := uint32(0)
 	for {
 		select {
 		case <-r.done:
 			r.ticker.Stop()
 			close(r.done)
-			close(r.medPriorityQueue)
-			close(r.lowPriorityQueue)
+			close(r.throttlingQueue)
 			return
 		case <-r.ticker.C:
-			lowPriorityQueueCounter = r.handleTimeTick(lowPriorityQueueCounter)
+			throttleCounter = r.handleTimeTick(throttleCounter)
 		}
-	}
-}
-
-func (r *DispatchThrottlingCheckResolver) shouldWait(currentNumDispatch uint32) bool {
-	delta := currentNumDispatch - r.config.MediumPriorityLevel
-	if currentNumDispatch < r.mediumPriorityLevel2 {
-		return delta%(r.config.MediumPriorityShaper) == 0
-	}
-	if currentNumDispatch < r.mediumPriorityLevel3 {
-		return delta%(r.mediumPriorityShaperFreq2) == 0
-	}
-	if currentNumDispatch < r.mediumPriorityLevel4 {
-		return delta%(r.mediumPriorityShaperFreq3) == 0
-	}
-	return true
-}
-
-func (r *DispatchThrottlingCheckResolver) throttle(ctx context.Context, currentNumDispatch uint32) {
-	start := time.Now()
-	queueName := "medium_priority"
-	throttled := false
-
-	if currentNumDispatch > r.config.LowPriorityLevel {
-		queueName = "low_priority"
-		throttled = true
-		<-r.lowPriorityQueue
-	} else {
-		if r.shouldWait(currentNumDispatch) {
-			throttled = true
-			<-r.medPriorityQueue
-		}
-	}
-	end := time.Now()
-	timeWaiting := end.Sub(start).Milliseconds()
-
-	if throttled {
-		rpcInfo := telemetry.RPCInfoFromContext(ctx)
-		rateLimitedCheckResolverDelayMsHistogram.WithLabelValues(
-			rpcInfo.Service,
-			rpcInfo.Method,
-			queueName,
-		).Observe(float64(timeWaiting))
 	}
 }
 
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-
 	currentNumDispatch := req.DispatchCounter.Add(1)
-	if currentNumDispatch > r.config.MediumPriorityLevel {
-		r.throttle(ctx, currentNumDispatch)
+
+	if currentNumDispatch > r.config.Level {
+		start := time.Now()
+		<-r.throttlingQueue
+		end := time.Now()
+		timeWaiting := end.Sub(start).Milliseconds()
+
+		rpcInfo := telemetry.RPCInfoFromContext(ctx)
+		rateLimitedCheckResolverDelayMsHistogram.WithLabelValues(
+			rpcInfo.Service,
+			rpcInfo.Method,
+		).Observe(float64(timeWaiting))
 	}
 
 	return r.delegate.ResolveCheck(ctx, req)

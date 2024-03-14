@@ -1467,10 +1467,8 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverMediumPriorityShaper(20),
-			WithDispatchThrottlingCheckResolverMediumPriorityLevel(30),
-			WithDispatchThrottlingCheckResolverLowPriorityShaper(40),
-			WithDispatchThrottlingCheckResolverLowPriorityLevel(50),
+			WithDispatchThrottlingCheckResolverRate(40),
+			WithDispatchThrottlingCheckResolverLevel(50),
 		)
 		t.Cleanup(s.Close)
 
@@ -1479,9 +1477,7 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, 20, s.dispatchThrottlingCheckResolverMediumPriorityShaper)
-		require.EqualValues(t, 30, s.dispatchThrottlingCheckResolverMediumPriorityLevel)
-		require.EqualValues(t, 40, s.dispatchThrottlingCheckResolverLowPriorityShaper)
-		require.EqualValues(t, 50, s.dispatchThrottlingCheckResolverLowPriorityLevel)
+		require.EqualValues(t, 40, s.dispatchThrottlingCheckResolverRate)
+		require.EqualValues(t, 50, s.dispatchThrottlingCheckResolverLevel)
 	})
 }

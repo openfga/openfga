@@ -136,87 +136,36 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("non_positive_dispatch_throttling_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:              true,
-			TimeTickerFrequency:  0,
-			MediumPriorityShaper: 30,
-			MediumPriorityLevel:  30,
-			LowPriorityShaper:    30,
-			LowPriorityLevel:     30,
+			Enabled:             true,
+			TimeTickerFrequency: 0,
+			Rate:                30,
+			Level:               30,
 		}
 
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_medium_priority_shaper", func(t *testing.T) {
+	t.Run("non_positive_dispatch_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:              true,
-			TimeTickerFrequency:  10 * time.Microsecond,
-			MediumPriorityShaper: 0,
-			MediumPriorityLevel:  30,
-			LowPriorityShaper:    30,
-			LowPriorityLevel:     30,
+			Enabled:             true,
+			TimeTickerFrequency: 10 * time.Microsecond,
+			Rate:                30,
+			Level:               0,
 		}
 
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_medium_priority_level", func(t *testing.T) {
+	t.Run("non_positive_dispatch_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:              true,
-			TimeTickerFrequency:  10 * time.Microsecond,
-			MediumPriorityShaper: 30,
-			MediumPriorityLevel:  0,
-			LowPriorityShaper:    30,
-			LowPriorityLevel:     30,
-		}
-
-		err := cfg.Verify()
-		require.Error(t, err)
-	})
-
-	t.Run("non_positive_dispatch_low_priority_level", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:              true,
-			TimeTickerFrequency:  10 * time.Microsecond,
-			MediumPriorityShaper: 30,
-			MediumPriorityLevel:  30,
-			LowPriorityShaper:    30,
-			LowPriorityLevel:     0,
-		}
-
-		err := cfg.Verify()
-		require.Error(t, err)
-	})
-
-	t.Run("non_positive_dispatch_low_shaper_level", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:              true,
-			TimeTickerFrequency:  10 * time.Microsecond,
-			MediumPriorityShaper: 30,
-			MediumPriorityLevel:  30,
-			LowPriorityShaper:    0,
-			LowPriorityLevel:     30,
-		}
-
-		err := cfg.Verify()
-		require.Error(t, err)
-	})
-
-	t.Run("low_level_must_not_be_smaller_than_medium_level", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:              true,
-			TimeTickerFrequency:  10 * time.Microsecond,
-			MediumPriorityShaper: 30,
-			MediumPriorityLevel:  30,
-			LowPriorityShaper:    30,
-			LowPriorityLevel:     29,
+			Enabled:             true,
+			TimeTickerFrequency: 10 * time.Microsecond,
+			Rate:                0,
+			Level:               30,
 		}
 
 		err := cfg.Verify()

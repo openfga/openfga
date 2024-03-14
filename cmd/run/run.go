@@ -208,13 +208,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("dispatch-throttling-time-ticker-frequency", defaultConfig.DispatchThrottling.TimeTickerFrequency, "defines how frequent dispatch throttling will be evaluated. TimeTickerFrequency controls how frequently throttled dispatch requests are evaluated to determine whether it can be processed.")
 
-	flags.Uint32("dispatch-throttling-low-priority-level", defaultConfig.DispatchThrottling.LowPriorityLevel, "define the number of dispatches to be considered in low priority throttling queue. Requests with dispatch count above this threshold will be placed into the low priority queue. Low priority queue requests are processed less frequently than other requests.")
+	flags.Uint32("dispatch-throttling-level", defaultConfig.DispatchThrottling.Level, "define the number of dispatches above which requests will be throttled.")
 
-	flags.Uint32("dispatch-throttling-low-priority-shaper", defaultConfig.DispatchThrottling.LowPriorityShaper, "number of tickers required to dispatch a low priority work. System will release one job from the low priority queue every Nth tick (configured via this variable).")
-
-	flags.Uint32("dispatch-throttling-medium-priority-level", defaultConfig.DispatchThrottling.MediumPriorityLevel, "define the number of dispatches to be considered in medium priority throttling queue. Check and list objects requests with dispatches higher than the medium priority level but lower than the low priority level will be placed in the medium priority queue. The medium priority queue are processed more frequently than the low priority queue. If operator desires a single dispatch queue, set the MediumPriorityLevel to be equal to LowPriorityLevel and use low priority dispatch queue only.")
-
-	flags.Uint32("dispatch-throttling-medium-priority-shaper", defaultConfig.DispatchThrottling.MediumPriorityShaper, "initial frequency on un-throttled dispatches for medium priority jobs. When check and list objects requests are above the medium level. One out of Nth dispatch will be throttled. Frequency of throttling will increase as number of dispatches increase.")
+	flags.Uint32("dispatch-throttling-rate", defaultConfig.DispatchThrottling.Rate, "number of tickers required to emit a throttled dispatch. System will release one job from the throttled queue every Nth tick (configured via this variable).")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -529,10 +525,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
 		server.WithDispatchThrottlingCheckResolverTimerTickerFrequency(config.DispatchThrottling.TimeTickerFrequency),
-		server.WithDispatchThrottlingCheckResolverMediumPriorityShaper(config.DispatchThrottling.MediumPriorityShaper),
-		server.WithDispatchThrottlingCheckResolverMediumPriorityLevel(config.DispatchThrottling.MediumPriorityLevel),
-		server.WithDispatchThrottlingCheckResolverLowPriorityShaper(config.DispatchThrottling.LowPriorityShaper),
-		server.WithDispatchThrottlingCheckResolverLowPriorityLevel(config.DispatchThrottling.LowPriorityLevel),
+		server.WithDispatchThrottlingCheckResolverRate(config.DispatchThrottling.Rate),
+		server.WithDispatchThrottlingCheckResolverLevel(config.DispatchThrottling.Level),
 		server.WithExperimentals(experimentals...),
 	)
 
