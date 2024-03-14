@@ -210,7 +210,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("dispatch-throttling-low-priority-shaper", defaultConfig.DispatchThrottling.LowPriorityShaper, "number of tickers required to dispatch a low priority work. System will release one job from the low priority queue every Nth tick (configured via this variable).")
 
-	flags.Uint32("dispatch-throttling-medium-priority-level", defaultConfig.DispatchThrottling.MediumPriorityLevel, "define the number of dispatches to be considered in medium priority throttling queue. Check and list objects requests with dispatches higher than the medium priority level but lower than the low priority level will be placed in the medium priority queue. The medium priority queue are processed more frequently than the low priority queue.")
+	flags.Uint32("dispatch-throttling-medium-priority-level", defaultConfig.DispatchThrottling.MediumPriorityLevel, "define the number of dispatches to be considered in medium priority throttling queue. Check and list objects requests with dispatches higher than the medium priority level but lower than the low priority level will be placed in the medium priority queue. The medium priority queue are processed more frequently than the low priority queue. If operator desires a single dispatch queue, set the MediumPriorityLevel to be equal to LowPriorityLevel and use low priority dispatch queue only.")
 
 	flags.Uint32("dispatch-throttling-medium-priority-shaper", defaultConfig.DispatchThrottling.MediumPriorityShaper, "initial frequency on un-throttled dispatches for medium priority jobs. When check and list objects requests are above the medium level. One out of Nth dispatch will be throttled. Frequency of throttling will increase as number of dispatches increase.")
 

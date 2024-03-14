@@ -330,6 +330,8 @@ func WithRateLimitedCheckResolverLowPriorityShaper(shaper uint32) OpenFGAService
 // throttling queue. Check and list objects requests with dispatches higher than the medium priority level but lower
 // than the low priority level will be placed in the medium priority queue. The medium priority queue are processed
 // more frequently than the low priority queue.
+// If operator desires a single dispatch queue, set the MediumPriorityLevel to be equal to LowPriorityLevel and
+// use low priority dispatch queue only
 func WithRateLimitedCheckResolverMediumPriorityLevel(level uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.rateLimitedCheckResolverMediumPriorityLevel = level
