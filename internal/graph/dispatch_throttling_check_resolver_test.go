@@ -32,19 +32,19 @@ func (c *countResolveCheck) NumResolveCheck() uint32 {
 	return c.count.Load()
 }
 
-func TestRateLimitedCheckResolver(t *testing.T) {
+func TestDispatchThrottlingCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 	t.Run("below_shaping_level_should_not_be_shaped", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := RateLimitedCheckResolverConfig{
+		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			LowPriorityLevel:     200,
 			LowPriorityShaper:    8,
 			MediumPriorityLevel:  100,
 			MediumPriorityShaper: 4,
 		}
-		dut := NewRateLimitedCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()
@@ -58,14 +58,14 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 	})
 
 	t.Run("above low shaping level should be shaped very aggressively", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := RateLimitedCheckResolverConfig{
+		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			LowPriorityLevel:     200,
 			LowPriorityShaper:    2,
 			MediumPriorityLevel:  100,
 			MediumPriorityShaper: 8,
 		}
-		dut := NewRateLimitedCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()
@@ -108,14 +108,14 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 	})
 
 	t.Run("above medium shaping level (just past threshold) should be shaped slightly", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := RateLimitedCheckResolverConfig{
+		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			LowPriorityLevel:     180,
 			LowPriorityShaper:    2,
 			MediumPriorityLevel:  100,
 			MediumPriorityShaper: 8,
 		}
-		dut := NewRateLimitedCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()
@@ -154,14 +154,14 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 	})
 
 	t.Run("above medium shaping level (over one eighth) should be shaped slightly", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := RateLimitedCheckResolverConfig{
+		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			LowPriorityLevel:     180,
 			LowPriorityShaper:    2,
 			MediumPriorityLevel:  100,
 			MediumPriorityShaper: 8,
 		}
-		dut := NewRateLimitedCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()
@@ -205,14 +205,14 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 	})
 
 	t.Run("above medium shaping level (over one quarter) should be shaped more aggressively", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := RateLimitedCheckResolverConfig{
+		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			LowPriorityLevel:     180,
 			LowPriorityShaper:    2,
 			MediumPriorityLevel:  100,
 			MediumPriorityShaper: 8,
 		}
-		dut := NewRateLimitedCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()
@@ -266,14 +266,14 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 	})
 
 	t.Run("above medium shaping level (over half) should be shaped even more aggressively", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := RateLimitedCheckResolverConfig{
+		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			LowPriorityLevel:     180,
 			LowPriorityShaper:    2,
 			MediumPriorityLevel:  100,
 			MediumPriorityShaper: 8,
 		}
-		dut := NewRateLimitedCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()

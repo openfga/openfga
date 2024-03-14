@@ -1453,28 +1453,35 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 			WithDatastore(ds),
 		)
 		t.Cleanup(s.Close)
-		require.Nil(t, s.rateLimitedCheckResolver)
-		require.False(t, s.rateLimitedCheckResolverEnabled)
+		require.Nil(t, s.dispatchThrottlingCheckResolver)
+		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+
+		require.NotNil(t, s.checkResolver)
+		_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
 	})
 
-	t.Run("enable_rate_limited_check_resolver_enabled", func(t *testing.T) {
+	t.Run("rate_limited_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithRateLimitedCheckResolverEnabled(true),
-			WithRateLimitedCheckResolverMediumPriorityShaper(20),
-			WithRateLimitedCheckResolverMediumPriorityLevel(30),
-			WithRateLimitedCheckResolverLowPriorityShaper(40),
-			WithRateLimitedCheckResolverLowPriorityLevel(50),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverMediumPriorityShaper(20),
+			WithDispatchThrottlingCheckResolverMediumPriorityLevel(30),
+			WithDispatchThrottlingCheckResolverLowPriorityShaper(40),
+			WithDispatchThrottlingCheckResolverLowPriorityLevel(50),
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.rateLimitedCheckResolver)
-		require.True(t, s.rateLimitedCheckResolverEnabled)
-		require.EqualValues(t, 20, s.rateLimitedCheckResolverMediumPriorityShaper)
-		require.EqualValues(t, 30, s.rateLimitedCheckResolverMediumPriorityLevel)
-		require.EqualValues(t, 40, s.rateLimitedCheckResolverLowPriorityShaper)
-		require.EqualValues(t, 50, s.rateLimitedCheckResolverLowPriorityLevel)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, 20, s.dispatchThrottlingCheckResolverMediumPriorityShaper)
+		require.EqualValues(t, 30, s.dispatchThrottlingCheckResolverMediumPriorityLevel)
+		require.EqualValues(t, 40, s.dispatchThrottlingCheckResolverLowPriorityShaper)
+		require.EqualValues(t, 50, s.dispatchThrottlingCheckResolverLowPriorityLevel)
 	})
 }

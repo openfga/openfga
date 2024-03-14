@@ -527,12 +527,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
-		server.WithRateLimitedCheckResolverEnabled(config.DispatchThrottling.Enabled),
-		server.WithRateLimitedCheckResolverTimerTickerFrequency(config.DispatchThrottling.TimeTickerFrequency),
-		server.WithRateLimitedCheckResolverMediumPriorityShaper(config.DispatchThrottling.MediumPriorityShaper),
-		server.WithRateLimitedCheckResolverMediumPriorityLevel(config.DispatchThrottling.MediumPriorityLevel),
-		server.WithRateLimitedCheckResolverLowPriorityShaper(config.DispatchThrottling.LowPriorityShaper),
-		server.WithRateLimitedCheckResolverLowPriorityLevel(config.DispatchThrottling.LowPriorityLevel),
+		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
+		server.WithDispatchThrottlingCheckResolverTimerTickerFrequency(config.DispatchThrottling.TimeTickerFrequency),
+		server.WithDispatchThrottlingCheckResolverMediumPriorityShaper(config.DispatchThrottling.MediumPriorityShaper),
+		server.WithDispatchThrottlingCheckResolverMediumPriorityLevel(config.DispatchThrottling.MediumPriorityLevel),
+		server.WithDispatchThrottlingCheckResolverLowPriorityShaper(config.DispatchThrottling.LowPriorityShaper),
+		server.WithDispatchThrottlingCheckResolverLowPriorityLevel(config.DispatchThrottling.LowPriorityLevel),
 		server.WithExperimentals(experimentals...),
 	)
 

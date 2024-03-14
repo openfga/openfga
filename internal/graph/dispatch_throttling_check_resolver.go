@@ -11,8 +11,8 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-// RateLimitedCheckResolverConfig encapsulates configuration for rate limited check resolver
-type RateLimitedCheckResolverConfig struct {
+// DispatchThrottlingCheckResolverConfig encapsulates configuration for rate limited check resolver
+type DispatchThrottlingCheckResolverConfig struct {
 	TimerTickerFrequency time.Duration
 	MediumPriorityLevel  uint32
 	MediumPriorityShaper uint32
@@ -20,7 +20,7 @@ type RateLimitedCheckResolverConfig struct {
 	LowPriorityShaper    uint32
 }
 
-// RateLimitedCheckResolver will prioritize requests with fewer dispatches over
+// DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
 // requests with more dispatches.
 // Initially, request's dispatches will not be throttled and will be processed
 // immediately. As the number of dispatches increases (to beyond the config's MediumPriorityLevel),
@@ -32,9 +32,15 @@ type RateLimitedCheckResolverConfig struct {
 // in the low priority queue. One item form the low priority queue will be processed every Nth ticker
 // (configured via config's LowPriorityShaper parameter).
 // This allows a check / list objects request to be gradually throttled.
-type RateLimitedCheckResolver struct {
+//
+// At high level, as request's dispatch count increases, it will go from
+// [No Throttling, MediumPriorityShaper, mediumPriorityLevel2, mediumPriorityLevel3, mediumPriorityLevel4, lowPriority]
+//
+// This allows a more gradual throttling and results in a more gradual degradation in latency as the number of
+// dispatches increase rather than a sharp rise in latency.
+type DispatchThrottlingCheckResolver struct {
 	delegate         CheckResolver
-	config           RateLimitedCheckResolverConfig
+	config           DispatchThrottlingCheckResolverConfig
 	ticker           *time.Ticker
 	lowPriorityQueue chan bool
 	medPriorityQueue chan bool
@@ -48,7 +54,7 @@ type RateLimitedCheckResolver struct {
 	mediumPriorityShaperFreq3 uint32
 }
 
-var _ CheckResolver = (*RateLimitedCheckResolver)(nil)
+var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
 var (
 	rateLimitedCheckResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -62,10 +68,10 @@ var (
 	}, []string{"grpc_service", "grpc_method", "queue_name"})
 )
 
-func NewRateLimitedCheckResolver(
-	config RateLimitedCheckResolverConfig) *RateLimitedCheckResolver {
+func NewDispatchThrottlingCheckResolver(
+	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
 	ticker := time.NewTicker(config.TimerTickerFrequency)
-	rateLimitedCheckResolver := &RateLimitedCheckResolver{
+	rateLimitedCheckResolver := &DispatchThrottlingCheckResolver{
 		config:           config,
 		ticker:           ticker,
 		lowPriorityQueue: make(chan bool),
@@ -78,7 +84,7 @@ func NewRateLimitedCheckResolver(
 	return rateLimitedCheckResolver
 }
 
-func (r *RateLimitedCheckResolver) setMediumConfig(config RateLimitedCheckResolverConfig) {
+func (r *DispatchThrottlingCheckResolver) setMediumConfig(config DispatchThrottlingCheckResolverConfig) {
 	mediumRange := config.LowPriorityLevel - config.MediumPriorityLevel
 	r.mediumPriorityLevel2 = config.MediumPriorityLevel + mediumRange/8
 	r.mediumPriorityLevel3 = config.MediumPriorityLevel + mediumRange/4
@@ -87,15 +93,15 @@ func (r *RateLimitedCheckResolver) setMediumConfig(config RateLimitedCheckResolv
 	r.mediumPriorityShaperFreq3 = config.MediumPriorityShaper / 4
 }
 
-func (r *RateLimitedCheckResolver) SetDelegate(delegate CheckResolver) {
+func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
 	r.delegate = delegate
 }
 
-func (r *RateLimitedCheckResolver) Close() {
+func (r *DispatchThrottlingCheckResolver) Close() {
 	r.done <- true
 }
 
-func (r *RateLimitedCheckResolver) nonBlockingSend(signalChan chan bool) {
+func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan bool) {
 	select {
 	case signalChan <- true:
 		// message sent
@@ -104,7 +110,7 @@ func (r *RateLimitedCheckResolver) nonBlockingSend(signalChan chan bool) {
 	}
 }
 
-func (r *RateLimitedCheckResolver) handleTimeTick(lowPriorityQueueCounter uint32) uint32 {
+func (r *DispatchThrottlingCheckResolver) handleTimeTick(lowPriorityQueueCounter uint32) uint32 {
 	lowPriorityQueueCounter++
 	r.nonBlockingSend(r.medPriorityQueue)
 	if lowPriorityQueueCounter >= r.config.LowPriorityShaper {
@@ -114,7 +120,7 @@ func (r *RateLimitedCheckResolver) handleTimeTick(lowPriorityQueueCounter uint32
 	return lowPriorityQueueCounter
 }
 
-func (r *RateLimitedCheckResolver) runTicker() {
+func (r *DispatchThrottlingCheckResolver) runTicker() {
 	lowPriorityQueueCounter := uint32(0)
 	for {
 		select {
@@ -130,7 +136,7 @@ func (r *RateLimitedCheckResolver) runTicker() {
 	}
 }
 
-func (r *RateLimitedCheckResolver) shouldWait(currentNumDispatch uint32) bool {
+func (r *DispatchThrottlingCheckResolver) shouldWait(currentNumDispatch uint32) bool {
 	delta := currentNumDispatch - r.config.MediumPriorityLevel
 	if currentNumDispatch < r.mediumPriorityLevel2 {
 		return delta%(r.config.MediumPriorityShaper) == 0
@@ -144,33 +150,42 @@ func (r *RateLimitedCheckResolver) shouldWait(currentNumDispatch uint32) bool {
 	return true
 }
 
-func (r *RateLimitedCheckResolver) ResolveCheck(ctx context.Context,
+func (r *DispatchThrottlingCheckResolver) throttle(ctx context.Context, currentNumDispatch uint32) {
+	start := time.Now()
+	queueName := "medium_priority"
+	throttled := false
+
+	if currentNumDispatch > r.config.LowPriorityLevel {
+		queueName = "low_priority"
+		throttled = true
+		<-r.lowPriorityQueue
+	} else {
+		if r.shouldWait(currentNumDispatch) {
+			throttled = true
+			<-r.medPriorityQueue
+		}
+	}
+	end := time.Now()
+	timeWaiting := end.Sub(start).Milliseconds()
+
+	if throttled {
+		rpcInfo := telemetry.RPCInfoFromContext(ctx)
+		rateLimitedCheckResolverDelayMsHistogram.WithLabelValues(
+			rpcInfo.Service,
+			rpcInfo.Method,
+			queueName,
+		).Observe(float64(timeWaiting))
+	}
+}
+
+func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	start := time.Now()
-	queueName := "high_priority"
 
 	currentNumDispatch := req.DispatchCounter.Add(1)
 	if currentNumDispatch > r.config.MediumPriorityLevel {
-		if currentNumDispatch > r.config.LowPriorityLevel {
-			queueName = "low_priority"
-			<-r.lowPriorityQueue
-		} else {
-			if r.shouldWait(currentNumDispatch) {
-				queueName = "medium_priority"
-				<-r.medPriorityQueue
-			}
-		}
+		r.throttle(ctx, currentNumDispatch)
 	}
-
-	end := time.Now()
-	timeWaiting := end.Sub(start).Milliseconds()
-	rpcInfo := telemetry.RPCInfoFromContext(ctx)
-	rateLimitedCheckResolverDelayMsHistogram.WithLabelValues(
-		rpcInfo.Service,
-		rpcInfo.Method,
-		queueName,
-	).Observe(float64(timeWaiting))
 
 	return r.delegate.ResolveCheck(ctx, req)
 }
