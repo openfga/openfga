@@ -4129,6 +4129,7 @@ tests:
             expectation:
               - module:a
               - module:b
+  # TODO uncomment when introducing cycle detection
   #        listUsersAssertions:
   #          - request:
   #              filters:
@@ -4269,6 +4270,7 @@ tests:
             expectation:
               - module:a
               - module:b
+  # TODO uncomment when introducing support for exclusion
   #        listUsersAssertions:
   #          - request:
   #              filters:
@@ -6273,6 +6275,7 @@ tests:
               type: document
               relation: viewer
             errorCode: 2002
+  # TODO uncomment when introducing depth counters
   #        listUsersAssertions:
   #          - request:
   #              filters:
