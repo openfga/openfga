@@ -11,7 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-// DispatchThrottlingCheckResolverConfig encapsulates configuration for rate limited check resolver
+// DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver
 type DispatchThrottlingCheckResolverConfig struct {
 	TimerTickerFrequency time.Duration
 	Level                uint32
@@ -36,10 +36,10 @@ type DispatchThrottlingCheckResolver struct {
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
 var (
-	rateLimitedCheckResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	dispatchThrottlingResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
-		Name:                            "rate_limited_check_resolver_delay_ms",
-		Help:                            "Time spent waiting for rate limited check resolver",
+		Name:                            "dispatch_throttling_resolver_delay_ms",
+		Help:                            "Time spent waiting for dispatch throttling resolver",
 		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -49,16 +49,15 @@ var (
 
 func NewDispatchThrottlingCheckResolver(
 	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
-	ticker := time.NewTicker(config.TimerTickerFrequency)
-	rateLimitedCheckResolver := &DispatchThrottlingCheckResolver{
+	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		config:          config,
-		ticker:          ticker,
+		ticker:          time.NewTicker(config.TimerTickerFrequency),
 		throttlingQueue: make(chan bool),
 		done:            make(chan bool),
 	}
-	rateLimitedCheckResolver.delegate = rateLimitedCheckResolver
-	go rateLimitedCheckResolver.runTicker()
-	return rateLimitedCheckResolver
+	dispatchThrottlingCheckResolver.delegate = dispatchThrottlingCheckResolver
+	go dispatchThrottlingCheckResolver.runTicker()
+	return dispatchThrottlingCheckResolver
 }
 
 func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
@@ -114,7 +113,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 		timeWaiting := end.Sub(start).Milliseconds()
 
 		rpcInfo := telemetry.RPCInfoFromContext(ctx)
-		rateLimitedCheckResolverDelayMsHistogram.WithLabelValues(
+		dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
 			rpcInfo.Service,
 			rpcInfo.Method,
 		).Observe(float64(timeWaiting))

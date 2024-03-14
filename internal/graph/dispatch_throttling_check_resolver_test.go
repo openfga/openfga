@@ -37,12 +37,12 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	t.Run("below_shaping_level_should_not_be_shaped", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
+		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			Level:                200,
 			Rate:                 8,
 		}
-		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()
@@ -56,12 +56,12 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 	})
 
 	t.Run("above low shaping level should be shaped very aggressively", func(t *testing.T) {
-		rateLimitedCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
+		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			Level:                200,
 			Rate:                 2,
 		}
-		dut := NewDispatchThrottlingCheckResolver(rateLimitedCheckResolverConfig)
+		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
 
 		c := newCountResolveCheck()

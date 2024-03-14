@@ -1439,11 +1439,11 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
-func TestRateLimitedCheckResolver(t *testing.T) {
+func TestWithDispatchThrottlingCheckResolverEnabledCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	t.Run("default_rate_limited_check_resolver_disabled", func(t *testing.T) {
+	t.Run("default_dispatch_throttling_check_resolver_disabled", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.DispatchThrottling.Enabled)
 
@@ -1461,7 +1461,7 @@ func TestRateLimitedCheckResolver(t *testing.T) {
 		require.True(t, ok)
 	})
 
-	t.Run("rate_limited_check_resolver_enabled", func(t *testing.T) {
+	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
