@@ -420,11 +420,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 
 		rateLimitedCheckResolver := graph.NewRateLimitedCheckResolver(rateLimitConfig)
-		rateLimitedCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+		rateLimitedCheckResolver.SetDelegate(localChecker)
 		s.rateLimitedCheckResolver = rateLimitedCheckResolver
 
-		cycleDetectionCheckResolver.SetDelegate(localChecker)
-		localChecker.SetDelegate(rateLimitedCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(rateLimitedCheckResolver)
+		localChecker.SetDelegate(cycleDetectionCheckResolver)
 	} else {
 		cycleDetectionCheckResolver.SetDelegate(localChecker)
 		localChecker.SetDelegate(cycleDetectionCheckResolver)
