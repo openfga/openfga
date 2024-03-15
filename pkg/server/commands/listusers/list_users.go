@@ -16,13 +16,7 @@ type listUsersRequest interface {
 }
 
 type internalListUsersRequest struct {
-	StoreID              string
-	AuthorizationModelID string
-	Object               *openfgav1.Object
-	Relation             string
-	UserFilters          []*openfgav1.ListUsersFilter
-
-	ContextualTuples *openfgav1.ContextualTupleKeys
+	*openfgav1.ListUsersRequest
 
 	// visitedUsersetsMap keeps track of the "path" we've made so far.
 	// It prevents stack overflows by preventing visiting the same userset twice.
@@ -36,7 +30,7 @@ func (r *internalListUsersRequest) GetStoreId() string {
 	if r == nil {
 		return ""
 	}
-	return r.StoreID
+	return r.StoreId
 }
 
 //nolint:stylecheck
@@ -44,7 +38,7 @@ func (r *internalListUsersRequest) GetAuthorizationModelId() string {
 	if r == nil {
 		return ""
 	}
-	return r.AuthorizationModelID
+	return r.AuthorizationModelId
 }
 
 func (r *internalListUsersRequest) GetObject() *openfgav1.Object {
@@ -77,24 +71,21 @@ func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTu
 
 func from(o listUsersRequest) *internalListUsersRequest {
 	return &internalListUsersRequest{
-		StoreID:              o.GetStoreId(),
-		AuthorizationModelID: o.GetAuthorizationModelId(),
-		Object:               o.GetObject(),
-		Relation:             o.GetRelation(),
-		UserFilters:          o.GetUserFilters(),
-		ContextualTuples:     o.GetContextualTuples(),
-		visitedUsersetsMap:   make(map[string]struct{}),
+		ListUsersRequest: &openfgav1.ListUsersRequest{
+			StoreId:              o.GetStoreId(),
+			AuthorizationModelId: o.GetAuthorizationModelId(),
+			Object:               o.GetObject(),
+			Relation:             o.GetRelation(),
+			UserFilters:          o.GetUserFilters(),
+			ContextualTuples:     o.GetContextualTuples(),
+		},
+		visitedUsersetsMap: make(map[string]struct{}),
 	}
 }
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
 func clone(o *internalListUsersRequest) *internalListUsersRequest {
-	return &internalListUsersRequest{
-		StoreID:            o.GetStoreId(),
-		Object:             o.GetObject(),
-		Relation:           o.GetRelation(),
-		UserFilters:        o.GetUserFilters(),
-		ContextualTuples:   o.GetContextualTuples(),
-		visitedUsersetsMap: maps.Clone(o.visitedUsersetsMap),
-	}
+	v := from(o)
+	v.visitedUsersetsMap = maps.Clone(o.visitedUsersetsMap)
+	return v
 }

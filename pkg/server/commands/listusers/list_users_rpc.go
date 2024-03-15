@@ -71,7 +71,8 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		if err := l.beginExpand(ctx, req, foundUsersCh); err != nil {
+		internalRequest := from(req)
+		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
 		}
@@ -135,16 +136,6 @@ func (l *listUsersQuery) ListUsers(
 // 	return nil
 // }
 
-func (l *listUsersQuery) beginExpand(
-	ctx context.Context,
-	req listUsersRequest,
-	foundUsersChan chan<- *openfgav1.User,
-) error {
-	internalRequest := from(req)
-
-	return l.expand(ctx, internalRequest, foundUsersChan)
-}
-
 func (l *listUsersQuery) expand(
 	ctx context.Context,
 	req *internalListUsersRequest,
@@ -203,9 +194,9 @@ func (l *listUsersQuery) expandRewrite(
 
 		children := rewrite.Union.GetChild()
 		for _, childRewrite := range children {
-			childRewrite1 := childRewrite
+			childRewriteCopy := childRewrite
 			pool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, childRewrite1, foundUsersChan)
+				return l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
 			})
 		}
 
