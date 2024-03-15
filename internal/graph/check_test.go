@@ -618,6 +618,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		tuple.NewTupleKey("document:x", "userset", "org:fga#member"),
 		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
 		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
+		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
 	})
 	require.NoError(t, err)
 
@@ -635,6 +636,7 @@ type org
 
 type document
   relations
+	define wildcard: [user:*]
 	define userset: [org#member]
 	define multiple_userset: [org#member, company#member]
 	define a: [user]
@@ -776,6 +778,20 @@ type document
 			minDBReads: 2, // 1 userset read (2 found) follow by 1 direct tuple check (found, returns immediately)
 			maxDBReads: 2,
 		},
+		{
+			name:       "wildcard_no_access",
+			check:      tuple.NewTupleKey("document:x", "wildcard", "user:maria"),
+			allowed:    false,
+			minDBReads: 1, // 1 direct tuple read (not found)
+			maxDBReads: 1,
+		},
+		{
+			name:       "wildcard_access",
+			check:      tuple.NewTupleKey("document:public", "wildcard", "user:maria"),
+			allowed:    true,
+			minDBReads: 1, // 1 direct tuple read (found)
+			maxDBReads: 1,
+		},
 		// more complex scenarios
 		{
 			name:       "union_and_ttu",
@@ -822,11 +838,11 @@ type document
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
-			t.Parallel()
+			//t.Parallel()
 			for _, test := range tests {
 				test := test
 				t.Run(test.name, func(t *testing.T) {
-					t.Parallel()
+					//t.Parallel()
 
 					ctx := storage.ContextWithRelationshipTupleReader(
 						ctx,
