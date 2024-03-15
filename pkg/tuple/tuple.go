@@ -154,6 +154,45 @@ func ObjectKey(obj *openfgav1.Object) string {
 	return fmt.Sprintf("%s:%s", obj.GetType(), obj.GetId())
 }
 
+type UserString = string
+
+// FromUserProto returns a string like 'userType:userId[#userRelation]'.
+func FromUserProto(obj *openfgav1.User) UserString {
+	switch obj.GetUser().(type) {
+	case *openfgav1.User_Wildcard:
+		return fmt.Sprintf("%s:%s", obj.GetObject().GetType(), "*")
+	case *openfgav1.User_Userset:
+		us := obj.GetUser().(*openfgav1.User_Userset)
+		return fmt.Sprintf("%s:%s#%s", us.Userset.GetType(), us.Userset.GetId(), us.Userset.GetRelation())
+	case *openfgav1.User_Object:
+		us := obj.GetUser().(*openfgav1.User_Object)
+		return fmt.Sprintf("%s:%s", us.Object.GetType(), us.Object.GetId())
+	default:
+		panic("unsupported type")
+	}
+}
+
+// ToUserProto is the reverse of FromUserProto.
+func ToUserProto(userKey UserString) *openfgav1.User {
+	userObj, userRel := SplitObjectRelation(userKey)
+	userObjType, userObjID := SplitObject(userObj)
+	if userRel == "" && userObjID == "*" {
+		// TODO add the type
+		return &openfgav1.User{User: &openfgav1.User_Wildcard{Wildcard: &openfgav1.Wildcard{}}}
+	}
+	if userRel == "" {
+		return &openfgav1.User{User: &openfgav1.User_Object{Object: &openfgav1.Object{
+			Type: userObjType,
+			Id:   userObjID,
+		}}}
+	}
+	return &openfgav1.User{User: &openfgav1.User_Userset{Userset: &openfgav1.UsersetUser{
+		Type:     userObjType,
+		Id:       userObjID,
+		Relation: userRel,
+	}}}
+}
+
 // SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string
 // and the original object.
 func SplitObject(object string) (string, string) {
