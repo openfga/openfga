@@ -58,6 +58,31 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
+			name:                  "direct_relationship_with_userset_subjects_and_userset_filter",
+			TemporarilySkipReason: "because group:eng,group:fga,group:fga-backend being returned",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "group", Id: "eng"},
+				Relation: "member",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+			type group
+				relations
+					define member: [user, group#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
+				tuple.NewTupleKey("group:fga", "member", "group:fga-backend#member"),
+			},
+			expectedUsers: []string{"group:fga#member", "group:fga-backend#member"},
+		},
+		{
 			name:                  "direct_relationship_unapplicable_filter",
 			TemporarilySkipReason: "because this should return an error",
 			req: &openfgav1.ListUsersRequest{
@@ -260,7 +285,7 @@ func TestListUsersUsersets(t *testing.T) {
 		},
 		{
 			name:                  "userset_group_granularity",
-			TemporarilySkipReason: "because `group:eng` is being returned instead of `group:fga#member`",
+			TemporarilySkipReason: "because `group:eng` is being returned instead of `group:eng#member`",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -304,7 +329,7 @@ func TestListUsersUsersets(t *testing.T) {
 		},
 		{
 			name:                  "userset_group_granularity_with_direct_user_relationships",
-			TemporarilySkipReason: "because `group:eng` is being returned instead of `group:fga#member`",
+			TemporarilySkipReason: "because `group:eng` is being returned instead of `group:eng#member`",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -359,12 +384,14 @@ func TestListUsersUsersets(t *testing.T) {
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:other#member"),
+				tuple.NewTupleKey("group:other", "member", "user:will"),
 			},
-			expectedUsers: []string{"user:jon", "user:hawker"},
+			expectedUsers: []string{"user:jon", "user:hawker", "user:will"},
 		},
 		{
 			name:                  "userset_multiple_usersets_group_granularity",
-			TemporarilySkipReason: "because `group:eng` and `group:fga` is being returned instead of `group:eng#member` and `group:fga#member`",
+			TemporarilySkipReason: "because `group:eng`,`group:fga`,`group:other` is being returned instead of `group:eng#member`,`group:fga#member` and `group:other#member`",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -386,11 +413,11 @@ func TestListUsersUsersets(t *testing.T) {
 			    define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:hawker"),
-				tuple.NewTupleKey("group:fga", "member", "user:jon"),
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:other#member"),
 			},
-			expectedUsers: []string{"group:fga#member", "group:eng#member"},
+			expectedUsers: []string{"group:fga#member", "group:eng#member", "group:other#member"},
 		},
 		{
 			name: "userset_user_granularity_with_contextual_tuples",
@@ -562,6 +589,34 @@ func TestListUsersTTU(t *testing.T) {
 			},
 			expectedUsers: []string{"user:maria", "user:will", "user:jon"},
 		},
+		{
+			name: "ttu_multiple_levels",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "folder", Id: "c"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user 
+			type folder 
+				relations
+					define parent: [folder]
+					define viewer: [user] or viewer from parent`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:a", "viewer", "user:will"),
+				tuple.NewTupleKey("folder:b", "parent", "folder:a"),
+				tuple.NewTupleKey("folder:c", "parent", "folder:b"),
+
+				tuple.NewTupleKey("folder:c", "parent", "folder:other"),
+				tuple.NewTupleKey("folder:other", "viewer", "user:jon"),
+			},
+			expectedUsers: []string{"user:will", "user:jon"},
+		},
 	}
 
 	tests.runListUsersTestCases(t)
@@ -574,7 +629,7 @@ func TestListUsersCycles(t *testing.T) {
 	tests := ListUsersTests{
 		{
 			name:                  "cycle_by_userset",
-			TemporarilySkipReason: "because we haven't implemented cycle detection yet",
+			TemporarilySkipReason: "because cycle detection not implemented yet",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -592,6 +647,36 @@ func TestListUsersCycles(t *testing.T) {
 					define viewer: [user, document#viewer]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name:                  "cycle_by_ttu",
+			TemporarilySkipReason: "because cycle detection not implemented yet",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+
+			type folder
+			relations
+				define viewer: [user, document#viewer]
+
+			type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("folder:x", "viewer", "document:1#viewer"),
 			},
 			expectedUsers: []string{},
 		},
@@ -1031,9 +1116,6 @@ func TestListUsersWildcards(t *testing.T) {
 			schema 1.1
 			type user
 			type group
-				relations
-					define member: [user]
-
 			type document
 				relations
 					define viewer: [ group:*, user:*]`,
@@ -1045,13 +1127,13 @@ func TestListUsersWildcards(t *testing.T) {
 			expectedUsers: []string{"user:*"},
 		},
 		{
-			name: "multiple_possible_wildcards_group_granularity",
+			name: "wildcard_with_indirection",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
 				UserFilters: []*openfgav1.ListUsersFilter{
 					{
-						Type: "group",
+						Type: "user",
 					},
 				},
 			},
@@ -1060,17 +1142,15 @@ func TestListUsersWildcards(t *testing.T) {
 			type user
 			type group
 				relations
-					define member: [user]
-
+					define member: [user:*]
 			type document
 				relations
-					define viewer: [ group:*, user:*]`,
-
+					define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "viewer", "group:*"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "user:*"),
 			},
-			expectedUsers: []string{"group:*"},
+			expectedUsers: []string{"user:*"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -1081,7 +1161,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 
 	for _, test := range testCases {
 		ds := memory.New()
-		defer ds.Close()
+		t.Cleanup(ds.Close)
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
 		t.Run(test.name, func(t *testing.T) {
