@@ -53,7 +53,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 		AuthorizationModelID: req.GetAuthorizationModelID(),
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.GetContextualTuples(),
-		ResolutionMetadata:   req.GetResolutionMetadata(),
+		RequestMetadata:      req.GetRequestMetadata(),
 		VisitedPaths:         req.VisitedPaths,
 		Context:              req.GetContext(),
 	})
