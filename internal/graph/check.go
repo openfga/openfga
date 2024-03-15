@@ -728,7 +728,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							ContextualTuples:     req.GetContextualTuples(),
 							ResolutionMetadata: &ResolutionMetadata{
 								Depth:               req.GetResolutionMetadata().Depth - 1,
-								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
+								DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add userset read at the end
 							},
 							VisitedPaths: maps.Clone(req.VisitedPaths),
 							Context:      req.GetContext(),
@@ -768,7 +768,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
 		if err != nil {
 			telemetry.TraceError(span, err)
+			return nil, err
 		}
+		if len(directlyRelatedUsersetTypes) > 0 {
+			// if we had N userset checks, that was 1 read, not N
+			resp.GetResolutionMetadata().DatastoreQueryCount++
+		}
+
 		return resp, err
 	}
 }
