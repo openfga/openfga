@@ -441,13 +441,13 @@
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
-                    "description": "defines how frequent dispatch throttling will be evaluated",
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
                     "type": "duration",
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_FREQUENCY"
                 },
                 "threshold": {
-                    "description": "define the number of dispatches to be throttled",
+                    "description": "define the number of recursive operations to occur before getting throttled",
                     "type": "integer",
                     "default": "100",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
