@@ -7,13 +7,14 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type ListUsersTests []struct {
@@ -654,8 +655,7 @@ func TestListUsersCycles(t *testing.T) {
 	})
 	tests := ListUsersTests{
 		{
-			name:                  "cycle_by_userset",
-			TemporarilySkipReason: "because cycle detection not implemented yet",
+			name: "cycle_materialized_by_tuples",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -677,8 +677,7 @@ func TestListUsersCycles(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "cycle_by_ttu",
-			TemporarilySkipReason: "because cycle detection not implemented yet",
+			name: "cycle_that_is_independent_of_tuples",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -691,19 +690,43 @@ func TestListUsersCycles(t *testing.T) {
 			model: `model
 			schema 1.1
 			type user
-
-			type folder
-			relations
-				define viewer: [user, document#viewer]
-
 			type document
-			relations
-				define parent: [folder]
-				define viewer: viewer from parent`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "folder:x"),
-				tuple.NewTupleKey("folder:x", "viewer", "document:1#viewer"),
+				relations
+					define writer: viewer
+					define viewer: writer`,
+			tuples:        []*openfgav1.TupleKey{},
+			expectedUsers: []string{},
+		},
+		{
+			name: "cycle_when_model_has_two_parallel_edges",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "transition", Id: "1"},
+				Relation: "can_view_3",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
 			},
+			model: `
+			model
+				schema 1.1
+
+			type user
+
+			type state
+				relations
+					define can_view: [user] or can_view_3 from associated_transition
+					define associated_transition: [transition]
+
+			type transition
+				relations
+					define start: [state]
+					define end: [state]
+					define can_view: can_view from start or can_view from end
+					define can_view_2: can_view
+					define can_view_3: can_view_2`,
+			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{},
 		},
 	}
@@ -1264,7 +1287,10 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			}
 
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
+			if err != nil {
+				t.Log("warn! model is invalid")
+				typesys = typesystem.New(model)
+			}
 
 			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 			require.NoError(t, err)
