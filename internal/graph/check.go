@@ -591,7 +591,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
+					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
 				},
 			}
 
@@ -771,12 +771,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return nil, err
 		}
 
-		// count db reads after they happen in the case that we didn't find 'allowed=false' but we still incurred reads
+		//count db reads after they happen in the case that we didn't find 'allowed=false' but we still incurred reads
 		if len(directlyRelatedUsersetTypes) > 0 {
 			// if we had N userset checks, that was 1 read, not N
-			resp.GetResolutionMetadata().DatastoreQueryCount++
-		}
-		if shouldCheckDirectTuple {
 			resp.GetResolutionMetadata().DatastoreQueryCount++
 		}
 
