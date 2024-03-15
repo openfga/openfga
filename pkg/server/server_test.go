@@ -1439,13 +1439,14 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
-func TestWithDispatchThrottlingCheckResolverEnabledCheckResolver(t *testing.T) {
+func TestDelegateCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	t.Run("default_dispatch_throttling_check_resolver_disabled", func(t *testing.T) {
+	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.DispatchThrottling.Enabled)
+		require.False(t, cfg.CheckQueryCache.Enabled)
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -1456,8 +1457,17 @@ func TestWithDispatchThrottlingCheckResolverEnabledCheckResolver(t *testing.T) {
 		require.Nil(t, s.dispatchThrottlingCheckResolver)
 		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
 
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
 		require.NotNil(t, s.checkResolver)
-		_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		localCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localCheckResolver.GetDelegate().(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1467,15 +1477,89 @@ func TestWithDispatchThrottlingCheckResolverEnabledCheckResolver(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverLevel(50),
+			WithDispatchThrottlingCheckResolverThreshold(50),
 		)
 		t.Cleanup(s.Close)
 
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, 50, s.dispatchThrottlingThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
-		_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
+
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("cache_check_resolver_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithCheckQueryCacheEnabled(true),
+		)
+		t.Cleanup(s.Close)
+
+		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.Nil(t, s.dispatchThrottlingCheckResolver)
+
+		require.True(t, s.checkQueryCacheEnabled)
+		require.NotNil(t, s.cachedCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("both_dispatch_throttling_and_cache_check_resolver_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithCheckQueryCacheEnabled(true),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(50),
+		)
+		t.Cleanup(s.Close)
+
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, 50, s.dispatchThrottlingCheckResolverLevel)
+		require.EqualValues(t, 50, s.dispatchThrottlingThreshold)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		require.True(t, s.checkQueryCacheEnabled)
+		require.NotNil(t, s.cachedCheckResolver)
+
+		cachedCheckResolver, ok := dispatchThrottlingResolver.GetDelegate().(*graph.CachedCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
 	})
 }

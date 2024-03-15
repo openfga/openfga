@@ -13,16 +13,15 @@ import (
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver
 type DispatchThrottlingCheckResolverConfig struct {
-	TimerTickerFrequency time.Duration
-	Level                uint32
+	Frequency time.Duration
+	Threshold uint32
 }
 
 // DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
 // requests with more dispatches.
 // Initially, request's dispatches will not be throttled and will be processed
-// immediately. When the number of request dispatches is above the Level, the dispatches are placed
-// in the throttling queue. One item form the throttling queue will be processed every Nth ticker
-// (configured via config's Rate parameter).
+// immediately. When the number of request dispatches is above the Threshold, the dispatches are placed
+// in the throttling queue. One item form the throttling queue will be processed ticker.
 // This allows a check / list objects request to be gradually throttled.
 type DispatchThrottlingCheckResolver struct {
 	delegate        CheckResolver
@@ -50,7 +49,7 @@ func NewDispatchThrottlingCheckResolver(
 	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		config:          config,
-		ticker:          time.NewTicker(config.TimerTickerFrequency),
+		ticker:          time.NewTicker(config.Frequency),
 		throttlingQueue: make(chan struct{}),
 		done:            make(chan struct{}),
 	}
@@ -61,6 +60,10 @@ func NewDispatchThrottlingCheckResolver(
 
 func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
 	r.delegate = delegate
+}
+
+func (r *DispatchThrottlingCheckResolver) GetDelegate() CheckResolver {
+	return r.delegate
 }
 
 func (r *DispatchThrottlingCheckResolver) Close() {
@@ -95,7 +98,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 ) (*ResolveCheckResponse, error) {
 	currentNumDispatch := req.DispatchCounter.Add(1)
 
-	if currentNumDispatch > r.config.Level {
+	if currentNumDispatch > r.config.Threshold {
 		start := time.Now()
 		<-r.throttlingQueue
 		end := time.Now()

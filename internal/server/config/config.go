@@ -32,9 +32,9 @@ const (
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
-	DefaultDispatchThrottlingEnabled             = false
-	DefaultDispatchThrottlingTimeTickerFrequency = 10 * time.Microsecond
-	DefaultDispatchThrottlingLevel               = 100
+	DefaultDispatchThrottlingEnabled   = false
+	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
+	DefaultDispatchThrottlingThreshold = 100
 )
 
 type DatastoreMetricsConfig struct {
@@ -180,9 +180,9 @@ type CheckQueryCache struct {
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling
 type DispatchThrottlingConfig struct {
-	Enabled             bool
-	TimeTickerFrequency time.Duration
-	Level               uint32
+	Enabled   bool
+	Frequency time.Duration
+	Threshold uint32
 }
 
 type Config struct {
@@ -325,11 +325,11 @@ func (cfg *Config) Verify() error {
 	}
 
 	if cfg.DispatchThrottling.Enabled {
-		if cfg.DispatchThrottling.TimeTickerFrequency <= 0 {
-			return errors.New("dispatch throttling time ticker frequency must be non-negative time duration")
+		if cfg.DispatchThrottling.Frequency <= 0 {
+			return errors.New("dispatch throttling frequency must be non-negative time duration")
 		}
-		if cfg.DispatchThrottling.Level <= 0 {
-			return errors.New("dispatch throttling level must be non-negative integer")
+		if cfg.DispatchThrottling.Threshold <= 0 {
+			return errors.New("dispatch throttling threshold must be non-negative integer")
 		}
 	}
 
@@ -410,9 +410,9 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:             DefaultDispatchThrottlingEnabled,
-			TimeTickerFrequency: DefaultDispatchThrottlingTimeTickerFrequency,
-			Level:               DefaultDispatchThrottlingLevel,
+			Enabled:   DefaultDispatchThrottlingEnabled,
+			Frequency: DefaultDispatchThrottlingFrequency,
+			Threshold: DefaultDispatchThrottlingThreshold,
 		},
 	}
 }

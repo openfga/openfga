@@ -136,9 +136,9 @@ type Server struct {
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
 
-	dispatchThrottlingCheckResolverEnabled              bool
-	dispatchThrottlingCheckResolverTimerTickerFrequency time.Duration
-	dispatchThrottlingCheckResolverLevel                uint32
+	dispatchThrottlingCheckResolverEnabled   bool
+	dispatchThrottlingCheckResolverFrequency time.Duration
+	dispatchThrottlingThreshold              uint32
 
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 }
@@ -307,22 +307,22 @@ func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Op
 	}
 }
 
-// WithDispatchThrottlingCheckResolverTimerTickerFrequency defines how frequent dispatch throttling will be evaluated.
-// TimeTickerFrequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// WithDispatchThrottlingCheckResolverFrequency defines how frequent dispatch throttling will be evaluated.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
 // it can be processed.
 // This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
 // and ii) very small value will result in a higher frequency of processing dispatches,
 // which diminishes the value of the throttling.
-func WithDispatchThrottlingCheckResolverTimerTickerFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dispatchThrottlingCheckResolverTimerTickerFrequency = frequency
+		s.dispatchThrottlingCheckResolverFrequency = frequency
 	}
 }
 
-// WithDispatchThrottlingCheckResolverLevel define the number of dispatches to be throttled.
-func WithDispatchThrottlingCheckResolverLevel(level uint32) OpenFGAServiceV1Option {
+// WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
+func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dispatchThrottlingCheckResolverLevel = level
+		s.dispatchThrottlingThreshold = threshold
 	}
 }
 
@@ -362,9 +362,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
 		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 
-		dispatchThrottlingCheckResolverEnabled:              serverconfig.DefaultCheckQueryCacheEnable,
-		dispatchThrottlingCheckResolverTimerTickerFrequency: serverconfig.DefaultDispatchThrottlingTimeTickerFrequency,
-		dispatchThrottlingCheckResolverLevel:                serverconfig.DefaultDispatchThrottlingLevel,
+		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultCheckQueryCacheEnable,
+		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
+		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
 	}
 
 	for _, opt := range opts {
@@ -383,13 +383,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.dispatchThrottlingCheckResolverEnabled {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
-			TimerTickerFrequency: s.dispatchThrottlingCheckResolverTimerTickerFrequency,
-			Level:                s.dispatchThrottlingCheckResolverLevel,
+			Frequency: s.dispatchThrottlingCheckResolverFrequency,
+			Threshold: s.dispatchThrottlingThreshold,
 		}
 
 		s.logger.Info("Enabling dispatch throttling",
-			zap.Duration("TimerTickerFrequency", s.dispatchThrottlingCheckResolverTimerTickerFrequency),
-			zap.Uint32("LowPriorityLevel", s.dispatchThrottlingCheckResolverLevel),
+			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
+			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
 		)
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
@@ -412,7 +412,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.cachedCheckResolver = cachedCheckResolver
 
 		cachedCheckResolver.SetDelegate(localChecker)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		if s.dispatchThrottlingCheckResolver != nil {
+			s.dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		}
 	}
 
 	if s.datastore == nil {

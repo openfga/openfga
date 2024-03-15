@@ -440,17 +440,17 @@
                     "default": "false",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_ENABLED"
                 },
-                "timeTickerFrequency": {
+                "frequency": {
                     "description": "defines how frequent dispatch throttling will be evaluated",
                     "type": "duration",
                     "default": "10µs",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY"
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_FREQUENCY"
                 },
-                "level": {
+                "threshold": {
                     "description": "define the number of dispatches to be throttled",
                     "type": "integer",
                     "default": "100",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_LEVEL"
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
                 }
             }
         }

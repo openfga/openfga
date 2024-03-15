@@ -198,6 +198,11 @@ func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
 }
 
+// GetDelegate sets this LocalChecker's dispatch delegate.
+func (c *LocalChecker) GetDelegate() CheckResolver {
+	return c.delegate
+}
+
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
 // otherwise.
 type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)

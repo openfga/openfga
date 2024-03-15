@@ -206,9 +206,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch level threshold over requests whose dispatch count exceeds the configured level.")
 
-	flags.Duration("dispatch-throttling-time-ticker-frequency", defaultConfig.DispatchThrottling.TimeTickerFrequency, "defines how frequent dispatch throttling will be evaluated. TimeTickerFrequency controls how frequently throttled dispatch requests are evaluated to determine whether it can be processed.")
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
 
-	flags.Uint32("dispatch-throttling-level", defaultConfig.DispatchThrottling.Level, "define the number of dispatches above which requests will be throttled.")
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -522,8 +522,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
-		server.WithDispatchThrottlingCheckResolverTimerTickerFrequency(config.DispatchThrottling.TimeTickerFrequency),
-		server.WithDispatchThrottlingCheckResolverLevel(config.DispatchThrottling.Level),
+		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
 		server.WithExperimentals(experimentals...),
 	)
 

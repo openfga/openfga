@@ -144,6 +144,11 @@ func (c *CachedCheckResolver) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
 }
 
+// GetDelegate returns this CachedCheckResolver's dispatch delegate.
+func (c *CachedCheckResolver) GetDelegate() CheckResolver {
+	return c.delegate
+}
+
 // Close will deallocate resource allocated by the CachedCheckResolver
 // It will not deallocate cache if it has been passed in from WithExistingCache
 func (c *CachedCheckResolver) Close() {

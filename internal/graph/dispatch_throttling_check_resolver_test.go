@@ -22,8 +22,8 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			// We set timer ticker to 1 hour to avoid it interfering with test
-			TimerTickerFrequency: 1 * time.Hour,
-			Level:                200,
+			Frequency: 1 * time.Hour,
+			Threshold: 200,
 		}
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
@@ -59,8 +59,8 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			// We set timer ticker to 1 hour to avoid it interfering with test
-			TimerTickerFrequency: 1 * time.Hour,
-			Level:                200,
+			Frequency: 1 * time.Hour,
+			Threshold: 200,
 		}
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()

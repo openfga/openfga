@@ -133,24 +133,24 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_throttling_duration", func(t *testing.T) {
+	t.Run("non_positive_dispatch_throttling_frequency", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:             true,
-			TimeTickerFrequency: 0,
-			Level:               30,
+			Enabled:   true,
+			Frequency: 0,
+			Threshold: 30,
 		}
 
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_level", func(t *testing.T) {
+	t.Run("non_positive_dispatch_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:             true,
-			TimeTickerFrequency: 10 * time.Microsecond,
-			Level:               0,
+			Enabled:   true,
+			Frequency: 10 * time.Microsecond,
+			Threshold: 0,
 		}
 
 		err := cfg.Verify()

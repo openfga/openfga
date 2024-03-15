@@ -192,10 +192,10 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
 		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
 
-		util.MustBindPFlag("dispatchThrottling.timeTickerFrequency", flags.Lookup("dispatch-throttling-time-ticker-frequency"))
-		util.MustBindEnv("dispatchThrottling.timeTickerFrequency", "OPENFGA_DISPATCH_THROTTLING_TIME_TICKER_FREQUENCY")
+		util.MustBindPFlag("dispatchThrottling.frequency", flags.Lookup("dispatch-throttling-frequency"))
+		util.MustBindEnv("dispatchThrottling.frequency", "OPENFGA_DISPATCH_THROTTLING_FREQUENCY")
 
-		util.MustBindPFlag("dispatchThrottling.level", flags.Lookup("dispatch-throttling-level"))
-		util.MustBindEnv("dispatchThrottling.level", "OPENFGA_DISPATCH_THROTTLING_LEVEL")
+		util.MustBindPFlag("dispatchThrottling.threshold", flags.Lookup("dispatch-throttling-threshold"))
+		util.MustBindEnv("dispatchThrottling.threshold", "OPENFGA_DISPATCH_THROTTLING_THRESHOLD")
 	}
 }
