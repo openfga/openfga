@@ -35,7 +35,6 @@ const (
 	DefaultDispatchThrottlingEnabled             = false
 	DefaultDispatchThrottlingTimeTickerFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingLevel               = 100
-	DefaultDispatchThrottlingRate                = 1
 )
 
 type DatastoreMetricsConfig struct {
@@ -184,7 +183,6 @@ type DispatchThrottlingConfig struct {
 	Enabled             bool
 	TimeTickerFrequency time.Duration
 	Level               uint32
-	Rate                uint32
 }
 
 type Config struct {
@@ -333,9 +331,6 @@ func (cfg *Config) Verify() error {
 		if cfg.DispatchThrottling.Level <= 0 {
 			return errors.New("dispatch throttling level must be non-negative integer")
 		}
-		if cfg.DispatchThrottling.Rate <= 0 {
-			return errors.New("dispatch throttling rate must be non-negative integer")
-		}
 	}
 
 	return nil
@@ -418,7 +413,6 @@ func DefaultConfig() *Config {
 			Enabled:             DefaultDispatchThrottlingEnabled,
 			TimeTickerFrequency: DefaultDispatchThrottlingTimeTickerFrequency,
 			Level:               DefaultDispatchThrottlingLevel,
-			Rate:                DefaultDispatchThrottlingRate,
 		},
 	}
 }

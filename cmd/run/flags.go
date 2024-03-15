@@ -197,8 +197,5 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("dispatchThrottling.level", flags.Lookup("dispatch-throttling-level"))
 		util.MustBindEnv("dispatchThrottling.level", "OPENFGA_DISPATCH_THROTTLING_LEVEL")
-
-		util.MustBindPFlag("dispatchThrottling.rate", flags.Lookup("dispatch-throttling-rate"))
-		util.MustBindEnv("dispatchThrottling.rate", "OPENFGA_DISPATCH_THROTTLING_RATE")
 	}
 }

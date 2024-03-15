@@ -138,7 +138,6 @@ func TestVerifyConfig(t *testing.T) {
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:             true,
 			TimeTickerFrequency: 0,
-			Rate:                30,
 			Level:               30,
 		}
 
@@ -151,7 +150,6 @@ func TestVerifyConfig(t *testing.T) {
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:             true,
 			TimeTickerFrequency: 10 * time.Microsecond,
-			Rate:                30,
 			Level:               0,
 		}
 
@@ -159,18 +157,6 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_level", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
-			Enabled:             true,
-			TimeTickerFrequency: 10 * time.Microsecond,
-			Rate:                0,
-			Level:               30,
-		}
-
-		err := cfg.Verify()
-		require.Error(t, err)
-	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {

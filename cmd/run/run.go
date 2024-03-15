@@ -210,8 +210,6 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("dispatch-throttling-level", defaultConfig.DispatchThrottling.Level, "define the number of dispatches above which requests will be throttled.")
 
-	flags.Uint32("dispatch-throttling-rate", defaultConfig.DispatchThrottling.Rate, "number of tickers required to emit a throttled dispatch. System will release one job from the throttled queue every Nth tick (configured via this variable).")
-
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -525,7 +523,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
 		server.WithDispatchThrottlingCheckResolverTimerTickerFrequency(config.DispatchThrottling.TimeTickerFrequency),
-		server.WithDispatchThrottlingCheckResolverRate(config.DispatchThrottling.Rate),
 		server.WithDispatchThrottlingCheckResolverLevel(config.DispatchThrottling.Level),
 		server.WithExperimentals(experimentals...),
 	)

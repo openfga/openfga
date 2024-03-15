@@ -139,7 +139,6 @@ type Server struct {
 	dispatchThrottlingCheckResolverEnabled              bool
 	dispatchThrottlingCheckResolverTimerTickerFrequency time.Duration
 	dispatchThrottlingCheckResolverLevel                uint32
-	dispatchThrottlingCheckResolverRate                 uint32
 
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 }
@@ -330,14 +329,6 @@ func WithDispatchThrottlingCheckResolverLevel(level uint32) OpenFGAServiceV1Opti
 	}
 }
 
-// WithDispatchThrottlingCheckResolverRate sets the number of tickers required to dispatch a low priority work.
-// System will release one job from the low priority queue every Nth tick (configured via this variable).
-func WithDispatchThrottlingCheckResolverRate(rate uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.dispatchThrottlingCheckResolverRate = rate
-	}
-}
-
 // MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -377,7 +368,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolverEnabled:              serverconfig.DefaultCheckQueryCacheEnable,
 		dispatchThrottlingCheckResolverTimerTickerFrequency: serverconfig.DefaultDispatchThrottlingTimeTickerFrequency,
 		dispatchThrottlingCheckResolverLevel:                serverconfig.DefaultDispatchThrottlingLevel,
-		dispatchThrottlingCheckResolverRate:                 serverconfig.DefaultDispatchThrottlingRate,
 	}
 
 	for _, opt := range opts {
@@ -395,13 +385,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: s.dispatchThrottlingCheckResolverTimerTickerFrequency,
 			Level:                s.dispatchThrottlingCheckResolverLevel,
-			Rate:                 s.dispatchThrottlingCheckResolverRate,
 		}
 
 		s.logger.Info("Enabling dispatch throttling",
 			zap.Duration("TimerTickerFrequency", s.dispatchThrottlingCheckResolverTimerTickerFrequency),
 			zap.Uint32("LowPriorityLevel", s.dispatchThrottlingCheckResolverLevel),
-			zap.Uint32("LowPriorityRate", s.dispatchThrottlingCheckResolverRate),
 		)
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)

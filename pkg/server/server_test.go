@@ -1467,7 +1467,6 @@ func TestWithDispatchThrottlingCheckResolverEnabledCheckResolver(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverRate(40),
 			WithDispatchThrottlingCheckResolverLevel(50),
 		)
 		t.Cleanup(s.Close)
@@ -1477,7 +1476,6 @@ func TestWithDispatchThrottlingCheckResolverEnabledCheckResolver(t *testing.T) {
 		_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, 40, s.dispatchThrottlingCheckResolverRate)
 		require.EqualValues(t, 50, s.dispatchThrottlingCheckResolverLevel)
 	})
 }

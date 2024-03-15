@@ -40,7 +40,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			Level:                200,
-			Rate:                 8,
 		}
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
@@ -59,7 +58,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: 1 * time.Hour,
 			Level:                200,
-			Rate:                 2,
 		}
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
@@ -90,16 +88,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 		require.Equal(t, uint32(0), c.NumResolveCheck())
 
-		// the first time tick will not release the job
-		newCount := dut.handleTimeTick(0)
-		time.Sleep(1 * time.Millisecond)
-		require.Equal(t, uint32(0), c.NumResolveCheck())
-		require.Equal(t, uint32(1), newCount)
-
-		// the second time tick will release the job
-		newCount = dut.handleTimeTick(newCount)
+		// simulate sending of tick
+		dut.nonBlockingSend(dut.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, uint32(1), c.NumResolveCheck())
-		require.Equal(t, uint32(0), newCount)
 	})
 }

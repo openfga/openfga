@@ -451,12 +451,6 @@
                     "type": "integer",
                     "default": "100",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_LEVEL"
-                },
-                "rate": {
-                    "description": "number of tickers required to launch a throttled dispatch",
-                    "type": "integer",
-                    "default": "1",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_RATE"
                 }
             }
         }

@@ -15,7 +15,6 @@ import (
 type DispatchThrottlingCheckResolverConfig struct {
 	TimerTickerFrequency time.Duration
 	Level                uint32
-	Rate                 uint32
 }
 
 // DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
@@ -77,17 +76,7 @@ func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan bool) 
 	}
 }
 
-func (r *DispatchThrottlingCheckResolver) handleTimeTick(throttleCounter uint32) uint32 {
-	throttleCounter++
-	if throttleCounter >= r.config.Rate {
-		throttleCounter = 0
-		r.nonBlockingSend(r.throttlingQueue)
-	}
-	return throttleCounter
-}
-
 func (r *DispatchThrottlingCheckResolver) runTicker() {
-	throttleCounter := uint32(0)
 	for {
 		select {
 		case <-r.done:
@@ -96,7 +85,7 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 			close(r.throttlingQueue)
 			return
 		case <-r.ticker.C:
-			throttleCounter = r.handleTimeTick(throttleCounter)
+			r.nonBlockingSend(r.throttlingQueue)
 		}
 	}
 }
