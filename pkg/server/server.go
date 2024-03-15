@@ -299,8 +299,8 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 }
 
 // WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled.
-// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch level
-// threshold over requests whose dispatch count exceeds the configured level.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
 func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingCheckResolverEnabled = enabled
