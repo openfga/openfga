@@ -595,7 +595,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			fmt.Println("ReadUserTuple", reqTupleKey)
 			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
@@ -651,7 +650,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			fmt.Println("ReadUsersetTuples", reqTupleKey)
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
