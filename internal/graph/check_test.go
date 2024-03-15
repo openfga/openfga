@@ -838,11 +838,11 @@ type document
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
-			//t.Parallel()
+			t.Parallel()
 			for _, test := range tests {
 				test := test
 				t.Run(test.name, func(t *testing.T) {
-					//t.Parallel()
+					t.Parallel()
 
 					ctx := storage.ContextWithRelationshipTupleReader(
 						ctx,
