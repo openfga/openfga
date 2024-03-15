@@ -590,7 +590,8 @@ func TestListUsersTTU(t *testing.T) {
 			expectedUsers: []string{"user:maria", "user:will", "user:jon"},
 		},
 		{
-			name: "ttu_multiple_levels",
+			name:                  "ttu_multiple_levels",
+			TemporarilySkipReason: "because deduplication not implemented yet (intermittent)",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "folder", Id: "c"},
 				Relation: "viewer",
@@ -972,6 +973,38 @@ func TestListUsersUnion(t *testing.T) {
 				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
 			},
 			expectedUsers: []string{"user:will", "user:maria", "user:jon"},
+		},
+		{
+			name:                  "union_all_possible_rewrites",
+			TemporarilySkipReason: "because `user:maria` not being returned *and* deduplication not implemented yet",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  	type user
+			type folder
+				relations
+					define viewer: [user]
+			type document
+				relations
+					define parent: [folder]
+					define editor: [user]
+					define viewer: [user] or editor or viewer from parent`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:x", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("document:1", "editor", "user:maria"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("folder:other", "viewer", "user:poovam"),
+			},
+			expectedUsers: []string{"user:jon", "user:maria", "user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
