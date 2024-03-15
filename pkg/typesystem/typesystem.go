@@ -398,7 +398,7 @@ func (t *TypeSystem) HasTypeInfo(objectType, relation string) (bool, error) {
 		return false, err
 	}
 
-	if (t.GetSchemaVersion() == SchemaVersion1_1 || t.GetSchemaVersion() == SchemaVersion1_2) && r.GetTypeInfo() != nil {
+	if IsSchemaVersionSupported(t.GetSchemaVersion()) && r.GetTypeInfo() != nil {
 		return true, nil
 	}
 
@@ -902,7 +902,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 
 		computedUserset := r.TupleToUserset.GetComputedUserset().GetRelation()
 
-		if t.GetSchemaVersion() == SchemaVersion1_1 || t.GetSchemaVersion() == SchemaVersion1_2 {
+		if IsSchemaVersionSupported(t.GetSchemaVersion()) {
 			// For 1.1 models, relation `computedUserset` has to be defined in one of the types declared by the tupleset's list of allowed types.
 			userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 			for _, rr := range userTypes {
