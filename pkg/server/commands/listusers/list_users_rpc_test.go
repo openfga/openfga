@@ -440,7 +440,7 @@ func TestListUsersUsersets(t *testing.T) {
 		},
 		{
 			name:                  "userset_defines_itself",
-			TemporarilySkipReason: "because viewer relation not being returned properly yet",
+			TemporarilySkipReason: "because reflexive relationships not supported yet",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
