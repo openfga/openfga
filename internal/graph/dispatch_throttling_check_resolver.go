@@ -28,8 +28,8 @@ type DispatchThrottlingCheckResolver struct {
 	delegate        CheckResolver
 	config          DispatchThrottlingCheckResolverConfig
 	ticker          *time.Ticker
-	throttlingQueue chan bool
-	done            chan bool
+	throttlingQueue chan struct{}
+	done            chan struct{}
 }
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
@@ -51,8 +51,8 @@ func NewDispatchThrottlingCheckResolver(
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		config:          config,
 		ticker:          time.NewTicker(config.TimerTickerFrequency),
-		throttlingQueue: make(chan bool),
-		done:            make(chan bool),
+		throttlingQueue: make(chan struct{}),
+		done:            make(chan struct{}),
 	}
 	dispatchThrottlingCheckResolver.delegate = dispatchThrottlingCheckResolver
 	go dispatchThrottlingCheckResolver.runTicker()
@@ -64,12 +64,12 @@ func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
 }
 
 func (r *DispatchThrottlingCheckResolver) Close() {
-	r.done <- true
+	r.done <- struct{}{}
 }
 
-func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan bool) {
+func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan struct{}) {
 	select {
-	case signalChan <- true:
+	case signalChan <- struct{}{}:
 		// message sent
 	default:
 		// message dropped

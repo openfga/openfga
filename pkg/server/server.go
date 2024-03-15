@@ -299,9 +299,8 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 }
 
 // WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled.
-// Enable this feature will prioritize processing simple check and list objects requests
-// (requests with low number of dispatches) over complex check and list objects
-// (requests with high number of dispatches).
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch level
+// threshold over requests whose dispatch count exceeds the configured level.
 func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingCheckResolverEnabled = enabled
@@ -312,17 +311,15 @@ func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Op
 // TimeTickerFrequency controls how frequently throttled dispatch requests are evaluated to determine whether
 // it can be processed.
 // This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
-// and ii) very small value will result in frequent processing of
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
 func WithDispatchThrottlingCheckResolverTimerTickerFrequency(frequency time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingCheckResolverTimerTickerFrequency = frequency
 	}
 }
 
-// WithDispatchThrottlingCheckResolverLevel define the number of dispatches to be considered in
-// low priority throttling queue.
-// Requests with dispatch count above this threshold will be placed into the low priority queue.
-// Low priority queue requests are processed less frequently than other requests.
+// WithDispatchThrottlingCheckResolverLevel define the number of dispatches to be throttled.
 func WithDispatchThrottlingCheckResolverLevel(level uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingCheckResolverLevel = level
@@ -381,6 +378,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
+	cycleDetectionCheckResolver.SetDelegate(localChecker)
+	localChecker.SetDelegate(cycleDetectionCheckResolver)
+
 	if s.dispatchThrottlingCheckResolverEnabled {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
 			TimerTickerFrequency: s.dispatchThrottlingCheckResolverTimerTickerFrequency,
@@ -397,10 +397,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		localChecker.SetDelegate(cycleDetectionCheckResolver)
-	} else {
-		cycleDetectionCheckResolver.SetDelegate(localChecker)
-		localChecker.SetDelegate(cycleDetectionCheckResolver)
 	}
 
 	if s.checkQueryCacheEnabled {
