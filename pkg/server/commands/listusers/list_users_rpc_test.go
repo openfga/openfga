@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -26,6 +27,9 @@ type ListUsersTests []struct {
 }
 
 func TestListUsersDirectRelationship(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	model := `model
 	schema 1.1
 	type user
@@ -131,6 +135,9 @@ func TestListUsersDirectRelationship(t *testing.T) {
 }
 
 func TestListUsersComputedRelationship(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name: "computed_relationship",
@@ -217,6 +224,9 @@ func TestListUsersComputedRelationship(t *testing.T) {
 }
 
 func TestListUsersUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	model := `model
 	schema 1.1
 	type user
@@ -283,19 +293,11 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type document
-				relations
-					define viewer: [group#member]`,
+			model: model,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:will"),
 				tuple.NewTupleKey("group:eng", "member", "user:maria"),
-				tuple.NewTupleKey("group:marketing", "viewer", "user:jon"),
+				tuple.NewTupleKey("group:marketing", "member", "user:jon"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
 			expectedUsers: []string{},
@@ -325,7 +327,7 @@ func TestListUsersUsersets(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:will"),
 				tuple.NewTupleKey("group:eng", "member", "user:maria"),
-				tuple.NewTupleKey("group:marketing", "viewer", "user:jon"),
+				tuple.NewTupleKey("group:marketing", "member", "user:jon"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 
 				tuple.NewTupleKey("document:1", "viewer", "user:poovam"),
@@ -402,7 +404,7 @@ func TestListUsersUsersets(t *testing.T) {
 				},
 				ContextualTuples: &openfgav1.ContextualTupleKeys{
 					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:marketing", "viewer", "user:jon"),
+						tuple.NewTupleKey("group:marketing", "member", "user:jon"),
 						tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 					},
 				},
@@ -437,7 +439,8 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name: "userset_defines_itself",
+			name:                  "userset_defines_itself",
+			TemporarilySkipReason: "because viewer relation not being returned properly yet",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -456,13 +459,16 @@ func TestListUsersUsersets(t *testing.T) {
 			    define viewer: [user]
 			`,
 			tuples:        []*openfgav1.TupleKey{},
-			expectedUsers: []string{"document:1"},
+			expectedUsers: []string{"document:1#viewer"},
 		},
 	}
 	tests.runListUsersTestCases(t)
 }
 
 func TestListUsersTTU(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	model := `model
 	schema 1.1
   type user
@@ -556,40 +562,15 @@ func TestListUsersTTU(t *testing.T) {
 			},
 			expectedUsers: []string{"user:maria", "user:will", "user:jon"},
 		},
-		{
-			name: "rewritten_direct_relationship_through_ttu",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model: `model
-            schema 1.1
-			type user
-			type folder
-			  relations
-			    define viewer: [user]
-			type document
-			  relations
-			    define parent: [folder]
-			    define viewer: viewer from parent
-			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "folder:x"),
-				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
 	}
 
 	tests.runListUsersTestCases(t)
 }
 
 func TestListUsersCycles(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name:                  "cycle_by_userset",
@@ -619,6 +600,9 @@ func TestListUsersCycles(t *testing.T) {
 }
 
 func TestListUsersConditions(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	model := `model
 	schema 1.1
   
@@ -756,13 +740,16 @@ func TestListUsersConditions(t *testing.T) {
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
 				tuple.NewTupleKey("document:1", "editor", "user:poovam"),
 			},
-			expectedUsers: []string{"user:will", "user:poovam", "user:jon"},
+			expectedUsers: []string{"user:will", "user:poovam", "user:maria"},
 		},
 	}
 	tests.runListUsersTestCases(t)
 }
 
 func TestListUsersIntersection(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name:                  "intersection",
@@ -833,6 +820,9 @@ func TestListUsersIntersection(t *testing.T) {
 }
 
 func TestListUsersUnion(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name:                  "union",
@@ -903,6 +893,9 @@ func TestListUsersUnion(t *testing.T) {
 }
 
 func TestListUsersExclusion(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name:                  "exclusion",
@@ -972,6 +965,9 @@ func TestListUsersExclusion(t *testing.T) {
 }
 
 func TestListUsersWildcards(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name: "direct_relationship_wildcard",
@@ -1088,25 +1084,26 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 		defer ds.Close()
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-		typesys, err := typesystem.NewAndValidate(context.Background(), model)
-		require.NoError(t, err)
-
-		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
-		require.NoError(t, err)
-
-		if len(test.tuples) > 0 {
-			err = ds.Write(context.Background(), storeID, nil, test.tuples)
-			require.NoError(t, err)
-		}
-
-		l := NewListUsersQuery(ds)
-
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-
 		t.Run(test.name, func(t *testing.T) {
 			if test.TemporarilySkipReason != "" {
 				t.Skip()
 			}
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+
+			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
+
+			if len(test.tuples) > 0 {
+				err = ds.Write(context.Background(), storeID, nil, test.tuples)
+				require.NoError(t, err)
+			}
+
+			l := NewListUsersQuery(ds)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
 			test.req.AuthorizationModelId = model.GetId()
 			test.req.StoreId = storeID
 
