@@ -775,7 +775,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			resp.GetResolutionMetadata().DatastoreQueryCount++
 		}
 
-		return resp, err
+		return resp, nil
 	}
 }
 
