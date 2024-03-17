@@ -1,0 +1,52 @@
+name: Update NOTICE file
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0" # At 00:00 on Sunday
+
+jobs:
+  update-notice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install FOSSA CLI
+        run: |
+          curl -H 'Cache-Control: no-cache' https://raw.githubusercontent.com/fossas/fossa-cli/master/install-latest.sh | bash
+      - name: Run FOSSA CLI
+        run: |
+          fossa analyze  --include-unused-deps --debug
+          fossa report attribution --format text > /tmp/NOTICE
+        env:
+          FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+      - name: upload NOTICE file
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOTICE
+          path: /tmp/NOTICE
+      - name: Check if NOTICE file has changed
+        id: diff
+        run: |
+          git diff --exit-code --name-only
+          if git diff --exit-code --name-only | grep -q 'NOTICE'; then
+            echo "::set-output name=changed::true"
+          else
+            echo "::set-output name=changed::false"
+          fi
+      - name: Create Pull Request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: Update NOTICE file
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
+          signoff: false
+          branch: automated-notice-file-update
+          delete-branch: true
+          title: "Update NOTICE file"
+          body: |
+            Update NOTICE file
+            - Updated notice file based on [FOSSA][1] analysis.
+
+            [1]: https://app.fossa.com/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga
+          draft: false
