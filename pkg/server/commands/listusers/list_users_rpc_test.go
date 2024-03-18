@@ -7,8 +7,10 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -1330,4 +1332,68 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
 		})
 	}
+}
+
+func TestListUsersCycleDetection(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	// Times(0) ensures that we exit quickly
+	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	l := NewListUsersQuery(mockDatastore)
+	channelWithResults := make(chan *openfgav1.User)
+	model := testutils.MustTransformDSLToProtoWithID(`
+	model
+		schema 1.1
+	type user
+	type document
+		relations
+			define viewer: [user]
+	`)
+	typesys := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+	t.Run("enters_loop_detection", func(t *testing.T) {
+		visitedUserset := &openfgav1.UsersetUser{
+			Type:     "document",
+			Id:       "1",
+			Relation: "viewer",
+		}
+		visitedUsersetKey := fmt.Sprintf("%s:%s#%s", visitedUserset.GetType(), visitedUserset.GetId(), visitedUserset.GetRelation())
+		visitedUsersets := make(map[string]struct{})
+		visitedUsersets[visitedUsersetKey] = struct{}{}
+
+		err := l.expand(ctx, &internalListUsersRequest{
+			ListUsersRequest: &openfgav1.ListUsersRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Object: &openfgav1.Object{
+					Type: visitedUserset.GetType(),
+					Id:   visitedUserset.GetId(),
+				},
+				Relation: visitedUserset.GetRelation(),
+				UserFilters: []*openfgav1.ListUsersFilter{{
+					Type: "user",
+				}},
+			},
+			visitedUsersetsMap: visitedUsersets,
+		}, channelWithResults)
+
+		require.NoError(t, err)
+		select {
+		case <-channelWithResults:
+			require.FailNow(t, "expected 0 results")
+		default:
+			break
+		}
+	})
 }
