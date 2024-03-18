@@ -8,6 +8,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/sourcegraph/conc/pool"
@@ -60,7 +61,7 @@ func (l *listUsersQuery) ListUsers(
 	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
 
-	var foundUsers []*openfgav1.User
+	foundUsers := make([]*openfgav1.User, 0)
 	done := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
@@ -216,7 +217,8 @@ func (l *listUsersQuery) expandDirect(
 		return err
 	}
 
-	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	ds := storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
+	iter, err := ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
 	})
@@ -299,7 +301,8 @@ func (l *listUsersQuery) expandTTU(
 		return err
 	}
 
-	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	ds := storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
+	iter, err := ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
 	})
@@ -338,6 +341,7 @@ func (l *listUsersQuery) expandTTU(
 				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
 				Relation:             computedRelation,
 				UserFilters:          req.GetUserFilters(),
+				ContextualTuples:     req.GetContextualTuples(),
 			}, foundUsersChan)
 		})
 	}
