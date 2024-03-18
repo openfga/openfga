@@ -329,9 +329,7 @@ func (q *ListObjectsQuery) evaluate(
 						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 						Context:              req.GetContext(),
-						ResolutionMetadata: &graph.ResolutionMetadata{
-							Depth: q.resolveNodeLimit,
-						},
+						RequestMetadata:      graph.NewCheckRequestMetadata(q.resolveNodeLimit),
 					})
 					if err != nil {
 						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
