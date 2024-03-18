@@ -7,7 +7,6 @@ BINARY_NAME = openfga
 BUILD_DIR ?= $(CURDIR)/dist
 GO_BIN ?= $(shell go env GOPATH)/bin
 GO_PACKAGES := $(shell go list ./... | grep -vE "vendor")
-GO_PACKAGES_COMMA_SEPARATED := $(shell go list ./... | grep -vE "vendor" | paste -sd, -)
 
 # Colors for the printf
 RESET = $(shell tput sgr0)
@@ -79,10 +78,11 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: test test-docker test-bench test-mocks
 
-test: test-mocks ## Run all tests
+test: test-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
 	${call print, "Running tests"}
 	@go test -race \
-			-coverpkg=${GO_PACKAGES_COMMA_SEPARATED} \
+			-run "$(FILTER)" \
+			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
 			-count=1 \
