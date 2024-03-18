@@ -156,7 +156,7 @@ func ObjectKey(obj *openfgav1.Object) string {
 
 type UserString = string
 
-// UserProtoToString returns a string from a User proto. Ex: 'user:maria#member'. It is
+// UserProtoToString returns a string from a User proto. Ex: 'user:maria' or 'group:fga#member'. It is
 // the opposite from StringToUserProto function.
 func UserProtoToString(obj *openfgav1.User) UserString {
 	switch obj.GetUser().(type) {
