@@ -36,7 +36,7 @@ type ResolveCheckRequest struct {
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
 	Context              *structpb.Struct
-	RequestMetadata      *CheckRequestMetadata
+	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
 }
 
@@ -47,7 +47,7 @@ func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
 		TupleKey:             r.TupleKey,
 		ContextualTuples:     r.ContextualTuples,
 		Context:              r.Context,
-		RequestMetadata: &CheckRequestMetadata{
+		RequestMetadata: &ResolveCheckRequestMetadata{
 			DispatchCounter:     r.GetRequestMetadata().DispatchCounter,
 			Depth:               r.GetRequestMetadata().Depth,
 			DatastoreQueryCount: r.GetRequestMetadata().DatastoreQueryCount,
@@ -58,7 +58,7 @@ func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
 
 type ResolveCheckResponse struct {
 	Allowed            bool
-	ResolutionMetadata *CheckResponseMetadata
+	ResolutionMetadata *ResolveCheckResponseMetadata
 }
 
 func (r *ResolveCheckResponse) GetAllowed() bool {
@@ -69,7 +69,7 @@ func (r *ResolveCheckResponse) GetAllowed() bool {
 	return false
 }
 
-func (r *ResolveCheckResponse) GetResolutionMetadata() *CheckResponseMetadata {
+func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
 	if r != nil {
 		return r.ResolutionMetadata
 	}
@@ -109,7 +109,7 @@ func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	return nil
 }
 
-func (r *ResolveCheckRequest) GetRequestMetadata() *CheckRequestMetadata {
+func (r *ResolveCheckRequest) GetRequestMetadata() *ResolveCheckRequestMetadata {
 	if r != nil {
 		return r.RequestMetadata
 	}
@@ -307,7 +307,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	return &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &CheckResponseMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 			DispatchCount:       dispatchCount,
 		},
@@ -320,7 +320,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
 			Allowed:            false,
-			ResolutionMetadata: &CheckResponseMetadata{},
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
@@ -349,7 +349,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				if errors.Is(result.err, ErrCycleDetected) {
 					return &ResolveCheckResponse{
 						Allowed: false,
-						ResolutionMetadata: &CheckResponseMetadata{
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
 							DatastoreQueryCount: dbReads,
 						},
 					}, nil
@@ -374,7 +374,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 
 	return &ResolveCheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &CheckResponseMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 			DispatchCount:       dispatchCount,
 		},
@@ -429,7 +429,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &CheckResponseMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 0,
 		},
 	}
@@ -448,7 +448,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				if errors.Is(baseResult.err, ErrCycleDetected) {
 					return &ResolveCheckResponse{
 						Allowed: false,
-						ResolutionMetadata: &CheckResponseMetadata{
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
 							DatastoreQueryCount: dbReads,
 						},
 					}, nil
@@ -492,7 +492,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	if baseErr != nil && subErr != nil {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &CheckResponseMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 0,
 			},
 		}, errors.Join(baseErr, subErr)
@@ -500,7 +500,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	return &ResolveCheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &CheckResponseMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 			DispatchCount:       dispatchCount,
 		},
@@ -515,11 +515,11 @@ func (c *LocalChecker) Close() {
 // to the CheckResolver this LocalChecker was constructed with.
 func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		newReq := clone(parentReq)
-		newReq.TupleKey = tk
-		newReq.GetRequestMetadata().Depth--
+		childRequest := clone(parentReq)
+		childRequest.TupleKey = tk
+		childRequest.GetRequestMetadata().Depth--
 
-		resp, err := c.delegate.ResolveCheck(ctx, newReq)
+		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
 		if err != nil {
 			return resp, err
 		}
@@ -610,7 +610,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &CheckResponseMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 				},
 			}
@@ -665,7 +665,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &CheckResponseMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 				},
 			}
@@ -834,7 +834,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		response := &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &CheckResponseMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 			},
 		}

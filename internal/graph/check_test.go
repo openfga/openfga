@@ -26,7 +26,7 @@ var (
 	falseHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &CheckResponseMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 1,
 			},
 		}, nil
@@ -35,7 +35,7 @@ var (
 	trueHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: true,
-			ResolutionMetadata: &CheckResponseMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 1,
 			},
 		}, nil
@@ -44,7 +44,7 @@ var (
 	depthExceededHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &CheckResponseMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 2,
 			},
 		}, ErrResolutionDepthExceeded
@@ -53,7 +53,7 @@ var (
 	cyclicErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &CheckResponseMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 2,
 			},
 		}, ErrCycleDetected
@@ -1198,14 +1198,14 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed:            false,
-			ResolutionMetadata: &CheckResponseMetadata{},
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
 	trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed:            true,
-			ResolutionMetadata: &CheckResponseMetadata{},
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
@@ -1282,7 +1282,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
 			return &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &CheckResponseMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(1),
 				},
 			}, nil
@@ -1291,7 +1291,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &CheckResponseMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(5),
 				},
 			}, nil
@@ -1299,7 +1299,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		errorHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
-				ResolutionMetadata: &CheckResponseMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(9999999),
 				},
 			}, ErrResolutionDepthExceeded
@@ -1315,7 +1315,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		handler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &CheckResponseMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(3),
 				},
 			}, nil

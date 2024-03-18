@@ -42,7 +42,7 @@ func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 	return depth, ok
 }
 
-type CheckRequestMetadata struct {
+type ResolveCheckRequestMetadata struct {
 	// Thinking of a Check as a tree of evaluations,
 	// Depth is the current level in the tree in the current path that we are exploring.
 	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
@@ -58,15 +58,15 @@ type CheckRequestMetadata struct {
 	DispatchCounter *atomic.Uint32
 }
 
-func NewCheckRequestMetadata(maxDepth uint32) *CheckRequestMetadata {
-	return &CheckRequestMetadata{
+func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
+	return &ResolveCheckRequestMetadata{
 		Depth:               maxDepth,
 		DatastoreQueryCount: 0,
 		DispatchCounter:     new(atomic.Uint32),
 	}
 }
 
-type CheckResponseMetadata struct {
+type ResolveCheckResponseMetadata struct {
 	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated after this request is solved.
 	// Thinking of a Check as a tree of evaluations,
 	// If the solution is "allowed=true", one path was found. This is the value in the leaf node of that path, plus the sum of the paths that were

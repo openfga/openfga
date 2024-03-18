@@ -49,7 +49,7 @@ type CachedResolveCheckResponse struct {
 func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveCheckResponse {
 	return &ResolveCheckResponse{
 		Allowed: c.Allowed,
-		ResolutionMetadata: &CheckResponseMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 0,
 		},
 	}
