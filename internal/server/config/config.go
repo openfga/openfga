@@ -31,6 +31,10 @@ const (
 	// care should be taken here - decreasing can cause API compatibility problems with Conditions
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
+
+	DefaultDispatchThrottlingEnabled   = false
+	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
+	DefaultDispatchThrottlingThreshold = 100
 )
 
 type DatastoreMetricsConfig struct {
@@ -174,6 +178,13 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
+// DispatchThrottlingConfig defines configurations for dispatch throttling
+type DispatchThrottlingConfig struct {
+	Enabled   bool
+	Frequency time.Duration
+	Threshold uint32
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -222,16 +233,17 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore       DatastoreConfig
-	GRPC            GRPCConfig
-	HTTP            HTTPConfig
-	Authn           AuthnConfig
-	Log             LogConfig
-	Trace           TraceConfig
-	Playground      PlaygroundConfig
-	Profiler        ProfilerConfig
-	Metrics         MetricConfig
-	CheckQueryCache CheckQueryCache
+	Datastore          DatastoreConfig
+	GRPC               GRPCConfig
+	HTTP               HTTPConfig
+	Authn              AuthnConfig
+	Log                LogConfig
+	Trace              TraceConfig
+	Playground         PlaygroundConfig
+	Profiler           ProfilerConfig
+	Metrics            MetricConfig
+	CheckQueryCache    CheckQueryCache
+	DispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -312,6 +324,15 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.DispatchThrottling.Enabled {
+		if cfg.DispatchThrottling.Frequency <= 0 {
+			return errors.New("dispatch throttling frequency must be non-negative time duration")
+		}
+		if cfg.DispatchThrottling.Threshold <= 0 {
+			return errors.New("dispatch throttling threshold must be non-negative integer")
+		}
+	}
+
 	return nil
 }
 
@@ -387,6 +408,11 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCheckQueryCacheEnable,
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
+		},
+		DispatchThrottling: DispatchThrottlingConfig{
+			Enabled:   DefaultDispatchThrottlingEnabled,
+			Frequency: DefaultDispatchThrottlingFrequency,
+			Threshold: DefaultDispatchThrottlingThreshold,
 		},
 	}
 }

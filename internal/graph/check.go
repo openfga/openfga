@@ -197,6 +197,11 @@ func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
 }
 
+// GetDelegate sets this LocalChecker's dispatch delegate.
+func (c *LocalChecker) GetDelegate() CheckResolver {
+	return c.delegate
+}
+
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
 // otherwise.
 type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
@@ -515,6 +520,7 @@ func (c *LocalChecker) Close() {
 // to the CheckResolver this LocalChecker was constructed with.
 func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
 		childRequest := clone(parentReq)
 		childRequest.TupleKey = tk
 		childRequest.GetRequestMetadata().Depth--
