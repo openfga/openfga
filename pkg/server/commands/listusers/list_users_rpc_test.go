@@ -444,6 +444,31 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
+			name:                  "userset_user_assigned_multiple_groups",
+			TemporarilySkipReason: "because results not deduplicated",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:maria"),
+				tuple.NewTupleKey("group:eng", "member", "user:will"),
+				tuple.NewTupleKey("group:fga", "member", "user:will"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("document:1", "viewer", "group:fga#member"),
+			},
+			expectedUsers: []string{"user:will", "user:maria"},
+		},
+		{
 			name:                  "tuple_defines_itself",
 			TemporarilySkipReason: "because it wants to return `document:1`",
 			req: &openfgav1.ListUsersRequest{
@@ -1182,6 +1207,42 @@ func TestListUsersWildcards(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
+			},
+			expectedUsers: []string{"user:*"},
+		},
+		{
+			name:                  "wildcard_computed_ttu",
+			TemporarilySkipReason: "because results not deduplicated and data race occurring",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user:*]
+          type folder
+            relations
+              define can_view: viewer or can_view from parent
+              define parent: [folder]
+              define viewer: [group#member]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: can_view from parent`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:*"),
+				tuple.NewTupleKey("folder:eng", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("folder:x", "parent", "folder:eng"),
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("document:1", "parent", "folder:eng"),
 			},
 			expectedUsers: []string{"user:*"},
 		},
