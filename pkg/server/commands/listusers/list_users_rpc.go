@@ -61,11 +61,11 @@ func (l *listUsersQuery) ListUsers(
 	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
 
-	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
+	foundUsers := make([]*openfgav1.User, 0)
 	done := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
-			foundUsersUnique[tuple.FromUserProto(foundObject)] = struct{}{}
+			foundUsers = append(foundUsers, foundObject)
 		}
 
 		done <- struct{}{}
@@ -86,10 +86,7 @@ func (l *listUsersQuery) ListUsers(
 	case <-done:
 		break
 	}
-	foundUsers := make([]*openfgav1.User, 0)
-	for foundUser := range foundUsersUnique {
-		foundUsers = append(foundUsers, tuple.ToUserProto(foundUser))
-	}
+
 	return &openfgav1.ListUsersResponse{
 		Users: foundUsers,
 	}, nil
@@ -198,9 +195,8 @@ func (l *listUsersQuery) expandRewrite(
 
 		children := rewrite.Union.GetChild()
 		for _, childRewrite := range children {
-			childRewriteCopy := childRewrite
 			pool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
+				return l.expandRewrite(ctx, req, childRewrite, foundUsersChan)
 			})
 		}
 
