@@ -500,20 +500,20 @@ type document
 	localCheckResolver.SetDelegate(cachedCheckResolver)
 
 	res, err := cachedCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
-		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		StoreID:          storeID,
+		TupleKey:         tuple.NewTupleKey("org:fga", "member", "user:maria"),
+		ContextualTuples: nil,
+		RequestMetadata:  NewCheckRequestMetadata(25),
 	})
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 
 	res, err = cachedCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
-		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		StoreID:          storeID,
+		TupleKey:         tuple.NewTupleKey("org:fga", "member", "user:maria"),
+		ContextualTuples: nil,
+		RequestMetadata:  NewCheckRequestMetadata(25),
 	})
 
 	require.NoError(t, err)
@@ -527,10 +527,10 @@ type document
 	ttuLocalChecker.SetDelegate(cachedCheckResolver)
 
 	res, err = ttuLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:x", "ttu", "user:maria"),
-		ContextualTuples:   nil,
-		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		StoreID:          storeID,
+		TupleKey:         tuple.NewTupleKey("document:x", "ttu", "user:maria"),
+		ContextualTuples: nil,
+		RequestMetadata:  NewCheckRequestMetadata(25),
 	})
 
 	ttuLocalChecker.Close()

@@ -704,10 +704,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth:               s.resolveNodeLimit,
-			DatastoreQueryCount: 0,
-		},
+		RequestMetadata:      graph.NewCheckRequestMetadata(s.resolveNodeLimit),
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
