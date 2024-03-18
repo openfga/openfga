@@ -368,7 +368,7 @@ func TestFromUserProto(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "user_with_relation",
+			name: "user_with_id",
 			input: &openfgav1.User{
 				User: &openfgav1.User_Object{
 					Object: &openfgav1.Object{
@@ -420,7 +420,7 @@ func TestToUserProto(t *testing.T) {
 		expected *openfgav1.User
 	}{
 		{
-			name:  "user_with_relation",
+			name:  "user_with_id",
 			input: "user:id-123",
 			expected: &openfgav1.User{
 				User: &openfgav1.User_Object{
