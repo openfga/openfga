@@ -49,7 +49,7 @@ jobs:
     environment: AWSLoadTest
     steps:
       - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
         with:
           ref: ${{ github.event.inputs.ref }}
 
@@ -58,7 +58,7 @@ jobs:
         run: echo "sha_short=$(git rev-parse --short=8 ${{ github.event.inputs.ref }})" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@0d103c3126aa41d772a8362f6aa67afac040f80c # v3.1.0
+        uses: docker/setup-buildx-action@2b51285047da1547ffb1b2203d8be4c0af6b1f20 # v3.2.0
 
       - name: Set AWS Credentials
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
@@ -67,13 +67,13 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to AWS ECR
-        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20 # v3.1.0
         with:
           registry: ${{ secrets.OPENFGA_REGISTRY }}
 
       - name: Build, tag, and push image to AWS ECR
         timeout-minutes: 10
-        uses: docker/build-push-action@af5a7ed5ba88268d5278f7203fb52cd833f66d6e # v5.2.0
+        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
         with:
           context: .
           push: true
