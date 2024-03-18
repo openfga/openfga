@@ -103,25 +103,28 @@ const (
 type MemoryBackend struct {
 	maxTuplesPerWrite             int
 	maxTypesPerAuthorizationModel int
-	mu                            sync.Mutex
 
 	// TupleBackend
 	// map: store => set of tuples
-	tuples map[string][]*storage.TupleRecord // GUARDED_BY(mu).
+	tuples      map[string][]*storage.TupleRecord // GUARDED_BY(mutexTuples).
+	mutexTuples sync.RWMutex
 
 	// ChangelogBackend
 	// map: store => set of changes
-	changes map[string][]*openfgav1.TupleChange // GUARDED_BY(mu_).
+	changes map[string][]*openfgav1.TupleChange // GUARDED_BY(mutexTuples).
 
 	// AuthorizationModelBackend
 	// map: store = > map: type definition id => type definition
-	authorizationModels map[string]map[string]*AuthorizationModelEntry // GUARDED_BY(mu_).
+	authorizationModels map[string]map[string]*AuthorizationModelEntry // GUARDED_BY(mutexModels).
+	mutexModels         sync.RWMutex
 
 	// map: store id => store data
-	stores map[string]*openfgav1.Store // GUARDED_BY(mu_).
+	stores      map[string]*openfgav1.Store // GUARDED_BY(mutexStores).
+	mutexStores sync.RWMutex
 
 	// map: store id | authz model id => assertions
-	assertions map[string][]*openfgav1.Assertion // GUARDED_BY(mu_).
+	assertions      map[string][]*openfgav1.Assertion // GUARDED_BY(mutexAssertions).
+	mutexAssertions sync.RWMutex
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
@@ -207,8 +210,8 @@ func (s *MemoryBackend) ReadChanges(
 	_, span := tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexTuples.RLock()
+	defer s.mutexTuples.RUnlock()
 
 	var err error
 	var from int64
@@ -270,8 +273,8 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexTuples.RLock()
+	defer s.mutexTuples.RUnlock()
 
 	var matches []*storage.TupleRecord
 	if tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "" {
@@ -312,8 +315,8 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexTuples.Lock()
+	defer s.mutexTuples.Unlock()
 
 	now := timestamppb.Now()
 
@@ -422,8 +425,8 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexTuples.RLock()
+	defer s.mutexTuples.RUnlock()
 
 	for _, t := range s.tuples[store] {
 		if match(t, key) {
@@ -444,8 +447,8 @@ func (s *MemoryBackend) ReadUsersetTuples(
 	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexTuples.RLock()
+	defer s.mutexTuples.RUnlock()
 
 	var matches []*storage.TupleRecord
 	for _, t := range s.tuples[store] {
@@ -482,8 +485,8 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	_, span := tracer.Start(ctx, "memory.ReadStartingWithUser")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexTuples.RLock()
+	defer s.mutexTuples.RUnlock()
 
 	var matches []*storage.TupleRecord
 	for _, t := range s.tuples[store] {
@@ -539,8 +542,8 @@ func (s *MemoryBackend) ReadAuthorizationModel(
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModel")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexModels.RLock()
+	defer s.mutexModels.RUnlock()
 
 	tm, ok := s.authorizationModels[store]
 	if !ok {
@@ -568,8 +571,8 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexModels.RLock()
+	defer s.mutexModels.RUnlock()
 
 	models := make([]*openfgav1.AuthorizationModel, 0, len(s.authorizationModels[store]))
 	for _, entry := range s.authorizationModels[store] {
@@ -615,8 +618,8 @@ func (s *MemoryBackend) FindLatestAuthorizationModel(ctx context.Context, store 
 	_, span := tracer.Start(ctx, "memory.FindLatestAuthorizationModel")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexModels.RLock()
+	defer s.mutexModels.RUnlock()
 
 	tm, ok := s.authorizationModels[store]
 	if !ok {
@@ -638,8 +641,8 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store strin
 	_, span := tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexModels.Lock()
+	defer s.mutexModels.Unlock()
 
 	if _, ok := s.authorizationModels[store]; !ok {
 		s.authorizationModels[store] = make(map[string]*AuthorizationModelEntry)
@@ -662,8 +665,8 @@ func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfgav1.Sto
 	_, span := tracer.Start(ctx, "memory.CreateStore")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexStores.Lock()
+	defer s.mutexStores.Unlock()
 
 	if _, ok := s.stores[newStore.GetId()]; ok {
 		return nil, storage.ErrCollision
@@ -685,8 +688,8 @@ func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
 	_, span := tracer.Start(ctx, "memory.DeleteStore")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexStores.Lock()
+	defer s.mutexStores.Unlock()
 
 	delete(s.stores, id)
 	return nil
@@ -697,8 +700,8 @@ func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID stri
 	_, span := tracer.Start(ctx, "memory.WriteAssertions")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexAssertions.Lock()
+	defer s.mutexAssertions.Unlock()
 
 	assertionsID := fmt.Sprintf("%s|%s", store, modelID)
 	s.assertions[assertionsID] = assertions
@@ -711,8 +714,8 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	_, span := tracer.Start(ctx, "memory.ReadAssertions")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexAssertions.RLock()
+	defer s.mutexAssertions.RUnlock()
 
 	assertionsID := fmt.Sprintf("%s|%s", store, modelID)
 	assertions, ok := s.assertions[assertionsID]
@@ -737,8 +740,8 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgav
 	_, span := tracer.Start(ctx, "memory.GetStore")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexStores.RLock()
+	defer s.mutexStores.RUnlock()
 
 	if s.stores[storeID] == nil {
 		return nil, storage.ErrNotFound
@@ -752,8 +755,8 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 	_, span := tracer.Start(ctx, "memory.ListStores")
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutexStores.RLock()
+	defer s.mutexStores.RUnlock()
 
 	stores := make([]*openfgav1.Store, 0, len(s.stores))
 	for _, t := range s.stores {
