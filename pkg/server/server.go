@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -769,11 +768,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth:               s.resolveNodeLimit,
-			DatastoreQueryCount: 0,
-		},
-		DispatchCounter: &atomic.Uint32{},
+		RequestMetadata:      graph.NewCheckRequestMetadata(s.resolveNodeLimit),
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)

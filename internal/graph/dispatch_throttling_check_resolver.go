@@ -96,7 +96,7 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	currentNumDispatch := req.DispatchCounter.Add(1)
+	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
 	if currentNumDispatch > r.config.Threshold {
 		start := time.Now()

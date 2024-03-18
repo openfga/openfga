@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
-
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -14,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
+	"sync"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -37,19 +35,29 @@ type ResolveCheckRequest struct {
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
 	Context              *structpb.Struct
-	ResolutionMetadata   *ResolutionMetadata
+	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
-	// This is different from ResolutionMetadata dispatch counter in that this counter needs to be
-	// incremented before dispatches are processed (where the ResolutionMetadata dispatch counter
-	// are incremented after the dispatches are processed). As this counter needs to be updated
-	// synchronously are multiple concurrent go-routine, it needs to use shared counter within
-	// the same request.
-	DispatchCounter *atomic.Uint32
+}
+
+func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
+	return &ResolveCheckRequest{
+		StoreID:              r.StoreID,
+		AuthorizationModelID: r.AuthorizationModelID,
+		TupleKey:             r.TupleKey,
+		ContextualTuples:     r.ContextualTuples,
+		Context:              r.Context,
+		RequestMetadata: &ResolveCheckRequestMetadata{
+			DispatchCounter:     r.GetRequestMetadata().DispatchCounter,
+			Depth:               r.GetRequestMetadata().Depth,
+			DatastoreQueryCount: r.GetRequestMetadata().DatastoreQueryCount,
+		},
+		VisitedPaths: maps.Clone(r.VisitedPaths),
+	}
 }
 
 type ResolveCheckResponse struct {
 	Allowed            bool
-	ResolutionMetadata *ResolutionMetadata
+	ResolutionMetadata *ResolveCheckResponseMetadata
 }
 
 func (r *ResolveCheckResponse) GetAllowed() bool {
@@ -60,7 +68,7 @@ func (r *ResolveCheckResponse) GetAllowed() bool {
 	return false
 }
 
-func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolutionMetadata {
+func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
 	if r != nil {
 		return r.ResolutionMetadata
 	}
@@ -100,9 +108,9 @@ func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	return nil
 }
 
-func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
+func (r *ResolveCheckRequest) GetRequestMetadata() *ResolveCheckRequestMetadata {
 	if r != nil {
-		return r.ResolutionMetadata
+		return r.RequestMetadata
 	}
 
 	return nil
@@ -113,16 +121,6 @@ func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
 		return r.Context
 	}
 	return nil
-}
-
-func (r *ResolveCheckRequest) GetDispatchCounter() *atomic.Uint32 {
-	if r != nil {
-		if r.DispatchCounter == nil {
-			panic("Dispatch counter not initialized")
-		}
-		return r.DispatchCounter
-	}
-	panic("revolve check request itself is null")
 }
 
 type setOperatorType int
@@ -313,7 +311,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	return &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 			DispatchCount:       dispatchCount,
 		},
@@ -326,7 +324,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
 			Allowed:            false,
-			ResolutionMetadata: &ResolutionMetadata{},
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
@@ -355,7 +353,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				if errors.Is(result.err, ErrCycleDetected) {
 					return &ResolveCheckResponse{
 						Allowed: false,
-						ResolutionMetadata: &ResolutionMetadata{
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
 							DatastoreQueryCount: dbReads,
 						},
 					}, nil
@@ -380,7 +378,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 
 	return &ResolveCheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 			DispatchCount:       dispatchCount,
 		},
@@ -435,7 +433,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 0,
 		},
 	}
@@ -454,7 +452,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				if errors.Is(baseResult.err, ErrCycleDetected) {
 					return &ResolveCheckResponse{
 						Allowed: false,
-						ResolutionMetadata: &ResolutionMetadata{
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
 							DatastoreQueryCount: dbReads,
 						},
 					}, nil
@@ -498,7 +496,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	if baseErr != nil && subErr != nil {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 0,
 			},
 		}, errors.Join(baseErr, subErr)
@@ -506,7 +504,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	return &ResolveCheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 			DispatchCount:       dispatchCount,
 		},
@@ -517,11 +515,16 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 func (c *LocalChecker) Close() {
 }
 
-// dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
-// was constructed with.
-func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+// dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
+// to the CheckResolver this LocalChecker was constructed with.
+func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		resp, err := c.delegate.ResolveCheck(ctx, req)
+		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
+		childRequest := clone(parentReq)
+		childRequest.TupleKey = tk
+		childRequest.GetRequestMetadata().Depth--
+
+		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
 		if err != nil {
 			return resp, err
 		}
@@ -547,7 +550,7 @@ func (c *LocalChecker) ResolveCheck(
 	span.SetAttributes(attribute.String("resolver_type", "LocalChecker"))
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
-	if req.GetResolutionMetadata().Depth == 0 {
+	if req.GetRequestMetadata().Depth == 0 {
 		return nil, ErrResolutionDepthExceeded
 	}
 
@@ -612,8 +615,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 				},
 			}
 
@@ -667,8 +670,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 				},
 			}
 
@@ -740,22 +743,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				if usersetRelation != "" {
 					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-
-					handlers = append(handlers, c.dispatch(
-						ctx,
-						&ResolveCheckRequest{
-							StoreID:              storeID,
-							AuthorizationModelID: req.GetAuthorizationModelID(),
-							TupleKey:             tupleKey,
-							ContextualTuples:     req.GetContextualTuples(),
-							ResolutionMetadata: &ResolutionMetadata{
-								Depth:               req.GetResolutionMetadata().Depth - 1,
-								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
-							},
-							VisitedPaths:    maps.Clone(req.VisitedPaths),
-							Context:         req.GetContext(),
-							DispatchCounter: req.GetDispatchCounter(),
-						}))
+					handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
 				}
 			}
 
@@ -812,21 +800,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 			req.GetTupleKey().GetUser(),
 		)
 
-		return c.dispatch(
-			ctx,
-			&ResolveCheckRequest{
-				StoreID:              req.GetStoreID(),
-				AuthorizationModelID: req.GetAuthorizationModelID(),
-				TupleKey:             rewrittenTupleKey,
-				ContextualTuples:     req.GetContextualTuples(),
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth:               req.GetResolutionMetadata().Depth - 1,
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
-				},
-				VisitedPaths:    maps.Clone(req.VisitedPaths),
-				Context:         req.GetContext(),
-				DispatchCounter: req.GetDispatchCounter(),
-			})(ctx)
+		return c.dispatch(ctx, req, rewrittenTupleKey)(ctx)
 	}
 }
 
@@ -865,8 +839,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		response := &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 			},
 		}
 		iter, err := ds.Read(
@@ -934,21 +908,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 			}
 
-			handlers = append(handlers, c.dispatch(
-				ctx,
-				&ResolveCheckRequest{
-					StoreID:              req.GetStoreID(),
-					AuthorizationModelID: req.GetAuthorizationModelID(),
-					TupleKey:             tupleKey,
-					ContextualTuples:     req.GetContextualTuples(),
-					ResolutionMetadata: &ResolutionMetadata{
-						Depth:               req.GetResolutionMetadata().Depth - 1,
-						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
-					},
-					VisitedPaths:    maps.Clone(req.VisitedPaths),
-					Context:         req.GetContext(),
-					DispatchCounter: req.GetDispatchCounter(),
-				}))
+			// Note: we add TTU read below
+			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
 		}
 
 		if len(handlers) == 0 && errs.ErrorOrNil() != nil {

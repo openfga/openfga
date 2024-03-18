@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,10 +32,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		// this is to simulate how many times request has been dispatched
 		// Since this is a small value, we will not expect throttling
-		reqDispatchCounter := &atomic.Uint32{}
-		req := &ResolveCheckRequest{DispatchCounter: reqDispatchCounter}
-		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolutionMetadata{
-			Depth:               3,
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req.GetRequestMetadata().DispatchCounter.Store(190)
+		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 10,
 		}}
 
@@ -50,7 +48,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
-		require.Equal(t, uint32(1), reqDispatchCounter.Load())
 	})
 
 	t.Run("above_threshold_should_be_throttled", func(t *testing.T) {
@@ -68,14 +65,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		initialMockResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(initialMockResolver)
 
-		// this is to simulate how many times request has been dispatched
-		// Since this is a large value, we expect throttling
-		reqDispatchCounter := &atomic.Uint32{}
-		reqDispatchCounter.Store(201)
-
-		req := &ResolveCheckRequest{DispatchCounter: reqDispatchCounter}
-		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolutionMetadata{
-			Depth:               3,
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req.GetRequestMetadata().DispatchCounter.Store(201)
+		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 10,
 		}}
 
@@ -96,11 +88,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		go func() {
 			defer goFuncDone.Done()
 			goFuncInitiated.Done()
-			_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{DispatchCounter: reqDispatchCounter})
+			_, err := dut.ResolveCheck(context.Background(), req)
 			//nolint:testifylint
 			require.NoError(t, err)
-			//nolint:testifylint
-			require.Equal(t, uint32(202), reqDispatchCounter.Load())
 		}()
 
 		goFuncInitiated.Wait()

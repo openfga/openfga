@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,7 +26,7 @@ var (
 	falseHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 1,
 			},
 		}, nil
@@ -36,7 +35,7 @@ var (
 	trueHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: true,
-			ResolutionMetadata: &ResolutionMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 1,
 			},
 		}, nil
@@ -45,7 +44,7 @@ var (
 	depthExceededHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 2,
 			},
 		}, ErrResolutionDepthExceeded
@@ -54,7 +53,7 @@ var (
 	cyclicErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: 2,
 			},
 		}, ErrCycleDetected
@@ -443,19 +442,17 @@ type document
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
-			DispatchCounter:    &atomic.Uint32{},
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			RequestMetadata: NewCheckRequestMetadata(2),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
-			DispatchCounter:    &atomic.Uint32{},
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("document:2", "editor", "user:x"),
+			RequestMetadata: NewCheckRequestMetadata(2),
 		})
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
@@ -501,10 +498,9 @@ condition condX(x: int) {
 			// subtract branch resolves to {allowed: true} even though the base branch
 			// results in an error. Outcome should be falsey, not an error.
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:            storeID,
-				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
-				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
-				DispatchCounter:    &atomic.Uint32{},
+				StoreID:         storeID,
+				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -550,10 +546,9 @@ condition condX(x: int) {
 			// base should resolve to {allowed: false} even though the subtract branch
 			// results in an error. Outcome should be falsey, not an error.
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:            storeID,
-				TupleKey:           tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
-				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
-				DispatchCounter:    &atomic.Uint32{},
+				StoreID:         storeID,
+				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -599,10 +594,9 @@ type document
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-		DispatchCounter:    &atomic.Uint32{},
+		StoreID:         storeID,
+		TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		RequestMetadata: NewCheckRequestMetadata(25),
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
@@ -798,11 +792,10 @@ type document
 					)
 
 					res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-						StoreID:            storeID,
-						TupleKey:           test.check,
-						ContextualTuples:   test.contextualTuples,
-						ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-						DispatchCounter:    &atomic.Uint32{},
+						StoreID:          storeID,
+						TupleKey:         test.check,
+						ContextualTuples: test.contextualTuples,
+						RequestMetadata:  NewCheckRequestMetadata(25),
 					})
 					require.NoError(t, err)
 					require.Equal(t, res.Allowed, test.allowed)
@@ -896,10 +889,9 @@ type resource
 			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:            storeID,
-				TupleKey:           test.tupleKey,
-				ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-				DispatchCounter:    &atomic.Uint32{},
+				StoreID:         storeID,
+				TupleKey:        test.tupleKey,
+				RequestMetadata: NewCheckRequestMetadata(25),
 			})
 
 			require.NoError(t, err)
@@ -977,9 +969,8 @@ condition condition1(param1: string) {
 		StoreID:              storeID,
 		AuthorizationModelID: model.GetId(),
 		TupleKey:             tuple.NewTupleKey("document:x", "parent", "folder:x"),
-		ResolutionMetadata:   &ResolutionMetadata{Depth: 1},
+		RequestMetadata:      NewCheckRequestMetadata(1),
 		Context:              conditionContext,
-		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
@@ -988,9 +979,8 @@ condition condition1(param1: string) {
 		StoreID:              storeID,
 		AuthorizationModelID: model.GetId(),
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		ResolutionMetadata:   &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+		RequestMetadata:      NewCheckRequestMetadata(defaultResolveNodeLimit),
 		Context:              conditionContext,
-		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
@@ -999,9 +989,8 @@ condition condition1(param1: string) {
 		StoreID:              storeID,
 		AuthorizationModelID: model.GetId(),
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:bob"),
-		ResolutionMetadata:   &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+		RequestMetadata:      NewCheckRequestMetadata(defaultResolveNodeLimit),
 		Context:              conditionContext,
-		DispatchCounter:      &atomic.Uint32{},
 	})
 	require.NoError(t, err)
 	require.False(t, resp.Allowed)
@@ -1052,8 +1041,7 @@ type doc
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
-			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-			DispatchCounter:      &atomic.Uint32{},
+			RequestMetadata:      NewCheckRequestMetadata(5),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1065,8 +1053,7 @@ type doc
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
-				ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-				DispatchCounter:      &atomic.Uint32{},
+				RequestMetadata:      NewCheckRequestMetadata(5),
 			})
 			require.NoError(t, err)
 			require.True(t, resp.Allowed)
@@ -1115,8 +1102,7 @@ type doc
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-			DispatchCounter:      &atomic.Uint32{},
+			RequestMetadata:      NewCheckRequestMetadata(5),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1128,8 +1114,7 @@ type doc
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:other"),
-			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-			DispatchCounter:      &atomic.Uint32{},
+			RequestMetadata:      NewCheckRequestMetadata(5),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
@@ -1170,8 +1155,7 @@ type doc
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "owner", "user:jon"),
-			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-			DispatchCounter:      &atomic.Uint32{},
+			RequestMetadata:      NewCheckRequestMetadata(5),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1182,8 +1166,7 @@ type doc
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:will"),
-			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-			DispatchCounter:      &atomic.Uint32{},
+			RequestMetadata:      NewCheckRequestMetadata(5),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -1195,8 +1178,7 @@ type doc
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:jon"),
-			ResolutionMetadata:   &ResolutionMetadata{Depth: 5},
-			DispatchCounter:      &atomic.Uint32{},
+			RequestMetadata:      NewCheckRequestMetadata(5),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
@@ -1216,14 +1198,14 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed:            false,
-			ResolutionMetadata: &ResolutionMetadata{},
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
 	trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed:            true,
-			ResolutionMetadata: &ResolutionMetadata{},
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
@@ -1300,7 +1282,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
 			return &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolutionMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(1),
 				},
 			}, nil
@@ -1309,7 +1291,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(5),
 				},
 			}, nil
@@ -1317,7 +1299,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		errorHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
-				ResolutionMetadata: &ResolutionMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(9999999),
 				},
 			}, ErrResolutionDepthExceeded
@@ -1333,7 +1315,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		handler := func(context.Context) (*ResolveCheckResponse, error) {
 			return &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: uint32(3),
 				},
 			}, nil
