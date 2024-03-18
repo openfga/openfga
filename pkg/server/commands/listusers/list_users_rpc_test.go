@@ -23,7 +23,7 @@ type ListUsersTests []struct {
 	model                 string
 	tuples                []*openfgav1.TupleKey
 	expectedUsers         []string
-	expectedError         error
+	expectedErrorMsg      string
 }
 
 func TestListUsersDirectRelationship(t *testing.T) {
@@ -94,10 +94,10 @@ func TestListUsersDirectRelationship(t *testing.T) {
 					},
 				},
 			},
-			model:         model,
-			tuples:        []*openfgav1.TupleKey{},
-			expectedUsers: []string{},
-			expectedError: fmt.Errorf("impossible relationship between `folder` and `document#viewer`"),
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedUsers:    []string{},
+			expectedErrorMsg: "impossible relationship between `folder` and `document#viewer`",
 		},
 		{
 			name: "direct_relationship_no_tuples",
@@ -556,8 +556,7 @@ func TestListUsersTTU(t *testing.T) {
 			expectedUsers: []string{"user:maria"},
 		},
 		{
-			name:                  "ttu_folder_granularity",
-			TemporarilySkipReason: "because returns `folder:x` despite impossible edge folder=>document#viewer",
+			name: "ttu_folder_granularity",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1250,6 +1249,139 @@ func TestListUsersWildcards(t *testing.T) {
 	tests.runListUsersTestCases(t)
 }
 
+func TestListUsersEdgePruning(t *testing.T) {
+	tests := ListUsersTests{
+		{
+			name: "valid_edges",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+
+		  type document
+			relations			  
+			  define viewer: [user]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			},
+			expectedUsers: []string{"user:maria"},
+		},
+		{
+			name: "impossible_edge_several_computed_relations_away",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+		  type document
+			relations
+				define parent: [user]
+				define owner: parent
+				define editor: owner
+				define viewer: editor`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "user:maria"),
+			},
+			expectedUsers: []string{"user:maria"},
+		},
+
+		{
+			name: "user_filter_has_invalid_edge",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "folder",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("folder:x", "viewer", "user:1"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "user_filter_has_valid_edge",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("folder:x", "viewer", "user:maria"),
+			},
+			expectedUsers: []string{"user:maria"},
+		},
+		{
+			name: "user_filter_has_invalid_edge_because_relation",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "INVALID_RELATION",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`,
+			expectedErrorMsg: "'document#INVALID_RELATION' relation is undefined",
+		},
+	}
+
+	tests.runListUsersTestCases(t)
+}
+
 func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	storeID := ulid.Make().String()
 
@@ -1282,7 +1414,12 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			test.req.StoreId = storeID
 
 			resp, err := l.ListUsers(ctx, test.req)
-			require.ErrorIs(t, err, test.expectedError)
+
+			actualErrorMsg := ""
+			if err != nil {
+				actualErrorMsg = err.Error()
+			}
+			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
 
 			actualUsers := resp.GetUsers()
 
