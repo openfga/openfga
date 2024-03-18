@@ -156,11 +156,12 @@ func ObjectKey(obj *openfgav1.Object) string {
 
 type UserString = string
 
-// FromUserProto returns a string like 'userType:userId[#userRelation]'.
-func FromUserProto(obj *openfgav1.User) UserString {
+// UserProtoToString returns a string from a User proto. Ex: 'user:maria#member'. It is
+// the opposite from StringToUserProto function.
+func UserProtoToString(obj *openfgav1.User) UserString {
 	switch obj.GetUser().(type) {
 	case *openfgav1.User_Wildcard:
-		return fmt.Sprintf("%s:%s", obj.GetObject().GetType(), "*")
+		return fmt.Sprintf("%s:*", obj.GetWildcard().GetType())
 	case *openfgav1.User_Userset:
 		us := obj.GetUser().(*openfgav1.User_Userset)
 		return fmt.Sprintf("%s:%s#%s", us.Userset.GetType(), us.Userset.GetId(), us.Userset.GetRelation())
@@ -172,13 +173,18 @@ func FromUserProto(obj *openfgav1.User) UserString {
 	}
 }
 
-// ToUserProto is the reverse of FromUserProto.
-func ToUserProto(userKey UserString) *openfgav1.User {
+// StringToUserProto returns a User proto from a string. Ex: 'user:maria#member'.
+// It is the opposite from FromUserProto function.
+func StringToUserProto(userKey UserString) *openfgav1.User {
 	userObj, userRel := SplitObjectRelation(userKey)
 	userObjType, userObjID := SplitObject(userObj)
 	if userRel == "" && userObjID == "*" {
-		// TODO add the type
-		return &openfgav1.User{User: &openfgav1.User_Wildcard{Wildcard: &openfgav1.Wildcard{}}}
+		return &openfgav1.User{User: &openfgav1.User_Wildcard{
+			Wildcard: &openfgav1.TypedWildcard{
+				Type:     userObjType,
+				Wildcard: &openfgav1.Wildcard{},
+			},
+		}}
 	}
 	if userRel == "" {
 		return &openfgav1.User{User: &openfgav1.User_Object{Object: &openfgav1.Object{
