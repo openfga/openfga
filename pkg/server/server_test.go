@@ -1565,6 +1565,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 }
 
 func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 
@@ -1573,11 +1576,12 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	s := MustNewServerWithOpts(
-		WithDatastore(mockDatastore),
-	)
-
 	t.Run("rejects_request_with_schema_version_1.2", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
+		defer s.Close()
+
 		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
@@ -1598,6 +1602,7 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 			WithDatastore(mockDatastore),
 			WithExperimentals(ExperimentalEnableModularModels),
 		)
+		defer s.Close()
 
 		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
