@@ -762,13 +762,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		),
 	)
 
+	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
+
 	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
-		RequestMetadata:      graph.NewCheckRequestMetadata(s.resolveNodeLimit),
+		RequestMetadata:      checkRequestMetadata,
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -793,7 +795,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		methodName,
 	).Observe(queryCount)
 
-	dispatchCount := float64(resp.GetResolutionMetadata().DispatchCount)
+	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
+	dispatchCount := float64(rawDispatchCount)
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -811,14 +814,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil
