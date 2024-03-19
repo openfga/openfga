@@ -77,7 +77,7 @@ func ExampleNewServerWithOpts() {
 	model
 		schema 1.1
 	type user
-	
+
 	type document
 		relations
 			define reader: [user]`)
@@ -1561,5 +1561,67 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
+	})
+}
+
+func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	t.Run("rejects_request_with_schema_version_1.2", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
+		defer s.Close()
+
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_2,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) are not supported"))
+	})
+
+	t.Run("accepts_request_with_schema_version_1.2_if_experimental_flag_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithExperimentals(ExperimentalEnableModularModels),
+		)
+		defer s.Close()
+
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_2,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+					Metadata: &openfgav1.Metadata{
+						Relations:  nil,
+						Module:     "usermanagement",
+						SourceInfo: nil,
+					},
+				},
+			},
+		})
+
+		require.NoError(t, err)
 	})
 }

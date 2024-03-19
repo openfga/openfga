@@ -730,7 +730,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				// if the user value is a typed wildcard and the type of the wildcard
 				// matches the target user objectType, then we're done searching
-				if tuple.IsTypedWildcard(usersetObject) && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+				if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
 					wildcardType := tuple.GetType(usersetObject)
 
 					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
