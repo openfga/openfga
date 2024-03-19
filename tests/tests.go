@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -32,13 +33,18 @@ func StartServer(t testing.TB, cfg *serverconfig.Config) {
 	StartServerWithContext(t, cfg, serverCtx)
 }
 
-// StartServerWithContext starts a server with a specific ServerContext and waits until it is healthy.
+// StartServerWithContext starts a server in random ports and with a specific ServerContext and waits until it is healthy.
 // When the test ends, all resources are cleaned.
 func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
+
+	httpPort := testutils.TCPRandomPort()
+	cfg.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	grpcPort := testutils.TCPRandomPort()
+	cfg.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
 
 	serverDone := make(chan error)
 	go func() {

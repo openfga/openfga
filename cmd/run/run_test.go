@@ -188,7 +188,7 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{}
 
@@ -197,7 +197,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -219,7 +219,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -276,13 +276,12 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
+	otlpServerPort := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
-	otlpServerPortReleaser()
 	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
 
 	// create OpenFGA server with tracing enabled
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
@@ -404,7 +403,7 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -500,17 +499,15 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
+	oidcServerPort := testutils.TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
-
-	oidcServerPortReleaser()
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
@@ -568,21 +565,18 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
-	oidcServerPort1, oidcServerPortReleaser1 := TCPRandomPort()
-	oidcServerPort2, oidcServerPortReleaser2 := TCPRandomPort()
+	oidcServerPort1 := testutils.TCPRandomPort()
+	oidcServerPort2 := testutils.TCPRandomPort()
 	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
 	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
 		Audience:      "openfga.dev",
 		Issuer:        oidcServerURL1,
 		IssuerAliases: []string{oidcServerURL2},
 	}
-
-	oidcServerPortReleaser1()
-	oidcServerPortReleaser2()
 
 	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
 	require.NoError(t, err)
@@ -623,7 +617,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -645,7 +639,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
@@ -682,7 +676,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
@@ -705,7 +699,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
@@ -744,14 +738,13 @@ func TestServerMetricsReporting(t *testing.T) {
 func testServerMetricsReporting(t *testing.T, engine string) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine
 	cfg.Datastore.URI = testDatastore.GetConnectionURI(true)
 	cfg.Datastore.Metrics.Enabled = true
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.EnableRPCHistograms = true
-	metricsPort, metricsPortReleaser := TCPRandomPort()
-	metricsPortReleaser()
+	metricsPort := testutils.TCPRandomPort()
 
 	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
 
@@ -896,7 +889,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -916,7 +909,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1221,7 +1214,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 func TestHTTPHeaders(t *testing.T) {
 	t.Parallel()
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 

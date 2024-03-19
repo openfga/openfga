@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -25,6 +26,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/server/config"
 )
 
 const (
@@ -207,4 +210,41 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 		require.NoError(t, err, "http endpoint not healthy")
 		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 	}
+}
+
+// MustDefaultConfig returns default server config with the playground, tracing and metrics turned off.
+func MustDefaultConfig() *config.Config {
+	config := config.DefaultConfig()
+
+	config.Playground.Enabled = false
+	config.Metrics.Enabled = false
+
+	return config
+}
+
+// MustDefaultConfigWithRandomPorts returns default server config but with random ports for the grpc and http addresses
+// and with the playground, tracing and metrics turned off.
+// This function may panic if somehow a random port cannot be chosen.
+func MustDefaultConfigWithRandomPorts() *config.Config {
+	config := MustDefaultConfig()
+
+	httpPort := TCPRandomPort()
+	grpcPort := TCPRandomPort()
+
+	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+
+	return config
+}
+
+// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics.
+// Else, it returns the port and releases the port.
+func TCPRandomPort() int {
+	l, err := net.Listen("tcp", "")
+	if err != nil {
+		panic(err)
+	}
+	addr := l.Addr().(*net.TCPAddr).Port
+	defer l.Close()
+	return addr
 }
