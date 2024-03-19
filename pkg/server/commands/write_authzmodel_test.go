@@ -49,7 +49,7 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 			}
 
 			cmd := NewWriteAuthorizationModelCommand(mockDatastore,
-				WithWriteAuthModelEnableModularModels(test.enableModularModules),
+				WithEnableModularModels(test.enableModularModules),
 			)
 			_, err := cmd.Execute(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -63,7 +63,7 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 			if test.expectAllowed {
 				require.NoError(t, err)
 			} else {
-				require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) is not supported"))
+				require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) are not supported"))
 			}
 		})
 	}

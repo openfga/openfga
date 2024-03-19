@@ -39,7 +39,7 @@ func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
 	}
 }
 
-func WithWriteAuthModelEnableModularModels(enable bool) WriteAuthModelOption {
+func WithEnableModularModels(enable bool) WriteAuthModelOption {
 	return func(m *WriteAuthorizationModelCommand) {
 		m.enableModularModels = enable
 	}
@@ -72,7 +72,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	if !w.enableModularModels && req.GetSchemaVersion() == typesystem.SchemaVersion1_2 {
-		return nil, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) is not supported")
+		return nil, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) are not supported")
 	}
 
 	model := &openfgav1.AuthorizationModel{
