@@ -308,9 +308,13 @@ func (l *listUsersQuery) expandIntersection(
 			return l.expandRewrite(ctx, req, copyChildRewrite, intersectionFoundUsersChan)
 		})
 	}
+
+	errChan := make(chan error, 1)
+	defer close(errChan)
 	go func() {
-		_ = pool.Wait()
+		err := pool.Wait()
 		close(intersectionFoundUsersChan)
+		errChan <- err
 	}()
 
 	foundUsersCountMap := make(map[string]uint32, 0)
@@ -329,7 +333,7 @@ func (l *listUsersQuery) expandIntersection(
 		}
 	}
 
-	return nil
+	return <-errChan
 }
 
 func (l *listUsersQuery) expandTTU(
