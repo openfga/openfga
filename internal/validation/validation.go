@@ -335,7 +335,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	schemaVersion := typesys.GetSchemaVersion()
 
 	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
-	if schemaVersion == typesystem.SchemaVersion1_1 {
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
@@ -369,7 +369,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 
 	// if the model is a 1.1 model we make sure that the objectType of the 'user' field is a defined
 	// type in the model.
-	if schemaVersion == typesystem.SchemaVersion1_1 {
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		_, ok := typesys.GetTypeDefinition(userObjectType)
 		if !ok {
 			return &tuple.TypeNotFoundError{TypeName: userObjectType}

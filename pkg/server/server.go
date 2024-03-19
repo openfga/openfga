@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -45,8 +46,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                              = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                                 = "authorization_model_id"
+	ExperimentalEnableModularModels ExperimentalFeatureFlag = "enable-modular-models"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -894,9 +896,12 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
+	enableModularModels := slices.Contains(s.experimentals, ExperimentalEnableModularModels)
+
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
+		commands.WithEnableModularModels(enableModularModels),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
