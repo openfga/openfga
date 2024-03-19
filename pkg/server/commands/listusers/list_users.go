@@ -69,7 +69,7 @@ func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTu
 	return r.ContextualTuples
 }
 
-func from(o listUsersRequest) *internalListUsersRequest {
+func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 	return &internalListUsersRequest{
 		ListUsersRequest: &openfgav1.ListUsersRequest{
 			StoreId:              o.GetStoreId(),
@@ -85,7 +85,7 @@ func from(o listUsersRequest) *internalListUsersRequest {
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
 func clone(o *internalListUsersRequest) *internalListUsersRequest {
-	v := from(o)
+	v := fromListUsersRequest(o)
 	v.visitedUsersetsMap = maps.Clone(o.visitedUsersetsMap)
 	return v
 }

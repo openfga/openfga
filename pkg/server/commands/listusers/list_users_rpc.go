@@ -71,7 +71,7 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		internalRequest := from(req)
+		internalRequest := fromListUsersRequest(req)
 		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return

@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -1351,6 +1353,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 
 	l := NewListUsersQuery(mockDatastore)
 	channelWithResults := make(chan *openfgav1.User)
+	channelWithError := make(chan error, 1)
 	model := testutils.MustTransformDSLToProtoWithID(`
 	model
 		schema 1.1
@@ -1372,27 +1375,33 @@ func TestListUsersCycleDetection(t *testing.T) {
 		visitedUsersets := make(map[string]struct{})
 		visitedUsersets[visitedUsersetKey] = struct{}{}
 
-		err := l.expand(ctx, &internalListUsersRequest{
-			ListUsersRequest: &openfgav1.ListUsersRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Object: &openfgav1.Object{
-					Type: visitedUserset.GetType(),
-					Id:   visitedUserset.GetId(),
+		go func() {
+			err := l.expand(ctx, &internalListUsersRequest{
+				ListUsersRequest: &openfgav1.ListUsersRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Object: &openfgav1.Object{
+						Type: visitedUserset.GetType(),
+						Id:   visitedUserset.GetId(),
+					},
+					Relation: visitedUserset.GetRelation(),
+					UserFilters: []*openfgav1.ListUsersFilter{{
+						Type: "user",
+					}},
 				},
-				Relation: visitedUserset.GetRelation(),
-				UserFilters: []*openfgav1.ListUsersFilter{{
-					Type: "user",
-				}},
-			},
-			visitedUsersetsMap: visitedUsersets,
-		}, channelWithResults)
+				visitedUsersetsMap: visitedUsersets,
+			}, channelWithResults)
+			if err != nil {
+				channelWithError <- err
+			}
+		}()
 
-		require.NoError(t, err)
 		select {
+		case <-channelWithError:
+			require.FailNow(t, "expected 0 errors")
 		case <-channelWithResults:
 			require.FailNow(t, "expected 0 results")
-		default:
+		case <-time.After(50 * time.Millisecond):
 			break
 		}
 	})
