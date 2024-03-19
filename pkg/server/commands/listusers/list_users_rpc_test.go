@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -1352,6 +1351,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	l := NewListUsersQuery(mockDatastore)
+	channelDone := make(chan struct{})
 	channelWithResults := make(chan *openfgav1.User)
 	channelWithError := make(chan error, 1)
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -1393,7 +1393,9 @@ func TestListUsersCycleDetection(t *testing.T) {
 			}, channelWithResults)
 			if err != nil {
 				channelWithError <- err
+				return
 			}
+			channelDone <- struct{}{}
 		}()
 
 		select {
@@ -1401,7 +1403,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 			require.FailNow(t, "expected 0 errors")
 		case <-channelWithResults:
 			require.FailNow(t, "expected 0 results")
-		case <-time.After(50 * time.Millisecond):
+		case <-channelDone:
 			break
 		}
 	})
