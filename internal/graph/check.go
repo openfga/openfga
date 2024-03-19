@@ -285,7 +285,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	}()
 
 	var dbReads uint32
-	var dispatchCount uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -298,11 +297,9 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				continue
 			}
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
-			dispatchCount += result.resp.GetResolutionMetadata().DispatchCount
 
 			if result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				result.resp.GetResolutionMetadata().DispatchCount = dispatchCount
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -314,7 +311,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
-			DispatchCount:       dispatchCount,
 		},
 	}, err
 }
@@ -343,7 +339,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	}()
 
 	var dbReads uint32
-	var dispatchCount uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -365,11 +360,9 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 			}
 
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
-			dispatchCount += result.resp.GetResolutionMetadata().DispatchCount
 
 			if !result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				result.resp.GetResolutionMetadata().DispatchCount = dispatchCount
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -381,7 +374,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		Allowed: true,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
-			DispatchCount:       dispatchCount,
 		},
 	}, err
 }
@@ -443,7 +435,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	var subErr error
 
 	var dbReads uint32
-	var dispatchCount uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
@@ -464,11 +455,9 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			}
 
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
-			dispatchCount += baseResult.resp.GetResolutionMetadata().DispatchCount
 
 			if !baseResult.resp.GetAllowed() {
 				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				response.GetResolutionMetadata().DispatchCount = dispatchCount
 				return response, nil
 			}
 
@@ -486,7 +475,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 			if subResult.resp.GetAllowed() {
 				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				response.GetResolutionMetadata().DispatchCount = dispatchCount
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -507,7 +495,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		Allowed: true,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
-			DispatchCount:       dispatchCount,
 		},
 	}, nil
 }
@@ -529,7 +516,6 @@ func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckReques
 		if err != nil {
 			return resp, err
 		}
-		resp.GetResolutionMetadata().DispatchCount++
 		return resp, nil
 	}
 }
