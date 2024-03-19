@@ -169,9 +169,9 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 							require.NoError(t, err, detailedInfo)
 							require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp), detailedInfo)
 
-							// assert 2: each object in the response of ListUsers should return check -> true
+							// assert 2: each user in the response of ListUsers should return check -> true
 							for _, user := range resp.GetUsers() {
-								checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.ObjectKey(user.GetObject()))
+								checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.UserProtoToString(user))
 								checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 									StoreId:              storeID,
 									TupleKey:             checkRequestTupleKey,
