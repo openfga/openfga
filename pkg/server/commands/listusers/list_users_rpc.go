@@ -189,6 +189,8 @@ func (l *listUsersQuery) expandRewrite(
 		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
 		return l.expandIntersection(ctx, req, rewrite, foundUsersChan)
+	case *openfgav1.Userset_Difference:
+		return l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -329,6 +331,48 @@ func (l *listUsersQuery) expandIntersection(
 		// If this count equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
 		if c == uint32(len(children)) {
+			foundUsersChan <- tuple.StringToUserProto(key)
+		}
+	}
+
+	return <-errChan
+}
+
+func (l *listUsersQuery) expandExclusion(
+	ctx context.Context,
+	req listUsersRequest,
+	rewrite *openfgav1.Userset_Difference,
+	foundUsersChan chan<- *openfgav1.User,
+) error {
+	baseFoundUsersCh := make(chan *openfgav1.User, 1)
+	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
+
+	errChan := make(chan error, 2)
+	go func() {
+		errChan <- l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		close(baseFoundUsersCh)
+
+		errChan <- l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		close(subtractFoundUsersCh)
+	}()
+
+	baseFoundUsersCountMap := make(map[string]struct{}, 0)
+	for fu := range baseFoundUsersCh {
+		key := tuple.UserProtoToString(fu)
+		baseFoundUsersCountMap[key] = struct{}{}
+	}
+	subtractFoundUsersCountMap := make(map[string]struct{}, len(baseFoundUsersCountMap))
+	for fu := range subtractFoundUsersCh {
+		key := tuple.UserProtoToString(fu)
+		subtractFoundUsersCountMap[key] = struct{}{}
+	}
+
+	for key := range baseFoundUsersCountMap {
+		if _, isSubtracted := subtractFoundUsersCountMap[key]; !isSubtracted {
+			// Iterate over base users because at minimum they need to pass
+			// but then they are further compared to the subtracted users map.
+			// If users exist in both maps, they are excluded. Only users that exist
+			// solely in the base map will be returned.
 			foundUsersChan <- tuple.StringToUserProto(key)
 		}
 	}

@@ -1113,8 +1113,7 @@ func TestListUsersExclusion(t *testing.T) {
 	})
 	tests := ListUsersTests{
 		{
-			name:                  "exclusion",
-			TemporarilySkipReason: "because exclusion not supported yet",
+			name: "exclusion",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1141,8 +1140,7 @@ func TestListUsersExclusion(t *testing.T) {
 			expectedUsers: []string{"user:will"},
 		},
 		{
-			name:                  "exclusion_and_ttu",
-			TemporarilySkipReason: "because exclusion not supported yet",
+			name: "exclusion_multiple",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1155,16 +1153,51 @@ func TestListUsersExclusion(t *testing.T) {
 			model: `model
 			schema 1.1
 		  type user
-			relations
-			  define blocked: [user]
-		  type folder
-			relations
-			  define viewer: [user]
-			  define blocked: blocked from viewer
 		  type document
 			relations
-			  define parent: [folder]
-			  define viewer: (viewer from parent) but not blocked from parent`,
+			  define blocked_1: [user]
+			  define blocked_2: [user]
+			  define viewer: ([user] but not blocked_1) but not blocked_2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "blocked_1", "user:maria"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked_2", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:poovam"),
+				tuple.NewTupleKey("document:1", "blocked_1", "user:poovam"),
+				tuple.NewTupleKey("document:1", "blocked_2", "user:poovam"),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
+			name: "exclusion_and_ttu",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+		  relations
+			define blocked: [user]
+		  type folder
+		  relations
+			define viewer: [user]
+			define blocked: blocked from viewer
+		  type document
+		  relations
+			define parent: [folder]
+			define viewer: (viewer from parent) but not blocked from parent`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
