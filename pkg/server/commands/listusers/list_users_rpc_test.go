@@ -1187,24 +1187,33 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			model: `model
 			schema 1.1
+		  
 		  type user
-		  relations
-			define blocked: [user]
+		  
+		  type org
+			relations
+			  define blocked: [user]
+		  
 		  type folder
-		  relations
-			define viewer: [user]
-			define blocked: blocked from viewer
+			relations
+			  define blocked: blocked from org
+			  define org: [org]
+			  define viewer: [user]
+		  
 		  type document
-		  relations
-			define parent: [folder]
-			define viewer: (viewer from parent) but not blocked from parent`,
+			relations
+			  define parent: [folder]
+			  define viewer: viewer from parent but not blocked from parent
+		  `,
 
 			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:x", "org", "org:x"),
+
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
 				tuple.NewTupleKey("folder:x", "viewer", "user:will"),
 
 				tuple.NewTupleKey("folder:x", "viewer", "user:maria"),
-				tuple.NewTupleKey("user:maria", "blocked", "user:maria"),
+				tuple.NewTupleKey("org:x", "blocked", "user:maria"),
 			},
 			expectedUsers: []string{"user:will"},
 		},
