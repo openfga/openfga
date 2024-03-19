@@ -16,6 +16,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 - Added `request_duration_ms` which has `dispatch_count` as a dimension ([#1444](https://github.com/openfga/openfga/pull/1444))
 - Added an option to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
+- Support schema version 1.2 for modular models ([#1443](https://github.com/openfga/openfga/pull/1443))
+- Support for throttling dispatches ([#1440](https://github.com/openfga/openfga/pull/1440))
 
 ### Fixed
 
