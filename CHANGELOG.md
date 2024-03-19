@@ -8,6 +8,28 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.1] - 2024-03-19
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.0...v1.5.1)
+
+### Added
+
+- Added `request_duration_ms` which has `dispatch_count` as a dimension ([#1444](https://github.com/openfga/openfga/pull/1444))
+- Added an option to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
+
+### Fixed
+
+- We will throw 400 error when condition is invalid instead of "Internal Server Error" ([#1420](https://github.com/openfga/openfga/pull/1420))
+- Fix model validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
+
+### Deprecation :warning:
+
+- `request_duration_by_query_count_ms` will be removed in favour of `request_duration_ms` ([#1450](https://github.com/openfga/openfga/pull/1450))
+
+### Contribution
+
+- Thanks @lekaf974 for enhancing NewLogger with builder pattern options ([#1413](https://github.com/openfga/openfga/pull/1413))
+
 ## [1.5.0] - 2024-03-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
