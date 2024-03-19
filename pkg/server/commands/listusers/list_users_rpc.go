@@ -174,7 +174,7 @@ func (l *listUsersQuery) expandRewrite(
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-	if enteredLoop(req) {
+	if enteredCycle(req) {
 		return nil
 	}
 	switch rewrite := rewrite.GetUserset().(type) {
@@ -337,7 +337,7 @@ func (l *listUsersQuery) expandTTU(
 	return pool.Wait()
 }
 
-func enteredLoop(req *internalListUsersRequest) bool {
+func enteredCycle(req *internalListUsersRequest) bool {
 	key := fmt.Sprintf("%s#%s", tuple.ObjectKey(req.GetObject()), req.Relation)
 	if _, loaded := req.visitedUsersetsMap[key]; loaded {
 		return true
