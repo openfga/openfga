@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
@@ -315,29 +313,21 @@ func (l *listUsersQuery) expandIntersection(
 		close(intersectionFoundUsersChan)
 	}()
 
-	var foundUsersCountMap sync.Map
+	foundUsersCountMap := make(map[string]uint32, 0)
 	for fu := range intersectionFoundUsersChan {
 		key := tuple.UserProtoToString(fu)
-
-		count, exists := foundUsersCountMap.Load(key)
-		if !exists {
-			count = new(uint32)
-		}
-		newCount := atomic.AddUint32(count.(*uint32), 1)
-		foundUsersCountMap.Store(key, &newCount)
+		foundUsersCountMap[key]++
 	}
 
-	compareLength := uint32(len(children))
-	foundUsersCountMap.Range(func(key, c interface{}) bool {
+	for key, c := range foundUsersCountMap {
 		// Compare the specific user's count, or the number of times
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
-		if *c.(*uint32) == compareLength {
-			foundUsersChan <- tuple.StringToUserProto(key.(string))
+		if c == uint32(len(children)) {
+			foundUsersChan <- tuple.StringToUserProto(key)
 		}
-		return true
-	})
+	}
 
 	return nil
 }
