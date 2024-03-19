@@ -297,57 +297,46 @@ func (l *listUsersQuery) expandIntersection(
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-	handlerPool := pool.New().WithContext(ctx)
-	handlerPool.WithCancelOnError()
-	handlerPool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
-
-	var results sync.Map
-	var mu sync.Mutex
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	intersectionFoundUsersChan := make(chan *openfgav1.User, 1)
 
-	err := handlerPool.Wait()
-	if err != nil {
-		return err
-	}
-
-	resultsPool := pool.New().WithContext(ctx)
-	resultsPool.WithCancelOnError()
-	resultsPool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
-
 	children := rewrite.Intersection.GetChild()
 	for _, childRewrite := range children {
-		copyRewrite := childRewrite
-		resultsPool.Go(func(ctx context.Context) error {
-			return l.expandRewrite(ctx, req, copyRewrite, intersectionFoundUsersChan)
+		copyChildRewrite := childRewrite
+		pool.Go(func(ctx context.Context) error {
+			return l.expandRewrite(ctx, req, copyChildRewrite, intersectionFoundUsersChan)
 		})
 	}
 	go func() {
-		resultsPool.Wait()
+		pool.Wait()
 		close(intersectionFoundUsersChan)
 	}()
 
-	compareLength := uint32(len(children))
-
+	var foundUsersCountMap sync.Map
 	for fu := range intersectionFoundUsersChan {
-		mu.Lock()
 		key := tuple.UserProtoToString(fu)
-		mu.Unlock()
 
-		count, exists := results.Load(key)
+		count, exists := foundUsersCountMap.Load(key)
 		if !exists {
-			count = new(uint32) // Assuming your Add(1) operation means incrementing an int
+			count = new(uint32)
 		}
 		newCount := atomic.AddUint32(count.(*uint32), 1)
-		results.Store(key, &newCount)
+		foundUsersCountMap.Store(key, &newCount)
 	}
 
-	results.Range(func(key, r interface{}) bool {
-		if *r.(*uint32) == compareLength {
+	compareLength := uint32(len(children))
+	foundUsersCountMap.Range(func(key, c interface{}) bool {
+		// Compare the specific user's count, or the number of times
+		// the user was returned for all intersection clauses.
+		// If this count equals the number of clauses, the user satisfies
+		// the intersection expression and can be sent on `foundUsersChan`
+		if *c.(*uint32) == compareLength {
 			foundUsersChan <- tuple.StringToUserProto(key.(string))
-			fmt.Println("!", key)
 		}
-		return true // continue iterating
+		return true
 	})
 
 	return nil

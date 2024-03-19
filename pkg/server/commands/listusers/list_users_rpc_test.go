@@ -930,6 +930,42 @@ func TestListUsersIntersection(t *testing.T) {
 			expectedUsers: []string{"user:will"},
 		},
 		{
+			name: "intersection_at_multiple_levels",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		type user
+		type document
+			relations
+				define required: [user]
+				define owner: [user] and required
+				define editor: [user] and owner
+				define viewer: [user] and editor`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "required", "user:will"),
+				tuple.NewTupleKey("document:1", "owner", "user:will"),
+				tuple.NewTupleKey("document:1", "editor", "user:will"),
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "owner", "user:jon"),
+				tuple.NewTupleKey("document:1", "editor", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "owner", "user:maria"),
+				tuple.NewTupleKey("document:1", "required", "user:maria"),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
 			name: "intersection_and_ttu",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
