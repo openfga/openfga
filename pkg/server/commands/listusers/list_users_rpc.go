@@ -309,7 +309,7 @@ func (l *listUsersQuery) expandIntersection(
 		})
 	}
 	go func() {
-		pool.Wait()
+		_ = pool.Wait()
 		close(intersectionFoundUsersChan)
 	}()
 
