@@ -1275,7 +1275,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 			expectedUsers: []string{"user:maria"},
 		},
 		{
-			name: "impossible_edge_several_computed_relations_away",
+			name: "valid_edge_several_computed_relations_away",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
