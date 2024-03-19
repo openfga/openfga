@@ -190,61 +190,7 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_TupleToUserset:
 		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
-		handlerPool := pool.New().WithContext(ctx)
-		handlerPool.WithCancelOnError()
-		handlerPool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
-
-		var results sync.Map
-		var mu sync.Mutex
-
-		intersectionFoundUsersChan := make(chan *openfgav1.User, 1)
-
-		err := handlerPool.Wait()
-		if err != nil {
-			return err
-		}
-
-		resultsPool := pool.New().WithContext(ctx)
-		resultsPool.WithCancelOnError()
-		resultsPool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
-
-		children := rewrite.Intersection.GetChild()
-		for _, childRewrite := range children {
-			copyRewrite := childRewrite
-			resultsPool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, copyRewrite, intersectionFoundUsersChan)
-			})
-		}
-		go func() {
-			resultsPool.Wait()
-			close(intersectionFoundUsersChan)
-		}()
-
-		compareLength := uint32(len(children))
-
-		for fu := range intersectionFoundUsersChan {
-			mu.Lock()
-			key := tuple.UserProtoToString(fu)
-			mu.Unlock()
-
-			count, exists := results.Load(key)
-			if !exists {
-				count = new(uint32) // Assuming your Add(1) operation means incrementing an int
-			}
-			newCount := atomic.AddUint32(count.(*uint32), 1)
-			results.Store(key, &newCount)
-		}
-
-		results.Range(func(key, r interface{}) bool {
-			if *r.(*uint32) == compareLength {
-				foundUsersChan <- tuple.StringToUserProto(key.(string))
-				fmt.Println("!", key)
-			}
-			return true // continue iterating
-		})
-
-		return nil
-
+		return l.expandIntersection(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -343,6 +289,68 @@ func (l *listUsersQuery) expandDirect(
 	}
 
 	return pool.Wait()
+}
+
+func (l *listUsersQuery) expandIntersection(
+	ctx context.Context,
+	req listUsersRequest,
+	rewrite *openfgav1.Userset_Intersection,
+	foundUsersChan chan<- *openfgav1.User,
+) error {
+	handlerPool := pool.New().WithContext(ctx)
+	handlerPool.WithCancelOnError()
+	handlerPool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+
+	var results sync.Map
+	var mu sync.Mutex
+
+	intersectionFoundUsersChan := make(chan *openfgav1.User, 1)
+
+	err := handlerPool.Wait()
+	if err != nil {
+		return err
+	}
+
+	resultsPool := pool.New().WithContext(ctx)
+	resultsPool.WithCancelOnError()
+	resultsPool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+
+	children := rewrite.Intersection.GetChild()
+	for _, childRewrite := range children {
+		copyRewrite := childRewrite
+		resultsPool.Go(func(ctx context.Context) error {
+			return l.expandRewrite(ctx, req, copyRewrite, intersectionFoundUsersChan)
+		})
+	}
+	go func() {
+		resultsPool.Wait()
+		close(intersectionFoundUsersChan)
+	}()
+
+	compareLength := uint32(len(children))
+
+	for fu := range intersectionFoundUsersChan {
+		mu.Lock()
+		key := tuple.UserProtoToString(fu)
+		mu.Unlock()
+
+		count, exists := results.Load(key)
+		if !exists {
+			count = new(uint32) // Assuming your Add(1) operation means incrementing an int
+		}
+		newCount := atomic.AddUint32(count.(*uint32), 1)
+		results.Store(key, &newCount)
+	}
+
+	results.Range(func(key, r interface{}) bool {
+		if *r.(*uint32) == compareLength {
+			foundUsersChan <- tuple.StringToUserProto(key.(string))
+			fmt.Println("!", key)
+		}
+		return true // continue iterating
+	})
+
+	return nil
 }
 
 func (l *listUsersQuery) expandTTU(
