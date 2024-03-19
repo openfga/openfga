@@ -41,10 +41,13 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	httpPort := testutils.TCPRandomPort()
+	httpPort, httpPortReleaser := testutils.TCPRandomPort()
 	cfg.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-	grpcPort := testutils.TCPRandomPort()
+	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
 	cfg.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+
+	httpPortReleaser()
+	grpcPortReleaser()
 
 	serverDone := make(chan error)
 	go func() {

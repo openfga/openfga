@@ -276,8 +276,9 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	// create mock OTLP server
-	otlpServerPort := testutils.TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
+	otlpServerPortReleaser()
 	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
 
 	// create OpenFGA server with tracing enabled
@@ -499,7 +500,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	oidcServerPort := testutils.TCPRandomPort()
+	oidcServerPort, oidcServerPortReleaser := testutils.TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
@@ -508,6 +509,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
+
+	oidcServerPortReleaser()
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
@@ -565,8 +568,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
-	oidcServerPort1 := testutils.TCPRandomPort()
-	oidcServerPort2 := testutils.TCPRandomPort()
+	oidcServerPort1, oidcServerPortReleaser1 := testutils.TCPRandomPort()
+	oidcServerPort2, oidcServerPortReleaser2 := testutils.TCPRandomPort()
 	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
 	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
 
@@ -577,6 +580,9 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 		Issuer:        oidcServerURL1,
 		IssuerAliases: []string{oidcServerURL2},
 	}
+
+	oidcServerPortReleaser1()
+	oidcServerPortReleaser2()
 
 	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
 	require.NoError(t, err)
@@ -744,7 +750,8 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	cfg.Datastore.Metrics.Enabled = true
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.EnableRPCHistograms = true
-	metricsPort := testutils.TCPRandomPort()
+	metricsPort, metricsPortReleaser := testutils.TCPRandomPort()
+	metricsPortReleaser()
 
 	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
 

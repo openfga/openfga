@@ -53,8 +53,9 @@ func TestCheckLogs(t *testing.T) {
 	// defer goleak.VerifyNone(t)
 
 	// create mock OTLP server
-	otlpServerPort := testutils.TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
+	otlpServerPortReleaser()
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
