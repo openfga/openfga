@@ -24,7 +24,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Deprecation :warning:
 
-- `request_duration_by_query_count_ms` will be removed in favour of `request_duration_ms` ([#1450](https://github.com/openfga/openfga/pull/1450))
+- Histogram `request_duration_by_query_count_ms` will be removed in the next release, in favour of `request_duration_ms` ([#1450](https://github.com/openfga/openfga/pull/1450))
 
 ### Contribution
 
