@@ -15,9 +15,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 
 - Added `request_duration_ms` histogram which has `datastore_query_count` and `dispatch_count` as dimensions ([#1444](https://github.com/openfga/openfga/pull/1444))
-- Added an option to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
-- Support schema version 1.2 for modular models ([#1443](https://github.com/openfga/openfga/pull/1443))
-- Support for throttling dispatches ([#1440](https://github.com/openfga/openfga/pull/1440))
+- Added new flag `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
+- Added experimental support for modular models via `OPENFGA_EXPERIMENTALS=enable-modular-models` ([#1443](https://github.com/openfga/openfga/pull/1443)). This will enable writing models that are split across multiple files.
+- Added support for throttling dispatches ([#1440](https://github.com/openfga/openfga/pull/1440)). This will throttle Check requests that are overly complex. You can turn on this feature via OPENFGA_DISPATCH_THROTTLING_ENABLED and configured via OPENFGA_DISPATCH_THROTTLING_THRESHOLD and OPENFGA_DISPATCH_THROTTLING_FREQUENCY
 
 ### Fixed
 
