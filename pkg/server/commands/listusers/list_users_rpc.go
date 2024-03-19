@@ -86,7 +86,7 @@ func (l *listUsersQuery) ListUsers(
 	case <-done:
 		break
 	}
-	foundUsers := make([]*openfgav1.User, 0)
+	foundUsers := make([]*openfgav1.User, len(foundUsersUnique))
 	for foundUser := range foundUsersUnique {
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
