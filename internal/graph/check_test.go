@@ -1037,28 +1037,32 @@ type doc
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+		checkRequestMetadata := NewCheckRequestMetadata(5)
+
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(3), resp.GetResolutionMetadata().DispatchCount)
+		require.Equal(t, uint32(3), checkRequestMetadata.DispatchCounter.Load())
 
 		t.Run("direct_lookup_requires_no_dispatch", func(t *testing.T) {
+			checkRequestMetadata := NewCheckRequestMetadata(5)
+
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
-				RequestMetadata:      NewCheckRequestMetadata(5),
+				RequestMetadata:      checkRequestMetadata,
 			})
 			require.NoError(t, err)
 			require.True(t, resp.Allowed)
 
-			require.Zero(t, resp.GetResolutionMetadata().DispatchCount)
+			require.Zero(t, checkRequestMetadata.DispatchCounter.Load())
 		})
 	})
 
@@ -1097,29 +1101,32 @@ type doc
 		require.NoError(t, err)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		checkRequestMetadata := NewCheckRequestMetadata(5)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(2))
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(4))
+		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(2))
+		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(4))
+
+		checkRequestMetadata = NewCheckRequestMetadata(5)
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:other"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
 
-		require.Equal(t, uint32(4), resp.GetResolutionMetadata().DispatchCount)
+		require.Equal(t, uint32(4), checkRequestMetadata.DispatchCounter.Load())
 	})
 
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
@@ -1150,39 +1157,42 @@ type doc
 		require.NoError(t, err)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
+		checkRequestMetadata := NewCheckRequestMetadata(5)
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "owner", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Zero(t, resp.GetResolutionMetadata().DispatchCount)
+		require.Zero(t, checkRequestMetadata.DispatchCounter.Load())
+
+		checkRequestMetadata = NewCheckRequestMetadata(5)
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:will"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(1))
-		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(0))
+		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(1))
+		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(0))
 
+		checkRequestMetadata = NewCheckRequestMetadata(5)
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DispatchCount)
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 	})
 }
 
