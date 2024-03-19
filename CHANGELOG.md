@@ -21,7 +21,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 
-- We will throw 400 error when condition is invalid instead of "Internal Server Error" ([#1420](https://github.com/openfga/openfga/pull/1420))
+- Throw HTTP 400 when tuple condition is invalid instead of HTTP 500 ([#1420](https://github.com/openfga/openfga/pull/1420))
 - Fix model validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
 
 ### Deprecation :warning:
