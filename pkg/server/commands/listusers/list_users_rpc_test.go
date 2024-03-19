@@ -1288,17 +1288,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 
 			actualCompare := make([]string, len(actualUsers))
 			for i, u := range resp.GetUsers() {
-				if relation := u.GetUserset().GetRelation(); relation != "" {
-					actualCompare[i] = fmt.Sprintf("%s:%s#%s", u.GetUserset().GetType(), u.GetUserset().GetId(), relation)
-					continue
-				}
-
-				if userType := u.GetObject().GetType(); userType != "" {
-					actualCompare[i] = fmt.Sprintf("%s:%s", userType, u.GetObject().GetId())
-					continue
-				}
-
-				actualCompare[i] = fmt.Sprintf("%s:*", u.GetObject().GetType())
+				actualCompare[i] = tuple.UserProtoToString(u)
 			}
 
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
