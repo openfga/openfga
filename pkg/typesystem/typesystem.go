@@ -27,13 +27,17 @@ const (
 	// SchemaVersion1_1 for the authorization models.
 	SchemaVersion1_1 string = "1.1"
 
+	// SchemaVersion1_2 for the authorization models.
+	SchemaVersion1_2 string = "1.2"
+
 	typesystemCtxKey ctxKey = "typesystem-context-key"
 )
 
 // IsSchemaVersionSupported checks if the provided schema version is supported.
 func IsSchemaVersionSupported(version string) bool {
 	switch version {
-	case SchemaVersion1_1:
+	case SchemaVersion1_1,
+		SchemaVersion1_2:
 		return true
 	default:
 		return false
@@ -394,7 +398,7 @@ func (t *TypeSystem) HasTypeInfo(objectType, relation string) (bool, error) {
 		return false, err
 	}
 
-	if t.GetSchemaVersion() == SchemaVersion1_1 && r.GetTypeInfo() != nil {
+	if IsSchemaVersionSupported(t.GetSchemaVersion()) && r.GetTypeInfo() != nil {
 		return true, nil
 	}
 
@@ -898,7 +902,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 
 		computedUserset := r.TupleToUserset.GetComputedUserset().GetRelation()
 
-		if t.GetSchemaVersion() == SchemaVersion1_1 {
+		if IsSchemaVersionSupported(t.GetSchemaVersion()) {
 			// For 1.1 models, relation `computedUserset` has to be defined in one of the types declared by the tupleset's list of allowed types.
 			userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 			for _, rr := range userTypes {

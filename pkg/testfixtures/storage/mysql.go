@@ -89,9 +89,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		},
 		backoffPolicy,
 	)
-	if err != nil {
-		t.Fatalf("failed to connect to mysql container: %v", err)
-	}
+	require.NoError(t, err, "failed to connect to mysql container")
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
