@@ -1600,6 +1600,7 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 		)
 
 		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
 
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
