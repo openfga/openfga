@@ -181,9 +181,9 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_This:
 		return l.expandDirect(ctx, req, foundUsersChan)
 	case *openfgav1.Userset_ComputedUserset:
-		newReq := clone(req)
-		newReq.Relation = rewrite.ComputedUserset.GetRelation()
-		return l.expand(ctx, newReq, foundUsersChan)
+		rewrittenReq := req.clone()
+		rewrittenReq.Relation = rewrite.ComputedUserset.GetRelation()
+		return l.expand(ctx, rewrittenReq, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
 		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
@@ -270,9 +270,9 @@ func (l *listUsersQuery) expandDirect(
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			newReq := clone(req)
-			newReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
-			return l.expand(ctx, newReq, foundUsersChan)
+			rewrittenReq := req.clone()
+			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+			return l.expand(ctx, rewrittenReq, foundUsersChan)
 		})
 	}
 
@@ -327,10 +327,10 @@ func (l *listUsersQuery) expandTTU(
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		pool.Go(func(ctx context.Context) error {
-			newReq := clone(req)
-			newReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
-			newReq.Relation = computedRelation
-			return l.expand(ctx, newReq, foundUsersChan)
+			rewrittenReq := req.clone()
+			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+			rewrittenReq.Relation = computedRelation
+			return l.expand(ctx, rewrittenReq, foundUsersChan)
 		})
 	}
 

@@ -84,8 +84,8 @@ func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 }
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
-func clone(o *internalListUsersRequest) *internalListUsersRequest {
-	v := fromListUsersRequest(o)
-	v.visitedUsersetsMap = maps.Clone(o.visitedUsersetsMap)
+func (r *internalListUsersRequest) clone() *internalListUsersRequest {
+	v := fromListUsersRequest(r)
+	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
 	return v
 }
