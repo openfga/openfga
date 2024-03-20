@@ -175,6 +175,9 @@ func (l *listUsersQuery) expand(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	if enteredCycle(req) {
+		return nil
+	}
 	for _, f := range req.GetUserFilters() {
 		if req.GetObject().GetType() == f.GetType() {
 			foundUsersChan <- &openfgav1.User{
@@ -208,9 +211,6 @@ func (l *listUsersQuery) expandRewrite(
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-	if enteredCycle(req) {
-		return nil
-	}
 	switch rewrite := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return l.expandDirect(ctx, req, foundUsersChan)
