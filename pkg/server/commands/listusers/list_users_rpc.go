@@ -286,7 +286,6 @@ func (l *listUsersQuery) expandDirect(
 
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
-		fmt.Println(userObject, userRelation)
 		if userRelation == "" {
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
