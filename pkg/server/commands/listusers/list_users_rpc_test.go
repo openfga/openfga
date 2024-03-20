@@ -2,7 +2,6 @@ package listusers
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
