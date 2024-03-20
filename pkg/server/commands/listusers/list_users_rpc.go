@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -57,6 +58,20 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+
+	hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
+	if err != nil {
+		return nil, err
+	}
+	if !hasPossibleEdges {
+		return &openfgav1.ListUsersResponse{
+			Users: []*openfgav1.User{},
+		}, nil
+	}
 
 	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
@@ -93,6 +108,21 @@ func (l *listUsersQuery) ListUsers(
 	return &openfgav1.ListUsersResponse{
 		Users: foundUsers,
 	}, nil
+}
+
+func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUsersRequest) (bool, error) {
+	g := graph.New(typesys)
+
+	userFilters := req.GetUserFilters()
+	source := typesystem.DirectRelationReference(userFilters[0].GetType(), userFilters[0].GetRelation())
+	target := typesystem.DirectRelationReference(req.GetObject().GetType(), req.GetRelation())
+
+	edges, err := g.GetPrunedRelationshipEdges(target, source)
+	if err != nil {
+		return false, err
+	}
+
+	return len(edges) > 0, err
 }
 
 // func (l *listUsersQuery) StreamedListUsers(
