@@ -288,7 +288,6 @@ func TestListUsersUsersets(t *testing.T) {
 		},
 		{
 			name: "userset_group_granularity",
-			//TemporarilySkipReason: "because `group:eng` is being returned instead of `group:eng#member`",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -331,7 +330,6 @@ func TestListUsersUsersets(t *testing.T) {
 		},
 		{
 			name: "userset_group_granularity_with_direct_user_relationships",
-			//TemporarilySkipReason: "because `group:eng` is being returned instead of `group:eng#member`",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -393,7 +391,6 @@ func TestListUsersUsersets(t *testing.T) {
 		},
 		{
 			name: "userset_multiple_usersets_group_granularity",
-			//TemporarilySkipReason: "because `group:eng`,`group:fga`,`group:other` is being returned instead of `group:eng#member`,`group:fga#member` and `group:other#member`",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
