@@ -87,18 +87,16 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
+		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req)
 		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
 		}
-
-		close(foundUsersCh)
 	}()
 
 	select {
 	case err := <-expandErrCh:
-		close(foundUsersCh)
 		return nil, err
 	case <-done:
 		break
