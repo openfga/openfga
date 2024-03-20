@@ -6,6 +6,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.uber.org/goleak"
 
+	"github.com/openfga/openfga/internal/server/config"
+
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/tests"
 )
@@ -26,7 +28,7 @@ func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cfg := testutils.MustDefaultConfig()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
