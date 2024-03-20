@@ -1099,6 +1099,18 @@ func TestDefaultConfig(t *testing.T) {
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
+
+	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
+
+	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.DispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1180,6 +1192,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1191,6 +1206,10 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
+		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
+		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
+		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
+
 		return nil
 	}
 

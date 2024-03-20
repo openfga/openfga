@@ -62,3 +62,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 func (c *CycleDetectionCheckResolver) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
 }
+
+func (c *CycleDetectionCheckResolver) GetDelegate() CheckResolver {
+	return c.delegate
+}

@@ -8,6 +8,31 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.1] - 2024-03-19
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.0...v1.5.1)
+
+### Added
+
+- Include calls to ListObjects and StreamedListObjects methods in the `dispatch_count` histogram ([#1427](https://github.com/openfga/openfga/pull/1427))
+- Added `request_duration_ms` histogram which has `datastore_query_count` and `dispatch_count` as dimensions ([#1444](https://github.com/openfga/openfga/pull/1444))
+- Added new flag `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
+- Added experimental support for modular models via `OPENFGA_EXPERIMENTALS=enable-modular-models` ([#1443](https://github.com/openfga/openfga/pull/1443)). This will enable writing models that are split across multiple files.
+- Added support for throttling dispatches ([#1440](https://github.com/openfga/openfga/pull/1440)). This will throttle Check requests that are overly complex. You can turn on this feature via OPENFGA_DISPATCH_THROTTLING_ENABLED and configured via OPENFGA_DISPATCH_THROTTLING_THRESHOLD and OPENFGA_DISPATCH_THROTTLING_FREQUENCY
+
+### Fixed
+
+- Throw HTTP 400 when tuple condition is invalid instead of HTTP 500 ([#1420](https://github.com/openfga/openfga/pull/1420))
+- Fix model validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
+
+### Deprecation :warning:
+
+- Histogram `request_duration_by_query_count_ms` will be removed in the next release, in favour of `request_duration_ms` ([#1450](https://github.com/openfga/openfga/pull/1450))
+
+### Contribution
+
+- Thanks @lekaf974 for enhancing NewLogger with builder pattern options ([#1413](https://github.com/openfga/openfga/pull/1413))
+
 ## [1.5.0] - 2024-03-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
@@ -947,7 +972,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
 [1.5.0]: https://github.com/openfga/openfga/releases/tag/v1.5.0
 [1.4.3]: https://github.com/openfga/openfga/releases/tag/v1.4.3
 [1.4.2]: https://github.com/openfga/openfga/releases/tag/v1.4.2

@@ -322,6 +322,7 @@ func (q *ListObjectsQuery) evaluate(
 					}()
 
 					concurrencyLimiterCh <- struct{}{}
+					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
 
 					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 						StoreID:              req.GetStoreId(),
@@ -329,7 +330,7 @@ func (q *ListObjectsQuery) evaluate(
 						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 						Context:              req.GetContext(),
-						RequestMetadata:      graph.NewCheckRequestMetadata(q.resolveNodeLimit),
+						RequestMetadata:      checkRequestMetadata,
 					})
 					if err != nil {
 						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
@@ -341,7 +342,7 @@ func (q *ListObjectsQuery) evaluate(
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					atomic.AddUint32(resolutionMetadata.DispatchCount, resp.GetResolutionMetadata().DispatchCount)
+					atomic.AddUint32(resolutionMetadata.DispatchCount, checkRequestMetadata.DispatchCounter.Load())
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
