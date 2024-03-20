@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
@@ -381,12 +382,19 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
-	errChan := make(chan error, 2)
+	var errs error
 	go func() {
-		errChan <- l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+		}
 		close(baseFoundUsersCh)
-
-		errChan <- l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+	}()
+	go func() {
+		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+		}
 		close(subtractFoundUsersCh)
 	}()
 
@@ -411,7 +419,7 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	return <-errChan
+	return errs
 }
 
 func (l *listUsersQuery) expandTTU(
