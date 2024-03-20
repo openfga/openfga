@@ -60,7 +60,7 @@ func TestCheckLogs(t *testing.T) {
 	otlpServerPortReleaser()
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
-	cfg := config.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -323,7 +323,7 @@ type organization
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
 // and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
-	cfg := config.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 

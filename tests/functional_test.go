@@ -93,7 +93,7 @@ condition conds(s: string) {
 
 // TODO make a unit test from this
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
-	cfg := config.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
 
 	StartServer(t, cfg)
@@ -337,7 +337,7 @@ func TestFunctionalGRPC(t *testing.T) {
 }
 
 func TestGRPCWithPresharedKey(t *testing.T) {
-	cfg := config.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &config.AuthnPresharedKeyConfig{Keys: []string{"key1", "key2"}}
 
