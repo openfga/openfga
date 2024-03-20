@@ -1167,6 +1167,43 @@ func TestListUsersExclusion(t *testing.T) {
 			expectedUsers: []string{"user:will"},
 		},
 		{
+			name: "exclusion_chained_computed",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  
+		  type org
+			relations
+			  define blocked: [user]
+		  
+		  type user    
+		  
+		  type document
+			relations
+			  define parent: [org]
+			  define owner: [user]
+			  define blocked: blocked from parent
+			  define editor: owner but not blocked
+			  define viewer: editor`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "org:x"),
+				tuple.NewTupleKey("document:1", "owner", "user:will"),
+				tuple.NewTupleKey("document:1", "owner", "user:poovam"),
+
+				tuple.NewTupleKey("org:x", "blocked", "user:poovam"),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
 			name: "exclusion_and_ttu",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
