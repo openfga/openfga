@@ -306,15 +306,14 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"group:eng#member"},
 		},
 		{
-			name:                  "userset_group_granularity_with_incorrect_user_filter",
-			TemporarilySkipReason: "because returns `group:eng` when group itself cannot be viewer of document (but group#member can)",
+			name: "userset_group_granularity_with_incorrect_user_filter",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
 				UserFilters: []*openfgav1.ListUsersFilter{
 					{
 						Type:     "group",
-						Relation: "", // should be "member"
+						Relation: "", // Would return results if "member"
 					},
 				},
 			},
