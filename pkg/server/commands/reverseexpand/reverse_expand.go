@@ -192,7 +192,7 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // This function respects context timeouts and cancellations. If an
 // error is encountered (e.g. context timeout) before resolving all
 // objects, then the provided channel will NOT be closed, and it will
-// send the error through the channel.
+// return the error.
 //
 // If no errors occur, then Execute will yield all of the objects on
 // the provided channel and then close the channel to signal that it
