@@ -658,7 +658,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 				},
 			}
 
@@ -766,8 +766,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
 		if err != nil {
 			telemetry.TraceError(span, err)
+			return nil, err
 		}
-		return resp, err
+
+		// count db reads after they happen in the case that we didn't find 'allowed=false' but we still incurred reads
+		if len(directlyRelatedUsersetTypes) > 0 {
+			// if we had N userset checks, that was 1 read, not N
+			resp.GetResolutionMetadata().DatastoreQueryCount++
+		}
+
+		return resp, nil
 	}
 }
 

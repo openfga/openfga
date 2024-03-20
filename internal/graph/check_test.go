@@ -614,6 +614,11 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		tuple.NewTupleKey("document:x", "b", "user:maria"),
 		tuple.NewTupleKey("document:x", "parent", "org:fga"),
 		tuple.NewTupleKey("org:fga", "member", "user:maria"),
+		tuple.NewTupleKey("company:fga", "member", "user:maria"),
+		tuple.NewTupleKey("document:x", "userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
+		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
 	})
 	require.NoError(t, err)
 
@@ -621,12 +626,19 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	schema 1.1
 type user
 
+type company
+  relations
+	define member: [user]
+
 type org
   relations
 	define member: [user]
 
 type document
   relations
+	define wildcard: [user:*]
+	define userset: [org#member]
+	define multiple_userset: [org#member, company#member]
 	define a: [user]
 	define b: [user]
 	define union: a or b
@@ -650,8 +662,8 @@ type document
 		check            *openfgav1.TupleKey
 		contextualTuples []*openfgav1.TupleKey
 		allowed          bool
-		minDBReads       uint32
-		maxDBReads       uint32
+		minDBReads       uint32 // expected lowest value for number returned in the metadata
+		maxDBReads       uint32 // expected highest value for number returned in the metadata. Actual db reads may be higher
 	}{
 		{
 			name:       "no_direct_access",
@@ -730,6 +742,55 @@ type document
 			allowed:    false,
 			minDBReads: 2, // one read to find org:fga + (one direct check) to see if user:jon is a member of org:fga
 			maxDBReads: 2,
+		},
+		{
+			name:       "userset_no_access_1",
+			check:      tuple.NewTupleKey("document:no_access", "userset", "user:maria"),
+			allowed:    false,
+			minDBReads: 1, // 1 userset read (none found)
+			maxDBReads: 1,
+		},
+		{
+			name:       "userset_no_access_2",
+			check:      tuple.NewTupleKey("document:x", "userset", "user:no_access"),
+			allowed:    false,
+			minDBReads: 2, // 1 userset read (1 found) follow by 1 direct tuple check (not found)
+			maxDBReads: 2,
+		},
+		{
+			name:       "userset_access",
+			check:      tuple.NewTupleKey("document:x", "userset", "user:maria"),
+			allowed:    true,
+			minDBReads: 2, // 1 userset read (1 found) follow by 1 direct tuple check (found)
+			maxDBReads: 2,
+		},
+		{
+			name:       "multiple_userset_no_access",
+			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:no_access"),
+			allowed:    false,
+			minDBReads: 3, // 1 userset read (2 found) follow by 2 direct tuple check (not found)
+			maxDBReads: 3,
+		},
+		{
+			name:       "multiple_userset_access",
+			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:maria"),
+			allowed:    true,
+			minDBReads: 2, // 1 userset read (2 found) follow by 1 direct tuple check (found, returns immediately)
+			maxDBReads: 2,
+		},
+		{
+			name:       "wildcard_no_access",
+			check:      tuple.NewTupleKey("document:x", "wildcard", "user:maria"),
+			allowed:    false,
+			minDBReads: 1, // 1 direct tuple read (not found)
+			maxDBReads: 1,
+		},
+		{
+			name:       "wildcard_access",
+			check:      tuple.NewTupleKey("document:public", "wildcard", "user:maria"),
+			allowed:    true,
+			minDBReads: 1, // 1 direct tuple read (found)
+			maxDBReads: 1,
 		},
 		// more complex scenarios
 		{
