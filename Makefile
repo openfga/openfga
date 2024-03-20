@@ -104,7 +104,7 @@ test-bench: test-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr
 
 test-mocks: $(GO_BIN)/mockgen ## Generate test mocks
 	${call print, "Generating test mocks"}
-	@go generate -v ./...
+	@go generate ./...
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Development
