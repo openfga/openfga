@@ -344,11 +344,11 @@ func (l *listUsersQuery) expandIntersection(
 	}
 
 	errChan := make(chan error, 1)
-	defer close(errChan)
 	go func() {
 		err := pool.Wait()
 		close(intersectionFoundUsersChan)
 		errChan <- err
+		close(errChan)
 	}()
 
 	foundUsersCountMap := make(map[string]uint32, 0)
