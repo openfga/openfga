@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -1246,7 +1247,6 @@ type document
 				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				if errReverseExpand != nil {
 					reverseExpandErrCh <- errReverseExpand
-					t.Logf("sent err %s", errReverseExpand)
 				}
 			}()
 
@@ -1254,11 +1254,12 @@ type document
 
 			for {
 				select {
-				case err := <-reverseExpandErrCh:
-					require.ErrorIs(t, err, test.expectedError)
+				case errFromChannel := <-reverseExpandErrCh:
+					if errors.Is(errFromChannel, context.DeadlineExceeded) {
+						require.FailNow(t, "unexpected timeout")
+					}
+					require.ErrorIs(t, errFromChannel, test.expectedError)
 					return
-				case <-timeoutCtx.Done():
-					require.FailNow(t, "unexpected timeout")
 				case res, channelOpen := <-resultChan:
 					if !channelOpen {
 						t.Log("channel closed")
