@@ -31,7 +31,7 @@ func (t *TestListUsersRequest) ToString() string {
 func FromProtoResponse(r *openfgav1.ListUsersResponse) []string {
 	var users []string
 	for _, user := range r.GetUsers() {
-		users = append(users, tuple.ObjectKey(user.GetObject()))
+		users = append(users, tuple.UserProtoToString(user))
 	}
 	return users
 }

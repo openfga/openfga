@@ -190,8 +190,7 @@ func TestListUsersComputedRelationship(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "computed_relationship_with_possible_direct_relationship",
-			TemporarilySkipReason: "because results aren't deduplicated yet",
+			name: "computed_relationship_with_possible_direct_relationship",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -575,8 +574,7 @@ func TestListUsersTTU(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "ttu_with_computed_relation_user_granularity",
-			TemporarilySkipReason: "because results not deduplicated",
+			name: "ttu_with_computed_relation_user_granularity",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -615,8 +613,7 @@ func TestListUsersTTU(t *testing.T) {
 			expectedUsers: []string{"user:maria", "user:will", "user:jon"},
 		},
 		{
-			name:                  "ttu_multiple_levels",
-			TemporarilySkipReason: "because deduplication not implemented yet (intermittent)",
+			name: "ttu_multiple_levels",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "folder", Id: "c"},
 				Relation: "viewer",
@@ -817,7 +814,7 @@ func TestListUsersConditions(t *testing.T) {
 		},
 		{
 			name:                  "conditions_with_computed_relationships",
-			TemporarilySkipReason: "because deduplication isn't implemented and conditions that evaluate false don't get excluded from results",
+			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -936,8 +933,7 @@ func TestListUsersUnion(t *testing.T) {
 	})
 	tests := ListUsersTests{
 		{
-			name:                  "union",
-			TemporarilySkipReason: "because deduplication not implemented yet",
+			name: "union",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -966,8 +962,7 @@ func TestListUsersUnion(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:jon", "user:maria"},
 		},
 		{
-			name:                  "union_and_ttu",
-			TemporarilySkipReason: "because deduplication not implemented yet",
+			name: "union_and_ttu",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1001,7 +996,7 @@ func TestListUsersUnion(t *testing.T) {
 		},
 		{
 			name:                  "union_all_possible_rewrites",
-			TemporarilySkipReason: "because `user:maria` not being returned *and* deduplication not implemented yet",
+			TemporarilySkipReason: "because `user:maria` not being returned",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1288,17 +1283,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 
 			actualCompare := make([]string, len(actualUsers))
 			for i, u := range resp.GetUsers() {
-				if relation := u.GetUserset().GetRelation(); relation != "" {
-					actualCompare[i] = fmt.Sprintf("%s:%s#%s", u.GetUserset().GetType(), u.GetUserset().GetId(), relation)
-					continue
-				}
-
-				if userType := u.GetObject().GetType(); userType != "" {
-					actualCompare[i] = fmt.Sprintf("%s:%s", userType, u.GetObject().GetId())
-					continue
-				}
-
-				actualCompare[i] = fmt.Sprintf("%s:*", u.GetObject().GetType())
+				actualCompare[i] = tuple.UserProtoToString(u)
 			}
 
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
