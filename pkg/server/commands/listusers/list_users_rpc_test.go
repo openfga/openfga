@@ -1292,6 +1292,9 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
 			if err != nil {
 				t.Log("warn! model is invalid")
+				// Some models under test are invalid, e.g. the model in `cycle_that_is_independent_of_tuples` fails validation with "error: potential loop".
+				// But we still want to ensure that the ListUsers API can defend itself against these models (for example, if we forget to do model validation prior to invoking the API,
+				// or if we introduce a bug in cycle detection code).
 				typesys = typesystem.New(model)
 			}
 
