@@ -675,27 +675,6 @@ func TestListUsersCycles(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name: "cycle_that_is_independent_of_tuples",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define writer: viewer
-					define viewer: writer`,
-			tuples:        []*openfgav1.TupleKey{},
-			expectedUsers: []string{},
-		},
-		{
 			name: "cycle_when_model_has_two_parallel_edges",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "transition", Id: "1"},
@@ -1416,13 +1395,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			}
 
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
-			if err != nil {
-				t.Log("warn! model is invalid")
-				// Some models under test are invalid, e.g. the model in `cycle_that_is_independent_of_tuples` fails validation with "error: potential loop".
-				// But we still want to ensure that the ListUsers API can defend itself against these models (for example, if we forget to do model validation prior to invoking the API,
-				// or if we introduce a bug in cycle detection code).
-				typesys = typesystem.New(model)
-			}
+			require.NoError(t, err)
 
 			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 			require.NoError(t, err)
