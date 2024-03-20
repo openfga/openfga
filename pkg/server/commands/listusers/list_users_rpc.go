@@ -286,6 +286,7 @@ func (l *listUsersQuery) expandDirect(
 
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
+		fmt.Println(userObject, userRelation)
 		if userRelation == "" {
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
@@ -306,6 +307,7 @@ func (l *listUsersQuery) expandDirect(
 		pool.Go(func(ctx context.Context) error {
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+			rewrittenReq.Relation = userRelation
 			return l.expand(ctx, rewrittenReq, foundUsersChan)
 		})
 	}
