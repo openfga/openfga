@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -57,15 +58,29 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+
+	hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
+	if err != nil {
+		return nil, err
+	}
+	if !hasPossibleEdges {
+		return &openfgav1.ListUsersResponse{
+			Users: []*openfgav1.User{},
+		}, nil
+	}
 
 	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
 
-	foundUsers := make([]*openfgav1.User, 0)
+	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
 	done := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
-			foundUsers = append(foundUsers, foundObject)
+			foundUsersUnique[tuple.UserProtoToString(foundObject)] = struct{}{}
 		}
 
 		done <- struct{}{}
@@ -86,10 +101,28 @@ func (l *listUsersQuery) ListUsers(
 	case <-done:
 		break
 	}
-
+	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
+	for foundUser := range foundUsersUnique {
+		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
+	}
 	return &openfgav1.ListUsersResponse{
 		Users: foundUsers,
 	}, nil
+}
+
+func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUsersRequest) (bool, error) {
+	g := graph.New(typesys)
+
+	userFilters := req.GetUserFilters()
+	source := typesystem.DirectRelationReference(userFilters[0].GetType(), userFilters[0].GetRelation())
+	target := typesystem.DirectRelationReference(req.GetObject().GetType(), req.GetRelation())
+
+	edges, err := g.GetPrunedRelationshipEdges(target, source)
+	if err != nil {
+		return false, err
+	}
+
+	return len(edges) > 0, err
 }
 
 // func (l *listUsersQuery) StreamedListUsers(
@@ -197,8 +230,9 @@ func (l *listUsersQuery) expandRewrite(
 
 		children := rewrite.Union.GetChild()
 		for _, childRewrite := range children {
+			childRewriteCopy := childRewrite
 			pool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, childRewrite, foundUsersChan)
+				return l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
 			})
 		}
 
