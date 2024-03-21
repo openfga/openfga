@@ -233,6 +233,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
+
 	err := p.stbl.
 		Select(
 			"object_type", "object_id", "relation", "_user",

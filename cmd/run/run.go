@@ -204,44 +204,17 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
 
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
-}
-
-// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
-// It is the responsibility of the caller to call the release function.
-func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	return l.Addr().(*net.TCPAddr).Port, func() {
-		l.Close()
-	}
-}
-
-// MustDefaultConfigWithRandomPorts is meant to be used for tests only (TODO move to test utils).
-// It returns default server config but with random ports for the grpc and http addresses and with the playground, tracing and metrics turned off.
-// This function may panic if somehow a random port cannot be chosen.
-func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
-	config := serverconfig.DefaultConfig()
-
-	// Since this is used for tests, turn the following off:
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	httpPort, httpPortReleaser := TCPRandomPort()
-	defer httpPortReleaser()
-	grpcPort, grpcPortReleaser := TCPRandomPort()
-	defer grpcPortReleaser()
-
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-
-	return config
 }
 
 // ReadConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
@@ -515,6 +488,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
 		server.WithExperimentals(experimentals...),
 	)
 

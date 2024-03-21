@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"strconv"
 	"time"
 )
@@ -31,6 +32,10 @@ const (
 	// care should be taken here - decreasing can cause API compatibility problems with Conditions
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
+
+	DefaultDispatchThrottlingEnabled   = false
+	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
+	DefaultDispatchThrottlingThreshold = 100
 )
 
 type DatastoreMetricsConfig struct {
@@ -174,6 +179,13 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
+// DispatchThrottlingConfig defines configurations for dispatch throttling
+type DispatchThrottlingConfig struct {
+	Enabled   bool
+	Frequency time.Duration
+	Threshold uint32
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -222,16 +234,17 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore       DatastoreConfig
-	GRPC            GRPCConfig
-	HTTP            HTTPConfig
-	Authn           AuthnConfig
-	Log             LogConfig
-	Trace           TraceConfig
-	Playground      PlaygroundConfig
-	Profiler        ProfilerConfig
-	Metrics         MetricConfig
-	CheckQueryCache CheckQueryCache
+	Datastore          DatastoreConfig
+	GRPC               GRPCConfig
+	HTTP               HTTPConfig
+	Authn              AuthnConfig
+	Log                LogConfig
+	Trace              TraceConfig
+	Playground         PlaygroundConfig
+	Profiler           ProfilerConfig
+	Metrics            MetricConfig
+	CheckQueryCache    CheckQueryCache
+	DispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -312,6 +325,15 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.DispatchThrottling.Enabled {
+		if cfg.DispatchThrottling.Frequency <= 0 {
+			return errors.New("dispatch throttling frequency must be non-negative time duration")
+		}
+		if cfg.DispatchThrottling.Threshold <= 0 {
+			return errors.New("dispatch throttling threshold must be non-negative integer")
+		}
+	}
+
 	return nil
 }
 
@@ -388,5 +410,49 @@ func DefaultConfig() *Config {
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
+		DispatchThrottling: DispatchThrottlingConfig{
+			Enabled:   DefaultDispatchThrottlingEnabled,
+			Frequency: DefaultDispatchThrottlingFrequency,
+			Threshold: DefaultDispatchThrottlingThreshold,
+		},
+	}
+}
+
+// MustDefaultConfig returns default server config with the playground, tracing and metrics turned off.
+func MustDefaultConfig() *Config {
+	config := DefaultConfig()
+
+	config.Playground.Enabled = false
+	config.Metrics.Enabled = false
+
+	return config
+}
+
+// MustDefaultConfigWithRandomPorts returns default server config but with random ports for the grpc and http addresses
+// and with the playground, tracing and metrics turned off.
+// This function may panic if somehow a random port cannot be chosen.
+func MustDefaultConfigWithRandomPorts() *Config {
+	config := MustDefaultConfig()
+
+	httpPort, httpPortReleaser := TCPRandomPort()
+	defer httpPortReleaser()
+	grpcPort, grpcPortReleaser := TCPRandomPort()
+	defer grpcPortReleaser()
+
+	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+
+	return config
+}
+
+// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
+// It is the responsibility of the caller to call the release function right before trying to listen on the given port.
+func TCPRandomPort() (int, func()) {
+	l, err := net.Listen("tcp", "")
+	if err != nil {
+		panic(err)
+	}
+	return l.Addr().(*net.TCPAddr).Port, func() {
+		l.Close()
 	}
 }

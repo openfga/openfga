@@ -197,6 +197,11 @@ func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
 }
 
+// GetDelegate sets this LocalChecker's dispatch delegate.
+func (c *LocalChecker) GetDelegate() CheckResolver {
+	return c.delegate
+}
+
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
 // otherwise.
 type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
@@ -280,7 +285,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	}()
 
 	var dbReads uint32
-	var dispatchCount uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -293,11 +297,9 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				continue
 			}
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
-			dispatchCount += result.resp.GetResolutionMetadata().DispatchCount
 
 			if result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				result.resp.GetResolutionMetadata().DispatchCount = dispatchCount
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -309,7 +311,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
-			DispatchCount:       dispatchCount,
 		},
 	}, err
 }
@@ -338,7 +339,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	}()
 
 	var dbReads uint32
-	var dispatchCount uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -360,11 +360,9 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 			}
 
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
-			dispatchCount += result.resp.GetResolutionMetadata().DispatchCount
 
 			if !result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				result.resp.GetResolutionMetadata().DispatchCount = dispatchCount
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -376,7 +374,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		Allowed: true,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
-			DispatchCount:       dispatchCount,
 		},
 	}, err
 }
@@ -438,7 +435,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	var subErr error
 
 	var dbReads uint32
-	var dispatchCount uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
@@ -459,11 +455,9 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			}
 
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
-			dispatchCount += baseResult.resp.GetResolutionMetadata().DispatchCount
 
 			if !baseResult.resp.GetAllowed() {
 				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				response.GetResolutionMetadata().DispatchCount = dispatchCount
 				return response, nil
 			}
 
@@ -481,7 +475,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 			if subResult.resp.GetAllowed() {
 				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				response.GetResolutionMetadata().DispatchCount = dispatchCount
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -502,7 +495,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		Allowed: true,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
-			DispatchCount:       dispatchCount,
 		},
 	}, nil
 }
@@ -515,6 +507,7 @@ func (c *LocalChecker) Close() {
 // to the CheckResolver this LocalChecker was constructed with.
 func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
 		childRequest := clone(parentReq)
 		childRequest.TupleKey = tk
 		childRequest.GetRequestMetadata().Depth--
@@ -523,7 +516,6 @@ func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckReques
 		if err != nil {
 			return resp, err
 		}
-		resp.GetResolutionMetadata().DispatchCount++
 		return resp, nil
 	}
 }
@@ -666,7 +658,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 				},
 			}
 
@@ -724,7 +716,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				// if the user value is a typed wildcard and the type of the wildcard
 				// matches the target user objectType, then we're done searching
-				if tuple.IsTypedWildcard(usersetObject) && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+				if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
 					wildcardType := tuple.GetType(usersetObject)
 
 					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
@@ -774,8 +766,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
 		if err != nil {
 			telemetry.TraceError(span, err)
+			return nil, err
 		}
-		return resp, err
+
+		// count db reads after they happen in the case that we didn't find 'allowed=false' but we still incurred reads
+		if len(directlyRelatedUsersetTypes) > 0 {
+			// if we had N userset checks, that was 1 read, not N
+			resp.GetResolutionMetadata().DatastoreQueryCount++
+		}
+
+		return resp, nil
 	}
 }
 
