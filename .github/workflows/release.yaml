@@ -74,7 +74,7 @@ jobs:
           hashes=$(echo $ARTIFACTS | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
           echo $hashes > digests.txt
 
-      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@07e64b653f10a80b6510f4568f685f8b7b9ea830 # v1.9.0
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@c747fe7769adf3656dc7d588b161cb614d7abfee # pin@v1.10.0
         id: hashes
         with:
           path: digests.txt
@@ -122,7 +122,7 @@ jobs:
       contents: write # To add assets to a release.
 
     # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.9.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.10.0
     with:
       base64-subjects-as-file: "${{ needs.goreleaser.outputs.subjects-as-file }}"
       provenance-name: "openfga.intoto.jsonl"
@@ -136,7 +136,7 @@ jobs:
       packages: write
 
     # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.9.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.10.0
     with:
       image: openfga/openfga
       digest: ${{ needs.goreleaser.outputs.digest }}
