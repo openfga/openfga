@@ -8,6 +8,8 @@ BUILD_DIR ?= $(CURDIR)/dist
 GO_BIN ?= $(shell go env GOPATH)/bin
 GO_PACKAGES := $(shell go list ./... | grep -vE "vendor")
 
+DATASTORE ?= "in-memory"
+
 # Colors for the printf
 RESET = $(shell tput sgr0)
 COLOR_WHITE = $(shell tput setaf 7)
@@ -56,11 +58,11 @@ $(GO_BIN)/openfga: install
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: build install
 
-build: ## Build the OpenFGA service
+build: ## Build the OpenFGA service binary. Build directory can be overridden using BUILD_DIR="desired/path", default is ".dist/". Usage `BUILD_DIR="." make build`
 	${call print, "Building the OpenFGA binary within ${BUILD_DIR}/${BINARY_NAME}"}
 	@go build -v -o "${BUILD_DIR}/${BINARY_NAME}" "$(CURDIR)/cmd/openfga"
 
-install: ## Install the OpenFGA service
+install: ## Install the OpenFGA service within $GO_BIN. Ensure that $GO_BIN is available on the $PATH to run the executable from anywhere
 	${call print, "Installing the OpenFGA binary within ${GO_BIN}"}
 	@go install -v "$(CURDIR)/cmd/${BINARY_NAME}"
 
@@ -91,7 +93,7 @@ test: test-mocks ## Run all tests. To run a specific test, pass the FILTER var. 
 	@cat coverageunit.tmp.out | grep -v "mocks" > coverageunit.out
 	@rm coverageunit.tmp.out
 
-test-docker: ## Run Docker tests
+test-docker: ## Run tests requiring Docker
 	${call print, "Running docker tests"}
 	@if [ -z "$${CI}" ]; then \
 		docker build -t="openfga/openfga:dockertest" .; \
@@ -111,37 +113,34 @@ test-mocks: $(GO_BIN)/mockgen ## Generate test mocks
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
-	@echo "<> Select an option for the data storage:"
-	@select option in "In-Memory" "MySQL" "Postgres"; do \
-		case $$option in \
-			"In-Memory") \
-				echo "==> Running OpenFGA with In-Memory data storage"; \
-				CompileDaemon -graceful-kill -build='make install' -command='openfga run'; \
-				break; \
-				;; \
-			"MySQL") \
-				echo "==> Running OpenFGA with MySQL data storage"; \
-				docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8  > /dev/null 2>&1 || docker start mysql; \
-				sleep 2; \
-				openfga migrate --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'; \
-				CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine mysql --datastore-uri root:secret@tcp(localhost:3306)/openfga?parseTime=true"; \
-				break; \
-				;; \
-			"Postgres") \
-				echo "==> Running OpenFGA with Postgres data storage"; \
-				docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14  > /dev/null 2>&1 || docker start postgres; \
-				sleep 2; \
-				openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \
-				CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres"; \
-				break; \
-				;; \
-			*) \
-				echo "Invalid option. Try again."; \
-				;; \
-		esac; \
-	done
+	@case "${DATASTORE}" in \
+		"in-memory") \
+			echo "==> Running OpenFGA with In-Memory data storage"; \
+			CompileDaemon -graceful-kill -build='make install' -command='openfga run'; \
+			break; \
+			;; \
+		"mysql") \
+			echo "==> Running OpenFGA with MySQL data storage"; \
+			docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8  > /dev/null 2>&1 || docker start mysql; \
+			sleep 2; \
+			openfga migrate --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'; \
+			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine mysql --datastore-uri root:secret@tcp(localhost:3306)/openfga?parseTime=true"; \
+			break; \
+			;; \
+		"postgres") \
+			echo "==> Running OpenFGA with Postgres data storage"; \
+			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14  > /dev/null 2>&1 || docker start postgres; \
+			sleep 2; \
+			openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \
+			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres"; \
+			break; \
+			;; \
+		*) \
+			echo "Invalid option. Try again."; \
+			;; \
+	esac; \
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Helpers
