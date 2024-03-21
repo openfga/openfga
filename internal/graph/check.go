@@ -570,8 +570,7 @@ func (c *LocalChecker) Dispatch(
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-	var final dispatcher.DispatchResponse = resp
-	return final, nil
+	return resp, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
