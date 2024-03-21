@@ -12,7 +12,7 @@ The purpose of this guide is to inform contributors where to write new tests.
 
 1. All APIs use an underlying `command` object. These commands must have
    1. unit tests. For example, Write API is backed by Write Command, which has unit tests in pkg/server/commands/write_test.go. These should target mocked dependencies to cover the majority of the business logic. If you are changing business logic, add a test here.
-   2. **Exported** integration tests in pkg/server/test/server.go. These take in an unmocked `datastore` dependency. The goal of these is to test that the command and the underlying datastore work well. This is so that anyone that writes their own implementation of the datastore can run these tests by doing
+   2. **Exported** integration tests in pkg/server/test/server.go. These take in an unmocked `datastore` dependency. The goal of these is to test that the command and the underlying datastore work well. This is so that anyone who writes their own implementation of the datastore can run these tests by doing
 
    ```go
     import openfgatest "github.com/openfga/openfga/pkg/server/test"
@@ -30,7 +30,7 @@ The purpose of this guide is to inform contributors where to write new tests.
 
 Take the Check API. Aside from the tests mentioned in "All APIs", it has:
 
-1. **Exported** integration tests in tests/check/check.go. These take in a `client` dependency. This is so that anyone that writes their own version of the server and/or datastore can run these tests by doing
+1. **Exported** integration tests in tests/check/check.go. These take in a `client` dependency. This is so that anyone who writes their own version of the server and/or datastore can run these tests by doing
     ```go
     import "github.com/openfga/openfga/tests/check"
     
@@ -43,7 +43,7 @@ Take the Check API. Aside from the tests mentioned in "All APIs", it has:
 
 > NOTE TO MAINTAINERS: ideally, these tests need not be exported, since they are testing for correctness and should be independent of the storage layer. They are the result of not having enough coverage with unit tests.
 
-2. One test that asserts on the log fields that are emmitted: `TestCheckLogs` in tests/check/check_test.go.
+2. One test that asserts on the log fields that are emitted: `TestCheckLogs` in tests/check/check_test.go.
 
 > NOTE TO MAINTAINERS: ideally, we have a similar test for other APIs as well.
 
