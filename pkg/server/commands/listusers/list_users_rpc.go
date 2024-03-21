@@ -206,7 +206,7 @@ func (l *listUsersQuery) expandRewrite(
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-	switch rewrite := rewrite.Userset.(type) {
+	switch rewrite := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return l.expandDirect(ctx, req, foundUsersChan)
 	case *openfgav1.Userset_ComputedUserset:
@@ -220,6 +220,8 @@ func (l *listUsersQuery) expandRewrite(
 		}, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
 		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
+	case *openfgav1.Userset_Intersection:
+		return l.expandIntersection(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -319,6 +321,53 @@ func (l *listUsersQuery) expandDirect(
 	}
 
 	return pool.Wait()
+}
+
+func (l *listUsersQuery) expandIntersection(
+	ctx context.Context,
+	req listUsersRequest,
+	rewrite *openfgav1.Userset_Intersection,
+	foundUsersChan chan<- *openfgav1.User,
+) error {
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+
+	intersectionFoundUsersChan := make(chan *openfgav1.User, 1)
+
+	children := rewrite.Intersection.GetChild()
+	for _, childRewrite := range children {
+		copyChildRewrite := childRewrite
+		pool.Go(func(ctx context.Context) error {
+			return l.expandRewrite(ctx, req, copyChildRewrite, intersectionFoundUsersChan)
+		})
+	}
+
+	errChan := make(chan error, 1)
+	go func() {
+		err := pool.Wait()
+		close(intersectionFoundUsersChan)
+		errChan <- err
+		close(errChan)
+	}()
+
+	foundUsersCountMap := make(map[string]uint32, 0)
+	for fu := range intersectionFoundUsersChan {
+		key := tuple.UserProtoToString(fu)
+		foundUsersCountMap[key]++
+	}
+
+	for key, c := range foundUsersCountMap {
+		// Compare the specific user's count, or the number of times
+		// the user was returned for all intersection clauses.
+		// If this count equals the number of clauses, the user satisfies
+		// the intersection expression and can be sent on `foundUsersChan`
+		if c == uint32(len(children)) {
+			foundUsersChan <- tuple.StringToUserProto(key)
+		}
+	}
+
+	return <-errChan
 }
 
 func (l *listUsersQuery) expandTTU(
