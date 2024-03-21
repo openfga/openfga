@@ -18,6 +18,7 @@ jobs:
           fossa analyze  --include-unused-deps --debug
           fossa report attribution --format text > /tmp/NOTICE
         env:
+          # token belongs to @miparnisari and was created on March 21, 2024
           FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
       - name: upload NOTICE file
         uses: actions/upload-artifact@v4
