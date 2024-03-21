@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/dispatcher"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -9,10 +10,10 @@ import (
 )
 
 type CycleDetectionCheckResolver struct {
-	delegate CheckResolver
+	delegate dispatcher.Dispatcher
 }
 
-var _ CheckResolver = (*CycleDetectionCheckResolver)(nil)
+var _ dispatcher.Dispatcher = (*CycleDetectionCheckResolver)(nil)
 
 // Close implements CheckResolver.
 func (*CycleDetectionCheckResolver) Close() {}
@@ -25,10 +26,8 @@ func NewCycleDetectionCheckResolver() *CycleDetectionCheckResolver {
 }
 
 // ResolveCheck implements CheckResolver.
-func (c *CycleDetectionCheckResolver) ResolveCheck(
-	ctx context.Context,
-	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
+func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request dispatcher.DispatchRequest) (dispatcher.DispatchResponse, error) {
+	req := request.(*ResolveCheckRequest)
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 	span.SetAttributes(attribute.String("resolver_type", "CycleDetectionCheckResolver"))
@@ -48,7 +47,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 
 	req.VisitedPaths[key] = struct{}{}
 
-	return c.delegate.ResolveCheck(ctx, &ResolveCheckRequest{
+	return c.delegate.Dispatch(ctx, &ResolveCheckRequest{
 		StoreID:              req.GetStoreID(),
 		AuthorizationModelID: req.GetAuthorizationModelID(),
 		TupleKey:             req.GetTupleKey(),
@@ -59,10 +58,10 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	})
 }
 
-func (c *CycleDetectionCheckResolver) SetDelegate(delegate CheckResolver) {
+func (c *CycleDetectionCheckResolver) SetDelegate(delegate dispatcher.Dispatcher) {
 	c.delegate = delegate
 }
 
-func (c *CycleDetectionCheckResolver) GetDelegate() CheckResolver {
+func (c *CycleDetectionCheckResolver) GetDelegate() dispatcher.Dispatcher {
 	return c.delegate
 }

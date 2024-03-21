@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,14 +25,14 @@ type DispatchThrottlingCheckResolverConfig struct {
 // in the throttling queue. One item form the throttling queue will be processed ticker.
 // This allows a check / list objects request to be gradually throttled.
 type DispatchThrottlingCheckResolver struct {
-	delegate        CheckResolver
+	delegate        dispatcher.Dispatcher
 	config          DispatchThrottlingCheckResolverConfig
 	ticker          *time.Ticker
 	throttlingQueue chan struct{}
 	done            chan struct{}
 }
 
-var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
+var _ dispatcher.Dispatcher = (*DispatchThrottlingCheckResolver)(nil)
 
 var (
 	dispatchThrottlingResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -58,11 +59,11 @@ func NewDispatchThrottlingCheckResolver(
 	return dispatchThrottlingCheckResolver
 }
 
-func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
+func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate dispatcher.Dispatcher) {
 	r.delegate = delegate
 }
 
-func (r *DispatchThrottlingCheckResolver) GetDelegate() CheckResolver {
+func (r *DispatchThrottlingCheckResolver) GetDelegate() dispatcher.Dispatcher {
 	return r.delegate
 }
 
@@ -93,10 +94,10 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 	}
 }
 
-func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
-	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
-	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
+func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context,
+	req dispatcher.DispatchRequest,
+) (dispatcher.DispatchResponse, error) {
+	currentNumDispatch := req.GetDispatchCount()
 
 	if currentNumDispatch > r.config.Threshold {
 		start := time.Now()
@@ -111,5 +112,5 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 		).Observe(float64(timeWaiting))
 	}
 
-	return r.delegate.ResolveCheck(ctx, req)
+	return r.delegate.Dispatch(ctx, req)
 }

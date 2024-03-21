@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -54,7 +55,7 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	checkResolver graph.CheckResolver
+	checkResolver dispatcher.Dispatcher
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -120,7 +121,7 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
-	checkResolver graph.CheckResolver,
+	checkResolver dispatcher.Dispatcher,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -324,7 +325,7 @@ func (q *ListObjectsQuery) evaluate(
 					concurrencyLimiterCh <- struct{}{}
 					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
 
-					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+					response, err := q.checkResolver.Dispatch(ctx, &graph.ResolveCheckRequest{
 						StoreID:              req.GetStoreId(),
 						AuthorizationModelID: req.GetAuthorizationModelId(),
 						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
@@ -332,6 +333,7 @@ func (q *ListObjectsQuery) evaluate(
 						Context:              req.GetContext(),
 						RequestMetadata:      checkRequestMetadata,
 					})
+					resp := (response).(*graph.ResolveCheckResponse)
 					if err != nil {
 						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}

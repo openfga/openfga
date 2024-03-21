@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"net/http"
 	"slices"
 	"sort"
@@ -132,7 +133,7 @@ type Server struct {
 	checkQueryCacheTTL     time.Duration
 	cachedCheckResolver    *graph.CachedCheckResolver
 
-	checkResolver graph.CheckResolver
+	checkResolver dispatcher.Dispatcher
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -766,7 +767,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
 
-	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	response, err := s.checkResolver.Dispatch(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
@@ -774,6 +775,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Context:              req.GetContext(),
 		RequestMetadata:      checkRequestMetadata,
 	})
+	resp := response.(*graph.ResolveCheckResponse)
+
 	if err != nil {
 		telemetry.TraceError(span, err)
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {

@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"strconv"
 	"time"
 
@@ -46,7 +47,7 @@ type CachedResolveCheckResponse struct {
 	Allowed bool
 }
 
-func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveCheckResponse {
+func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() dispatcher.DispatchResponse {
 	return &ResolveCheckResponse{
 		Allowed: c.Allowed,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
@@ -64,7 +65,7 @@ func newCachedResolveCheckResponse(r *ResolveCheckResponse) *CachedResolveCheckR
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
-	delegate     CheckResolver
+	delegate     dispatcher.Dispatcher
 	cache        *ccache.Cache[*CachedResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
@@ -74,7 +75,7 @@ type CachedCheckResolver struct {
 	allocatedCache bool
 }
 
-var _ CheckResolver = (*CachedCheckResolver)(nil)
+var _ dispatcher.Dispatcher = (*CachedCheckResolver)(nil)
 
 // CachedCheckResolverOpt defines an option that can be used to change the behavior of cachedCheckResolver
 // instance.
@@ -139,12 +140,12 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 }
 
 // SetDelegate sets this CachedCheckResolver's dispatch delegate.
-func (c *CachedCheckResolver) SetDelegate(delegate CheckResolver) {
+func (c *CachedCheckResolver) SetDelegate(delegate dispatcher.Dispatcher) {
 	c.delegate = delegate
 }
 
 // GetDelegate returns this CachedCheckResolver's dispatch delegate.
-func (c *CachedCheckResolver) GetDelegate() CheckResolver {
+func (c *CachedCheckResolver) GetDelegate() dispatcher.Dispatcher {
 	return c.delegate
 }
 
@@ -157,10 +158,11 @@ func (c *CachedCheckResolver) Close() {
 	}
 }
 
-func (c *CachedCheckResolver) ResolveCheck(
+func (c *CachedCheckResolver) Dispatch(
 	ctx context.Context,
-	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
+	request dispatcher.DispatchRequest,
+) (dispatcher.DispatchResponse, error) {
+	req := request.(*ResolveCheckRequest)
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 	span.SetAttributes(attribute.String("resolver_type", "CachedCheckResolver"))
@@ -183,13 +185,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 	}
 	span.SetAttributes(attribute.Bool("is_cached", false))
 
-	resp, err := c.delegate.ResolveCheck(ctx, req)
+	resp, err := c.delegate.Dispatch(ctx, request)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
+	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp.(*ResolveCheckResponse)), c.cacheTTL)
 	return resp, nil
 }
 

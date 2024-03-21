@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"strings"
 	"sync/atomic"
 
@@ -423,7 +424,7 @@ func NewLayeredCheckResolver(
 	localResolverOpts []LocalCheckerOption,
 	cacheEnabled bool,
 	cachedResolverOpts []CachedCheckResolverOpt,
-) (CheckResolver, CheckResolverCloser) {
+) (dispatcher.Dispatcher, CheckResolverCloser) {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 	localCheckResolver := NewLocalChecker(localResolverOpts...)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -38,6 +39,13 @@ type ResolveCheckRequest struct {
 	Context              *structpb.Struct
 	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
+}
+
+func (r *ResolveCheckRequest) GetDispatchCount() uint32 {
+	return 0
+}
+
+func (r *ResolveCheckRequest) SetDispatchCount() {
 }
 
 func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
@@ -138,7 +146,7 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate           CheckResolver
+	delegate           dispatcher.Dispatcher
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
 }
@@ -182,7 +190,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 
 // NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
 // which can be used to evaluate a Check request locally with cycle detection enabled.
-func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
+func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) dispatcher.Dispatcher {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 	localCheckResolver := NewLocalChecker(opts...)
 
@@ -193,12 +201,12 @@ func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver
 }
 
 // SetDelegate sets this LocalChecker's dispatch delegate.
-func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
+func (c *LocalChecker) SetDelegate(delegate dispatcher.Dispatcher) {
 	c.delegate = delegate
 }
 
 // GetDelegate sets this LocalChecker's dispatch delegate.
-func (c *LocalChecker) GetDelegate() CheckResolver {
+func (c *LocalChecker) GetDelegate() dispatcher.Dispatcher {
 	return c.delegate
 }
 
@@ -512,22 +520,23 @@ func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckReques
 		childRequest.TupleKey = tk
 		childRequest.GetRequestMetadata().Depth--
 
-		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
+		resp, err := c.delegate.Dispatch(ctx, childRequest)
 		if err != nil {
-			return resp, err
+			return (resp).(*ResolveCheckResponse), err
 		}
-		return resp, nil
+		return (resp).(*ResolveCheckResponse), nil
 	}
 }
 
-var _ CheckResolver = (*LocalChecker)(nil)
+var _ dispatcher.Dispatcher = (*LocalChecker)(nil)
 
 // ResolveCheck implements [[CheckResolver.ResolveCheck]].
 // If the typesystem isn't set in the context, it will panic.
-func (c *LocalChecker) ResolveCheck(
+func (c *LocalChecker) Dispatch(
 	ctx context.Context,
-	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
+	request dispatcher.DispatchRequest,
+) (dispatcher.DispatchResponse, error) {
+	req := request.(*ResolveCheckRequest)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -561,8 +570,8 @@ func (c *LocalChecker) ResolveCheck(
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-
-	return resp, nil
+	var final dispatcher.DispatchResponse = resp
+	return final, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
