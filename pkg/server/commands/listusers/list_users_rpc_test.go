@@ -1310,6 +1310,71 @@ func TestListUsersWildcards(t *testing.T) {
 			},
 			expectedUsers: []string{"user:*"},
 		},
+		{
+			name: "wildcard_and_intersection",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type document
+            relations
+              define allowed: [user]
+              define viewer: [user:*] and allowed
+              define can_view: viewer`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+
+				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "wildcard_and_intersection_with_multiple_wildcards",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type document
+            relations
+              define allowed1: [user]
+			  define allowed2: [user]
+              define viewer: [user:*] and allowed1 and allowed2
+              define can_view: viewer`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "allowed1", "user:maria"),
+				tuple.NewTupleKey("document:1", "allowed2", "user:maria"),
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+
+				tuple.NewTupleKey("document:1", "allowed1", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+
+				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+			},
+			expectedUsers: []string{"user:maria"},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }

@@ -284,23 +284,15 @@ func (l *listUsersQuery) expandDirect(
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
-
 		userObject, userRelation := tuple.SplitObjectRelation(tupleKeyUser)
-
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		if userRelation == "" {
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
+					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
 					// we found one, time to return it!
-					foundUsersChan <- &openfgav1.User{
-						User: &openfgav1.User_Object{
-							Object: &openfgav1.Object{
-								Type: userObjectType,
-								Id:   userObjectID,
-							},
-						},
-					}
+					foundUsersChan <- user
 				}
 			}
 			continue
@@ -351,8 +343,14 @@ func (l *listUsersQuery) expandIntersection(
 		close(errChan)
 	}()
 
+	numWildcards := 0
 	foundUsersCountMap := make(map[string]uint32, 0)
 	for fu := range intersectionFoundUsersChan {
+		if isWildcard := fu.GetWildcard().GetWildcard() != nil; isWildcard {
+			numWildcards++
+			continue
+		}
+
 		key := tuple.UserProtoToString(fu)
 		foundUsersCountMap[key]++
 	}
@@ -362,7 +360,7 @@ func (l *listUsersQuery) expandIntersection(
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
-		if c == uint32(len(children)) {
+		if c == uint32(len(children)-numWildcards) {
 			foundUsersChan <- tuple.StringToUserProto(key)
 		}
 	}
