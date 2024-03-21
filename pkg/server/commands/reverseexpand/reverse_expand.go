@@ -166,7 +166,7 @@ type ReverseExpandResult struct {
 }
 
 type ResolutionMetadata struct {
-	QueryCount *uint32
+	DatastoreQueryCount *uint32
 
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCount *uint32
@@ -174,8 +174,8 @@ type ResolutionMetadata struct {
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		QueryCount:    new(uint32),
-		DispatchCount: new(uint32),
+		DatastoreQueryCount: new(uint32),
+		DispatchCount:       new(uint32),
 	}
 }
 
@@ -192,7 +192,7 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // This function respects context timeouts and cancellations. If an
 // error is encountered (e.g. context timeout) before resolving all
 // objects, then the provided channel will NOT be closed, and it will
-// send the error through the channel.
+// return the error.
 //
 // If no errors occur, then Execute will yield all of the objects on
 // the provided channel and then close the channel to signal that it
@@ -466,7 +466,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		Relation:   relationFilter,
 		UserFilter: userFilter,
 	})
-	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
+	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err
 	}

@@ -108,6 +108,54 @@ func TestVerifyConfig(t *testing.T) {
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
+
+	t.Run("empty_request_duration_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDispatchCountBuckets = []string{}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_int_request_duration_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDispatchCountBuckets = []string{"12", "45a", "66"}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("negative_request_duration_dispatch_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDispatchCountBuckets = []string{"12", "-45", "66"}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_dispatch_throttling_frequency", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 0,
+			Threshold: 30,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_dispatch_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.DispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 10 * time.Microsecond,
+			Threshold: 0,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {

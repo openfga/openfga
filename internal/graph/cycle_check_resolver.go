@@ -53,7 +53,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 		AuthorizationModelID: req.GetAuthorizationModelID(),
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.GetContextualTuples(),
-		ResolutionMetadata:   req.GetResolutionMetadata(),
+		RequestMetadata:      req.GetRequestMetadata(),
 		VisitedPaths:         req.VisitedPaths,
 		Context:              req.GetContext(),
 	})
@@ -61,4 +61,8 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 
 func (c *CycleDetectionCheckResolver) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
+}
+
+func (c *CycleDetectionCheckResolver) GetDelegate() CheckResolver {
+	return c.delegate
 }
