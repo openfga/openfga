@@ -4129,50 +4129,49 @@ tests:
             expectation:
               - module:a
               - module:b
-  # TODO uncomment when introducing cycle detection
-  #        listUsersAssertions:
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: folder:a
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: folder:b
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: document:a
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: document:b
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: module:a
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: module:b
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:b
+              relation: viewer
+            expectation:
+              - user:anne
   - name: three_prong_relation_possible_exclusion
     stages:
       - model: |

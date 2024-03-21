@@ -6,13 +6,14 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/sourcegraph/conc/pool"
+
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/sourcegraph/conc/pool"
 )
 
 type listUsersQuery struct {
@@ -33,7 +34,6 @@ type listUsersQuery struct {
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
-
 	l := &listUsersQuery{
 		ds: ds,
 		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
@@ -87,12 +87,12 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		if err := l.expand(ctx, req, foundUsersCh); err != nil {
+		defer close(foundUsersCh)
+		internalRequest := fromListUsersRequest(req)
+		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
 		}
-
-		close(foundUsersCh)
 	}()
 
 	select {
@@ -170,9 +170,12 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
-	req listUsersRequest,
+	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	if enteredCycle(req) {
+		return nil
+	}
 	for _, f := range req.GetUserFilters() {
 		if req.GetObject().GetType() == f.GetType() {
 			foundUsersChan <- &openfgav1.User{
@@ -202,7 +205,7 @@ func (l *listUsersQuery) expand(
 
 func (l *listUsersQuery) expandRewrite(
 	ctx context.Context,
-	req listUsersRequest,
+	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
@@ -210,14 +213,9 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_This:
 		return l.expandDirect(ctx, req, foundUsersChan)
 	case *openfgav1.Userset_ComputedUserset:
-		return l.expand(ctx, &openfgav1.ListUsersRequest{
-			StoreId:              req.GetStoreId(),
-			AuthorizationModelId: req.GetAuthorizationModelId(),
-			Object:               req.GetObject(),
-			Relation:             rewrite.ComputedUserset.GetRelation(),
-			UserFilters:          req.GetUserFilters(),
-			ContextualTuples:     req.GetContextualTuples(),
-		}, foundUsersChan)
+		rewrittenReq := req.clone()
+		rewrittenReq.Relation = rewrite.ComputedUserset.GetRelation()
+		return l.expand(ctx, rewrittenReq, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
 		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
@@ -244,10 +242,9 @@ func (l *listUsersQuery) expandRewrite(
 
 func (l *listUsersQuery) expandDirect(
 	ctx context.Context,
-	req listUsersRequest,
+	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return err
@@ -307,17 +304,11 @@ func (l *listUsersQuery) expandDirect(
 		}
 
 		pool.Go(func(ctx context.Context) error {
-
-			return l.expand(ctx, &openfgav1.ListUsersRequest{
-				StoreId:              req.GetStoreId(),
-				AuthorizationModelId: req.GetAuthorizationModelId(),
-				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
-				Relation:             userRelation,
-				UserFilters:          req.GetUserFilters(),
-				ContextualTuples:     req.GetContextualTuples(),
-			}, foundUsersChan)
+			rewrittenReq := req.clone()
+			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+			rewrittenReq.Relation = userRelation
+			return l.expand(ctx, rewrittenReq, foundUsersChan)
 		})
-
 	}
 
 	return pool.Wait()
@@ -372,7 +363,7 @@ func (l *listUsersQuery) expandIntersection(
 
 func (l *listUsersQuery) expandTTU(
 	ctx context.Context,
-	req listUsersRequest,
+	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
@@ -418,16 +409,21 @@ func (l *listUsersQuery) expandTTU(
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		pool.Go(func(ctx context.Context) error {
-			return l.expand(ctx, &openfgav1.ListUsersRequest{
-				StoreId:              req.GetStoreId(),
-				AuthorizationModelId: req.GetAuthorizationModelId(),
-				Object:               &openfgav1.Object{Type: userObjectType, Id: userObjectID},
-				Relation:             computedRelation,
-				UserFilters:          req.GetUserFilters(),
-				ContextualTuples:     req.GetContextualTuples(),
-			}, foundUsersChan)
+			rewrittenReq := req.clone()
+			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+			rewrittenReq.Relation = computedRelation
+			return l.expand(ctx, rewrittenReq, foundUsersChan)
 		})
 	}
 
 	return pool.Wait()
+}
+
+func enteredCycle(req *internalListUsersRequest) bool {
+	key := fmt.Sprintf("%s#%s", tuple.ObjectKey(req.GetObject()), req.Relation)
+	if _, loaded := req.visitedUsersetsMap[key]; loaded {
+		return true
+	}
+	req.visitedUsersetsMap[key] = struct{}{}
+	return false
 }
