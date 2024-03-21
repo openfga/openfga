@@ -1357,7 +1357,9 @@ func TestListUsersWildcards(t *testing.T) {
               define allowed1: [user]
 			  define allowed2: [user]
               define viewer: [user:*] and allowed1 and allowed2
-              define can_view: viewer`,
+			  define normal_wildcard: [user:*]
+			  define is_normal_wildcard: [user:*] or normal_wildcard
+              define can_view: viewer or is_normal_wildcard`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "allowed1", "user:maria"),
@@ -1371,8 +1373,10 @@ func TestListUsersWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+
+				tuple.NewTupleKey("document:1", "normal_wildcard", "user:*"),
 			},
-			expectedUsers: []string{"user:maria"},
+			expectedUsers: []string{"user:maria", "user:*"},
 		},
 		{
 			name: "wildcard_and_intersection_with_multiple_wildcards_2",
