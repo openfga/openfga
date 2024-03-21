@@ -1367,13 +1367,38 @@ func TestListUsersWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "allowed1", "user:jon"),
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 			},
 			expectedUsers: []string{"user:maria"},
+		},
+		{
+			name: "wildcard_and_intersection_with_multiple_wildcards_2",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type document
+            relations
+              define public1: [user:*]
+              define public2: [user:*]
+              define can_view: public1 and public2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "public1", "user:*"),
+				tuple.NewTupleKey("document:1", "public1", "user:*"),
+			},
+			expectedUsers: []string{},
 		},
 	}
 	tests.runListUsersTestCases(t)

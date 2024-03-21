@@ -355,12 +355,12 @@ func (l *listUsersQuery) expandIntersection(
 		foundUsersCountMap[key]++
 	}
 
-	for key, c := range foundUsersCountMap {
+	for key, count := range foundUsersCountMap {
 		// Compare the specific user's count, or the number of times
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
-		if c == uint32(len(children)-numWildcards) {
+		if (int(count) + numWildcards) == len(children) {
 			foundUsersChan <- tuple.StringToUserProto(key)
 		}
 	}
