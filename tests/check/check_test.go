@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/server/config"
+
 	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/cmd/run"
@@ -53,12 +55,12 @@ func TestCheckLogs(t *testing.T) {
 	// defer goleak.VerifyNone(t)
 
 	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := config.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -263,7 +265,7 @@ func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
@@ -321,7 +323,7 @@ type organization
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
 // and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 

@@ -15,7 +15,6 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -25,7 +24,7 @@ import (
 
 // newOpenFGAServerAndClient starts an OpenFGA server, waits until its is healthy, and returns a grpc client to it.
 func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
@@ -94,7 +93,7 @@ condition conds(s: string) {
 
 // TODO make a unit test from this
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
 
 	StartServer(t, cfg)
@@ -338,7 +337,7 @@ func TestFunctionalGRPC(t *testing.T) {
 }
 
 func TestGRPCWithPresharedKey(t *testing.T) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &config.AuthnPresharedKeyConfig{Keys: []string{"key1", "key2"}}
 
