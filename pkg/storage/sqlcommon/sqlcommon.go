@@ -1,4 +1,3 @@
-// Package sqlcommon contains utility functions shared among all SQL data stores.
 package sqlcommon
 
 import (
@@ -24,6 +23,8 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
+// Config defines the configuration parameters
+// for setting up and managing a sql connection.
 type Config struct {
 	Username               string
 	Password               string
@@ -39,68 +40,89 @@ type Config struct {
 	ExportMetrics bool
 }
 
+// DatastoreOption defines a function type
+// used for configuring a Config object.
 type DatastoreOption func(*Config)
 
+// WithUsername returns a DatastoreOption that sets the username in the Config.
 func WithUsername(username string) DatastoreOption {
 	return func(config *Config) {
 		config.Username = username
 	}
 }
 
+// WithPassword returns a DatastoreOption that sets the password in the Config.
 func WithPassword(password string) DatastoreOption {
 	return func(config *Config) {
 		config.Password = password
 	}
 }
 
+// WithLogger returns a DatastoreOption that sets the Logger in the Config.
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.Logger = l
 	}
 }
 
+// WithMaxTuplesPerWrite returns a DatastoreOption that sets
+// the maximum number of tuples per write in the Config.
 func WithMaxTuplesPerWrite(maxTuples int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MaxTuplesPerWriteField = maxTuples
 	}
 }
 
+// WithMaxTypesPerAuthorizationModel returns a DatastoreOption that sets
+// the maximum number of types per authorization model in the Config.
 func WithMaxTypesPerAuthorizationModel(maxTypes int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MaxTypesPerModelField = maxTypes
 	}
 }
 
+// WithMaxOpenConns returns a DatastoreOption that sets the
+// maximum number of open connections in the Config.
 func WithMaxOpenConns(c int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MaxOpenConns = c
 	}
 }
 
+// WithMaxIdleConns returns a DatastoreOption that sets the
+// maximum number of idle connections in the Config.
 func WithMaxIdleConns(c int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MaxIdleConns = c
 	}
 }
 
+// WithConnMaxIdleTime returns a DatastoreOption that sets
+// the maximum idle time for a connection in the Config.
 func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ConnMaxIdleTime = d
 	}
 }
 
+// WithConnMaxLifetime returns a DatastoreOption that sets
+// the maximum lifetime for a connection in the Config.
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ConnMaxLifetime = d
 	}
 }
 
+// WithMetrics returns a DatastoreOption that
+// enables the export of metrics in the Config.
 func WithMetrics() DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ExportMetrics = true
 	}
 }
 
+// NewConfig creates a new Config instance with default values
+// and applies any provided DatastoreOption modifications.
 func NewConfig(opts ...DatastoreOption) *Config {
 	cfg := &Config{}
 
@@ -123,11 +145,14 @@ func NewConfig(opts ...DatastoreOption) *Config {
 	return cfg
 }
 
+// ContToken represents a continuation token structure used in pagination.
 type ContToken struct {
 	Ulid       string `json:"ulid"`
 	ObjectType string `json:"ObjectType"`
 }
 
+// NewContToken creates a new instance of ContToken
+// with the provided ULID and object type.
 func NewContToken(ulid, objectType string) *ContToken {
 	return &ContToken{
 		Ulid:       ulid,
@@ -135,6 +160,8 @@ func NewContToken(ulid, objectType string) *ContToken {
 	}
 }
 
+// UnmarshallContToken takes a string representation of a continuation
+// token and attempts to unmarshal it into a ContToken struct.
 func UnmarshallContToken(from string) (*ContToken, error) {
 	var token ContToken
 	if err := json.Unmarshal([]byte(from), &token); err != nil {
@@ -143,15 +170,18 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 	return &token, nil
 }
 
+// SQLTupleIterator is a struct that implements the storage.TupleIterator
+// interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
 	rows     *sql.Rows
 	resultCh chan *storage.TupleRecord
 	errCh    chan error
 }
 
+// Ensures that SQLTupleIterator implements the TupleIterator interface.
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
-// NewSQLTupleIterator returns a SQL tuple iterator
+// NewSQLTupleIterator returns a SQL tuple iterator.
 func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		rows:     rows,
@@ -199,8 +229,8 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	return &record, nil
 }
 
-// ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token. If the
-// continuation token exists it is the ulid of the last element of the returned array.
+// ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token.
+// If the continuation token exists it is the ulid of the last element of the returned array.
 func (t *SQLTupleIterator) ToArray(
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
@@ -216,7 +246,8 @@ func (t *SQLTupleIterator) ToArray(
 		res = append(res, tupleRecord.AsTuple())
 	}
 
-	// Check if we are at the end of the iterator. If we are then we do not need to return a continuation token.
+	// Check if we are at the end of the iterator.
+	// If we are then we do not need to return a continuation token.
 	// This is why we have LIMIT+1 in the query.
 	tupleRecord, err := t.next()
 	if err != nil {
@@ -234,6 +265,7 @@ func (t *SQLTupleIterator) ToArray(
 	return res, contToken, nil
 }
 
+// Next will return the next available item.
 func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -247,16 +279,19 @@ func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	return record.AsTuple(), nil
 }
 
+// Stop terminates iteration.
 func (t *SQLTupleIterator) Stop() {
 	t.rows.Close()
 }
 
+// HandleSQLError processes an SQL error and converts it into a more
+// specific error type based on the nature of the SQL error.
 func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
 	} else if errors.Is(err, storage.ErrIteratorDone) {
 		return err
-	} else if strings.Contains(err.Error(), "duplicate key value") { // Postgres
+	} else if strings.Contains(err.Error(), "duplicate key value") { // Postgres.
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
 				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
@@ -275,14 +310,14 @@ func HandleSQLError(err error, args ...interface{}) error {
 	return fmt.Errorf("sql error: %w", err)
 }
 
-// DBInfo encapsulates DB information for use in common method
+// DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {
 	db      *sql.DB
 	stbl    sq.StatementBuilderType
 	sqlTime interface{}
 }
 
-// NewDBInfo constructs a DBInfo objet
+// NewDBInfo constructs a [DBInfo] object.
 func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *DBInfo {
 	return &DBInfo{
 		db:      db,
@@ -291,7 +326,7 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 	}
 }
 
-// Write provides the common method for writing to database across sql storage
+// Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
 	dbInfo *DBInfo,
@@ -330,7 +365,7 @@ func Write(
 				"_user":       tk.GetUser(),
 				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 			}).
-			RunWith(txn). // Part of a txn
+			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
@@ -351,7 +386,7 @@ func Write(
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
 			tk.GetRelation(), tk.GetUser(),
-			"", nil, // redact condition info for deletes since we only need the base triplet (object, relation, user)
+			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id, dbInfo.sqlTime,
 		)
@@ -386,7 +421,7 @@ func Write(
 				id,
 				dbInfo.sqlTime,
 			).
-			RunWith(txn). // Part of a txn
+			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
@@ -407,7 +442,7 @@ func Write(
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
-		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn
+		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
 			return HandleSQLError(err)
 		}
@@ -420,6 +455,7 @@ func Write(
 	return nil
 }
 
+// WriteAuthorizationModel writes an authorization model for the given store.
 func WriteAuthorizationModel(
 	ctx context.Context,
 	dbInfo *DBInfo,
@@ -441,7 +477,7 @@ func WriteAuthorizationModel(
 	_, err = dbInfo.stbl.
 		Insert("authorization_model").
 		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		Values(store, model.Id, schemaVersion, "", nil, pbdata).
+		Values(store, model.GetId(), schemaVersion, "", nil, pbdata).
 		ExecContext(ctx)
 	if err != nil {
 		return HandleSQLError(err)
@@ -450,31 +486,15 @@ func WriteAuthorizationModel(
 	return nil
 }
 
-func ReadAuthorizationModel(
-	ctx context.Context,
-	dbInfo *DBInfo,
-	store, modelID string,
-) (*openfgav1.AuthorizationModel, error) {
-	rows, err := dbInfo.stbl.
-		Select("schema_version", "type", "type_definition", "serialized_protobuf").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-		}).
-		QueryContext(ctx)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-	defer rows.Close()
-
+func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
+	var modelID string
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
 		var marshalledModel []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
+		err := rows.Scan(&modelID, &schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
 		if err != nil {
 			return nil, HandleSQLError(err)
 		}
@@ -512,7 +532,49 @@ func ReadAuthorizationModel(
 	}, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful and the datastore has the latest migration applied.
+// FindLatestAuthorizationModel reads the latest authorization model corresponding to the store
+func FindLatestAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store string,
+) (*openfgav1.AuthorizationModel, error) {
+	rows, err := dbInfo.stbl.
+		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		OrderBy("authorization_model_id desc").
+		Limit(1).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer rows.Close()
+	return constructAuthorizationModelFromSQLRows(rows)
+}
+
+// ReadAuthorizationModel reads the model corresponding to store and model ID.
+func ReadAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store, modelID string,
+) (*openfgav1.AuthorizationModel, error) {
+	rows, err := dbInfo.stbl.
+		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer rows.Close()
+	return constructAuthorizationModelFromSQLRows(rows)
+}
+
+// IsReady returns true if the connection to the datastore is successful
+// and the datastore has the latest migration applied.
 func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

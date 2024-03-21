@@ -28,11 +28,20 @@ type Logger interface {
 	FatalWithContext(context.Context, string, ...zap.Field)
 }
 
+// NewNoopLogger provides a noop logger.
+func NewNoopLogger() *ZapLogger {
+	return &ZapLogger{
+		zap.NewNop(),
+	}
+}
+
 // ZapLogger is an implementation of Logger that uses the uber/zap logger underneath.
 // It provides additional methods such as ones that logs based on context.
 type ZapLogger struct {
 	*zap.Logger
 }
+
+var _ Logger = (*ZapLogger)(nil)
 
 func (l *ZapLogger) With(fields ...zap.Field) {
 	l.Logger = l.Logger.With(fields...)
@@ -86,47 +95,69 @@ func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...
 	l.Logger.Fatal(msg, fields...)
 }
 
-// NewNoopLogger provides noop logger that satisfies the logger interface.
-func NewNoopLogger() *ZapLogger {
-	return &ZapLogger{
-		zap.NewNop(),
+// OptionsLogger Implements options for logger
+type OptionsLogger struct {
+	format          string
+	level           string
+	timestampFormat string
+}
+
+type OptionLogger func(ol *OptionsLogger)
+
+func WithFormat(format string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.format = format
 	}
 }
 
-func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
-	if logLevel == "none" {
+func WithLevel(level string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.level = level
+	}
+}
+
+func WithTimestampFormat(timestampFormat string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.timestampFormat = timestampFormat
+	}
+}
+
+func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
+	logOptions := &OptionsLogger{
+		level:           "info",
+		format:          "text",
+		timestampFormat: "ISO8601",
+	}
+
+	for _, opt := range options {
+		opt(logOptions)
+	}
+
+	if logOptions.level == "none" {
 		return NewNoopLogger(), nil
 	}
 
-	var level zapcore.Level
-	switch logLevel {
-	case "debug":
-		level = zap.DebugLevel
-	case "info":
-		level = zap.InfoLevel
-	case "warn":
-		level = zap.WarnLevel
-	case "error":
-		level = zap.ErrorLevel
-	case "panic":
-		level = zap.PanicLevel
-	case "fatal":
-		level = zap.FatalLevel
-	default:
-		return nil, fmt.Errorf("unknown log level: %s", logLevel)
+	level, err := zap.ParseAtomicLevel(logOptions.level)
+	if err != nil {
+		return nil, fmt.Errorf("unknown log level: %s, error: %w", logOptions.level, err)
 	}
 
 	cfg := zap.NewProductionConfig()
-	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.Level = level
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
-	if logFormat == "text" {
+	if logOptions.format == "text" {
 		cfg.Encoding = "console"
 		cfg.DisableCaller = true
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	} else { // Json
+		cfg.EncoderConfig.EncodeTime = zapcore.EpochTimeEncoder // default in json for backward compatibility
+		if logOptions.timestampFormat == "ISO8601" {
+			cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		}
 	}
 
 	log, err := cfg.Build()
@@ -134,15 +165,18 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 		return nil, err
 	}
 
-	if logFormat == "json" {
+	if logOptions.format == "json" {
 		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
 	}
 
 	return &ZapLogger{log}, nil
 }
 
-func MustNewLogger(logFormat, logLevel string) *ZapLogger {
-	logger, err := NewLogger(logFormat, logLevel)
+func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
+	logger, err := NewLogger(
+		WithFormat(logFormat),
+		WithLevel(logLevel),
+		WithTimestampFormat(logTimestampFormat))
 	if err != nil {
 		panic(err)
 	}

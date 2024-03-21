@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,11 +10,10 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -1216,18 +1216,16 @@ type document
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			require := require.New(t)
-
 			ctx := context.Background()
 			store := ulid.Make().String()
 			test.request.StoreID = store
 
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			err := ds.WriteAuthorizationModel(ctx, store, model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			err = ds.Write(ctx, store, nil, test.tuples)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			var opts []reverseexpand.ReverseExpandQueryOption
 
@@ -1244,35 +1242,39 @@ type document
 
 			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
+			reverseExpandErrCh := make(chan error, 1)
 			go func() {
-				reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				if errReverseExpand != nil {
+					reverseExpandErrCh <- errReverseExpand
+				}
 			}()
 
 			var results []*reverseexpand.ReverseExpandResult
-			reverseExpandErrCh := make(chan error)
-			go func() {
-				for result := range resultChan {
-					if result.Err != nil {
-						reverseExpandErrCh <- result.Err
-						return
+
+			for {
+				select {
+				case errFromChannel := <-reverseExpandErrCh:
+					if errors.Is(errFromChannel, context.DeadlineExceeded) {
+						require.FailNow(t, "unexpected timeout")
 					}
-
-					results = append(results, result)
+					require.ErrorIs(t, errFromChannel, test.expectedError)
+					return
+				case res, channelOpen := <-resultChan:
+					if !channelOpen {
+						t.Log("channel closed")
+						if test.expectedError == nil {
+							require.ElementsMatch(t, test.expectedResult, results)
+							require.Equal(t, test.expectedDSQueryCount, *resolutionMetadata.DatastoreQueryCount)
+						} else {
+							require.FailNow(t, "expected an error, got none")
+						}
+						return
+					} else {
+						t.Logf("appending result %s", res.Object)
+						results = append(results, res)
+					}
 				}
-
-				reverseExpandErrCh <- nil
-			}()
-
-			select {
-			case <-timeoutCtx.Done():
-				require.FailNow("timed out waiting for response")
-			case err := <-reverseExpandErrCh:
-				require.ErrorIs(err, test.expectedError)
-			}
-
-			if test.expectedError == nil {
-				require.ElementsMatch(test.expectedResult, results)
-				require.Equal(test.expectedDSQueryCount, *resolutionMetadata.QueryCount)
 			}
 		})
 	}

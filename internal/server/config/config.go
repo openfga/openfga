@@ -31,6 +31,10 @@ const (
 	// care should be taken here - decreasing can cause API compatibility problems with Conditions
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
+
+	DefaultDispatchThrottlingEnabled   = false
+	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
+	DefaultDispatchThrottlingThreshold = 100
 )
 
 type DatastoreMetricsConfig struct {
@@ -108,8 +112,9 @@ type AuthnConfig struct {
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
 type AuthnOIDCConfig struct {
-	Issuer   string
-	Audience string
+	Issuer        string
+	IssuerAliases []string
+	Audience      string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
@@ -126,6 +131,9 @@ type LogConfig struct {
 
 	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
 	Level string
+
+	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
+	TimestampFormat string
 }
 
 type TraceConfig struct {
@@ -168,6 +176,13 @@ type CheckQueryCache struct {
 	Enabled bool
 	Limit   uint32 // (in items)
 	TTL     time.Duration
+}
+
+// DispatchThrottlingConfig defines configurations for dispatch throttling
+type DispatchThrottlingConfig struct {
+	Enabled   bool
+	Frequency time.Duration
+	Threshold uint32
 }
 
 type Config struct {
@@ -218,18 +233,20 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore       DatastoreConfig
-	GRPC            GRPCConfig
-	HTTP            HTTPConfig
-	Authn           AuthnConfig
-	Log             LogConfig
-	Trace           TraceConfig
-	Playground      PlaygroundConfig
-	Profiler        ProfilerConfig
-	Metrics         MetricConfig
-	CheckQueryCache CheckQueryCache
+	Datastore          DatastoreConfig
+	GRPC               GRPCConfig
+	HTTP               HTTPConfig
+	Authn              AuthnConfig
+	Log                LogConfig
+	Trace              TraceConfig
+	Playground         PlaygroundConfig
+	Profiler           ProfilerConfig
+	Metrics            MetricConfig
+	CheckQueryCache    CheckQueryCache
+	DispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
+	RequestDurationDispatchCountBuckets       []string
 }
 
 func (cfg *Config) Verify() error {
@@ -255,6 +272,10 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf(
 			"config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']",
 		)
+	}
+
+	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
+		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}
 
 	if cfg.Playground.Enabled {
@@ -291,6 +312,27 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
+	if cfg.DispatchThrottling.Enabled {
+		if cfg.DispatchThrottling.Frequency <= 0 {
+			return errors.New("dispatch throttling frequency must be non-negative time duration")
+		}
+		if cfg.DispatchThrottling.Threshold <= 0 {
+			return errors.New("dispatch throttling threshold must be non-negative integer")
+		}
+	}
+
 	return nil
 }
 
@@ -309,6 +351,7 @@ func DefaultConfig() *Config {
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -333,8 +376,9 @@ func DefaultConfig() *Config {
 			AuthnOIDCConfig:         &AuthnOIDCConfig{},
 		},
 		Log: LogConfig{
-			Format: "text",
-			Level:  "info",
+			Format:          "text",
+			Level:           "info",
+			TimestampFormat: "Unix",
 		},
 		Trace: TraceConfig{
 			Enabled: false,
@@ -364,6 +408,11 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCheckQueryCacheEnable,
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
+		},
+		DispatchThrottling: DispatchThrottlingConfig{
+			Enabled:   DefaultDispatchThrottlingEnabled,
+			Frequency: DefaultDispatchThrottlingFrequency,
+			Threshold: DefaultDispatchThrottlingThreshold,
 		},
 	}
 }

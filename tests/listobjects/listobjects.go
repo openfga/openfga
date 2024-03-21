@@ -130,13 +130,17 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
+			if contextTupleTest && len(stage.Tuples) > 20 {
+				// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
+				t.Skipf("cannot send more than 20 contextual tuples in one request")
+			}
 			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
 			model, err := parser.TransformDSLToProto(stage.Model)
 			if err != nil {
 				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = model.TypeDefinitions
+				typedefs = model.GetTypeDefinitions()
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
@@ -156,7 +160,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId:              storeID,
-						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+						AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 						Writes: &openfgav1.WriteRequestWrites{
 							TupleKeys: writeChunk,
 						},
@@ -180,10 +184,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				// assert 1: on regular list objects endpoint
 				resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 					StoreId:              storeID,
-					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-					Type:                 assertion.Request.Type,
-					Relation:             assertion.Request.Relation,
-					User:                 assertion.Request.User,
+					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+					Type:                 assertion.Request.GetType(),
+					Relation:             assertion.Request.GetRelation(),
+					User:                 assertion.Request.GetUser(),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
@@ -192,7 +196,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				if assertion.ErrorCode == 0 {
 					require.NoError(t, err, detailedInfo)
-					require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
+					require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
 				} else {
 					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
@@ -206,10 +210,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:              storeID,
-					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-					Type:                 assertion.Request.Type,
-					Relation:             assertion.Request.Relation,
-					User:                 assertion.Request.User,
+					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+					Type:                 assertion.Request.GetType(),
+					Relation:             assertion.Request.GetRelation(),
+					User:                 assertion.Request.GetUser(),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
@@ -223,7 +227,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					for {
 						streamingResp, streamingErr = clientStream.Recv()
 						if streamingErr == nil {
-							streamedObjectIds = append(streamedObjectIds, streamingResp.Object)
+							streamedObjectIds = append(streamedObjectIds, streamingResp.GetObject())
 						} else {
 							if errors.Is(streamingErr, io.EOF) {
 								streamingErr = nil
@@ -247,18 +251,18 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				if assertion.ErrorCode == 0 {
 					// assert 3: each object in the response of ListObjects should return check -> true
-					for _, object := range resp.Objects {
+					for _, object := range resp.GetObjects() {
 						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 							StoreId:              storeID,
-							TupleKey:             tuple.NewCheckRequestTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-							AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+							TupleKey:             tuple.NewCheckRequestTupleKey(object, assertion.Request.GetRelation(), assertion.Request.GetUser()),
+							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
 							Context: assertion.Context,
 						})
 						require.NoError(t, err, detailedInfo)
-						require.True(t, checkResp.Allowed, detailedInfo)
+						require.True(t, checkResp.GetAllowed(), detailedInfo)
 					}
 				}
 			}

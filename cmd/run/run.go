@@ -39,12 +39,13 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/pkg/gateway"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/gateway"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
@@ -118,7 +119,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
 
-	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
+	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens, and where the keys will be fetched from")
+
+	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -151,6 +154,8 @@ func NewRunCommand() *cobra.Command {
 	flags.String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 
 	flags.String("log-level", defaultConfig.Log.Level, "the log level to use")
+
+	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
 
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
@@ -195,7 +200,15 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
-	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
+	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
+
+	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
+
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -216,7 +229,8 @@ func TCPRandomPort() (int, func()) {
 	}
 }
 
-// MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
+// MustDefaultConfigWithRandomPorts is meant to be used for tests only (TODO move to test utils).
+// It returns default server config but with random ports for the grpc and http addresses and with the playground, tracing and metrics turned off.
 // This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	config := serverconfig.DefaultConfig()
@@ -267,7 +281,7 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
+	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
 
 	serverCtx := &ServerContext{Logger: logger}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
@@ -291,6 +305,8 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	var tracerProviderCloser func()
 
@@ -382,7 +398,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
 	default:
 		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -503,7 +519,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
+		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
 		server.WithExperimentals(experimentals...),
 	)
 
@@ -691,7 +711,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-done:
@@ -715,6 +735,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	grpcServer.GracefulStop()
+
+	svr.Close()
 
 	authenticator.Close()
 

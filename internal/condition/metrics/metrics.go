@@ -1,4 +1,4 @@
-// Packge metrics provides various metric and telemetry definitions for OpenFGA Conditions.
+// Package metrics provides various metric and telemetry definitions for OpenFGA Conditions.
 package metrics
 
 import (
@@ -12,10 +12,6 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 )
 
-const (
-	subsystem = "conditions"
-)
-
 // Metrics provides access to Condition metrics.
 var Metrics *ConditionMetrics
 
@@ -23,7 +19,6 @@ func init() {
 	m := &ConditionMetrics{
 		compilationTime: promauto.NewHistogram(prometheus.HistogramOpts{
 			Namespace: build.ProjectName,
-			Subsystem: subsystem,
 			Name:      "condition_compilation_duration_ms",
 			Help:      "A histogram measuring the compilation time (in milliseconds) of a Condition.",
 			Buckets:   []float64{1, 5, 15, 50, 100, 250, 500, 1000},
@@ -31,7 +26,6 @@ func init() {
 
 		evaluationTime: promauto.NewHistogram(prometheus.HistogramOpts{
 			Namespace: build.ProjectName,
-			Subsystem: subsystem,
 			Name:      "condition_evaluation_duration_ms",
 			Help:      "A histogram measuring the evaluation time (in milliseconds) of a Condition.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 5, 15, 50, 100, 250, 500},

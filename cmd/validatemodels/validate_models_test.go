@@ -25,8 +25,7 @@ func TestValidationResult(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, _, err := util.MustBootstrapDatastore(t, engine)
-			require.NoError(t, err)
+			_, ds, _ := util.MustBootstrapDatastore(t, engine)
 
 			ctx := context.Background()
 
@@ -45,7 +44,7 @@ func TestValidationResult(t *testing.T) {
 			// for the last store, write a bunch of models (to trigger pagination)
 			for j := 0; j < totalModelsForOneStore; j++ {
 				modelID := ulid.Make().String()
-				err = ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
+				err := ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
 					Id:            modelID,
 					SchemaVersion: typesystem.SchemaVersion1_1,
 					// invalid
@@ -54,7 +53,7 @@ func TestValidationResult(t *testing.T) {
 type document
   relations
 	define viewer:[user]
-`).TypeDefinitions,
+`).GetTypeDefinitions(),
 				})
 				require.NoError(t, err)
 				t.Logf("added model %s for store %s\n", modelID, storeID)

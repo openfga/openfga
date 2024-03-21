@@ -12,19 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
 
       - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
 
-      - name: Unit Tests
-        run: make unit-test
+      - name: Tests
+        run: make test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@eaaf4bedf32dbdc6b720b63067d99c4d77d6047d # v3.1.4
+        uses: codecov/codecov-action@54bcd8715eee62d40e33596ef5e8f0f48dbbccab # v4.1.0
         with:
           files: ./coverageunit.out
           verbose: true
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true

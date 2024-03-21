@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/openfga/openfga/internal/server/config"
@@ -67,7 +65,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		req.GetWrites().GetTupleKeys(),
 	)
 	if err != nil {
-		return nil, handleError(err)
+		return nil, serverErrors.HandleError("", err)
 	}
 
 	return &openfgav1.WriteResponse{}, nil
@@ -162,14 +160,4 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
 	}
 	return nil
-}
-
-func handleError(err error) error {
-	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return status.Error(codes.Aborted, err.Error())
-	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
-		return serverErrors.WriteFailedDueToInvalidInput(err)
-	}
-
-	return serverErrors.HandleError("", err)
 }

@@ -7,27 +7,37 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+// ErrIteratorDone is returned when the iterator has finished iterating through all the items.
 var ErrIteratorDone = errors.New("iterator done")
 
+// Iterator is a generic interface defining methods for
+// iterating over a collection of items of type T.
 type Iterator[T any] interface {
-	// Next will return the next available item or ErrIteratorDone if no more items are available
+	// Next will return the next available
+	// item or ErrIteratorDone if no more
+	// items are available.
 	Next(ctx context.Context) (T, error)
-	// Stop terminates iteration over the underlying iterator.
+
+	// Stop terminates iteration over
+	// the underlying iterator.
 	Stop()
 }
 
-// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next(ctx) until it
-// returns an ErrIteratorDone error.
+// TupleIterator is an iterator for [*openfgav1.Tuple](s).
+// It is closed by explicitly calling [Iterator.Stop] or by calling
+// [Iterator.Next] until it returns an [ErrIteratorDone] error.
 type TupleIterator = Iterator[*openfgav1.Tuple]
 
-// TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next(ctx) until it
-// returns an ErrIteratorDone error.
+// TupleKeyIterator is an iterator for [*openfgav1.TupleKey](s). It is closed by
+// explicitly calling [Iterator.Stop] or by calling [Iterator.Next] until it
+// returns an [ErrIteratorDone] error.
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
 type emptyTupleIterator struct{}
 
 var _ TupleIterator = (*emptyTupleIterator)(nil)
 
+// Next see [Iterator.Next].
 func (e *emptyTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -35,12 +45,15 @@ func (e *emptyTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error)
 
 	return nil, ErrIteratorDone
 }
+
+// Stop see [Iterator.Stop].
 func (e *emptyTupleIterator) Stop() {}
 
 type combinedIterator[T any] struct {
 	iters []Iterator[T]
 }
 
+// Next see [Iterator.Next].
 func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 	for i, iter := range c.iters {
 		if iter == nil {
@@ -51,18 +64,19 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 			if !errors.Is(err, ErrIteratorDone) {
 				return val, err
 			}
-			c.iters[i] = nil // end of this iterator
+			c.iters[i] = nil // End of this iterator.
 			continue
 		}
 
 		return val, nil
 	}
 
-	// all iterators ended
+	// All iterators ended.
 	var val T
 	return val, ErrIteratorDone
 }
 
+// Stop see [Iterator.Stop].
 func (c *combinedIterator[T]) Stop() {
 	for _, iter := range c.iters {
 		if iter != nil {
@@ -71,13 +85,14 @@ func (c *combinedIterator[T]) Stop() {
 	}
 }
 
-// NewCombinedIterator takes generic iterators of a given type T and combines them into a single iterator that yields
-// all the values from all iterators. Duplicates can be returned.
+// NewCombinedIterator takes generic iterators of a given type T
+// and combines them into a single iterator that yields all the
+// values from all iterators. Duplicates can be returned.
 func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{iters}
 }
 
-// NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.
+// NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
 func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
 	iter := &staticIterator[*openfgav1.Tuple]{
 		items: tuples,
@@ -86,7 +101,7 @@ func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
 	return iter
 }
 
-// NewStaticTupleKeyIterator returns a TupleKeyIterator that iterates over the provided slice.
+// NewStaticTupleKeyIterator returns a [TupleKeyIterator] that iterates over the provided slice.
 func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
 	iter := &staticIterator[*openfgav1.TupleKey]{
 		items: tupleKeys,
@@ -101,16 +116,19 @@ type tupleKeyIterator struct {
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 
+// Next see [Iterator.Next].
 func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
 	tuple, err := t.iter.Next(ctx)
 	return tuple.GetKey(), err
 }
 
+// Stop see [Iterator.Stop].
 func (t *tupleKeyIterator) Stop() {
 	t.iter.Stop()
 }
 
-// NewTupleKeyIteratorFromTupleIterator takes a TupleIterator and yields all of the TupleKeys from it as a TupleKeyIterator.
+// NewTupleKeyIteratorFromTupleIterator takes a [TupleIterator] and yields
+// all the [*openfgav1.TupleKey](s) from it as a [TupleKeyIterator].
 func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 	return &tupleKeyIterator{iter}
 }
@@ -119,6 +137,7 @@ type staticIterator[T any] struct {
 	items []T
 }
 
+// Next see [Iterator.Next].
 func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
 
@@ -136,10 +155,12 @@ func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 	return next, nil
 }
 
+// Stop see [Iterator.Stop].
 func (s *staticIterator[T]) Stop() {}
 
-// TupleKeyFilterFunc is a filter function that is used to filter out tuples from a TupleKey iterator
-// that don't meet some criteria. Implementations should return true if the tuple should be returned
+// TupleKeyFilterFunc is a filter function that is used to filter out
+// tuples from a [TupleKeyIterator] that don't meet certain criteria.
+// Implementations should return true if the tuple should be returned
 // and false if it should be filtered out.
 type TupleKeyFilterFunc func(tupleKey *openfgav1.TupleKey) bool
 
@@ -165,12 +186,13 @@ func (f *filteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKe
 	}
 }
 
+// Stop see [Iterator.Stop].
 func (f *filteredTupleKeyIterator) Stop() {
 	f.iter.Stop()
 }
 
-// NewFilteredTupleKeyIterator returns an iterator that filters out all tuples that don't
-// meet the conditions of the provided TupleFilterFunc.
+// NewFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
+// [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
 func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFunc) TupleKeyIterator {
 	return &filteredTupleKeyIterator{
 		iter,

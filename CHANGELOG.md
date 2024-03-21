@@ -8,12 +8,123 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [v1.4.1] - 2024-01-04
+## [1.5.1] - 2024-03-19
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.0...v1.5.1)
+
+### Added
+
+- Include calls to ListObjects and StreamedListObjects methods in the `dispatch_count` histogram ([#1427](https://github.com/openfga/openfga/pull/1427))
+- Added `request_duration_ms` histogram which has `datastore_query_count` and `dispatch_count` as dimensions ([#1444](https://github.com/openfga/openfga/pull/1444))
+- Added new flag `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
+- Added experimental support for modular models via `OPENFGA_EXPERIMENTALS=enable-modular-models` ([#1443](https://github.com/openfga/openfga/pull/1443)). This will enable writing models that are split across multiple files.
+- Added support for throttling dispatches ([#1440](https://github.com/openfga/openfga/pull/1440)). This will throttle Check requests that are overly complex. You can turn on this feature via OPENFGA_DISPATCH_THROTTLING_ENABLED and configured via OPENFGA_DISPATCH_THROTTLING_THRESHOLD and OPENFGA_DISPATCH_THROTTLING_FREQUENCY
+
+### Fixed
+
+- Throw HTTP 400 when tuple condition is invalid instead of HTTP 500 ([#1420](https://github.com/openfga/openfga/pull/1420))
+- Fix model validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
+
+### Deprecation :warning:
+
+- Histogram `request_duration_by_query_count_ms` will be removed in the next release, in favour of `request_duration_ms` ([#1450](https://github.com/openfga/openfga/pull/1450))
+
+### Contribution
+
+- Thanks @lekaf974 for enhancing NewLogger with builder pattern options ([#1413](https://github.com/openfga/openfga/pull/1413))
+
+## [1.5.0] - 2024-03-01
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
+
+### Added 
+
+- Override option for timestamp in JSON logs ([#1330](https://github.com/openfga/openfga/pull/1330)) - thank you, @raj-saxena!
+- OpenTelemetry tracing and attributes to check algorithm ([#1331](https://github.com/openfga/openfga/pull/1331), [#1388](https://github.com/openfga/openfga/pull/1388))
+- Dispatch count to check response metadata as a query complexity heuristic ([#1343](https://github.com/openfga/openfga/pull/1343))
+
+### Fixed
+
+- Cycles detected during check now deterministically return with `{allowed:false}` ([#1371](https://github.com/openfga/openfga/pull/1371), [#1372](https://github.com/openfga/openfga/pull/1372))
+- Fix incorrect path for gPRC health check ([#1321](https://github.com/openfga/openfga/pull/1321))
+
+### Breaking Change :warning:
+
+The `AuthorizationModelReadBackend` interface method `FindLatestAuthorizationModelID` has changed to `FindLatestAuthorizationModel` for performance improvements. [#1387](https://github.com/openfga/openfga/pull/1387)
+
+If you implement your own data store, you will need to make the following change:
+
+<table>
+<tr>
+<th>Before</th>
+<th>After</th>
+</tr>
+<tr>
+<td>
+
+```go
+func (...) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
+  //...get model ID
+  return modelID, nil
+}
+```
+
+</td>
+<td>
+
+```go
+func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
+  //...get model
+  return model.(*openfgav1.AuthorizationModel), nil
+}
+```
+
+</td>
+</tr>
+</table>
+
+## [1.4.3] - 2024-01-26
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.2...v1.4.3)
+
+### Added
+
+* Add ability to close all server resources through `server.Stop()` ([#1318](https://github.com/openfga/openfga/pull/1318))
+
+### Changed
+
+* Increase performance by removing redundant `map.Clone()` calls in model validation ([#1281](https://github.com/openfga/openfga/pull/1281))
+
+### Fixed
+
+* Fix the sorting of contextual tuples when generating a cache key during check ([#1299](https://github.com/openfga/openfga/pull/1299))
+
+### Security
+
+* Patch [CVE-2024-23820](https://github.com/openfga/openfga/security/advisories/GHSA-rxpw-85vw-fx87) - a critical issue
+  where issuing many `ListObjects` API calls that hit the `--listObjects-deadline` setting can lead to an out of memory error.
+  See the CVE report for more details
+
+## [1.4.2] - 2024-01-10
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.4.1...v1.4.2)
+
+### Fixed
+
+* Goroutine leak in ListObjects because of a leak in ReverseExpand ([#1297](https://github.com/openfga/openfga/pull/1297))
+
+## [1.4.1] - 2024-01-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.0...v1.4.1)
 
 ### Changed
 * Reduce goroutine overhead in ListObjects ([#1173](https://github.com/openfga/openfga/pull/1173))
+
+* Added `openfga` prefix to custom exported Prometheus metrics
+
+   > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
+
+   Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
 
 ### Added
 * Support for cancellation/timeouts when evaluating Conditions ([#1237](https://github.com/openfga/openfga/pull/1237))
@@ -26,7 +137,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Log request validation errors correctly ([#1236](https://github.com/openfga/openfga/pull/1236))
 
-## [v1.4.0] - 2023-12-11
+## [1.4.0] - 2023-12-11
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.10...v1.4.0)
 
@@ -37,7 +148,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   We changed the default gRPC max message size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max message size should be much smaller than 512KB given our other input constraints.
 
-## [v1.3.10] - 2023-12-08
+## [1.3.10] - 2023-12-08
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.9...v1.3.10)
 
@@ -51,7 +162,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Handle floating point conversion errors in conditions ([#1200](https://github.com/openfga/openfga/pull/1200))
 
-## [v1.3.9] - 2023-12-05
+## [1.3.9] - 2023-12-05
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.8...v1.3.9)
 
@@ -60,7 +171,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Decoding of null conditions in SQL storage implementations ([#1212](https://github.com/openfga/openfga/pull/1212))
 
-## [v1.3.8] - 2023-12-04
+## [1.3.8] - 2023-12-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.7...v1.3.8)
 
@@ -135,14 +246,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Use `NoOp` TracerProvider if tracing is disabled ([#1139](https://github.com/openfga/openfga/pull/1139) and [#1196](https://github.com/openfga/openfga/pull/1196))
 
-## [v1.3.7] - 2023-11-06
+## [1.3.7] - 2023-11-06
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.6...v1.3.7)
 
 ### Security
 * Bumped up the `grpc-health-probe` dependency to the latest release which fixed some vulnerabilities.
 
-## [v1.3.6] - 2023-11-06
+## [1.3.6] - 2023-11-06
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.5...v1.3.6)
 
@@ -861,7 +972,11 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
+[1.5.0]: https://github.com/openfga/openfga/releases/tag/v1.5.0
+[1.4.3]: https://github.com/openfga/openfga/releases/tag/v1.4.3
+[1.4.2]: https://github.com/openfga/openfga/releases/tag/v1.4.2
 [1.4.1]: https://github.com/openfga/openfga/releases/tag/v1.4.1
 [1.4.0]: https://github.com/openfga/openfga/releases/tag/v1.4.0
 [1.3.10]: https://github.com/openfga/openfga/releases/tag/v1.3.10

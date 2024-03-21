@@ -16,6 +16,7 @@ services:
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
       - OPENFGA_DATASTORE_METRICS_ENABLED=true
       - OPENFGA_METRICS_ENABLED=TRUE
+
   otel-collector:
     image: otel/opentelemetry-collector:latest
     container_name: otel-collector

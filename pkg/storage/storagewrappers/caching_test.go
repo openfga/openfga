@@ -3,26 +3,31 @@ package storagewrappers
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
-	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestReadAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
-	memoryBackend := memory.New()
-	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
-	defer cachingBackend.Close()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	mockController := gomock.NewController(t)
+	mockController.Finish()
 
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	t.Cleanup(cachingBackend.Close)
 	model := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
@@ -36,51 +41,84 @@ func TestReadAuthorizationModel(t *testing.T) {
 		},
 	}
 	storeID := ulid.Make().String()
+	gomock.InOrder(
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Times(1).Return(nil),
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, model.GetId()).Times(1).Return(model, nil),
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).Times(1).Return(model, nil),
+		mockDatastore.EXPECT().Close().Times(1),
+	)
 
-	err := memoryBackend.WriteAuthorizationModel(ctx, storeID, model)
+	err := cachingBackend.WriteAuthorizationModel(ctx, storeID, model)
 	require.NoError(t, err)
 
-	// check that first hit to cache -> miss
-	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
+	// Check that first hit to cache -> miss.
+	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.GetId())
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)
 
-	// check what's stored inside the cache
-	modelKey := fmt.Sprintf("%s:%s", storeID, model.Id)
+	// Check what's stored inside the cache.
+	modelKey := fmt.Sprintf("%s:%s", storeID, model.GetId())
 	cachedModel := cachingBackend.cache.Get(modelKey).Value()
 	require.Equal(t, model, cachedModel)
 
-	// check that second hit to cache -> hit
-	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
+	// Check that second hit to cache -> hit.
+	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.GetId())
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)
+
+	// ensure find latest authorization model will get hte latest model
+	latestModel, err := cachingBackend.FindLatestAuthorizationModel(ctx, storeID)
+	require.NoError(t, err)
+	require.Equal(t, model, latestModel)
 }
 
-func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
+func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
 	const numGoroutines = 2
 
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	expectedModelID := "expectedId"
-	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
-		time.Sleep(1 * time.Second)
-		return expectedModelID, nil
-	}).Times(1)
-	mockDatastore.EXPECT().Close().Times(1)
+	mockController.Finish()
 
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
-	defer cachingBackend.Close()
-
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			defer wg.Done()
-			id, err := cachingBackend.FindLatestAuthorizationModelID(context.Background(), "id")
-			require.NoError(t, err)
-			require.Equal(t, expectedModelID, id)
-		}()
+	t.Cleanup(cachingBackend.Close)
+	model := &openfgav1.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "documents",
+				Relations: map[string]*openfgav1.Userset{
+					"admin": typesystem.This(),
+				},
+			},
+		},
 	}
-	wg.Wait()
+
+	storeID := ulid.Make().String()
+	gomock.InOrder(
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).DoAndReturn(
+			func(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
+				time.Sleep(1 * time.Second)
+				return model, nil
+			}).Times(1),
+		mockDatastore.EXPECT().Close().Times(1),
+	)
+
+	var wg errgroup.Group
+	for i := 0; i < numGoroutines; i++ {
+		wg.Go(func() error {
+			latestModel, err := cachingBackend.FindLatestAuthorizationModel(context.Background(), storeID)
+			if err != nil {
+				return err
+			}
+			require.NoError(t, err)
+			require.Equal(t, model, latestModel)
+			return nil
+		})
+	}
+	err := wg.Wait()
+	require.NoError(t, err)
 }

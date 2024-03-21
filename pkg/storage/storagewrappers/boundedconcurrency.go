@@ -24,7 +24,7 @@ var (
 		Namespace:                       build.ProjectName,
 		Name:                            "datastore_bounded_read_delay_ms",
 		Help:                            "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
-		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
+		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
@@ -46,7 +46,12 @@ func NewBoundedConcurrencyTupleReader(wrapped storage.RelationshipTupleReader, c
 	}
 }
 
-func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+// ReadUserTuple tries to return one tuple that matches the provided key exactly.
+func (b *boundedConcurrencyTupleReader) ReadUserTuple(
+	ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey,
+) (*openfgav1.Tuple, error) {
 	b.waitForLimiter(ctx)
 
 	defer func() {
@@ -56,6 +61,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store
 	return b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey)
 }
 
+// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
 func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	b.waitForLimiter(ctx)
 
@@ -66,7 +72,12 @@ func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, 
 	return b.RelationshipTupleReader.Read(ctx, store, tupleKey)
 }
 
-func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+// ReadUsersetTuples returns all userset tuples for a specified object and relation.
+func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(
+	ctx context.Context,
+	store string,
+	filter storage.ReadUsersetTuplesFilter,
+) (storage.TupleIterator, error) {
 	b.waitForLimiter(ctx)
 
 	defer func() {
@@ -76,6 +87,8 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, s
 	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter)
 }
 
+// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
+// more user(s) or userset(s) and filtered by object type and relation.
 func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,

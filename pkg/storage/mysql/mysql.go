@@ -1,4 +1,3 @@
-// Package mysql contains an implementation of the storage interface that works with MySQL.
 package mysql
 
 import (
@@ -30,17 +29,21 @@ import (
 
 var tracer = otel.Tracer("openfga/pkg/storage/mysql")
 
+// MySQL provides a MySQL based implementation of [storage.OpenFGADatastore].
 type MySQL struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 }
 
+// Ensures that MySQL implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*MySQL)(nil)
 
+// New creates a new [MySQL] storage.
 func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
@@ -103,9 +106,13 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		}
 	}
 
+	stbl := sq.StatementBuilder.RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"))
+
 	return &MySQL{
-		stbl:                   sq.StatementBuilder.RunWith(db),
+		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -113,7 +120,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	}, nil
 }
 
-// Close closes the datastore and cleans up any residual resources.
+// Close see [storage.OpenFGADatastore].Close.
 func (m *MySQL) Close() {
 	if m.dbStatsCollector != nil {
 		prometheus.Unregister(m.dbStatsCollector)
@@ -121,6 +128,7 @@ func (m *MySQL) Close() {
 	m.db.Close()
 }
 
+// Read see [storage.RelationshipTupleReader].Read.
 func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
@@ -128,7 +136,13 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	return m.read(ctx, store, tupleKey, nil)
 }
 
-func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+// ReadPage see [storage.RelationshipTupleReader].ReadPage.
+func (m *MySQL) ReadPage(
+	ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey,
+	opts storage.PaginationOptions,
+) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
@@ -187,6 +201,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// Write see [storage.RelationshipTupleWriter].Write.
 func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
 	ctx, span := tracer.Start(ctx, "mysql.Write")
 	defer span.End()
@@ -197,9 +212,10 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 
 	now := time.Now().UTC()
 
-	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, sq.Expr("NOW()")), store, deletes, writes, now)
+	return sqlcommon.Write(ctx, m.dbInfo, store, deletes, writes, now)
 }
 
+// ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUserTuple")
 	defer span.End()
@@ -252,7 +268,12 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	return record.AsTuple(), nil
 }
 
-func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
+func (m *MySQL) ReadUsersetTuples(
+	ctx context.Context,
+	store string,
+	filter storage.ReadUsersetTuplesFilter,
+) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
 
@@ -278,11 +299,11 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	if len(filter.AllowedUserTypeRestrictions) > 0 {
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				orConditions = append(orConditions, sq.Like{"_user": userset.GetType() + ":%#" + userset.GetRelation()})
 			}
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
+				orConditions = append(orConditions, sq.Eq{"_user": userset.GetType() + ":*"})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -295,7 +316,12 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
-func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+// ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
+func (m *MySQL) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	opts storage.ReadStartingWithUserFilter,
+) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadStartingWithUser")
 	defer span.End()
 
@@ -327,18 +353,25 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
 func (m *MySQL) MaxTuplesPerWrite() int {
 	return m.maxTuplesPerWriteField
 }
 
+// ReadAuthorizationModel see [storage.AuthorizationModelReadBackend].ReadAuthorizationModel.
 func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, m.dbInfo, store, modelID)
 }
 
-func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+// ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
+func (m *MySQL) ReadAuthorizationModels(
+	ctx context.Context,
+	store string,
+	opts storage.PaginationOptions,
+) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModels")
 	defer span.End()
 
@@ -406,30 +439,20 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 	return models, token, nil
 }
 
-func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
+func (m *MySQL) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModel")
 	defer span.End()
 
-	var modelID string
-	err := m.stbl.
-		Select("authorization_model_id").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		Limit(1).
-		QueryRowContext(ctx).
-		Scan(&modelID)
-	if err != nil {
-		return "", sqlcommon.HandleSQLError(err)
-	}
-
-	return modelID, nil
+	return sqlcommon.FindLatestAuthorizationModel(ctx, m.dbInfo, store)
 }
 
+// MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
 func (m *MySQL) MaxTypesPerAuthorizationModel() int {
 	return m.maxTypesPerModelField
 }
 
+// WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
 func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
 	ctx, span := tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
@@ -440,10 +463,10 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerModelField)
 	}
 
-	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, m.dbInfo, store, model)
 }
 
-// CreateStore is slightly different between Postgres and MySQL
+// CreateStore adds a new store to the MySQL storage.
 func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "mysql.CreateStore")
 	defer span.End()
@@ -459,7 +482,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 	_, err = m.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.Id, store.Name, sq.Expr("NOW()"), sq.Expr("NOW()")).
+		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
@@ -471,7 +494,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 	err = m.stbl.
 		Select("id", "name", "created_at").
 		From("store").
-		Where(sq.Eq{"id": store.Id}).
+		Where(sq.Eq{"id": store.GetId()}).
 		RunWith(txn).
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
@@ -492,6 +515,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 	}, nil
 }
 
+// GetStore retrieves the details of a specific store from the MySQL using its storeID.
 func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "mysql.GetStore")
 	defer span.End()
@@ -523,6 +547,7 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, erro
 	}, nil
 }
 
+// ListStores provides a paginated list of all stores present in the MySQL storage.
 func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
@@ -583,6 +608,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 	return stores, nil, nil
 }
 
+// DeleteStore removes a store from the MySQL storage.
 func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "mysql.DeleteStore")
 	defer span.End()
@@ -599,7 +625,7 @@ func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
-// WriteAssertions is slightly different between Postgres and MySQL
+// WriteAssertions see [storage.AssertionsBackend].WriteAssertions.
 func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	ctx, span := tracer.Start(ctx, "mysql.WriteAssertions")
 	defer span.End()
@@ -622,6 +648,7 @@ func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, asse
 	return nil
 }
 
+// ReadAssertions see [storage.AssertionsBackend].ReadAssertions.
 func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAssertions")
 	defer span.End()
@@ -649,9 +676,10 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 		return nil, err
 	}
 
-	return assertions.Assertions, nil
+	return assertions.GetAssertions(), nil
 }
 
+// ReadChanges see [storage.ChangelogBackend].ReadChanges.
 func (m *MySQL) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
@@ -683,10 +711,10 @@ func (m *MySQL) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token
+		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
 	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token
+		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -755,8 +783,7 @@ func (m *MySQL) ReadChanges(
 	return changes, contToken, nil
 }
 
-// IsReady reports whether this MySQL datastore instance is ready
-// to accept connections.
+// IsReady see [sqlcommon.IsReady].
 func (m *MySQL) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, m.db)
 }

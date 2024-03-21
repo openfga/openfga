@@ -1,4 +1,3 @@
-// Package logging contains logging middleware
 package logging
 
 import (
@@ -39,10 +38,12 @@ const (
 	userAgentHeader        string = "user-agent"
 )
 
+// NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return interceptors.UnaryServerInterceptor(reportable(logger))
 }
 
+// NewStreamingLoggingInterceptor creates a new streaming logging interceptor for gRPC stream server requests.
 func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return interceptors.StreamServerInterceptor(reportable(logger))
 }
@@ -54,7 +55,7 @@ type reporter struct {
 	protomarshaler protojson.MarshalOptions
 }
 
-// PostCall is called after all the PostMsgSend.
+// PostCall is invoked after all PostMsgSend operations.
 func (r *reporter) PostCall(err error, _ time.Duration) {
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
@@ -77,10 +78,11 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 	r.logger.Info(grpcReqCompleteKey, r.fields...)
 }
 
-// PostMsgSend is called once in unary requests and multiple times in streaming requests.
+// PostMsgSend is invoked once after a unary response or multiple times in
+// streaming requests after each message has been sent.
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 	if err != nil {
-		// this is the actual error that customers see:
+		// This is the actual error that customers see.
 		intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
 		encodedError := serverErrors.NewEncodedError(intCode, err.Error())
 		protomsg := encodedError.ActualError
@@ -97,6 +99,7 @@ func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 	}
 }
 
+// PostMsgReceive is invoked after receiving a message in streaming requests.
 func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
@@ -106,8 +109,8 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 	}
 }
 
-// userAgentFromContext returns the user agent field stored in context.
-// If context does not have user agent field, function will return empty string and false.
+// userAgentFromContext retrieves the user agent field from the provided context.
+// If the user agent field is not present in the context, the function returns an empty string and false.
 func userAgentFromContext(ctx context.Context) (string, bool) {
 	if headers, ok := metadata.FromIncomingContext(ctx); ok {
 		if header := headers.Get(gatewayUserAgentHeader); len(header) > 0 {

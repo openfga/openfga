@@ -10,9 +10,9 @@ permissions:
 jobs:
   go-bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+      - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
 
       - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
@@ -27,7 +27,7 @@ jobs:
           make bench | tee bench_output.txt
 
       - name: Get benchmark as JSON
-        uses: benchmark-action/github-action-benchmark@70405016b032d44f409e4b1b451c40215cbe2393 # v1.18.0
+        uses: benchmark-action/github-action-benchmark@cc9ac13ce81036c9b67fcfe2cb95ca366684b9ea # v1.19.3
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
@@ -45,7 +45,7 @@ jobs:
         id: system-info
 
       - name: Save benchmark JSON to cache
-        uses: actions/cache/save@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
+        uses: actions/cache/save@ab5e6d0c87105b4c9c2047343972218f562e4319 # v4.0.1
         with:
           path: ./cache/benchmark-data.json
           # Save with commit hash to avoid "cache already exists"
