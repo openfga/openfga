@@ -857,8 +857,7 @@ func TestListUsersIntersection(t *testing.T) {
 	})
 	tests := ListUsersTests{
 		{
-			name:                  "intersection",
-			TemporarilySkipReason: "because incurring `panic: unexpected userset rewrite encountered`",
+			name: "intersection",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -887,8 +886,81 @@ func TestListUsersIntersection(t *testing.T) {
 			expectedUsers: []string{"user:will"},
 		},
 		{
-			name:                  "intersection_and_ttu",
-			TemporarilySkipReason: "because incurring `panic: unexpected userset rewrite encountered`",
+			name: "intersection_multiple",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+			type document
+				relations
+					define required_1: [user]
+					define required_2: [user]
+					define required_3: [user]
+					define viewer: [user] and required_1 and required_2 and required_3`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "required_1", "user:will"),
+				tuple.NewTupleKey("document:1", "required_2", "user:will"),
+				tuple.NewTupleKey("document:1", "required_3", "user:will"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "required_1", "user:jon"),
+				tuple.NewTupleKey("document:1", "required_2", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:poovam"),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
+			name: "intersection_at_multiple_levels",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		type user
+		type document
+			relations
+				define required: [user]
+				define owner: [user] and required
+				define editor: [user] and owner
+				define viewer: [user] and editor`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "required", "user:will"),
+				tuple.NewTupleKey("document:1", "owner", "user:will"),
+				tuple.NewTupleKey("document:1", "editor", "user:will"),
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "owner", "user:jon"),
+				tuple.NewTupleKey("document:1", "editor", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "owner", "user:maria"),
+				tuple.NewTupleKey("document:1", "required", "user:maria"),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
+			name: "intersection_and_ttu",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1034,7 +1106,7 @@ func TestListUsersExclusion(t *testing.T) {
 	tests := ListUsersTests{
 		{
 			name:                  "exclusion",
-			TemporarilySkipReason: "because incurring `panic: unexpected userset rewrite encountered`",
+			TemporarilySkipReason: "because exclusion not supported yet",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1062,7 +1134,7 @@ func TestListUsersExclusion(t *testing.T) {
 		},
 		{
 			name:                  "exclusion_and_ttu",
-			TemporarilySkipReason: "because incurring `panic: unexpected userset rewrite encountered`",
+			TemporarilySkipReason: "because exclusion not supported yet",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
