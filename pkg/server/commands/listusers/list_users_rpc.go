@@ -382,9 +382,9 @@ func (l *listUsersQuery) expandIntersection(
 	wg.Wait()
 
 	for key, count := range foundUsersCountMap {
-		// Compare the specific user's count, or the number of times
-		// the user was returned for all intersection clauses.
-		// If this count equals the number of clauses, the user satisfies
+		// Compare the number of times the specific user was returned for
+		// all intersection clauses plus the number of wildcards.
+		// If this summed value equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
 		if (count + wildcardCount.Load()) < uint32(len(clauses)) {
 			continue
