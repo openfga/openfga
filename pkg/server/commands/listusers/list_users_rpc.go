@@ -327,6 +327,8 @@ func (l *listUsersQuery) expandIntersection(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
+
 	clauses := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(clauses))
 
@@ -349,8 +351,7 @@ func (l *listUsersQuery) expandIntersection(
 		}
 	}()
 
-	foundUsersCountMapMain := make(map[string]uint32, 0)
-
+	foundUsersCount := make(map[string]uint32, 0)
 	wildcardCount := atomic.Uint32{}
 
 	var mu sync.Mutex
@@ -364,15 +365,15 @@ func (l *listUsersQuery) expandIntersection(
 				tempMap[key]++
 			}
 
-			_, wildcardExists := tempMap["user:*"]
+			_, wildcardExists := tempMap[wildcardKey]
 			if wildcardExists {
 				wildcardCount.Add(1)
 			}
 			for userKey := range tempMap {
 				mu.Lock()
-				foundUsersCountMapMain[userKey]++
+				foundUsersCount[userKey]++
 				if wildcardExists {
-					foundUsersCountMapMain[userKey]--
+					foundUsersCount[userKey]--
 				}
 				mu.Unlock()
 			}
@@ -381,14 +382,15 @@ func (l *listUsersQuery) expandIntersection(
 	}
 	wg.Wait()
 
-	for key, count := range foundUsersCountMapMain {
-		if (count + wildcardCount.Load()) < uint32(len(clauses)) {
-			continue
-		}
+	for key, count := range foundUsersCount {
 		// Compare the specific user's count, or the number of times
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
+		if (count + wildcardCount.Load()) < uint32(len(clauses)) {
+			continue
+		}
+
 		foundUsersChan <- tuple.StringToUserProto(key)
 	}
 
