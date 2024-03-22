@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -332,7 +333,7 @@ func (l *listUsersQuery) expandIntersection(
 	for i, rw := range clauses {
 		index := i
 		rewrite := rw
-		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
+		intersectionFoundUsersChans[index] = make(chan *openfgav1.User, 1)
 		pool.Go(func(ctx context.Context) error {
 			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[index])
 		})
@@ -348,57 +349,42 @@ func (l *listUsersQuery) expandIntersection(
 		}
 	}()
 
-	foundUsersCountMapAgg := make([]map[string]uint32, 0)
+	foundUsersCountMapMain := make(map[string]uint32, 0)
 
+	wildcardCount := atomic.Uint32{}
+
+	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(clauses))
 	for i := range intersectionFoundUsersChans {
-		foundUsersCountMap := make(map[string]uint32, 0)
 		go func(index int) {
+			tempMap := make(map[string]uint32, 0)
 			for fu := range intersectionFoundUsersChans[index] {
 				key := tuple.UserProtoToString(fu)
-				foundUsersCountMap[key]++
+				tempMap[key]++
+			}
+
+			_, wildcardExists := tempMap["user:*"]
+			if wildcardExists {
+				wildcardCount.Add(1)
+			}
+			for userKey := range tempMap {
+				mu.Lock()
+				foundUsersCountMapMain[userKey]++
+				if wildcardExists {
+					foundUsersCountMapMain[userKey]--
+				}
+				mu.Unlock()
 			}
 			wg.Done()
 		}(i)
-		foundUsersCountMapAgg = append(foundUsersCountMapAgg, foundUsersCountMap)
 	}
 	wg.Wait()
 
-	largestMap := 0
-	for i := 1; i > len(foundUsersCountMapAgg); i++ {
-		currentLargestLength := len(foundUsersCountMapAgg[largestMap])
-		if _, currentHasWildcard := foundUsersCountMapAgg[largestMap]["user:*"]; currentHasWildcard {
-			currentLargestLength--
+	for key, count := range foundUsersCountMapMain {
+		if (count + wildcardCount.Load()) < uint32(len(clauses)) {
+			continue
 		}
-
-		compareLength := len(foundUsersCountMapAgg[i])
-		if _, compareHasWildcard := foundUsersCountMapAgg[i]["user:*"]; compareHasWildcard {
-			compareLength--
-		}
-
-		if compareLength > currentLargestLength {
-			largestMap = i
-		}
-	}
-
-OuterLoop:
-	for key := range foundUsersCountMapAgg[largestMap] {
-		_, wildcardExists := foundUsersCountMapAgg[largestMap]["user:*"]
-
-		for i := 0; i < len(foundUsersCountMapAgg); i++ {
-			if i == largestMap && !wildcardExists {
-				continue
-			}
-
-			_, exists := foundUsersCountMapAgg[i][key]
-			_, hasWildcard := foundUsersCountMapAgg[i]["user:*"]
-
-			if !exists && !hasWildcard {
-				continue OuterLoop
-			}
-		}
-
 		// Compare the specific user's count, or the number of times
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
