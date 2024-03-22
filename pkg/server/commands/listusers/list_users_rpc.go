@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -325,47 +326,87 @@ func (l *listUsersQuery) expandIntersection(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
-	intersectionFoundUsersChan := make(chan *openfgav1.User, 1)
+	clauses := rewrite.Intersection.GetChild()
+	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(clauses))
 
-	children := rewrite.Intersection.GetChild()
-	for _, childRewrite := range children {
-		copyChildRewrite := childRewrite
+	for i, rw := range clauses {
+		index := i
+		rewrite := rw
+		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
 		pool.Go(func(ctx context.Context) error {
-			return l.expandRewrite(ctx, req, copyChildRewrite, intersectionFoundUsersChan)
+			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[index])
 		})
 	}
 
-	errChan := make(chan error, 1)
 	go func() {
 		err := pool.Wait()
-		close(intersectionFoundUsersChan)
-		errChan <- err
-		close(errChan)
+		for i := range intersectionFoundUsersChans {
+			close(intersectionFoundUsersChans[i])
+		}
+		if err != nil {
+			fmt.Println("ERRROR:", err)
+		}
 	}()
 
-	numWildcards := 0
-	foundUsersCountMap := make(map[string]uint32, 0)
-	for fu := range intersectionFoundUsersChan {
-		if isWildcard := fu.GetWildcard().GetWildcard() != nil; isWildcard {
-			numWildcards++
-			continue
+	foundUsersCountMapAgg := make([]map[string]uint32, 0)
+
+	var wg sync.WaitGroup
+	wg.Add(len(clauses))
+	for i := range intersectionFoundUsersChans {
+		foundUsersCountMap := make(map[string]uint32, 0)
+		go func(index int) {
+			for fu := range intersectionFoundUsersChans[index] {
+				key := tuple.UserProtoToString(fu)
+				foundUsersCountMap[key]++
+			}
+			wg.Done()
+		}(i)
+		foundUsersCountMapAgg = append(foundUsersCountMapAgg, foundUsersCountMap)
+	}
+	wg.Wait()
+
+	largestMap := 0
+	for i := 1; i > len(foundUsersCountMapAgg); i++ {
+		currentLargestLength := len(foundUsersCountMapAgg[largestMap])
+		if _, currentHasWildcard := foundUsersCountMapAgg[largestMap]["user:*"]; currentHasWildcard {
+			currentLargestLength--
 		}
 
-		key := tuple.UserProtoToString(fu)
-		foundUsersCountMap[key]++
+		compareLength := len(foundUsersCountMapAgg[i])
+		if _, compareHasWildcard := foundUsersCountMapAgg[i]["user:*"]; compareHasWildcard {
+			compareLength--
+		}
+
+		if compareLength > currentLargestLength {
+			largestMap = i
+		}
 	}
 
-	for key, count := range foundUsersCountMap {
+OuterLoop:
+	for key := range foundUsersCountMapAgg[largestMap] {
+		_, wildcardExists := foundUsersCountMapAgg[largestMap]["user:*"]
+
+		for i := 0; i < len(foundUsersCountMapAgg); i++ {
+			if i == largestMap && !wildcardExists {
+				continue
+			}
+
+			_, exists := foundUsersCountMapAgg[i][key]
+			_, hasWildcard := foundUsersCountMapAgg[i]["user:*"]
+
+			if !exists && !hasWildcard {
+				continue OuterLoop
+			}
+		}
+
 		// Compare the specific user's count, or the number of times
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
-		if (int(count) + numWildcards) == len(children) {
-			foundUsersChan <- tuple.StringToUserProto(key)
-		}
+		foundUsersChan <- tuple.StringToUserProto(key)
 	}
 
-	return <-errChan
+	return nil
 }
 
 func (l *listUsersQuery) expandTTU(
