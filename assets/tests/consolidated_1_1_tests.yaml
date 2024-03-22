@@ -297,6 +297,14 @@ tests:
               type: document
               relation: viewer
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
 
   - name: this_and_exclusion_base
     stages:
@@ -570,7 +578,14 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
   - name: computed_userset_and_exclusion
     stages:
       - model: |
@@ -878,7 +893,32 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
   - name: tuple_to_userset_and_exclusion
     stages:
       - model: |
@@ -1163,7 +1203,33 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
   - name: union_and_exclusion
     stages:
       - model: |
@@ -1307,7 +1373,26 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
   - name: intersection_and_union
     stages:
       - model: |
@@ -1395,7 +1480,39 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
   - name: intersection_and_intersection
     stages:
       - model: |
@@ -1503,7 +1620,44 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:6
+              relation: viewer
+            expectation:
   - name: intersection_and_exclusion
     stages:
       - model: |
@@ -4129,50 +4283,49 @@ tests:
             expectation:
               - module:a
               - module:b
-  # TODO uncomment when introducing cycle detection
-  #        listUsersAssertions:
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: folder:a
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: folder:b
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: document:a
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: document:b
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: module:a
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: module:b
-  #              relation: viewer
-  #            expectation:
-  #              - user:anne
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:b
+              relation: viewer
+            expectation:
+              - user:anne
   - name: three_prong_relation_possible_exclusion
     stages:
       - model: |
@@ -5334,6 +5487,33 @@ tests:
               relation: can_view
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - organization
+              object: document:1
+              relation: can_view
+            expectation:
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: can_view
+            expectation:
   - name: nested_ttu_involving_exclusion
     stages:
       - model: |
@@ -5486,6 +5666,40 @@ tests:
               type: repo
               relation: can_read
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - organization#member
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - organization:openfga#member
+          - request:
+              filters:
+                - organization#member
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
+          - request:
+              filters:
+                - repo#allowed
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
   - name: userset_with_exclusion_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -5625,6 +5839,27 @@ tests:
           - request:
               user: user:bob
               type: document
+              relation: can_view
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - document#allowed
+              object: document:1
               relation: can_view
             expectation:
   - name: relation_with_wildcard_involving_exclusion
@@ -6228,6 +6463,13 @@ tests:
               type: document
               relation: viewer
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
   - name: list_objects_with_subcheck_resolution_depth_exceeded
     stages:
       - model: |
@@ -6307,6 +6549,14 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
   - name: nested_usersets_are_recursively_expanded
     stages:
       - model: |
