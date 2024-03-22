@@ -331,58 +331,57 @@ func (l *listUsersQuery) expandIntersection(
 
 	clauses := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(clauses))
-
-	for i, rw := range clauses {
-		index := i
-		rewrite := rw
-		intersectionFoundUsersChans[index] = make(chan *openfgav1.User, 1)
+	for i, rewrite := range clauses {
+		i := i
+		rewrite := rewrite
+		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
 		pool.Go(func(ctx context.Context) error {
-			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[index])
+			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
 		})
 	}
 
+	errChan := make(chan error, 1)
 	go func() {
 		err := pool.Wait()
 		for i := range intersectionFoundUsersChans {
 			close(intersectionFoundUsersChans[i])
 		}
-		if err != nil {
-			fmt.Println("ERRROR:", err)
-		}
+		errChan <- err
+		close(errChan)
 	}()
-
-	foundUsersCount := make(map[string]uint32, 0)
-	wildcardCount := atomic.Uint32{}
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(clauses))
-	for i := range intersectionFoundUsersChans {
-		go func(index int) {
-			tempMap := make(map[string]uint32, 0)
-			for fu := range intersectionFoundUsersChans[index] {
+
+	wildcardCount := atomic.Uint32{}
+	foundUsersCountMap := make(map[string]uint32, 0)
+	for _, foundUsersChan := range intersectionFoundUsersChans {
+		go func(channel chan *openfgav1.User) {
+			foundUsersMap := make(map[string]uint32, 0)
+			for fu := range channel {
 				key := tuple.UserProtoToString(fu)
-				tempMap[key]++
+				foundUsersMap[key]++
 			}
 
-			_, wildcardExists := tempMap[wildcardKey]
+			_, wildcardExists := foundUsersMap[wildcardKey]
 			if wildcardExists {
 				wildcardCount.Add(1)
 			}
-			for userKey := range tempMap {
+			for userKey := range foundUsersMap {
 				mu.Lock()
-				foundUsersCount[userKey]++
+				foundUsersCountMap[userKey]++
 				if wildcardExists {
-					foundUsersCount[userKey]--
+					foundUsersCountMap[userKey]--
 				}
 				mu.Unlock()
 			}
 			wg.Done()
-		}(i)
+		}(foundUsersChan)
 	}
 	wg.Wait()
 
-	for key, count := range foundUsersCount {
+	for key, count := range foundUsersCountMap {
 		// Compare the specific user's count, or the number of times
 		// the user was returned for all intersection clauses.
 		// If this count equals the number of clauses, the user satisfies
@@ -394,7 +393,7 @@ func (l *listUsersQuery) expandIntersection(
 		foundUsersChan <- tuple.StringToUserProto(key)
 	}
 
-	return nil
+	return <-errChan
 }
 
 func (l *listUsersQuery) expandTTU(
