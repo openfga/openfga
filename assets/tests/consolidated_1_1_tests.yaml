@@ -363,7 +363,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: computed_userset_and_computed_userset
     stages:
       - model: |
@@ -644,7 +657,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: tuple_to_userset_and_computed_userset
     stages:
       - model: |
@@ -913,7 +939,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            temporarilySkipReason: "edge pruning probably, returning `folder:x`"
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
           - request:
               filters:
                 - folder
@@ -986,7 +1012,27 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
   - name: union_and_tuple_to_userset
     stages:
       - model: |
@@ -1308,7 +1354,37 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+              - user:badger
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            temporarilySkipReason: "because usersets not returned properly yet, returns `document:1` instead"
+            expectation:
+              - document:1#writer
+          - request:
+              filters:
+                - document#editor
+              object: document:1
+              relation: viewer
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: intersection_and_tuple_to_userset
     stages:
       - model: |
@@ -1764,7 +1840,27 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: exclusion_and_computed_userset
     stages:
       - model: |
@@ -1823,7 +1919,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: exclusion_and_tuple_to_userset_in_base
     stages:
       - model: |
@@ -1889,7 +1998,33 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+            expectation:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
   - name: exclusion_and_tuple_to_userset_in_subtract
     stages:
       - model: |
@@ -1955,7 +2090,20 @@ tests:
               relation: viewer
             expectation:
               - document:2
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: exclusion_and_union_in_base
     stages:
       - model: |
@@ -2049,7 +2197,35 @@ tests:
               relation: viewer
             expectation:
               - document:5
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+            expectation:
+          - request:
+              filters:
+                - document#editor
+              object: document:1
+              relation: viewer
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+              - user:duck
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
+              - user:eagle
   - name: exclusion_and_union_in_subtract
     stages:
       - model: |
@@ -2110,7 +2286,26 @@ tests:
               relation: viewer
             expectation:
               - document:3
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: exclusion_and_intersection_in_base
     stages:
       - model: |
@@ -2200,7 +2395,38 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
   - name: exclusion_and_intersection_in_subtract
     stages:
       - model: |
@@ -2282,7 +2508,28 @@ tests:
               relation: viewer
             expectation:
               - document:4
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+              - user:duck
   - name: exclusion_and_exclusion_in_base
     stages:
       - model: |
@@ -2343,7 +2590,26 @@ tests:
               relation: viewer
             expectation:
               - document:3
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: exclusion_and_exclusion_in_subtract
     stages:
       - model: |
@@ -2411,7 +2677,27 @@ tests:
               relation: viewer
             expectation:
               - document:3
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: userset_as_user
     stages:
       - model: |
@@ -3420,6 +3706,28 @@ tests:
               - repo:1
               - repo:2
               - repo:3
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+            expectation:
+              - user:a
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: blocked
+                object: repo:1
+            expectation:
       - model: | #reverse expansion
           model
             schema 1.1
@@ -3481,6 +3789,18 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2 #different repo
+            expectation:
+              - user:a
       - model: | #reverse expansion
           model
             schema 1.1
@@ -3531,6 +3851,18 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: organization:1 #different type, should be ignored
+            expectation:
+              - user:a
       - model: | #reverse expansion
           model
             schema 1.1
@@ -3588,6 +3920,21 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            expectation:
+              - user:a
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            expectation:
+              - user:aa
       - model: | #reverse expansion
           model
             schema 1.1
@@ -3639,6 +3986,21 @@ tests:
             expectation:
               - repo:1
               - repo:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a #same as above
+                relation: owner
+                object: repo:2
+            expectation:
+              - user:a
       - model: | # reverse expansion
           model
             schema 1.1
@@ -3704,6 +4066,18 @@ tests:
               type: repo
               relation: owner
             errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:* #not allowed
+                relation: owner
+                object: organization:1
+            temporarilySkipReason: "because contextual tuples need to be validated"
+            errorCode: 2027 # ErrorCode_invalid_tuple
       - model: | # reverse expansion
           model
             schema 1.1
@@ -5392,7 +5766,50 @@ tests:
               relation: can_see
             expectation:
               - document:a
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: can_see
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - document#can_view
+              object: document:a
+              relation: can_see
+            temporarilySkipReason: "because usersets not returned properly yet, returns `document:a` instead"
+            expectation:
+              - document:a#can_view
+          - request:
+              filters:
+                - document#viewer
+              object: document:a
+              relation: can_see
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+            expectation:
   - name: evaluate_userset_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -5611,6 +6028,30 @@ tests:
               type: document
               relation: can_view
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: can_view
+            temporarilySkipReason: "because usersets not returned properly yet, returns `folder:X` instead"
+            expectation:
+              - folder:X#viewer
+          - request:
+              filters:
+                - organization#viewer
+              object: document:1
+              relation: can_view
+            temporarilySkipReason: "because usersets not returned properly yet, returns `organization:openfga` instead"
+            expectation:
+              - organization:openfga#viewer
   - name: userset_with_intersection_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -5715,7 +6156,7 @@ tests:
                 - organization#member
               object: repo:openfga/openfga
               relation: can_read
-            temporarilySkipReason: "because actually not sure. Still needs to be understood why."
+            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
           - request:
               filters:
@@ -5797,6 +6238,27 @@ tests:
           - request:
               user: user:jim
               type: repo
+              relation: can_read
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - repo#restricted
+              object: repo:openfga/openfga
               relation: can_read
             expectation:
   - name: relation_with_wildcard_involving_intersection
@@ -5966,6 +6428,64 @@ tests:
               relation: can_view
             expectation:
               - document:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:* # TODO but user:bob doesn't have access
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: can_view
+            expectation:
+              - user:*
+  - name: relation_with_userset_involving_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define restricted: [user]
+              define viewer: [group#member] but not restricted
+              define can_view: viewer
+        tuples:
+          - user: user:maria
+            relation: member
+            object: group:fga
+          - user: user:will
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: document:1
+          - user: user:will
+            relation: restricted
+            object: document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:maria
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: can_view
+            temporarilySkipReason: "because usersets not returned properly yet, returns `group:fga` instead"
+            expectation:
+              - group:fga#member # TODO is this OK? not all users of group:fga#member have the can_view relation
   - name: list_objects_does_not_return_duplicates
     stages:
       - model: | #concurrent checks
@@ -5990,6 +6510,15 @@ tests:
               relation: admin
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: admin
+            expectation:
+              - user:a
+              - user:*
       - model: | #reverse expansion
           model
             schema 1.1
@@ -6004,6 +6533,15 @@ tests:
               relation: admin
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: admin
+            expectation:
+              - user:a
+              - user:*
   - name: list_objects_expands_wildcard_tuple
     stages:
       - model: | #concurrent checks
@@ -6032,6 +6570,14 @@ tests:
               relation: can_own
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: can_own
+            expectation:
+              - user:*
       - model: | #reverse expansion
           model
             schema 1.1
@@ -6047,6 +6593,14 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: can_own
+            expectation:
+              - user:*
       - model: | #complex model
           model
             schema 1.1
@@ -6294,6 +6848,44 @@ tests:
               - folder:2
               - folder:3
               - folder:5
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: can_read
+            expectation:
+              - user:anne
+              - user:beth
+              - user:harriette
+          - request:
+              filters:
+                - user
+              object: folder:2
+              relation: can_read
+            expectation:
+              - user:anne
+              - user:emily
+              - user:gabriel
+              - user:harriette
+          - request:
+              filters:
+                - user
+              object: folder:3
+              relation: can_read
+            expectation:
+              - user:anne
+              - user:emily
+              - user:gabriel
+              - user:harriette
+          - request:
+              filters:
+                - user
+              object: folder:5
+              relation: can_read
+            temporarilySkipReason: "because actually not sure. Still needs to be understood why."
+            expectation:
+              - user:harriette
   - name: resolution_too_complex_throws_error
     stages:
       - model: |
