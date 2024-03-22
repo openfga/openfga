@@ -5857,6 +5857,12 @@ tests:
               relation: viewer
             expectation:
               - user:jon
+          - request:
+              filters:
+                - document#allowed
+              object: document:1
+              relation: can_view
+            expectation:
   - name: relation_with_wildcard_involving_exclusion
     stages:
       - model: |
