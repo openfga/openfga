@@ -1256,6 +1256,141 @@ func TestListUsersExclusion(t *testing.T) {
 	tests.runListUsersTestCases(t)
 }
 
+func TestListUsersExclusionWildcards(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := `model
+	schema 1.1
+  
+  type user
+  
+  type document
+	relations
+	  define blocked: [user:*,user]
+	  define viewer: [user:*,user] but not blocked`
+
+	tests := ListUsersTests{
+		{
+			name: "exclusion_and_wildcards_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "exclusion_and_wildcards_2",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "blocked", "user:will"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "exclusion_and_wildcards_3",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:will"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "exclusion_and_wildcards_4",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+			},
+			expectedUsers: []string{"user:*"},
+		},
+		{
+			name: "exclusion_and_wildcards_5",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "exclusion_and_wildcards_6",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:will"),
+			},
+			expectedUsers: []string{"user:*", "user:maria"},
+		},
+	}
+	tests.runListUsersTestCases(t)
+}
+
 func TestListUsersWildcards(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

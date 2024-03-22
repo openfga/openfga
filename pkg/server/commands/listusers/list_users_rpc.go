@@ -390,19 +390,21 @@ func (l *listUsersQuery) expandExclusion(
 		close(subtractFoundUsersCh)
 	}()
 
-	baseFoundUsersCountMap := make(map[string]struct{}, 0)
+	baseFoundUsersMap := make(map[string]struct{}, 0)
 	for fu := range baseFoundUsersCh {
 		key := tuple.UserProtoToString(fu)
-		baseFoundUsersCountMap[key] = struct{}{}
+		baseFoundUsersMap[key] = struct{}{}
 	}
-	subtractFoundUsersCountMap := make(map[string]struct{}, len(baseFoundUsersCountMap))
+	subtractFoundUsersMap := make(map[string]struct{}, len(baseFoundUsersMap))
 	for fu := range subtractFoundUsersCh {
 		key := tuple.UserProtoToString(fu)
-		subtractFoundUsersCountMap[key] = struct{}{}
+		subtractFoundUsersMap[key] = struct{}{}
 	}
 
-	for key := range baseFoundUsersCountMap {
-		if _, isSubtracted := subtractFoundUsersCountMap[key]; !isSubtracted {
+	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
+	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
+	for key := range baseFoundUsersMap {
+		if _, isSubtracted := subtractFoundUsersMap[key]; !isSubtracted && !subtractWildcardExists {
 			// Iterate over base users because at minimum they need to pass
 			// but then they are further compared to the subtracted users map.
 			// If users exist in both maps, they are excluded. Only users that exist
