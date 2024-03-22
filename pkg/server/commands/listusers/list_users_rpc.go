@@ -316,7 +316,7 @@ func (l *listUsersQuery) expandDirect(
 
 func (l *listUsersQuery) expandIntersection(
 	ctx context.Context,
-	req listUsersRequest,
+	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
