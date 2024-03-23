@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"google.golang.org/protobuf/types/known/anypb"
 	"net/http"
 	"slices"
 	"sort"
@@ -765,17 +766,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		),
 	)
 
-	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
-
-	response, err := s.checkResolver.Dispatch(ctx, &graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
+	dispatchCheckRequest := &openfgav1.DispatchedCheckRequest{
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		Context:              req.GetContext(),
-		RequestMetadata:      checkRequestMetadata,
+		VisitedPaths:         make(map[string]*anypb.Any),
+	}
+	base := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: dispatchCheckRequest}}
+	resp, metadata, err := s.checkResolver.Dispatch(ctx, base, &openfgav1.DispatchMetadata{
+		Depth: s.resolveNodeLimit,
 	})
-	resp := response.(*graph.ResolveCheckResponse)
 
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -790,7 +791,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+	queryCount := float64(metadata.GetDatastoreQueryCount())
 	const methodName = "check"
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
@@ -800,7 +801,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		methodName,
 	).Observe(queryCount)
 
-	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
+	rawDispatchCount := metadata.DispatchCount
 	dispatchCount := float64(rawDispatchCount)
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
@@ -811,21 +812,21 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	).Observe(dispatchCount)
 
 	res := &openfgav1.CheckResponse{
-		Allowed: resp.Allowed,
+		Allowed: resp.GetCheckResponse().Allowed,
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
 	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(metadata.GetDatastoreQueryCount()), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(metadata.GetDispatchCount()), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 

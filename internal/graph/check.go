@@ -5,16 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/maps"
-	"google.golang.org/protobuf/types/known/structpb"
-
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -23,6 +20,9 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -30,107 +30,6 @@ var tracer = otel.Tracer("internal/graph/check")
 var (
 	ErrCycleDetected = errors.New("a cycle has been detected")
 )
-
-type ResolveCheckRequest struct {
-	StoreID              string
-	AuthorizationModelID string
-	TupleKey             *openfgav1.TupleKey
-	ContextualTuples     []*openfgav1.TupleKey
-	Context              *structpb.Struct
-	RequestMetadata      *ResolveCheckRequestMetadata
-	VisitedPaths         map[string]struct{}
-}
-
-func (r *ResolveCheckRequest) GetDispatchCount() uint32 {
-	return 0
-}
-
-func (r *ResolveCheckRequest) SetDispatchCount() {
-}
-
-func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
-	return &ResolveCheckRequest{
-		StoreID:              r.StoreID,
-		AuthorizationModelID: r.AuthorizationModelID,
-		TupleKey:             r.TupleKey,
-		ContextualTuples:     r.ContextualTuples,
-		Context:              r.Context,
-		RequestMetadata: &ResolveCheckRequestMetadata{
-			DispatchCounter:     r.GetRequestMetadata().DispatchCounter,
-			Depth:               r.GetRequestMetadata().Depth,
-			DatastoreQueryCount: r.GetRequestMetadata().DatastoreQueryCount,
-		},
-		VisitedPaths: maps.Clone(r.VisitedPaths),
-	}
-}
-
-type ResolveCheckResponse struct {
-	Allowed            bool
-	ResolutionMetadata *ResolveCheckResponseMetadata
-}
-
-func (r *ResolveCheckResponse) GetAllowed() bool {
-	if r != nil {
-		return r.Allowed
-	}
-
-	return false
-}
-
-func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
-	if r != nil {
-		return r.ResolutionMetadata
-	}
-
-	return nil
-}
-
-func (r *ResolveCheckRequest) GetStoreID() string {
-	if r != nil {
-		return r.StoreID
-	}
-
-	return ""
-}
-
-func (r *ResolveCheckRequest) GetAuthorizationModelID() string {
-	if r != nil {
-		return r.AuthorizationModelID
-	}
-
-	return ""
-}
-
-func (r *ResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
-	if r != nil {
-		return r.TupleKey
-	}
-
-	return nil
-}
-
-func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
-	if r != nil {
-		return r.ContextualTuples
-	}
-
-	return nil
-}
-
-func (r *ResolveCheckRequest) GetRequestMetadata() *ResolveCheckRequestMetadata {
-	if r != nil {
-		return r.RequestMetadata
-	}
-
-	return nil
-}
-
-func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
-	if r != nil {
-		return r.Context
-	}
-	return nil
-}
 
 type setOperatorType int
 
@@ -141,8 +40,9 @@ const (
 )
 
 type checkOutcome struct {
-	resp *ResolveCheckResponse
-	err  error
+	resp     *openfgav1.CheckResponse
+	metadata *openfgav1.DispatchMetadata
+	err      error
 }
 
 type LocalChecker struct {
@@ -212,12 +112,12 @@ func (c *LocalChecker) GetDelegate() dispatcher.Dispatcher {
 
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
 // otherwise.
-type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
+type CheckHandlerFunc func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error)
 
 // CheckFuncReducer defines a function that combines or reduces one or more CheckHandlerFunc into
 // a single CheckResponse with a maximum limit on the number of concurrent evaluations that can be
 // in flight at any given time.
-type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error)
+type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, metadata *openfgav1.DispatchMetadata, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error)
 
 // resolver concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
 // Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
@@ -237,13 +137,13 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 		resolved := make(chan checkOutcome, 1)
 
 		if ctx.Err() != nil {
-			resultChan <- checkOutcome{nil, ctx.Err()}
+			resultChan <- checkOutcome{nil, nil, ctx.Err()}
 			return
 		}
 
 		go func() {
-			resp, err := fn(ctx)
-			resolved <- checkOutcome{resp, err}
+			resp, metadata, err := fn(ctx)
+			resolved <- checkOutcome{resp, metadata, err}
 		}()
 
 		select {
@@ -280,7 +180,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func union(ctx context.Context, concurrencyLimit uint32, metadata *openfgav1.DispatchMetadata, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -304,33 +204,29 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				err = result.err
 				continue
 			}
-			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
+			dbReads += metadata.DatastoreQueryCount
 
 			if result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				return result.resp, nil
+				metadata.DatastoreQueryCount = dbReads
+				return result.resp, metadata, nil
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, metadata, ctx.Err()
 		}
 	}
 
-	return &ResolveCheckResponse{
+	return &openfgav1.CheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-		},
-	}, err
+	}, metadata, err
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func intersection(ctx context.Context, concurrencyLimit uint32, metadata *openfgav1.DispatchMetadata, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 	if len(handlers) == 0 {
-		return &ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
-		}, nil
+		return &openfgav1.CheckResponse{
+			Allowed: false,
+		}, metadata, nil
 	}
 
 	span := trace.SpanFromContext(ctx)
@@ -355,41 +251,35 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				span.RecordError(result.err)
 
 				if errors.Is(result.err, ErrCycleDetected) {
-					return &ResolveCheckResponse{
+					return &openfgav1.CheckResponse{
 						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: dbReads,
-						},
-					}, nil
+					}, metadata, nil
 				}
 
 				err = errors.Join(err, result.err)
 				continue
 			}
 
-			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
+			dbReads += metadata.DatastoreQueryCount
 
 			if !result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				return result.resp, nil
+				metadata.DatastoreQueryCount = dbReads
+				return result.resp, metadata, nil
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, metadata, ctx.Err()
 		}
 	}
 
-	return &ResolveCheckResponse{
+	return &openfgav1.CheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-		},
-	}, err
+	}, metadata, err
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
 // outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome. The base and sub computations are
 // handled concurrently relative to one another.
-func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func exclusion(ctx context.Context, concurrencyLimit uint32, metadata *openfgav1.DispatchMetadata, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 	if len(handlers) != 2 {
 		panic(fmt.Sprintf("expected two rewrite operands for exclusion operator, but got '%d'", len(handlers)))
 	}
@@ -417,8 +307,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(ctx)
-		baseChan <- checkOutcome{resp, err}
+		resp, metadata, err := baseHandler(ctx)
+		baseChan <- checkOutcome{resp, metadata, err}
 		<-limiter
 		wg.Done()
 	}()
@@ -426,17 +316,14 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(ctx)
-		subChan <- checkOutcome{resp, err}
+		resp, metadata, err := subHandler(ctx)
+		subChan <- checkOutcome{resp, metadata, err}
 		<-limiter
 		wg.Done()
 	}()
 
-	response := &ResolveCheckResponse{
+	response := &openfgav1.CheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 0,
-		},
 	}
 
 	var baseErr error
@@ -450,23 +337,20 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				span.RecordError(baseResult.err)
 
 				if errors.Is(baseResult.err, ErrCycleDetected) {
-					return &ResolveCheckResponse{
+					return &openfgav1.CheckResponse{
 						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: dbReads,
-						},
-					}, nil
+					}, metadata, nil
 				}
 
 				baseErr = baseResult.err
 				continue
 			}
 
-			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
+			dbReads += metadata.DatastoreQueryCount
 
 			if !baseResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				return response, nil
+				metadata.DatastoreQueryCount = dbReads
+				return response, metadata, nil
 			}
 
 		case subResult := <-subChan:
@@ -479,32 +363,26 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				}
 			}
 
-			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
+			dbReads += metadata.DatastoreQueryCount
 
 			if subResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
-				return response, nil
+				metadata.DatastoreQueryCount = dbReads
+				return response, metadata, nil
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, metadata, ctx.Err()
 		}
 	}
 
 	if baseErr != nil && subErr != nil {
-		return &ResolveCheckResponse{
+		return &openfgav1.CheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 0,
-			},
-		}, errors.Join(baseErr, subErr)
+		}, metadata, errors.Join(baseErr, subErr)
 	}
 
-	return &ResolveCheckResponse{
+	return &openfgav1.CheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-		},
-	}, nil
+	}, metadata, nil
 }
 
 // Close is a noop
@@ -513,18 +391,19 @@ func (c *LocalChecker) Close() {
 
 // dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
 // to the CheckResolver this LocalChecker was constructed with.
-func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
-		childRequest := clone(parentReq)
+func (c *LocalChecker) dispatch(ctx context.Context, parentReq *openfgav1.DispatchedCheckRequest, tk *openfgav1.TupleKey, metadata *openfgav1.DispatchMetadata) CheckHandlerFunc {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
+		atomic.AddUint32(&metadata.DispatchCount, 1)
+		childRequest := proto.Clone(parentReq).(*openfgav1.DispatchedCheckRequest)
 		childRequest.TupleKey = tk
-		childRequest.GetRequestMetadata().Depth--
+		metadata.Depth--
 
-		resp, err := c.delegate.Dispatch(ctx, childRequest)
+		base := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: childRequest}}
+		resp, _, err := c.delegate.Dispatch(ctx, base, metadata)
 		if err != nil {
-			return (resp).(*ResolveCheckResponse), err
+			return resp.GetCheckResponse(), metadata, err
 		}
-		return (resp).(*ResolveCheckResponse), nil
+		return resp.GetCheckResponse(), metadata, nil
 	}
 }
 
@@ -534,11 +413,12 @@ var _ dispatcher.Dispatcher = (*LocalChecker)(nil)
 // If the typesystem isn't set in the context, it will panic.
 func (c *LocalChecker) Dispatch(
 	ctx context.Context,
-	request dispatcher.DispatchRequest,
-) (dispatcher.DispatchResponse, error) {
-	req := request.(*ResolveCheckRequest)
+	request *openfgav1.BaseRequest,
+	metadata *openfgav1.DispatchMetadata,
+) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	req := request.GetDispatchedCheckRequest()
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
@@ -546,8 +426,8 @@ func (c *LocalChecker) Dispatch(
 	span.SetAttributes(attribute.String("resolver_type", "LocalChecker"))
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
-	if req.GetRequestMetadata().Depth == 0 {
-		return nil, ErrResolutionDepthExceeded
+	if metadata.Depth == 0 {
+		return nil, nil, ErrResolutionDepthExceeded
 	}
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
@@ -562,41 +442,41 @@ func (c *LocalChecker) Dispatch(
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
-		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
+		return nil, nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
+	resp, metadata, err := union(ctx, c.concurrencyLimit, metadata, c.checkRewrite(ctx, req, rel.GetRewrite(), metadata))
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return nil, nil, err
 	}
-	return resp, nil
+	return &openfgav1.BaseResponse{BaseResponse: &openfgav1.BaseResponse_CheckResponse{CheckResponse: resp}}, metadata, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
-func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkDirect(parentctx context.Context, req *openfgav1.DispatchedCheckRequest, metadata *openfgav1.DispatchMetadata) CheckHandlerFunc {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 		ctx, span := tracer.Start(ctx, "checkDirect")
 		defer span.End()
 
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, metadata, ctx.Err()
 		}
 
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+			return nil, metadata, fmt.Errorf("typesystem missing in context")
 		}
 
 		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
 		if !ok {
-			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+			return nil, metadata, fmt.Errorf("relationship tuple reader datastore missing in context")
 		}
 
-		storeID := req.GetStoreID()
+		storeID := req.StoreId
 		reqTupleKey := req.GetTupleKey()
 		objectType := tuple.GetType(reqTupleKey.GetObject())
 		relation := reqTupleKey.GetRelation()
@@ -604,24 +484,21 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
-		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
+		fn1 := func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", reqTupleKey.String())))
 			defer span.End()
 
-			response := &ResolveCheckResponse{
+			response := &openfgav1.CheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
 			}
 
 			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
-					return response, nil
+					return response, metadata, nil
 				}
 
-				return response, err
+				return response, metadata, err
 			}
 
 			// filter out invalid tuples yielded by the database query
@@ -629,10 +506,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+				result, err := structpb.NewStruct(map[string]interface{}{})
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, result)
 				if err != nil {
 					telemetry.TraceError(span, err)
-					return nil, err
+					return nil, metadata, err
 				}
 
 				if len(condEvalResult.MissingParameters) > 0 {
@@ -641,33 +519,30 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 					)
 					telemetry.TraceError(span, evalErr)
-					return nil, evalErr
+					return nil, metadata, evalErr
 				}
 
 				if !condEvalResult.ConditionMet {
-					return response, nil
+					return response, metadata, nil
 				}
 
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
-				return response, nil
+				return response, metadata, nil
 			}
-			return response, nil
+			return response, metadata, nil
 		}
 
-		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
+		fn2 := func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
 			defer span.End()
 
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return nil, nil, ctx.Err()
 			}
 
-			response := &ResolveCheckResponse{
+			response := &openfgav1.CheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
 			}
 
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
@@ -676,7 +551,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
-				return response, err
+				return response, metadata, err
 			}
 			defer iter.Stop()
 
@@ -696,10 +571,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						break
 					}
 
-					return response, err
+					return response, metadata, err
 				}
 
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+				result, err := structpb.NewStruct(map[string]interface{}{})
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, result)
 				if err != nil {
 					errs = multierror.Append(errs, err)
 					continue
@@ -730,7 +606,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
 						span.SetAttributes(attribute.Bool("allowed", true))
 						response.Allowed = true
-						return response, nil
+						return response, metadata, nil
 					}
 
 					continue
@@ -738,22 +614,22 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				if usersetRelation != "" {
 					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-					handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+					handlers = append(handlers, c.dispatch(ctx, req, tupleKey, metadata))
 				}
 			}
 
 			if len(handlers) == 0 && errs.ErrorOrNil() != nil {
 				telemetry.TraceError(span, errs)
-				return nil, errs
+				return nil, metadata, errs
 			}
 
-			resp, err := union(ctx, c.concurrencyLimit, handlers...)
+			resp, metadata, err := union(ctx, c.concurrencyLimit, metadata, handlers...)
 			if err != nil {
 				telemetry.TraceError(span, err)
-				return nil, multierror.Append(errs, err)
+				return nil, metadata, multierror.Append(errs, err)
 			}
 
-			return resp, nil
+			return resp, metadata, nil
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -771,22 +647,22 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = append(checkFuncs, fn2)
 		}
 
-		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
+		resp, metadata, err := union(ctx, c.concurrencyLimit, metadata, checkFuncs...)
 		if err != nil {
 			telemetry.TraceError(span, err)
 		}
-		return resp, err
+		return resp, metadata, err
 	}
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset_ComputedUserset) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkComputedUserset(_ context.Context, req *openfgav1.DispatchedCheckRequest, rewrite *openfgav1.Userset_ComputedUserset, metadata *openfgav1.DispatchMetadata) CheckHandlerFunc {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
 
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		}
 
 		rewrittenTupleKey := tuple.NewTupleKey(
@@ -795,29 +671,29 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 			req.GetTupleKey().GetUser(),
 		)
 
-		return c.dispatch(ctx, req, rewrittenTupleKey)(ctx)
+		return c.dispatch(ctx, req, rewrittenTupleKey, metadata)(ctx)
 	}
 }
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
-func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTU(parentctx context.Context, req *openfgav1.DispatchedCheckRequest, rewrite *openfgav1.Userset, metadata *openfgav1.DispatchMetadata) CheckHandlerFunc {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 		ctx, span := tracer.Start(ctx, "checkTTU")
 		defer span.End()
 
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, metadata, ctx.Err()
 		}
 
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+			return nil, metadata, fmt.Errorf("typesystem missing in context")
 		}
 
 		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
 		if !ok {
-			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+			return nil, metadata, fmt.Errorf("relationship tuple reader datastore missing in context")
 		}
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -832,19 +708,16 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		span.SetAttributes(attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)))
 		span.SetAttributes(attribute.String("computed_relation", computedRelation))
 
-		response := &ResolveCheckResponse{
+		response := &openfgav1.CheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
 		}
 		iter, err := ds.Read(
 			ctx,
-			req.GetStoreID(),
+			req.StoreId,
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
 		)
 		if err != nil {
-			return response, err
+			return response, metadata, err
 		}
 		defer iter.Stop()
 
@@ -864,10 +737,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					break
 				}
 
-				return response, err
+				return response, metadata, err
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+			result, err := structpb.NewStruct(map[string]interface{}{})
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, result)
 			if err != nil {
 				errs = multierror.Append(errs, err)
 
@@ -904,34 +778,35 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 
 			// Note: we add TTU read below
-			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+			handlers = append(handlers, c.dispatch(ctx, req, tupleKey, metadata))
 		}
 
 		if len(handlers) == 0 && errs.ErrorOrNil() != nil {
 			telemetry.TraceError(span, errs)
-			return nil, errs
+			return nil, metadata, errs
 		}
 
-		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
+		unionResponse, metadata, err := union(ctx, c.concurrencyLimit, metadata, handlers...)
 		if err != nil {
 			telemetry.TraceError(span, err)
-			return nil, multierror.Append(errs, err)
+			return nil, metadata, multierror.Append(errs, err)
 		}
 
 		// if we had 3 dispatched requests, and the final result is "allowed = false",
 		// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
 		// if final result is "allowed = true", we want final reads to be N1 + 1
-		unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+		metadata.DatastoreQueryCount++
 
-		return unionResponse, nil
+		return unionResponse, metadata, nil
 	}
 }
 
 func (c *LocalChecker) checkSetOperation(
 	ctx context.Context,
-	req *ResolveCheckRequest,
+	req *openfgav1.DispatchedCheckRequest,
 	setOpType setOperatorType,
 	reducer CheckFuncReducer,
+	metadata *openfgav1.DispatchMetadata,
 	children ...*openfgav1.Userset,
 ) CheckHandlerFunc {
 	var handlers []CheckHandlerFunc
@@ -952,15 +827,15 @@ func (c *LocalChecker) checkSetOperation(
 		}
 
 		for _, child := range children {
-			handlers = append(handlers, c.checkRewrite(ctx, req, child))
+			handlers = append(handlers, c.checkRewrite(ctx, req, child, metadata))
 		}
 	default:
 		panic("unexpected set operator type encountered")
 	}
 
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, *openfgav1.DispatchMetadata, error) {
 		var err error
-		var resp *ResolveCheckResponse
+		var resp *openfgav1.CheckResponse
 		ctx, span := tracer.Start(ctx, reducerKey)
 		defer func() {
 			if err != nil {
@@ -969,29 +844,30 @@ func (c *LocalChecker) checkSetOperation(
 			span.End()
 		}()
 
-		resp, err = reducer(ctx, c.concurrencyLimit, handlers...)
-		return resp, err
+		resp, metadata, err = reducer(ctx, c.concurrencyLimit, metadata, handlers...)
+		return resp, metadata, err
 	}
 }
 
 func (c *LocalChecker) checkRewrite(
 	ctx context.Context,
-	req *ResolveCheckRequest,
+	req *openfgav1.DispatchedCheckRequest,
 	rewrite *openfgav1.Userset,
+	metadata *openfgav1.DispatchMetadata,
 ) CheckHandlerFunc {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return c.checkDirect(ctx, req)
+		return c.checkDirect(ctx, req, metadata)
 	case *openfgav1.Userset_ComputedUserset:
-		return c.checkComputedUserset(ctx, req, rw)
+		return c.checkComputedUserset(ctx, req, rw, metadata)
 	case *openfgav1.Userset_TupleToUserset:
-		return c.checkTTU(ctx, req, rewrite)
+		return c.checkTTU(ctx, req, rewrite, metadata)
 	case *openfgav1.Userset_Union:
-		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
+		return c.checkSetOperation(ctx, req, unionSetOperator, union, metadata, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
+		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, metadata, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, metadata, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		panic("unexpected userset rewrite encountered")
 	}

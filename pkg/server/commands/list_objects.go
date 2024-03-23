@@ -323,17 +323,16 @@ func (q *ListObjectsQuery) evaluate(
 					}()
 
 					concurrencyLimiterCh <- struct{}{}
-					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
+					checkRequestMetadata := &openfgav1.DispatchMetadata{Depth: q.resolveNodeLimit}
 
-					response, err := q.checkResolver.Dispatch(ctx, &graph.ResolveCheckRequest{
-						StoreID:              req.GetStoreId(),
-						AuthorizationModelID: req.GetAuthorizationModelId(),
+					dispatchCheckRequest := &openfgav1.DispatchedCheckRequest{
+						StoreId:              req.GetStoreId(),
+						AuthorizationModelId: req.GetAuthorizationModelId(),
 						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-						Context:              req.GetContext(),
-						RequestMetadata:      checkRequestMetadata,
-					})
-					resp := (response).(*graph.ResolveCheckResponse)
+					}
+					base := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: dispatchCheckRequest}}
+					response, metadata, err := q.checkResolver.Dispatch(ctx, base, checkRequestMetadata)
 					if err != nil {
 						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
@@ -343,10 +342,10 @@ func (q *ListObjectsQuery) evaluate(
 						resultsChan <- ListObjectsResult{Err: err}
 						return
 					}
-					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					atomic.AddUint32(resolutionMetadata.DispatchCount, checkRequestMetadata.DispatchCounter.Load())
+					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, metadata.DatastoreQueryCount)
+					atomic.AddUint32(resolutionMetadata.DispatchCount, metadata.DispatchCount)
 
-					if resp.Allowed {
+					if response.GetCheckResponse().Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
 					}
 				}(res)

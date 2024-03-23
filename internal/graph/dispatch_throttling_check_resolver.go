@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
 	"time"
 
@@ -94,10 +95,8 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 	}
 }
 
-func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context,
-	req dispatcher.DispatchRequest,
-) (dispatcher.DispatchResponse, error) {
-	currentNumDispatch := req.GetDispatchCount()
+func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context, req *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	currentNumDispatch := metadata.GetDispatchCount()
 
 	if currentNumDispatch > r.config.Threshold {
 		start := time.Now()
@@ -112,5 +111,5 @@ func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context,
 		).Observe(float64(timeWaiting))
 	}
 
-	return r.delegate.Dispatch(ctx, req)
+	return r.delegate.Dispatch(ctx, req, metadata)
 }

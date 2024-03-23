@@ -11,6 +11,7 @@ package graph
 
 import (
 	context "context"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -52,10 +53,10 @@ func (mr *MockCheckResolverMockRecorder) Close() *gomock.Call {
 }
 
 // ResolveCheck mocks base method.
-func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveCheck", ctx, req)
-	ret0, _ := ret[0].(*ResolveCheckResponse)
+	ret0, _ := ret[0].(*openfgav1.CheckResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

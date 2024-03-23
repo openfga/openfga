@@ -2,7 +2,9 @@ package graph
 
 import (
 	"context"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -26,8 +28,8 @@ func NewCycleDetectionCheckResolver() *CycleDetectionCheckResolver {
 }
 
 // ResolveCheck implements CheckResolver.
-func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request dispatcher.DispatchRequest) (dispatcher.DispatchResponse, error) {
-	req := request.(*ResolveCheckRequest)
+func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 	span.SetAttributes(attribute.String("resolver_type", "CycleDetectionCheckResolver"))
@@ -36,26 +38,26 @@ func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request dispa
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
 	if req.VisitedPaths == nil {
-		req.VisitedPaths = map[string]struct{}{}
+		req.VisitedPaths = map[string]*anypb.Any{}
 	}
 
 	_, cycleDetected := req.VisitedPaths[key]
 	span.SetAttributes(attribute.Bool("cycle_detected", cycleDetected))
 	if cycleDetected {
-		return nil, ErrCycleDetected
+		return nil, nil, ErrCycleDetected
 	}
 
-	req.VisitedPaths[key] = struct{}{}
+	req.VisitedPaths = map[string]*anypb.Any{}
 
-	return c.delegate.Dispatch(ctx, &ResolveCheckRequest{
-		StoreID:              req.GetStoreID(),
-		AuthorizationModelID: req.GetAuthorizationModelID(),
+	childRequest := &openfgav1.DispatchedCheckRequest{
+		StoreId:              req.StoreId,
+		AuthorizationModelId: req.AuthorizationModelId,
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.GetContextualTuples(),
-		RequestMetadata:      req.GetRequestMetadata(),
 		VisitedPaths:         req.VisitedPaths,
-		Context:              req.GetContext(),
-	})
+	}
+	test := openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: childRequest}
+	return c.delegate.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &test}, metadata)
 }
 
 func (c *CycleDetectionCheckResolver) SetDelegate(delegate dispatcher.Dispatcher) {

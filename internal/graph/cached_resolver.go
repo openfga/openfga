@@ -3,7 +3,9 @@ package graph
 import (
 	"context"
 	"fmt"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"google.golang.org/protobuf/types/known/structpb"
 	"strconv"
 	"time"
 
@@ -47,16 +49,15 @@ type CachedResolveCheckResponse struct {
 	Allowed bool
 }
 
-func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() dispatcher.DispatchResponse {
-	return &ResolveCheckResponse{
+func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *openfgav1.BaseResponse {
+	response := openfgav1.BaseResponse_CheckResponse{CheckResponse: &openfgav1.CheckResponse{
 		Allowed: c.Allowed,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 0,
-		},
-	}
+	}}
+	base := openfgav1.BaseResponse{BaseResponse: &response}
+	return &base
 }
 
-func newCachedResolveCheckResponse(r *ResolveCheckResponse) *CachedResolveCheckResponse {
+func newCachedResolveCheckResponse(r *openfgav1.CheckResponse) *CachedResolveCheckResponse {
 	return &CachedResolveCheckResponse{
 		Allowed: r.Allowed,
 	}
@@ -160,9 +161,10 @@ func (c *CachedCheckResolver) Close() {
 
 func (c *CachedCheckResolver) Dispatch(
 	ctx context.Context,
-	request dispatcher.DispatchRequest,
-) (dispatcher.DispatchResponse, error) {
-	req := request.(*ResolveCheckRequest)
+	request *openfgav1.BaseRequest,
+	metadata *openfgav1.DispatchMetadata,
+) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 	span.SetAttributes(attribute.String("resolver_type", "CachedCheckResolver"))
@@ -170,29 +172,30 @@ func (c *CachedCheckResolver) Dispatch(
 
 	checkCacheTotalCounter.Inc()
 
-	cacheKey, err := CheckRequestCacheKey(req)
+	result, err := structpb.NewStruct(map[string]interface{}{})
+	cacheKey, err := CheckRequestCacheKey(result, req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
 		telemetry.TraceError(span, err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
 	if cachedResp != nil && !cachedResp.Expired() {
 		checkCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("is_cached", true))
-		return cachedResp.Value().convertToResolveCheckResponse(), nil
+		return cachedResp.Value().convertToResolveCheckResponse(), nil, nil
 	}
 	span.SetAttributes(attribute.Bool("is_cached", false))
 
-	resp, err := c.delegate.Dispatch(ctx, request)
+	resp, metadata, err := c.delegate.Dispatch(ctx, request, metadata)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return nil, nil, err
 	}
 
-	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp.(*ResolveCheckResponse)), c.cacheTTL)
-	return resp, nil
+	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp.GetCheckResponse()), c.cacheTTL)
+	return resp, metadata, nil
 }
 
 // CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
@@ -201,13 +204,13 @@ func (c *CachedCheckResolver) Dispatch(
 // For one store and model ID, the same tuple provided with the same contextual tuples and context
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
-func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+func CheckRequestCacheKey(ctx *structpb.Struct, req *openfgav1.DispatchedCheckRequest) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
 	tupleKey := req.GetTupleKey()
 	key := fmt.Sprintf("%s/%s/%s#%s@%s",
-		req.GetStoreID(),
-		req.GetAuthorizationModelID(),
+		req.StoreId,
+		req.AuthorizationModelId,
 		tupleKey.GetObject(),
 		tupleKey.GetRelation(),
 		tupleKey.GetUser(),
@@ -225,8 +228,8 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		}
 	}
 
-	if req.GetContext() != nil {
-		err := keys.NewContextHasher(req.GetContext()).Append(hasher)
+	if ctx != nil {
+		err := keys.NewContextHasher(ctx).Append(hasher)
 		if err != nil {
 			return "", err
 		}

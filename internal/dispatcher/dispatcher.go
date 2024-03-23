@@ -1,16 +1,11 @@
 package dispatcher
 
-import "context"
-
-type DispatchRequest interface {
-	SetDispatchCount()
-	GetDispatchCount() uint32
-}
-
-type DispatchResponse interface {
-}
+import (
+	"context"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+)
 
 type Dispatcher interface {
-	Dispatch(ctx context.Context, request DispatchRequest) (DispatchResponse, error)
+	Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error)
 	Close()
 }
