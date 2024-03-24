@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -225,7 +226,19 @@ func (c *ReverseExpandQuery) Execute(
 	return nil
 }
 
+func (c *ReverseExpandQuery) continueDispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	var err error = nil
+	atomic.AddUint32(&metadata.DispatchCount, 1)
+	if c.delegate != nil {
+		_, _, err = c.delegate.Dispatch(ctx, request, metadata, additionalParameters)
+	} else {
+		_, _, err = c.Dispatch(ctx, request, metadata, additionalParameters)
+	}
+	return nil, nil, err
+}
+
 func (c *ReverseExpandQuery) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	log.Printf("Reverse Expand Dispatcher - %p", request.GetReverseExpandRequest())
 	params := additionalParameters.(*ReverseExpandAdditionalParameters)
 	req := request.GetReverseExpandRequest()
 	if ctx.Err() != nil {
@@ -336,9 +349,8 @@ LoopOnEdges:
 					Relation: inner.TargetReference.GetRelation(),
 				},
 			}
-			atomic.AddUint32(&metadata.DispatchCount, 1)
 			r.IntersectionOrExclusionInPreviousEdges = intersectionOrExclusionInPreviousEdges
-			_, _, err = c.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}, metadata, params)
+			_, _, err = c.continueDispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}, metadata, params)
 			if err != nil {
 				errs = multierror.Append(errs, err)
 				break LoopOnEdges
@@ -539,7 +551,6 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			atomic.AddUint32(&resolutionMetadata.DispatchCount, 1)
 			req := &openfgav1.ReverseExpandRequest{
 				StoreId:                                req.StoreId,
 				ObjectType:                             req.ObjectType,
@@ -560,7 +571,8 @@ LoopOnIterator:
 				User:       user,
 				resultChan: params.resultChan,
 			}
-			_, _, err := c.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}, resolutionMetadata, additionalParams)
+			request := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}
+			_, _, err = c.continueDispatch(ctx, request, resolutionMetadata, additionalParams)
 			return err
 		})
 	}

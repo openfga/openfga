@@ -97,7 +97,7 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 }
 
 func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context, req *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Cached Dispatcher - %p", req.GetDispatchedCheckRequest())
+	log.Printf("Throttling Dispatcher - %p", req.GetDispatchedCheckRequest())
 	currentNumDispatch := metadata.GetDispatchCount()
 
 	if currentNumDispatch > r.config.Threshold {

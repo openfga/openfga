@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openfga/openfga/internal/dispatcher"
-	"log"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -191,6 +190,7 @@ func (q *ListObjectsQuery) evaluate(
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
 	resolutionMetadata *ListObjectsResolutionMetadata,
+	throttleResolver *graph.DispatchThrottlingCheckResolver,
 ) error {
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -267,6 +267,11 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 		)
+
+		if throttleResolver != nil {
+			reverseExpandQuery.SetDelegate(throttleResolver)
+			throttleResolver.SetDelegate(reverseExpandQuery)
+		}
 
 		cancelCtx, cancel := context.WithCancel(ctx)
 
@@ -391,8 +396,8 @@ func (q *ListObjectsQuery) Dispatch(
 	ctx context.Context,
 	request *openfgav1.BaseRequest,
 	metadata *openfgav1.DispatchMetadata,
+	throttleResolver *graph.DispatchThrottlingCheckResolver,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Local List Objects Dispatcher - %p", request.GetListObjectsRequest())
 	req := request.GetListObjectsRequest()
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
@@ -409,7 +414,7 @@ func (q *ListObjectsQuery) Dispatch(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata, throttleResolver)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -466,7 +471,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata, nil)
 	if err != nil {
 		return nil, err
 	}

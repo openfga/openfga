@@ -419,9 +419,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.dispatchThrottlingListObjectsResolver = dispatchThrottlingListObjectsResolver
 
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-
-		//dispatchThrottlingListObjectsResolver.SetDelegate(listObjectsQuery)
-		//listObjectsQuery.SetDelegate(dispatchThrottlingListObjectsResolver)
 	}
 
 	if s.checkQueryCacheEnabled {
@@ -528,6 +525,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		baseRequest,
 		&openfgav1.DispatchMetadata{},
+		s.dispatchThrottlingListObjectsResolver,
 	)
 	if err != nil {
 		telemetry.TraceError(span, err)
