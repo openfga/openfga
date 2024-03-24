@@ -400,7 +400,7 @@ func (c *LocalChecker) dispatch(ctx context.Context, parentReq *openfgav1.Dispat
 		metadata.Depth--
 
 		base := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: childRequest}}
-		resp, _, err := c.delegate.Dispatch(ctx, base, metadata)
+		resp, _, err := c.delegate.Dispatch(ctx, base, metadata, nil)
 		if err != nil {
 			return resp.GetCheckResponse(), metadata, err
 		}
@@ -416,6 +416,7 @@ func (c *LocalChecker) Dispatch(
 	ctx context.Context,
 	request *openfgav1.BaseRequest,
 	metadata *openfgav1.DispatchMetadata,
+	additionalParameters any,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
 	log.Printf("Local Check Dispatcher - %p", request.GetDispatchedCheckRequest())
 	req := request.GetDispatchedCheckRequest()

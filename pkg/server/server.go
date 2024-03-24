@@ -143,7 +143,10 @@ type Server struct {
 	dispatchThrottlingCheckResolverFrequency time.Duration
 	dispatchThrottlingThreshold              uint32
 
-	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
+	dispatchThrottlingCheckResolver       *graph.DispatchThrottlingCheckResolver
+	dispatchThrottlingListObjectsResolver *graph.DispatchThrottlingCheckResolver
+
+	listObjectsQueryResolver *commands.ListObjectsQuery
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -384,6 +387,19 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	cycleDetectionCheckResolver.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
+	listObjectsQuery, _ := commands.NewListObjectsQuery(
+		s.dispatchThrottlingListObjectsResolver,
+		s.datastore,
+		s.checkResolver,
+		commands.WithLogger(s.logger),
+		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	)
+	s.listObjectsQueryResolver = listObjectsQuery
+
 	if s.dispatchThrottlingCheckResolverEnabled {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
 			Frequency: s.dispatchThrottlingCheckResolverFrequency,
@@ -399,7 +415,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
+		dispatchThrottlingListObjectsResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		s.dispatchThrottlingListObjectsResolver = dispatchThrottlingListObjectsResolver
+
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+
+		//dispatchThrottlingListObjectsResolver.SetDelegate(listObjectsQuery)
+		//listObjectsQuery.SetDelegate(dispatchThrottlingListObjectsResolver)
 	}
 
 	if s.checkQueryCacheEnabled {
@@ -488,31 +510,24 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	q, err := commands.NewListObjectsQuery(
-		s.datastore,
-		s.checkResolver,
-		commands.WithLogger(s.logger),
-		commands.WithListObjectsDeadline(s.listObjectsDeadline),
-		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
-		commands.WithResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
 	}
 
-	result, err := q.Execute(
+	listObjectsRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		ContextualTuples:     req.GetContextualTuples(),
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
+		Type:                 targetObjectType,
+		Relation:             req.GetRelation(),
+		User:                 req.GetUser(),
+		Context:              req.GetContext(),
+	}
+	baseRequest := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ListObjectsRequest{ListObjectsRequest: listObjectsRequest}}
+	result, metadata, err := s.listObjectsQueryResolver.Dispatch(
 		typesystem.ContextWithTypesystem(ctx, typesys),
-		&openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			ContextualTuples:     req.GetContextualTuples(),
-			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
-			Type:                 targetObjectType,
-			Relation:             req.GetRelation(),
-			User:                 req.GetUser(),
-			Context:              req.GetContext(),
-		},
+		baseRequest,
+		&openfgav1.DispatchMetadata{},
 	)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -522,7 +537,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 		return nil, err
 	}
-	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
+	datastoreQueryCount := float64(metadata.DatastoreQueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
@@ -531,7 +546,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 	).Observe(datastoreQueryCount)
 
-	dispatchCount := float64(*result.ResolutionMetadata.DispatchCount)
+	dispatchCount := float64(metadata.DispatchCount)
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -543,19 +558,19 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(metadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(metadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(metadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(metadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListObjectsResponse{
-		Objects: result.Objects,
+		Objects: result.GetListObjectsResponse().Objects,
 	}, nil
 }
 
@@ -591,6 +606,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 
 	q, err := commands.NewListObjectsQuery(
+		s.dispatchThrottlingListObjectsResolver,
 		s.datastore,
 		s.checkResolver,
 		commands.WithLogger(s.logger),
@@ -776,7 +792,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	base := &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: dispatchCheckRequest}}
 	resp, metadata, err := s.checkResolver.Dispatch(ctx, base, &openfgav1.DispatchMetadata{
 		Depth: s.resolveNodeLimit,
-	})
+	}, nil)
 
 	if err != nil {
 		telemetry.TraceError(span, err)

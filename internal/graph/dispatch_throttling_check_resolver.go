@@ -96,7 +96,7 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 	}
 }
 
-func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context, req *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context, req *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
 	log.Printf("Cached Dispatcher - %p", req.GetDispatchedCheckRequest())
 	currentNumDispatch := metadata.GetDispatchCount()
 
@@ -113,5 +113,5 @@ func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context, req *ope
 		).Observe(float64(timeWaiting))
 	}
 
-	return r.delegate.Dispatch(ctx, req, metadata)
+	return r.delegate.Dispatch(ctx, req, metadata, additionalParameters)
 }

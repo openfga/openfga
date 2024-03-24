@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/dispatcher"
 	"sync"
 	"sync/atomic"
 
@@ -14,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/logger"
 
@@ -32,15 +32,10 @@ import (
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
 
-type ReverseExpandRequest struct {
-	StoreID          string
-	ObjectType       string
-	Relation         string
-	User             IsUserRef
-	ContextualTuples []*openfgav1.TupleKey
-	Context          *structpb.Struct
-
-	edge *graph.RelationshipEdge
+type ReverseExpandAdditionalParameters struct {
+	inter      bool
+	User       IsUserRef
+	resultChan chan<- *ReverseExpandResult
 }
 
 type IsUserRef interface {
@@ -108,7 +103,14 @@ type UserRef struct {
 	Ref IsUserRef
 }
 
+var _ dispatcher.Dispatcher = (*ReverseExpandQuery)(nil)
+
+func (r *ReverseExpandQuery) SetDelegate(delegate dispatcher.Dispatcher) {
+	r.delegate = delegate
+}
+
 type ReverseExpandQuery struct {
+	delegate                dispatcher.Dispatcher
 	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
@@ -119,6 +121,11 @@ type ReverseExpandQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
+}
+
+func (r *ReverseExpandQuery) Close() {
+	//TODO implement me
+	panic("implement me")
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -199,11 +206,17 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // is done.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
-	req *ReverseExpandRequest,
+	req *openfgav1.ReverseExpandRequest,
+	user IsUserRef,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
+	params := &ReverseExpandAdditionalParameters{
+		resultChan: resultChan,
+		User:       user,
+	}
+	request := openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}
+	_, _, err := c.Dispatch(ctx, &request, &openfgav1.DispatchMetadata{}, params)
 	if err != nil {
 		return err
 	}
@@ -212,26 +225,22 @@ func (c *ReverseExpandQuery) Execute(
 	return nil
 }
 
-func (c *ReverseExpandQuery) execute(
-	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
+func (c *ReverseExpandQuery) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	params := additionalParameters.(*ReverseExpandAdditionalParameters)
+	req := request.GetReverseExpandRequest()
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return nil, metadata, ctx.Err()
 	}
 
 	ctx, span := tracer.Start(ctx, "reverseExpand.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
 		attribute.String("target_relation", req.Relation),
-		attribute.String("source", req.User.String()),
+		attribute.String("source", params.User.String()),
 	))
 	defer span.End()
 
-	if req.edge != nil {
-		span.SetAttributes(attribute.String("edge", req.edge.String()))
+	if req.Edge != nil {
+		span.SetAttributes(attribute.String("edge", req.Edge.String()))
 	}
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
@@ -239,7 +248,7 @@ func (c *ReverseExpandQuery) execute(
 		ctx = graph.ContextWithResolutionDepth(ctx, 0)
 	} else {
 		if depth >= c.resolveNodeLimit {
-			return graph.ErrResolutionDepthExceeded
+			return nil, nil, graph.ErrResolutionDepthExceeded
 		}
 
 		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)
@@ -249,36 +258,36 @@ func (c *ReverseExpandQuery) execute(
 	var sourceUserType, sourceUserObj string
 
 	// e.g. 'user:bob'
-	if val, ok := req.User.(*UserRefObject); ok {
+	if val, ok := params.User.(*UserRefObject); ok {
 		sourceUserType = val.Object.GetType()
 		sourceUserObj = tuple.BuildObject(sourceUserType, val.Object.GetId())
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, "")
 	}
 
 	// e.g. 'user:*'
-	if val, ok := req.User.(*UserRefTypedWildcard); ok {
+	if val, ok := params.User.(*UserRefTypedWildcard); ok {
 		sourceUserType = val.Type
 		sourceUserRef = typesystem.WildcardRelationReference(sourceUserType)
 	}
 
 	// e.g. 'group:eng#member'
-	if val, ok := req.User.(*UserRefObjectRelation); ok {
+	if val, ok := params.User.(*UserRefObjectRelation); ok {
 		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
 		sourceUserObj = val.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 
-		if req.edge != nil {
-			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
+		if req.Edge != nil {
+			key := fmt.Sprintf("%s#%s", sourceUserObj, req.Edge.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
-				return nil
+				return nil, nil, nil
 			}
 
 			sourceUserRel := val.ObjectRelation.GetRelation()
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-					return err
+				if err := c.trySendCandidate(ctx, req.IntersectionOrExclusionInPreviousEdges, sourceUserObj, params.resultChan); err != nil {
+					return nil, nil, err
 				}
 			}
 		}
@@ -290,7 +299,7 @@ func (c *ReverseExpandQuery) execute(
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	pool := pool.New().WithContext(ctx)
@@ -302,38 +311,41 @@ func (c *ReverseExpandQuery) execute(
 LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
-		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
-		r := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
+		var inner *openfgav1.RelationshipEdge = innerLoopEdge
+		intersectionOrExclusionInPreviousEdges := req.IntersectionOrExclusionInPreviousEdges || inner.TargetReferenceInvolvesIntersectionOrExclusion
+		r := &openfgav1.ReverseExpandRequest{
+			StoreId:          req.StoreId,
 			ObjectType:       req.ObjectType,
 			Relation:         req.Relation,
-			User:             req.User,
 			ContextualTuples: req.ContextualTuples,
 			Context:          req.Context,
-			edge:             innerLoopEdge,
+			Edge:             edge,
 		}
-		switch innerLoopEdge.Type {
-		case graph.DirectEdge:
+		switch inner.Type {
+		case int32(graph.DirectEdge):
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				r.IntersectionOrExclusionInPreviousEdges = intersectionOrExclusionInPreviousEdges
+				params := additionalParameters.(*ReverseExpandAdditionalParameters)
+				return c.reverseExpandDirect(ctx, r, metadata, *params)
 			})
-		case graph.ComputedUsersetEdge:
+		case int32(graph.ComputedUsersetEdge):
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
-			r.User = &UserRefObjectRelation{
+			params.User = &UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   sourceUserObj,
-					Relation: innerLoopEdge.TargetReference.GetRelation(),
+					Relation: inner.TargetReference.GetRelation(),
 				},
 			}
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			atomic.AddUint32(&metadata.DispatchCount, 1)
+			r.IntersectionOrExclusionInPreviousEdges = intersectionOrExclusionInPreviousEdges
+			_, _, err = c.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}, metadata, params)
 			if err != nil {
 				errs = multierror.Append(errs, err)
 				break LoopOnEdges
 			}
-		case graph.TupleToUsersetEdge:
+		case int32(graph.TupleToUsersetEdge):
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.reverseExpandTupleToUserset(ctx, r, metadata, *params)
 			})
 		default:
 			panic("unsupported edge type")
@@ -346,22 +358,21 @@ LoopOnEdges:
 	}
 	if errs.ErrorOrNil() != nil {
 		telemetry.TraceError(span, errs.ErrorOrNil())
-		return errs.ErrorOrNil()
+		return nil, nil, errs.ErrorOrNil()
 	}
 
-	return nil
+	return nil, nil, nil
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
+	req *openfgav1.ReverseExpandRequest,
+	resolutionMetadata *openfgav1.DispatchMetadata,
+	params ReverseExpandAdditionalParameters,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
-		attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.User.String()),
+		attribute.String("edge", req.Edge.String()),
+		attribute.String("source.user", params.User.String()),
 	))
 	var err error
 	defer func() {
@@ -371,20 +382,19 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resolutionMetadata, params)
 	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
 	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
+	req *openfgav1.ReverseExpandRequest,
+	resolutionMetadata *openfgav1.DispatchMetadata,
+	params ReverseExpandAdditionalParameters,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
-		attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.User.String()),
+		attribute.String("edge", req.Edge.String()),
+		attribute.String("source.user", params.User.String()),
 	))
 	var err error
 	defer func() {
@@ -394,16 +404,15 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resolutionMetadata, params)
 	return err
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
 	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
+	req *openfgav1.ReverseExpandRequest,
+	resolutionMetadata *openfgav1.DispatchMetadata,
+	params ReverseExpandAdditionalParameters,
 ) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -415,12 +424,12 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
 
-	switch req.edge.Type {
-	case graph.DirectEdge:
-		relationFilter = req.edge.TargetReference.GetRelation()
-		targetUserObjectType := req.User.GetObjectType()
+	switch req.Edge.Type {
+	case int32(graph.DirectEdge):
+		relationFilter = req.Edge.TargetReference.GetRelation()
+		targetUserObjectType := params.User.GetObjectType()
 
-		publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TargetReference, targetUserObjectType)
+		publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.Edge.TargetReference, targetUserObjectType)
 		if err != nil {
 			return err
 		}
@@ -433,21 +442,21 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		}
 
 		// e.g. 'user:bob'
-		if val, ok := req.User.(*UserRefObject); ok {
+		if val, ok := params.User.(*UserRefObject); ok {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
 				Object: tuple.BuildObject(val.Object.GetType(), val.Object.GetId()),
 			})
 		}
 
 		// e.g. 'group:eng#member'
-		if val, ok := req.User.(*UserRefObjectRelation); ok {
+		if val, ok := params.User.(*UserRefObjectRelation); ok {
 			userFilter = append(userFilter, val.ObjectRelation)
 		}
-	case graph.TupleToUsersetEdge:
-		relationFilter = req.edge.TuplesetRelation
+	case int32(graph.TupleToUsersetEdge):
+		relationFilter = req.Edge.TuplesetRelation
 		// a TTU edge can only have a userset as a source node
 		// e.g. 'group:eng#member'
-		if val, ok := req.User.(*UserRefObjectRelation); ok {
+		if val, ok := params.User.(*UserRefObjectRelation); ok {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
 				Object: val.ObjectRelation.GetObject(),
 			})
@@ -461,12 +470,12 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(),
+	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreId, storage.ReadStartingWithUserFilter{
+		ObjectType: req.Edge.TargetReference.GetType(),
 		Relation:   relationFilter,
 		UserFilter: userFilter,
 	})
-	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
+	atomic.AddUint32(&resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err
 	}
@@ -520,32 +529,39 @@ LoopOnIterator:
 		foundObject := tk.GetObject()
 		var newRelation string
 
-		switch req.edge.Type {
-		case graph.DirectEdge:
+		switch req.Edge.Type {
+		case int32(graph.DirectEdge):
 			newRelation = tk.GetRelation()
-		case graph.TupleToUsersetEdge:
-			newRelation = req.edge.TargetReference.GetRelation()
+		case int32(graph.TupleToUsersetEdge):
+			newRelation = req.Edge.TargetReference.GetRelation()
 		default:
 			panic("unsupported edge type")
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			return c.execute(ctx, &ReverseExpandRequest{
-				StoreID:    req.StoreID,
-				ObjectType: req.ObjectType,
-				Relation:   req.Relation,
-				User: &UserRefObjectRelation{
-					ObjectRelation: &openfgav1.ObjectRelation{
-						Object:   foundObject,
-						Relation: newRelation,
-					},
-					Condition: tk.GetCondition(),
+			atomic.AddUint32(&resolutionMetadata.DispatchCount, 1)
+			req := &openfgav1.ReverseExpandRequest{
+				StoreId:                                req.StoreId,
+				ObjectType:                             req.ObjectType,
+				Relation:                               req.Relation,
+				IntersectionOrExclusionInPreviousEdges: req.IntersectionOrExclusionInPreviousEdges,
+				ContextualTuples:                       req.ContextualTuples,
+				Context:                                req.Context,
+				Edge:                                   req.Edge,
+			}
+			user := &UserRefObjectRelation{
+				ObjectRelation: &openfgav1.ObjectRelation{
+					Object:   foundObject,
+					Relation: newRelation,
 				},
-				ContextualTuples: req.ContextualTuples,
-				Context:          req.Context,
-				edge:             req.edge,
-			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				Condition: tk.GetCondition(),
+			}
+			additionalParams := &ReverseExpandAdditionalParameters{
+				User:       user,
+				resultChan: params.resultChan,
+			}
+			_, _, err := c.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &openfgav1.BaseRequest_ReverseExpandRequest{ReverseExpandRequest: req}}, resolutionMetadata, additionalParams)
+			return err
 		})
 	}
 

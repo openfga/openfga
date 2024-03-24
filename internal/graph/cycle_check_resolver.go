@@ -29,7 +29,7 @@ func NewCycleDetectionCheckResolver() *CycleDetectionCheckResolver {
 }
 
 // ResolveCheck implements CheckResolver.
-func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
 	log.Printf("Cycle Check Dispatcher - %p", request.GetDispatchedCheckRequest())
 	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
@@ -59,7 +59,7 @@ func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *open
 		VisitedPaths:         req.VisitedPaths,
 	}
 	test := openfgav1.BaseRequest_DispatchedCheckRequest{DispatchedCheckRequest: childRequest}
-	return c.delegate.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &test}, metadata)
+	return c.delegate.Dispatch(ctx, &openfgav1.BaseRequest{BaseRequest: &test}, metadata, additionalParameters)
 }
 
 func (c *CycleDetectionCheckResolver) SetDelegate(delegate dispatcher.Dispatcher) {

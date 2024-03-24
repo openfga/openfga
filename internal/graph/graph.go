@@ -106,25 +106,13 @@ type EdgeCondition int
 
 // RelationshipEdge represents a possible relationship between some source object reference
 // and a target user reference. The possibility is realized depending on the tuples and on the edge's type.
-type RelationshipEdge struct {
-	Type RelationshipEdgeType
-
-	// The edge is directed towards this node, which can be like group:*, or group, or group:member
-	TargetReference *openfgav1.RelationReference
-
-	// If the type is TupleToUsersetEdge, this defines the TTU condition
-	TuplesetRelation string
-
-	TargetReferenceInvolvesIntersectionOrExclusion bool
-}
-
-func (r RelationshipEdge) String() string {
+func String(r *openfgav1.RelationshipEdge) string {
 	// TODO also print the condition
 	var val string
 	if r.TuplesetRelation != "" {
-		val = fmt.Sprintf("userset %s, type %s, tupleset %s", r.TargetReference.String(), r.Type.String(), r.TuplesetRelation)
+		val = fmt.Sprintf("userset %s, type %s, tupleset %s", r.TargetReference.String(), fmt.Sprint(r.Type), r.TuplesetRelation)
 	} else {
-		val = fmt.Sprintf("userset %s, type %s", r.TargetReference.String(), r.Type.String())
+		val = fmt.Sprintf("userset %s, type %s", r.TargetReference.String(), fmt.Sprint(r.Type))
 	}
 	return strings.ReplaceAll(val, "  ", " ")
 }
@@ -144,7 +132,7 @@ func New(typesystem *typesystem.TypeSystem) *RelationshipGraph {
 }
 
 // GetRelationshipEdges finds all paths from a source to a target and then returns all the edges at distance 0 or 1 of the source in those paths.
-func (g *RelationshipGraph) GetRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
+func (g *RelationshipGraph) GetRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*openfgav1.RelationshipEdge, error) {
 	return g.getRelationshipEdges(target, source, map[string]struct{}{}, resolveAllEdges)
 }
 
@@ -164,7 +152,7 @@ func (g *RelationshipGraph) GetRelationshipEdges(target *openfgav1.RelationRefer
 // The pruned relationship edges from the 'user' type to 'document#viewer' returns only the edge from 'user' to 'document#viewer' and with a 'RequiresFurtherEvalCondition'.
 // This is because when evaluating relationships involving intersection or exclusion we choose to only evaluate one operand of the rewrite rule, and for each result found
 // we call Check on the result to evaluate the sub-condition on the 'and allowed' bit.
-func (g *RelationshipGraph) GetPrunedRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
+func (g *RelationshipGraph) GetPrunedRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*openfgav1.RelationshipEdge, error) {
 	return g.getRelationshipEdges(target, source, map[string]struct{}{}, resolveAnyEdge)
 }
 
@@ -173,7 +161,7 @@ func (g *RelationshipGraph) getRelationshipEdges(
 	source *openfgav1.RelationReference,
 	visited map[string]struct{},
 	findEdgeOption findEdgeOption,
-) ([]*RelationshipEdge, error) {
+) ([]*openfgav1.RelationshipEdge, error) {
 	key := tuple.ToObjectRelationString(target.GetType(), target.GetRelation())
 	if _, ok := visited[key]; ok {
 		// We've already visited the target so no need to do so again.
@@ -202,17 +190,17 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 	targetRewrite *openfgav1.Userset,
 	visited map[string]struct{},
 	findEdgeOption findEdgeOption,
-) ([]*RelationshipEdge, error) {
+) ([]*openfgav1.RelationshipEdge, error) {
 	switch t := targetRewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This: // e.g. define viewer:[user]
-		var res []*RelationshipEdge
+		var res []*openfgav1.RelationshipEdge
 		directlyRelated, _ := g.typesystem.IsDirectlyRelated(target, source)
 		publiclyAssignable, _ := g.typesystem.IsPubliclyAssignable(target, source.GetType())
 
 		if directlyRelated || publiclyAssignable {
 			// if source=user, or define viewer:[user:*]
-			res = append(res, &RelationshipEdge{
-				Type:            DirectEdge,
+			res = append(res, &openfgav1.RelationshipEdge{
+				Type:            int32(DirectEdge),
 				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			})
@@ -235,14 +223,14 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		return res, nil
 	case *openfgav1.Userset_ComputedUserset: // e.g. target = define viewer: writer
 
-		var edges []*RelationshipEdge
+		var edges []*openfgav1.RelationshipEdge
 
 		// if source=document#writer
 		sourceRelMatchesRewritten := target.GetType() == source.GetType() && t.ComputedUserset.GetRelation() == source.GetRelation()
 
 		if sourceRelMatchesRewritten {
-			edges = append(edges, &RelationshipEdge{
-				Type:            ComputedUsersetEdge,
+			edges = append(edges, &openfgav1.RelationshipEdge{
+				Type:            int32(ComputedUsersetEdge),
 				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			})
@@ -267,7 +255,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()               // parent
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation() // writer
 
-		var res []*RelationshipEdge
+		var res []*openfgav1.RelationshipEdge
 		// e.g. type document, define parent:[user, group]
 		tuplesetTypeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
 
@@ -292,8 +280,8 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 					return nil, err
 				}
 
-				res = append(res, &RelationshipEdge{
-					Type:             TupleToUsersetEdge,
+				res = append(res, &openfgav1.RelationshipEdge{
+					Type:             int32(TupleToUsersetEdge),
 					TargetReference:  typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: tupleset,
 					TargetReferenceInvolvesIntersectionOrExclusion: involvesIntersection || involvesExclusion,
@@ -315,7 +303,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 
 		return res, nil
 	case *openfgav1.Userset_Union: // e.g. target = define viewer: self or writer
-		var res []*RelationshipEdge
+		var res []*openfgav1.RelationshipEdge
 		for _, child := range t.Union.GetChild() {
 			// we recurse through each child rewrite
 			childResults, err := g.getRelationshipEdgesWithTargetRewrite(target, source, child, visited, findEdgeOption)
@@ -342,7 +330,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 			return childresults, nil
 		}
 
-		var edges []*RelationshipEdge
+		var edges []*openfgav1.RelationshipEdge
 		for _, child := range t.Intersection.GetChild() {
 			res, err := g.getRelationshipEdgesWithTargetRewrite(target, source, child, visited, findEdgeOption)
 			if err != nil {
@@ -379,7 +367,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 			return childresults, nil
 		}
 
-		var edges []*RelationshipEdge
+		var edges []*openfgav1.RelationshipEdge
 
 		baseRewrite := t.Difference.GetBase()
 

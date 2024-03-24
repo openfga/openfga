@@ -164,6 +164,7 @@ func (c *CachedCheckResolver) Dispatch(
 	ctx context.Context,
 	request *openfgav1.BaseRequest,
 	metadata *openfgav1.DispatchMetadata,
+	additionalParameters any,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
 	log.Printf("Cached Dispatcher - %p", request.GetDispatchedCheckRequest())
 	req := request.GetDispatchedCheckRequest()
@@ -190,7 +191,7 @@ func (c *CachedCheckResolver) Dispatch(
 	}
 	span.SetAttributes(attribute.Bool("is_cached", false))
 
-	resp, metadata, err := c.delegate.Dispatch(ctx, request, metadata)
+	resp, metadata, err := c.delegate.Dispatch(ctx, request, metadata, additionalParameters)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, nil, err
