@@ -5,6 +5,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
 	"google.golang.org/protobuf/types/known/anypb"
+	"log"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -29,6 +30,7 @@ func NewCycleDetectionCheckResolver() *CycleDetectionCheckResolver {
 
 // ResolveCheck implements CheckResolver.
 func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	log.Printf("Cycle Check Dispatcher - %p", request.GetDispatchedCheckRequest())
 	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()

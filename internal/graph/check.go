@@ -7,6 +7,7 @@ import (
 	"github.com/openfga/openfga/internal/dispatcher"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -416,6 +417,7 @@ func (c *LocalChecker) Dispatch(
 	request *openfgav1.BaseRequest,
 	metadata *openfgav1.DispatchMetadata,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	log.Printf("Local Check Dispatcher - %p", request.GetDispatchedCheckRequest())
 	req := request.GetDispatchedCheckRequest()
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()

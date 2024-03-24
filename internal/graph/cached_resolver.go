@@ -6,6 +6,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
 	"google.golang.org/protobuf/types/known/structpb"
+	"log"
 	"strconv"
 	"time"
 
@@ -164,6 +165,7 @@ func (c *CachedCheckResolver) Dispatch(
 	request *openfgav1.BaseRequest,
 	metadata *openfgav1.DispatchMetadata,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
+	log.Printf("Cached Dispatcher - %p", request.GetDispatchedCheckRequest())
 	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
