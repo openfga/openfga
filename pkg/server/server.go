@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"github.com/openfga/openfga/internal/distributed"
 	"google.golang.org/protobuf/types/known/anypb"
+	"log"
 	"net/http"
 	"slices"
 	"sort"
@@ -419,6 +421,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.dispatchThrottlingListObjectsResolver = dispatchThrottlingListObjectsResolver
 
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+
+		distributedDispatcher := &distributed.DistributedDispatcher{}
+		distributedDispatcher.SetDelegate(localChecker)
+		dispatchThrottlingCheckResolver.SetDelegate(distributedDispatcher)
 	}
 
 	if s.checkQueryCacheEnabled {
@@ -473,6 +479,11 @@ func (s *Server) Close() {
 	}
 
 	s.typesystemResolverStop()
+}
+
+func (s *Server) Dispatch(ctx context.Context, req *openfgav1.BaseRequest) (*openfgav1.BaseResponse, error) {
+	log.Println("Dispatched to Server - TODO Put server number")
+	return &openfgav1.BaseResponse{BaseResponse: &openfgav1.BaseResponse_CheckResponse{CheckResponse: &openfgav1.CheckResponse{Allowed: true}}}, nil
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
