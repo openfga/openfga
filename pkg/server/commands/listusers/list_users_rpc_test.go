@@ -1252,6 +1252,34 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			expectedUsers: []string{"user:will"},
 		},
+		{
+			name:                  "exclusion_and_self_referential_tuples_1",
+			TemporarilySkipReason: "because reflexive relationships not supported yet",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "group", Id: "1"},
+				Relation: "member",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  
+		  type user
+		  
+		  type group
+			relations
+			  define member: [user, group#member] but not other
+			  define other: [user, group#member]`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "other", "group:1#member"),
+				tuple.NewTupleKey("group:1", "member", "user:will"),
+			},
+			expectedUsers: []string{},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
