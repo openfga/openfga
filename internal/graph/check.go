@@ -6,17 +6,22 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -30,13 +35,30 @@ type ResolveCheckRequest struct {
 	AuthorizationModelID string
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
-	ResolutionMetadata   *ResolutionMetadata
+	Context              *structpb.Struct
+	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
+}
+
+func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
+	return &ResolveCheckRequest{
+		StoreID:              r.StoreID,
+		AuthorizationModelID: r.AuthorizationModelID,
+		TupleKey:             r.TupleKey,
+		ContextualTuples:     r.ContextualTuples,
+		Context:              r.Context,
+		RequestMetadata: &ResolveCheckRequestMetadata{
+			DispatchCounter:     r.GetRequestMetadata().DispatchCounter,
+			Depth:               r.GetRequestMetadata().Depth,
+			DatastoreQueryCount: r.GetRequestMetadata().DatastoreQueryCount,
+		},
+		VisitedPaths: maps.Clone(r.VisitedPaths),
+	}
 }
 
 type ResolveCheckResponse struct {
 	Allowed            bool
-	ResolutionMetadata *ResolutionMetadata
+	ResolutionMetadata *ResolveCheckResponseMetadata
 }
 
 func (r *ResolveCheckResponse) GetAllowed() bool {
@@ -47,7 +69,7 @@ func (r *ResolveCheckResponse) GetAllowed() bool {
 	return false
 }
 
-func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolutionMetadata {
+func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
 	if r != nil {
 		return r.ResolutionMetadata
 	}
@@ -87,11 +109,18 @@ func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	return nil
 }
 
-func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
+func (r *ResolveCheckRequest) GetRequestMetadata() *ResolveCheckRequestMetadata {
 	if r != nil {
-		return r.ResolutionMetadata
+		return r.RequestMetadata
 	}
 
+	return nil
+}
+
+func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
+	if r != nil {
+		return r.Context
+	}
 	return nil
 }
 
@@ -109,7 +138,6 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	ds                 storage.RelationshipTupleReader
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
@@ -131,41 +159,47 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
-func WithDelegate(delegate CheckResolver) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.delegate = delegate
-	}
-}
-
-func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		cachedCheckResolver := NewCachedCheckResolver(
-			d,
-			opts...,
-		)
-		d.SetDelegate(cachedCheckResolver)
-	}
-}
-
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
-func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
+//
+// The constructed LocalChecker is not wrapped with cycle detection. Developers
+// wanting a LocalChecker without other wrapped layers (e.g caching and others)
+// are encouraged to use [[NewLocalCheckerWithCycleDetection]] instead.
+func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
-		ds:                 ds,
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 	}
-	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	checker.delegate = checker
 
 	for _, opt := range opts {
 		opt(checker)
 	}
 
-	checker.ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
+	return checker
+}
 
-	// Depending on whether cached check resolver is used,
-	// we either return the newly created checker or the delegate (i.e., cached check resolver).
-	return checker.delegate
+// NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
+// which can be used to evaluate a Check request locally with cycle detection enabled.
+func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
+	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	localCheckResolver := NewLocalChecker(opts...)
+
+	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+
+	return cycleDetectionCheckResolver
+}
+
+// SetDelegate sets this LocalChecker's dispatch delegate.
+func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
+}
+
+// GetDelegate sets this LocalChecker's dispatch delegate.
+func (c *LocalChecker) GetDelegate() CheckResolver {
+	return c.delegate
 }
 
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
@@ -187,14 +221,21 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 	var wg sync.WaitGroup
 
 	checker := func(fn CheckHandlerFunc) {
-		defer wg.Done()
+		defer func() {
+			wg.Done()
+			<-limiter
+		}()
 
 		resolved := make(chan checkOutcome, 1)
+
+		if ctx.Err() != nil {
+			resultChan <- checkOutcome{nil, ctx.Err()}
+			return
+		}
 
 		go func() {
 			resp, err := fn(ctx)
 			resolved <- checkOutcome{resp, err}
-			<-limiter
 		}()
 
 		select {
@@ -249,6 +290,9 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
+				if errors.Is(result.err, ErrCycleDetected) {
+					continue
+				}
 				err = result.err
 				continue
 			}
@@ -265,7 +309,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	return &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 		},
 	}, err
@@ -274,6 +318,15 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+	if len(handlers) == 0 {
+		return &ResolveCheckResponse{
+			Allowed:            false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		}, nil
+	}
+
+	span := trace.SpanFromContext(ctx)
+
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -291,11 +344,23 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				err = result.err
+				span.RecordError(result.err)
+
+				if errors.Is(result.err, ErrCycleDetected) {
+					return &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: dbReads,
+						},
+					}, nil
+				}
+
+				err = errors.Join(err, result.err)
 				continue
 			}
 
 			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
+
 			if !result.resp.GetAllowed() {
 				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return result.resp, nil
@@ -305,21 +370,12 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		}
 	}
 
-	if err != nil {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: dbReads,
-			},
-		}, err
-	}
-
 	return &ResolveCheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 		},
-	}, nil
+	}, err
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -329,6 +385,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	if len(handlers) != 2 {
 		panic(fmt.Sprintf("expected two rewrite operands for exclusion operator, but got '%d'", len(handlers)))
 	}
+
+	span := trace.SpanFromContext(ctx)
 
 	limiter := make(chan struct{}, concurrencyLimit)
 
@@ -368,16 +426,32 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 0,
 		},
 	}
+
+	var baseErr error
+	var subErr error
+
 	var dbReads uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				return response, baseResult.err
+				span.RecordError(baseResult.err)
+
+				if errors.Is(baseResult.err, ErrCycleDetected) {
+					return &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: dbReads,
+						},
+					}, nil
+				}
+
+				baseErr = baseResult.err
+				continue
 			}
 
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -389,7 +463,12 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				return response, subResult.err
+				span.RecordError(subResult.err)
+
+				if !errors.Is(subResult.err, ErrCycleDetected) {
+					subErr = subResult.err
+					continue
+				}
 			}
 
 			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -403,9 +482,18 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		}
 	}
 
+	if baseErr != nil && subErr != nil {
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 0,
+			},
+		}, errors.Join(baseErr, subErr)
+	}
+
 	return &ResolveCheckResponse{
 		Allowed: true,
-		ResolutionMetadata: &ResolutionMetadata{
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: dbReads,
 		},
 	}, nil
@@ -415,30 +503,41 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 func (c *LocalChecker) Close() {
 }
 
-func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
-	c.delegate = delegate
-}
-
-// dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
-// was constructed with.
-func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+// dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
+// to the CheckResolver this LocalChecker was constructed with.
+func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		return c.delegate.ResolveCheck(ctx, req)
+		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
+		childRequest := clone(parentReq)
+		childRequest.TupleKey = tk
+		childRequest.GetRequestMetadata().Depth--
+
+		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
 	}
 }
 
-// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
-// evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
+var _ CheckResolver = (*LocalChecker)(nil)
+
+// ResolveCheck implements [[CheckResolver.ResolveCheck]].
+// If the typesystem isn't set in the context, it will panic.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
-
+	span.SetAttributes(attribute.String("resolver_type", "LocalChecker"))
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
-	if req.GetResolutionMetadata().Depth == 0 {
+	if req.GetRequestMetadata().Depth == 0 {
 		return nil, ErrResolutionDepthExceeded
 	}
 
@@ -447,17 +546,17 @@ func (c *LocalChecker) ResolveCheck(
 		panic("typesystem missing in context")
 	}
 
-	object := req.GetTupleKey().GetObject()
-	relation := req.GetTupleKey().GetRelation()
+	tupleKey := req.GetTupleKey()
+	object := tupleKey.GetObject()
+	relation := tupleKey.GetRelation()
 
 	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
 	if userRelation != "" {
 		if object == userObject && relation == userRelation {
 			return &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth:               req.GetResolutionMetadata().Depth,
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 				},
 			}, nil
 		}
@@ -469,20 +568,9 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	if req.VisitedPaths != nil {
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
-			return nil, ErrCycleDetected
-		}
-
-		req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())] = struct{}{}
-	} else {
-		req.VisitedPaths = map[string]struct{}{
-			tuple.TupleKeyToString(req.GetTupleKey()): {},
-		}
-	}
-
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -495,34 +583,43 @@ func (c *LocalChecker) ResolveCheck(
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkDirect")
+		defer span.End()
+
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
 
-		ctx, span := tracer.Start(ctx, "checkDirect")
-		defer span.End()
+		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
+		if !ok {
+			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		}
 
 		storeID := req.GetStoreID()
-		tk := req.GetTupleKey()
-		objectType := tuple.GetType(tk.GetObject())
-		relation := tk.GetRelation()
+		reqTupleKey := req.GetTupleKey()
+		objectType := tuple.GetType(reqTupleKey.GetObject())
+		relation := reqTupleKey.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
 		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
+			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", reqTupleKey.String())))
 			defer span.End()
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 				},
 			}
 
-			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -532,9 +629,29 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			// filter out invalid tuples yielded by the database query
-			err = validation.ValidateTuple(typesys, tk)
+			tupleKey := t.GetKey()
+			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+				if err != nil {
+					telemetry.TraceError(span, err)
+					return nil, err
+				}
+
+				if len(condEvalResult.MissingParameters) > 0 {
+					evalErr := condition.NewEvaluationError(
+						tupleKey.GetCondition().GetName(),
+						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					)
+					telemetry.TraceError(span, evalErr)
+					return nil, evalErr
+				}
+
+				if !condEvalResult.ConditionMet {
+					return response, nil
+				}
+
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
@@ -543,19 +660,23 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
 			defer span.End()
+
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 				},
 			}
 
-			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      tk.Object,
-				Relation:                    tk.Relation,
+			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+				Object:                      reqTupleKey.GetObject(),
+				Relation:                    reqTupleKey.GetRelation(),
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
@@ -570,9 +691,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
+			var errs *multierror.Error
 			var handlers []CheckHandlerFunc
 			for {
-				t, err := filteredIter.Next()
+				t, err := filteredIter.Next(ctx)
 				if err != nil {
 					if errors.Is(err, storage.ErrIteratorDone) {
 						break
@@ -581,21 +703,35 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, err
 				}
 
-				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-				// for 1.0 models, if the user is '*' then we're done searching
-				if usersetObject == tuple.Wildcard && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-					span.SetAttributes(attribute.Bool("allowed", true))
-					response.Allowed = true
-					return response, nil
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+				if err != nil {
+					errs = multierror.Append(errs, err)
+					continue
 				}
 
-				// for 1.1 models, if the user value is a typed wildcard and the type of the wildcard
+				if len(condEvalResult.MissingParameters) > 0 {
+					errs = multierror.Append(errs, condition.NewEvaluationError(
+						t.GetCondition().GetName(),
+						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+							tuple.TupleKeyToString(t),
+							condEvalResult.MissingParameters),
+					))
+
+					continue
+				}
+
+				if !condEvalResult.ConditionMet {
+					continue
+				}
+
+				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+
+				// if the user value is a typed wildcard and the type of the wildcard
 				// matches the target user objectType, then we're done searching
-				if tuple.IsTypedWildcard(usersetObject) && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+				if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
 					wildcardType := tuple.GetType(usersetObject)
 
-					if tuple.GetType(tk.GetUser()) == wildcardType {
+					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
 						span.SetAttributes(attribute.Bool("allowed", true))
 						response.Allowed = true
 						return response, nil
@@ -605,40 +741,30 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 
 				if usersetRelation != "" {
-					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser())
-
-					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-						return nil, ErrCycleDetected
-					}
-
-					handlers = append(handlers, c.dispatch(
-						ctx,
-						&ResolveCheckRequest{
-							StoreID:              storeID,
-							AuthorizationModelID: req.GetAuthorizationModelID(),
-							TupleKey:             tupleKey,
-							ContextualTuples:     req.GetContextualTuples(),
-							ResolutionMetadata: &ResolutionMetadata{
-								Depth:               req.GetResolutionMetadata().Depth - 1,
-								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
-							},
-							VisitedPaths: maps.Clone(req.VisitedPaths),
-						}))
+					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
+					handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
 				}
 			}
 
-			if len(handlers) == 0 {
-				return response, nil
+			if len(handlers) == 0 && errs.ErrorOrNil() != nil {
+				telemetry.TraceError(span, errs)
+				return nil, errs
 			}
 
-			return union(ctx, c.concurrencyLimit, handlers...)
+			resp, err := union(ctx, c.concurrencyLimit, handlers...)
+			if err != nil {
+				telemetry.TraceError(span, err)
+				return nil, multierror.Append(errs, err)
+			}
+
+			return resp, nil
 		}
 
 		var checkFuncs []CheckHandlerFunc
 
 		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                         // target
-			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), // source
+			typesystem.DirectRelationReference(objectType, relation),                                                           // target
+			typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
 		)
 
 		if shouldCheckDirectTuple {
@@ -649,7 +775,19 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = append(checkFuncs, fn2)
 		}
 
-		return union(ctx, c.concurrencyLimit, checkFuncs...)
+		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+
+		// count db reads after they happen in the case that we didn't find 'allowed=false' but we still incurred reads
+		if len(directlyRelatedUsersetTypes) > 0 {
+			// if we had N userset checks, that was 1 read, not N
+			resp.GetResolutionMetadata().DatastoreQueryCount++
+		}
+
+		return resp, nil
 	}
 }
 
@@ -659,29 +797,17 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
 
-		rewrittenTupleKey := tuple.NewTupleKey(
-			req.TupleKey.GetObject(),
-			rewrite.ComputedUserset.GetRelation(),
-			req.TupleKey.GetUser(),
-		)
-
-		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(rewrittenTupleKey)]; visited {
-			return nil, ErrCycleDetected
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
-		return c.dispatch(
-			ctx,
-			&ResolveCheckRequest{
-				StoreID:              req.GetStoreID(),
-				AuthorizationModelID: req.GetAuthorizationModelID(),
-				TupleKey:             rewrittenTupleKey,
-				ContextualTuples:     req.GetContextualTuples(),
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth:               req.GetResolutionMetadata().Depth - 1,
-					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
-				},
-				VisitedPaths: maps.Clone(req.VisitedPaths),
-			})(ctx)
+		rewrittenTupleKey := tuple.NewTupleKey(
+			req.GetTupleKey().GetObject(),
+			rewrite.ComputedUserset.GetRelation(),
+			req.GetTupleKey().GetUser(),
+		)
+
+		return c.dispatch(ctx, req, rewrittenTupleKey)(ctx)
 	}
 }
 
@@ -689,15 +815,25 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkTTU")
+		defer span.End()
+
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
 
-		ctx, span := tracer.Start(ctx, "checkTTU")
-		defer span.End()
+		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
+		if !ok {
+			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		}
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
 		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
@@ -710,11 +846,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		response := &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 			},
 		}
-		iter, err := c.ds.Read(
+		iter, err := ds.Read(
 			ctx,
 			req.GetStoreID(),
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
@@ -731,15 +867,38 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
+		var errs *multierror.Error
 		var handlers []CheckHandlerFunc
 		for {
-			t, err := filteredIter.Next()
+			t, err := filteredIter.Next(ctx)
 			if err != nil {
 				if err == storage.ErrIteratorDone {
 					break
 				}
 
 				return response, err
+			}
+
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+			if err != nil {
+				errs = multierror.Append(errs, err)
+
+				continue
+			}
+
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = multierror.Append(errs, condition.NewEvaluationError(
+					t.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(t),
+						condEvalResult.MissingParameters),
+				))
+
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				continue
 			}
 
 			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
@@ -756,39 +915,27 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 			}
 
-			if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
-				return nil, ErrCycleDetected
-			}
-
-			handlers = append(handlers, c.dispatch(
-				ctx,
-				&ResolveCheckRequest{
-					StoreID:              req.GetStoreID(),
-					AuthorizationModelID: req.GetAuthorizationModelID(),
-					TupleKey:             tupleKey,
-					ContextualTuples:     req.GetContextualTuples(),
-					ResolutionMetadata: &ResolutionMetadata{
-						Depth:               req.GetResolutionMetadata().Depth - 1,
-						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
-					},
-					VisitedPaths: maps.Clone(req.VisitedPaths),
-				}))
+			// Note: we add TTU read below
+			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
 		}
 
-		if len(handlers) == 0 {
-			return response, nil
+		if len(handlers) == 0 && errs.ErrorOrNil() != nil {
+			telemetry.TraceError(span, errs)
+			return nil, errs
 		}
 
 		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
-
-		if err == nil {
-			// if we had 3 dispatched requests, and the final result is "allowed = false",
-			// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
-			// if final result is "allowed = true", we want final reads to be N1 + 1
-			unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, multierror.Append(errs, err)
 		}
 
-		return unionResponse, err
+		// if we had 3 dispatched requests, and the final result is "allowed = false",
+		// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
+		// if final result is "allowed = true", we want final reads to be N1 + 1
+		unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+
+		return unionResponse, nil
 	}
 }
 
@@ -824,10 +971,18 @@ func (c *LocalChecker) checkSetOperation(
 	}
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		var err error
+		var resp *ResolveCheckResponse
 		ctx, span := tracer.Start(ctx, reducerKey)
-		defer span.End()
+		defer func() {
+			if err != nil {
+				telemetry.TraceError(span, err)
+			}
+			span.End()
+		}()
 
-		return reducer(ctx, c.concurrencyLimit, handlers...)
+		resp, err = reducer(ctx, c.concurrencyLimit, handlers...)
+		return resp, err
 	}
 }
 
@@ -836,7 +991,7 @@ func (c *LocalChecker) checkRewrite(
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
-	switch rw := rewrite.Userset.(type) {
+	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:

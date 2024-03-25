@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -63,10 +63,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -116,10 +116,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -197,10 +197,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -288,10 +288,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -374,10 +374,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -447,10 +447,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -531,10 +531,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "active_admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"active_admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -613,10 +613,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -744,10 +744,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -847,7 +847,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "parent", ""),
+				TupleKey: tuple.NewExpandRequestTupleKey("document:1", "parent"),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -868,20 +868,17 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "userset_defines_itself",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(`
-				type user
-
-				type document
-				  relations
-				    define viewer: [user] as self
-				`),
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			type user
+			type document
+			  relations
+			    define viewer: [user]
+			`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+				TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -902,28 +899,31 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// arrange
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
-			err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
-			require.NoError(err)
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
+			require.NoError(t, err)
 
-			require.NoError(err)
+			require.NoError(t, err)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = test.model.Id
+			test.request.AuthorizationModelId = test.model.GetId()
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(datastore)
 			got, err := query.Execute(ctx, test.request)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			// assert
 			if diff := cmp.Diff(test.expected, got, protocmp.Transform()); diff != "" {
@@ -945,7 +945,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_object_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Relation: "bar",
 				},
 			},
@@ -962,7 +962,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_object_id_and_type_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   ":",
 					Relation: "bar",
 				},
@@ -982,7 +982,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_object_id_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   "github:",
 					Relation: "bar",
 				},
@@ -1002,7 +1002,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_relation_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object: "bar",
 				},
 			},
@@ -1019,7 +1019,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "1.1_object_type_not_found_in_model",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   "foo:bar",
 					Relation: "baz",
 				},
@@ -1046,7 +1046,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   "repo:bar",
 					Relation: "baz",
 				},
@@ -1061,31 +1061,34 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// arrange
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
-			err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
-			require.NoError(err)
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
+			require.NoError(t, err)
 
-			require.NoError(err)
+			require.NoError(t, err)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = test.model.Id
+			test.request.AuthorizationModelId = test.model.GetId()
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(datastore)
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert
-			require.Nil(resp)
-			require.ErrorIs(err, test.expected)
+			require.Nil(t, resp)
+			require.ErrorIs(t, err, test.expected)
 		})
 	}
 }

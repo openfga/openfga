@@ -5,12 +5,13 @@ import (
 	"context"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/typesystem"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 var testCases = map[string]struct {
@@ -23,7 +24,7 @@ var testCases = map[string]struct {
 	//	type user
 	//	type self
 	//	  relations
-	//		define member: [user] as self
+	//		define member: [user]
 	//	`,
 	//	code: 2056,
 	//},
@@ -33,7 +34,7 @@ var testCases = map[string]struct {
 	//	type user
 	//	type this
 	//	  relations
-	//		define member: [user] as self
+	//		define member: [user]
 	//	`,
 	//	code: 2056,
 	//},
@@ -43,7 +44,7 @@ var testCases = map[string]struct {
 	//	type user
 	//	type group
 	//	  relations
-	//		define self: [user] as self
+	//		define self: [user]
 	//	`,
 	//	code: 2056,
 	//},
@@ -53,295 +54,295 @@ var testCases = map[string]struct {
 	//	type user
 	//	type group
 	//	  relations
-	//		define this: [user] as self
+	//		define this: [user]
 	//	`,
 	//	code: 2056,
 	//},
 	"case6": {
-		model: `
-		type user
-		type group
-		  relations
-			define group as group from group
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define group: group from group`,
 		code: 2056,
 	},
 	"case7": {
-		model: `
-		type user
-		type group
-		  relations
-			define parent: [group] as self
-			define viewer as viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define parent: [group]
+	define viewer: viewer from parent`,
 		code: 2056,
 	},
 	"case8": {
-		model: `
-		type group
-		  relations
-			define viewer: [group#viewer] as self
-		`,
+		model: `model
+	schema 1.1
+type group
+  relations
+	define viewer: [group#viewer]`,
 		code: 2056,
 	},
 	"case9": {
-		model: `
-		type user
-		type org
-		  relations
-			define member: [user] as self
-		type group
-		  relations
-			define parent: [org] as self
-			define viewer as viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type org
+  relations
+	define member: [user]
+type group
+  relations
+	define parent: [org]
+	define viewer: viewer from parent`,
 		code: 2056,
 	},
 	"case10": {
-		model: `
-		type user
-		type group
-		  relations
-			define parent: [group] as self
-			define viewer as reader from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define parent: [group]
+	define viewer: reader from parent`,
 		code: 2056,
 	},
 	"case11": {
-		model: `
-		type user
-		type org
-		type group
-		  relations
-			define parent: [group] as self
-			define viewer as viewer from org
-		`,
+		model: `model
+	schema 1.1
+type user
+type org
+type group
+  relations
+	define parent: [group]
+	define viewer: viewer from org`,
 		code: 2056,
 	},
 	"case12": {
-		model: `
-		type user
-		type org
-		type group
-		  relations
-			define parent: [group] as self
-			define viewer as org from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type org
+type group
+  relations
+	define parent: [group]
+	define viewer: org from parent`,
 		code: 2056,
 	},
 	"case13": {
-		model: `
-		type user
-		type org
-		type group
-		  relations
-			define parent: [group, group#org] as self
-		`,
+		model: `model
+	schema 1.1
+type user
+type org
+type group
+  relations
+	define parent: [group, group#org]`,
 		code: 2056,
 	},
 	"case14": {
-		model: `
-		type user
-		type org
-		  relations
-			define viewer: [user] as self
-		type group
-		  relations
-			define parent: [group] as self
-			define viewer as viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type org
+  relations
+	define viewer: [user]
+type group
+  relations
+	define parent: [group]
+	define viewer: viewer from parent`,
 		code: 2056,
 	},
 	"case16": {
-		model: `
-		type document
-		  relations
-			define reader as writer
-			define writer as reader
-		`,
+		model: `model
+	schema 1.1
+type document
+  relations
+	define reader: writer
+	define writer: reader`,
 		code: 2056,
 	},
 	"case17": {
-		model: `
-		type user
-		type folder
-		  relations
-			define parent: [folder] as self or parent from parent
-			define viewer: [user] as self or viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type folder
+  relations
+	define parent: [folder] or parent from parent
+	define viewer: [user] or viewer from parent`,
 		code: 2056,
 	},
 	"case18": {
-		model: `
-		type user
-		type folder
-		  relations
-			define root: [folder] as self
-			define parent: [folder] as self or root
-			define viewer: [user] as self or viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type folder
+  relations
+	define root: [folder]
+	define parent: [folder] or root
+	define viewer: [user] or viewer from parent`,
 		code: 2056,
 	},
 	"case19": {
-		model: `
-		type user
-		type folder
-		  relations
-			define root: [folder] as self
-			define parent as root
-			define viewer: [user] as self or viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type folder
+  relations
+	define root: [folder]
+	define parent: root
+	define viewer: [user] or viewer from parent`,
 		code: 2056,
 	},
 	"case20": {
-		model: `
-		type user
-		type folder
-		  relations
-			define root: [folder] as self
-			define parent: [folder, folder#parent] as self
-			define viewer: [user] as self or viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type folder
+  relations
+	define root: [folder]
+	define parent: [folder, folder#parent]
+	define viewer: [user] or viewer from parent`,
 		code: 2056,
 	},
 	"case21": {
-		model: `
-		type user
-		type group
-		  relations
-			define member: [user] as self
-			define reader as member and allowed
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user]
+	define reader: member and allowed`,
 		code: 2056,
 	},
 	"case22": {
-		model: `
-		type user
-		type group
-		  relations
-			define member: [user] as self
-			define reader as member or allowed
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user]
+	define reader: member or allowed`,
 		code: 2056,
 	},
 	"case23": {
-		model: `
-		type user
-		type group
-		  relations
-			define member: [user] as self
-			define reader as allowed but not member
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user]
+	define reader: allowed but not member`,
 		code: 2056,
 	},
 	"case24": {
-		model: `
-		type user
-		type group
-		  relations
-			define member: [user] as self
-			define reader as member but not allowed
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user]
+	define reader: member but not allowed`,
 		code: 2056,
 	},
-	"case25": {
-		model: `
-		type user
-		type org
-		  relations
-			define member as self
-		`,
-		code: 2056,
-	},
+	//	"case25": {
+	//		model: `model
+	//	schema 1.1
+	//type user
+	//type org
+	//  relations
+	//	define member`,
+	//		code: 2056,
+	//	},
 	"same_type_fails": {
-		model: `
-		type user
-		type user
-		`,
+		model: `model
+	schema 1.1
+type user
+type user`,
 		code: 2056,
 	},
 	"difference_includes_itself_in_subtract_fails": {
-		model: `
-        type user
-        type document
-          relations
-            define viewer: [user] as self but not viewer
-		`,
+		model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define viewer: [user] but not viewer`,
 		code: 2056,
 	},
 	"union_includes_itself_fails": {
-		model: `
-		type user
-		type document
-		  relations
-			define viewer: [user] as self or viewer
-		`,
+		model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define viewer: [user] or viewer`,
 		code: 2056,
 	},
 	"intersection_includes_itself_fails": {
-		model: `
-		type user
-		type document
-		  relations
-			define viewer: [user] as self and viewer
-		`,
+		model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define viewer: [user] and viewer`,
 		code: 2056,
 	},
 	"simple_model_succeeds": {
-		model: `
-		type user
-		type folder
-		  relations
-			define viewer: [user] as self
-		type document
-		  relations
-			define parent: [folder] as self
-			define viewer as viewer from parent
-		`,
+		model: `model
+	schema 1.1
+type user
+type folder
+  relations
+	define viewer: [user]
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 	},
 	"no_relations_succeeds": {
-		model: `
-		type user
-		`,
+		model: `model
+	schema 1.1
+type user`,
 	},
 	"union_may_contain_repeated_relations": {
-		model: `
-		type user
-		type document
-		  relations
-			define editor: [user] as self
-			define viewer as editor or editor
-		`,
+		model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define editor: [user]
+	define viewer: editor or editor`,
 	},
 	"intersection_may_contain_repeated_relations": {
-		model: `
-		type user
-		type document
-		  relations
-			define editor: [user] as self
-			define viewer as editor and editor
-		`,
+		model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define editor: [user]
+	define viewer: editor and editor`,
 	},
 	"exclusion_may_contain_repeated_relations": {
-		model: `
-		type user
-		type document
-		  relations
-			define editor: [user] as self
-			define viewer as editor but not editor
-		`,
+		model: `model
+	schema 1.1
+type user
+type document
+  relations
+	define editor: [user]
+	define viewer: editor but not editor`,
 	},
 	"as_long_as_one_computed_userset_type_is_valid": {
-		model: `
-		type user
-		type group
-		  relations
-			define parent: [group, team] as self
-			define viewer as reader from parent
-		type team
-		  relations
-			define reader: [user] as self
-		`,
+		model: `model
+	schema 1.1
+type user
+type group
+  relations
+	define parent: [group, team]
+	define viewer: reader from parent
+type team
+  relations
+	define reader: [user]`,
 	},
 }
 
@@ -374,10 +375,12 @@ func runTests(t *testing.T, client ClientInterface) {
 			require.NoError(t, err)
 
 			storeID := resp.GetId()
+			model := parser.MustTransformDSLToProto(test.model)
 			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(test.model),
+				TypeDefinitions: model.GetTypeDefinitions(),
+				Conditions:      model.GetConditions(),
 			})
 
 			if test.code == 0 {

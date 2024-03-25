@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,10 +22,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/openfga/openfga/pkg/testutils"
+
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/server"
+
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
@@ -36,16 +43,13 @@ import (
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"google.golang.org/grpc"
-	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -58,58 +62,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
-}
-
-func ensureServiceUp(t *testing.T, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
-	t.Helper()
-
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	creds := insecure.NewCredentials()
-	if transportCredentials != nil {
-		creds = transportCredentials
-	}
-
-	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(creds),
-		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
-	}
-
-	conn, err := grpc.DialContext(
-		timeoutCtx,
-		grpcAddr,
-		dialOpts...,
-	)
-	require.NoError(t, err)
-	defer conn.Close()
-
-	client := healthv1pb.NewHealthClient(conn)
-
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 10 * time.Second
-
-	err = backoff.Retry(func() error {
-		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
-			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		})
-		if err != nil {
-			return err
-		}
-
-		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return errors.New("not serving")
-		}
-
-		return nil
-	}, policy)
-	require.NoError(t, err)
-
-	if httpHealthCheck {
-		_, err = retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
-		require.NoError(t, err)
-	}
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -230,13 +182,13 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 		return err
 	}
 
-	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level, cfg.Log.TimestampFormat)
 	serverCtx := &ServerContext{Logger: logger}
 	return serverCtx.Run(ctx, cfg)
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{}
 
@@ -245,7 +197,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -255,21 +207,19 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer conn.Close()
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	// Just checking we can create a store with no authentication.
-	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
+	_, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
 	require.NoError(t, err)
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -284,7 +234,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -326,15 +276,13 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := serverconfig.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	otlpServer, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
+	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
 
 	// create OpenFGA server with tracing enabled
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
@@ -349,11 +297,11 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err = client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
 
 	// wait for trace exporting
@@ -407,7 +355,7 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
   ],
   "schema_version": "1.1"
 }`)
-	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/authorization-models", httpAddr, createStoreResponse.Id), authModelPayload)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/authorization-models", httpAddr, createStoreResponse.GetId()), authModelPayload)
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
@@ -416,14 +364,14 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)
-	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", httpAddr, createStoreResponse.Id), listObjectsPayload)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", httpAddr, createStoreResponse.GetId()), listObjectsPayload)
 	require.NoError(t, err, "Failed to construct request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", test.authHeader)
 	res, err = retryClient.Do(req)
-	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	require.NoError(t, err, "Failed to execute streaming request")
 	defer res.Body.Close()
+	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	body, err = io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read response")
 
@@ -456,7 +404,7 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -473,7 +421,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	type args struct {
 		origin string
@@ -552,10 +500,10 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
+	oidcServerPort, oidcServerPortReleaser := serverconfig.TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
 		Audience: "openfga.dev",
@@ -579,7 +527,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{
 		{
@@ -619,12 +567,63 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	}
 }
 
+func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
+	oidcServerPort1, oidcServerPortReleaser1 := serverconfig.TCPRandomPort()
+	oidcServerPort2, oidcServerPortReleaser2 := serverconfig.TCPRandomPort()
+	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
+	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
+
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "oidc"
+	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
+		Audience:      "openfga.dev",
+		Issuer:        oidcServerURL1,
+		IssuerAliases: []string{oidcServerURL2},
+	}
+
+	oidcServerPortReleaser1()
+	oidcServerPortReleaser2()
+
+	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
+	require.NoError(t, err)
+
+	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+
+	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	retryClient := retryablehttp.NewClient()
+	test := authTest{
+		_name:              "Token_with_issuer_equal_to_alias_is_accepted",
+		authHeader:         "Bearer " + trustedTokenFromAlias,
+		expectedStatusCode: 200,
+	}
+	t.Run(test._name, func(t *testing.T) {
+		tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
+	})
+
+	t.Run(test._name+"/streaming", func(t *testing.T) {
+		tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedTokenFromAlias)
+	})
+}
+
 func TestHTTPServingTLS(t *testing.T) {
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -639,14 +638,14 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
@@ -683,7 +682,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
@@ -699,14 +698,14 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
@@ -729,7 +728,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
 }
 
@@ -745,13 +744,13 @@ func TestServerMetricsReporting(t *testing.T) {
 func testServerMetricsReporting(t *testing.T, engine string) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine
 	cfg.Datastore.URI = testDatastore.GetConnectionURI(true)
 	cfg.Datastore.Metrics.Enabled = true
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.EnableRPCHistograms = true
-	metricsPort, metricsPortReleaser := TCPRandomPort()
+	metricsPort, metricsPortReleaser := serverconfig.TCPRandomPort()
 	metricsPortReleaser()
 
 	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
@@ -768,11 +767,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer conn.Close()
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -785,26 +782,64 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: parser.MustParse(`
-		type user
-
-		type document
-		  relations
-		    define allowed: [user] as self
-			define editor: [user] as self
-		    define viewer: [user] as self or (editor and allowed)
-		`),
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"allowed": typesystem.This(),
+					"editor":  typesystem.This(),
+					"viewer": typesystem.Union(
+						typesystem.This(),
+						typesystem.Intersection(
+							typesystem.ComputedUserset("editor"),
+							typesystem.ComputedUserset("allowed"))),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"allowed": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user", Condition: "condx"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Conditions: map[string]*openfgav1.Condition{
+			"condx": {
+				Name: "condx",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+				},
+				Expression: "x < 100",
+			},
+		},
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: &openfgav1.TupleKeys{
+		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:2", "editor", "user:jon"),
-				tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "condx", nil),
+				{Object: "document:2", Relation: "editor", User: "user:jon"},
+				{Object: "document:2", Relation: "allowed", User: "user:jon"},
 			},
 		},
 	})
@@ -812,7 +847,10 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:  storeID,
-		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
+		Context: testutils.MustNewStruct(t, map[string]interface{}{
+			"x": 10,
+		}),
 	})
 	require.NoError(t, err)
 	require.True(t, checkResp.GetAllowed())
@@ -822,6 +860,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		Type:     "document",
 		Relation: "viewer",
 		User:     "user:jon",
+		Context: testutils.MustNewStruct(t, map[string]interface{}{
+			"x": 10,
+		}),
 	})
 	require.NoError(t, err)
 	require.Len(t, listObjectsResp.GetObjects(), 2)
@@ -833,21 +874,29 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
 
-	resBody, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	expectedMetrics := []string{
+		"openfga_datastore_query_count",
+		"openfga_request_duration_by_query_count_ms",
+		"openfga_request_duration_ms",
+		"grpc_server_handling_seconds",
+		"openfga_datastore_bounded_read_delay_ms",
+		"openfga_list_objects_further_eval_required_count",
+		"openfga_list_objects_no_further_eval_required_count",
+		"go_sql_idle_connections",
+		"openfga_condition_evaluation_cost",
+		"openfga_condition_compilation_duration_ms",
+		"openfga_condition_evaluation_duration_ms",
+	}
 
-	stringBody := string(resBody)
-	require.Contains(t, stringBody, "datastore_query_count")
-	require.Contains(t, stringBody, "request_duration_by_query_count_ms")
-	require.Contains(t, stringBody, "grpc_server_handling_seconds")
-	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
-	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
-	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
-	require.Contains(t, stringBody, "go_sql_idle_connections")
+	for _, metric := range expectedMetrics {
+		count, err := testutil.GatherAndCount(prometheus.DefaultGatherer, metric)
+		require.NoError(t, err)
+		require.GreaterOrEqualf(t, count, 1, "expected at least 1 reported value for '%s'", metric)
+	}
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -859,13 +908,15 @@ func TestHTTPServerDisabled(t *testing.T) {
 		}
 	}()
 
-	_, err := http.Get("http://localhost:8080/healthz")
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
+
+	_, err := http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.Error(t, err)
-	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
+	require.ErrorContains(t, err, "connect: connection refused")
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -876,7 +927,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1041,6 +1092,25 @@ func TestDefaultConfig(t *testing.T) {
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
+
+	val = res.Get("properties.requestDurationDispatchCountBuckets.default")
+	require.True(t, val.Exists())
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDispatchCountBuckets))
+	for index, arrayVal := range val.Array() {
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
+	}
+
+	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
+
+	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.DispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1088,6 +1158,7 @@ func TestParseConfig(t *testing.T) {
     limit: 100
     TTL: 5s
 requestDurationDatastoreQueryCountBuckets: [33,44]
+requestDurationDispatchCountBuckets: [32,42]
 `
 	util.PrepareTempConfigFile(t, config)
 
@@ -1106,6 +1177,7 @@ requestDurationDatastoreQueryCountBuckets: [33,44]
 	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
+	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {
@@ -1120,6 +1192,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1131,6 +1206,10 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
+		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
+		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
+		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
+
 		return nil
 	}
 
@@ -1138,4 +1217,102 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
 	require.NoError(t, rootCmd.Execute())
+}
+
+func TestHTTPHeaders(t *testing.T) {
+	t.Parallel()
+	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createStoreResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:       storeID,
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define viewer: [user]`).GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	authorizationModelID := writeModelResp.GetAuthorizationModelId()
+
+	httpClient := retryablehttp.NewClient()
+
+	var testCases = map[string]struct {
+		httpVerb      string
+		httpPath      string
+		httpJSONBody  string
+		expectedError bool
+	}{
+		`check`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+		},
+		`listobjects`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-objects", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+		},
+		`streamed-list-objects`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+		},
+		`expand`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+		},
+		`write`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/write", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"writes": { "tuple_keys": [{"user": "user:anne",  "relation": "viewer", "object": "document:1"}]}}`,
+		},
+	}
+
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJSONBody))
+			require.NoError(t, err, "Failed to construct request")
+
+			httpResponse, err := httpClient.Do(req)
+			require.NoError(t, err)
+
+			// These are set in the server RPCs
+			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
+			require.Equal(t, authorizationModelID, httpResponse.Header[server.AuthorizationModelIDHeader][0])
+
+			// These are set in middlewares
+			require.Len(t, httpResponse.Header[storeid.StoreIDHeader], 1)
+			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
+			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
+			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
+		})
+	}
 }

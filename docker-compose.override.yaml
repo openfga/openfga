@@ -6,6 +6,9 @@ services:
   openfga:
     image: !reset null
     build: .
+    depends_on:
+      otel-collector:
+        condition: service_started
     environment:
       - OPENFGA_TRACE_ENABLED=true
       - OPENFGA_TRACE_SAMPLE_RATIO=1
@@ -13,6 +16,7 @@ services:
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
       - OPENFGA_DATASTORE_METRICS_ENABLED=true
       - OPENFGA_METRICS_ENABLED=TRUE
+
   otel-collector:
     image: otel/opentelemetry-collector:latest
     container_name: otel-collector

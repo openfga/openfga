@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -59,6 +60,10 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 		err := validateTypeRestrictions(typesys, tk)
 		if err != nil {
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
+		}
+
+		if err := ValidateCondition(typesys, tk); err != nil {
+			return err
 		}
 	}
 
@@ -135,7 +140,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
 
-	relationInformation := relationsForObject[tk.Relation]
+	relationInformation := relationsForObject[tk.GetRelation()]
 
 	user := tk.GetUser()
 
@@ -169,6 +174,89 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	}
 
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
+}
+
+// ValidateCondition enforces conditions on a relationship tuple
+func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	objectType := tuple.GetType(tk.GetObject())
+	userType := tuple.GetType(tk.GetUser())
+	userRelation := tuple.GetRelation(tk.GetUser())
+
+	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.GetRelation())
+	if err != nil {
+		return err
+	}
+
+	if tk.GetCondition() == nil {
+		for _, directlyRelatedType := range typeRestrictions {
+			if directlyRelatedType.GetCondition() != "" {
+				continue
+			}
+
+			if directlyRelatedType.GetType() != userType {
+				continue
+			}
+
+			if directlyRelatedType.GetRelationOrWildcard() != nil {
+				if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+					continue
+				}
+
+				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.GetUser()) {
+					continue
+				}
+			}
+
+			return nil
+		}
+
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
+		}
+	}
+
+	condition, ok := typesys.GetConditions()[tk.GetCondition().GetName()]
+	if !ok {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
+		}
+	}
+
+	validCondition := false
+	for _, directlyRelatedType := range typeRestrictions {
+		if directlyRelatedType.GetType() == userType && directlyRelatedType.GetCondition() == tk.GetCondition().GetName() {
+			validCondition = true
+			break
+		}
+	}
+
+	if !validCondition {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
+		}
+	}
+
+	contextStruct := tk.GetCondition().GetContext()
+	contextFieldMap := contextStruct.GetFields()
+
+	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
+	if err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
+		}
+	}
+
+	for key := range contextFieldMap {
+		_, ok := typedParams[key]
+		if !ok {
+			return &tuple.InvalidConditionalTupleError{
+				Cause:    fmt.Errorf("found invalid context parameter: %s", key),
+				TupleKey: tk,
+			}
+		}
+	}
+
+	return nil
 }
 
 // FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide
@@ -247,7 +335,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	schemaVersion := typesys.GetSchemaVersion()
 
 	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
-	if schemaVersion == typesystem.SchemaVersion1_1 {
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
@@ -281,7 +369,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 
 	// if the model is a 1.1 model we make sure that the objectType of the 'user' field is a defined
 	// type in the model.
-	if schemaVersion == typesystem.SchemaVersion1_1 {
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		_, ok := typesys.GetTypeDefinition(userObjectType)
 		if !ok {
 			return &tuple.TypeNotFoundError{TypeName: userObjectType}

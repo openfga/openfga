@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/pkg/typesystem"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestValidationResult(t *testing.T) {
@@ -24,8 +25,7 @@ func TestValidationResult(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			_, ds, _, err := util.MustBootstrapDatastore(t, engine)
-			require.NoError(t, err)
+			_, ds, _ := util.MustBootstrapDatastore(t, engine)
 
 			ctx := context.Background()
 
@@ -44,15 +44,16 @@ func TestValidationResult(t *testing.T) {
 			// for the last store, write a bunch of models (to trigger pagination)
 			for j := 0; j < totalModelsForOneStore; j++ {
 				modelID := ulid.Make().String()
-				err = ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
+				err := ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
 					Id:            modelID,
 					SchemaVersion: typesystem.SchemaVersion1_1,
 					// invalid
-					TypeDefinitions: parser.MustParse(`
-									type document
-									  relations
-										define viewer:[user] as self
-									`),
+					TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type document
+  relations
+	define viewer:[user]
+`).GetTypeDefinitions(),
 				})
 				require.NoError(t, err)
 				t.Logf("added model %s for store %s\n", modelID, storeID)

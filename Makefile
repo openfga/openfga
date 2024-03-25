@@ -1,13 +1,19 @@
 .DEFAULT_GOAL := help
 
+GO_BIN ?= $(shell go env GOPATH)/bin
+
 .PHONY: help
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
+$(GO_BIN)/golangci-lint:
+	@echo "==> Installing golangci-lint within "${GO_BIN}""
+	@go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
 .PHONY: lint
-lint: ## Lint Go source files
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@golangci-lint run
+lint: $(GO_BIN)/golangci-lint ## Lint Go source files
+	@echo "==> Linting Go source files"
+	@golangci-lint run -v --fix -c .golangci.yaml ./...
 
 .PHONY: clean
 clean: ## Clean files
@@ -60,28 +66,32 @@ install-tools: download ## Install developer tooling
 go-generate: install-tools
 	go generate ./...
 
-.PHONY: unit-test
-unit-test: go-generate ## Run unit tests
+.PHONY: test
+test: go-generate ## Run all tests
 	go test -race \
 			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
 			-count=1 \
-			-timeout=5m \
+			-timeout=10m \
 			./...
 	@cat coverageunit.tmp.out | grep -v "mocks" > coverageunit.out
 	@rm coverageunit.tmp.out
 
-build-functional-test-image: ## Build Docker image needed to run functional tests
-	docker build -t="openfga/openfga:functionaltest" .
+build-docker-test-image: ## Build Docker image needed to run Docker tests
+	docker build -t="openfga/openfga:dockertest" .
 
-.PHONY: functional-test
-functional-test: ## Run functional tests (needs build-functional-test-image)
-	go test -race \
+.PHONY: test-docker-ci
+test-docker-ci:
+	go test -v \
 			-count=1 \
 			-timeout=5m \
-			-tags=functional \
+			-tags=docker \
 			./cmd/openfga/...
+
+.PHONY: test-docker-local
+test-docker-local: build-docker-test-image ## Run Docker tests (locally)
+	make test-docker-ci
 
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags

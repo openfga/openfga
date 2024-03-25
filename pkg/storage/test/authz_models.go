@@ -7,10 +7,11 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -27,7 +28,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
 		require.NoError(t, err)
 
-		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.Id)
+		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.GetId())
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(model, got, cmpOpts...); diff != "" {
@@ -109,12 +110,12 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	}
 }
 
-func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGADatastore) {
+func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
 	t.Run("find_latest_authorization_model_should_return_not_found_when_no_models", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		_, err := datastore.FindLatestAuthorizationModelID(ctx, store)
+		_, err := datastore.FindLatestAuthorizationModel(ctx, store)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -123,13 +124,27 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 
 		oldModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
 				{
 					Type: "folder",
 					Relations: map[string]*openfgav1.Userset{
 						"viewer": {
 							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -138,15 +153,66 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		err := datastore.WriteAuthorizationModel(ctx, store, oldModel)
 		require.NoError(t, err)
 
+		updatedModel := &openfgav1.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgav1.Userset{
+						"owner": {
+							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"owner": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		err = datastore.WriteAuthorizationModel(ctx, store, updatedModel)
+		require.NoError(t, err)
+
+		latestModel, err := datastore.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
+		if diff := cmp.Diff(updatedModel, latestModel, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+
 		newModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
 				{
 					Type: "folder",
 					Relations: map[string]*openfgav1.Userset{
 						"reader": {
 							Userset: &openfgav1.Userset_This{},
+						},
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -155,8 +221,10 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		err = datastore.WriteAuthorizationModel(ctx, store, newModel)
 		require.NoError(t, err)
 
-		latestID, err := datastore.FindLatestAuthorizationModelID(ctx, store)
+		latestModel, err = datastore.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
-		require.Equal(t, newModel.Id, latestID)
+		if diff := cmp.Diff(newModel, latestModel, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
