@@ -1501,9 +1501,9 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
           type user
           type document
             relations
-              define public_1: [user:*,user]
+			  define public_1: [user:*,user]
 			  define public_2: [user:*,user]
-              define is_public: public_1 and public_2`,
+			  define is_public: public_1 and public_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "public_1", "user:maria"),
