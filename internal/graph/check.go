@@ -551,8 +551,7 @@ func (c *LocalChecker) ResolveCheck(
 	relation := tupleKey.GetRelation()
 
 	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
-	if userRelation != "" {
-		if object == userObject && relation == userRelation {
+		if relation == userRelation && object == userObject {
 			return &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
