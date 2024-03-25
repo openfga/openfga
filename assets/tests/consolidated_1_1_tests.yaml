@@ -5871,7 +5871,6 @@ tests:
                 - user
               object: document:1
               relation: can_view
-            temporarilySkipReason: "intersection and wildcards not working yet"
             expectation:
               - user:jon
           - request:
@@ -5879,7 +5878,6 @@ tests:
                 - user
               object: document:1
               relation: viewer
-            temporarilySkipReason: "intersection and wildcards not working yet"
             expectation:
               - user:jon
           - request:
