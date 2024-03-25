@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 
@@ -220,6 +221,8 @@ func (l *listUsersQuery) expandRewrite(
 		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
 		return l.expandIntersection(ctx, req, rewrite, foundUsersChan)
+	case *openfgav1.Userset_Difference:
+		return l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -335,6 +338,7 @@ func (l *listUsersQuery) expandIntersection(
 	}
 
 	errChan := make(chan error, 1)
+
 	go func() {
 		err := pool.Wait()
 		close(intersectionFoundUsersChan)
@@ -359,6 +363,57 @@ func (l *listUsersQuery) expandIntersection(
 	}
 
 	return <-errChan
+}
+
+func (l *listUsersQuery) expandExclusion(
+	ctx context.Context,
+	req *internalListUsersRequest,
+	rewrite *openfgav1.Userset_Difference,
+	foundUsersChan chan<- *openfgav1.User,
+) error {
+	baseFoundUsersCh := make(chan *openfgav1.User, 1)
+	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
+
+	var errs error
+	go func() {
+		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+		}
+		close(baseFoundUsersCh)
+	}()
+	go func() {
+		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		if err != nil {
+			errs = multierror.Append(errs, err)
+		}
+		close(subtractFoundUsersCh)
+	}()
+
+	baseFoundUsersMap := make(map[string]struct{}, 0)
+	for fu := range baseFoundUsersCh {
+		key := tuple.UserProtoToString(fu)
+		baseFoundUsersMap[key] = struct{}{}
+	}
+	subtractFoundUsersMap := make(map[string]struct{}, len(baseFoundUsersMap))
+	for fu := range subtractFoundUsersCh {
+		key := tuple.UserProtoToString(fu)
+		subtractFoundUsersMap[key] = struct{}{}
+	}
+
+	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
+	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
+	for key := range baseFoundUsersMap {
+		if _, isSubtracted := subtractFoundUsersMap[key]; !isSubtracted && !subtractWildcardExists {
+			// Iterate over base users because at minimum they need to pass
+			// but then they are further compared to the subtracted users map.
+			// If users exist in both maps, they are excluded. Only users that exist
+			// solely in the base map will be returned.
+			foundUsersChan <- tuple.StringToUserProto(key)
+		}
+	}
+
+	return errs
 }
 
 func (l *listUsersQuery) expandTTU(
