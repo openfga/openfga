@@ -238,7 +238,7 @@ func (c *ReverseExpandQuery) continueDispatch(ctx context.Context, request *open
 }
 
 func (c *ReverseExpandQuery) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Reverse Expand Dispatcher - %p", request.GetReverseExpandRequest())
+	log.Printf("Reverse Expand Dispatcher - %s running in %s", request.GetDispatchedCheckRequest(), serverconfig.ServerName)
 	params := additionalParameters.(*ReverseExpandAdditionalParameters)
 	req := request.GetReverseExpandRequest()
 	if ctx.Err() != nil {

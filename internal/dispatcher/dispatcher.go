@@ -6,6 +6,12 @@ import (
 )
 
 type Dispatcher interface {
-	Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error)
+	Dispatch(
+		ctx context.Context,
+		request *openfgav1.BaseRequest,
+		metadata *openfgav1.DispatchMetadata,
+		additionalParameters any,
+	) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error)
+
 	Close()
 }

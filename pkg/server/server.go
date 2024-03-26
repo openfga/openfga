@@ -334,6 +334,12 @@ func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServi
 	}
 }
 
+func WithServerName(name string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		serverconfig.ServerName = name
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -481,9 +487,107 @@ func (s *Server) Close() {
 	s.typesystemResolverStop()
 }
 
+/*
+*
+Request format for Dispatching request through HTTP
+
+	{
+	  "dispatchedCheckRequest": {
+	    "storeId": "string",
+	    "authorizationModelId": "string",
+	    "tupleKey": {
+	      "user": "user:anne",
+	      "relation": "reader",
+	      "object": "document:2021-budget",
+	      "condition": {
+	        "name": "condition1",
+	        "context": {}
+	      }
+	    },
+	    "contextualTuples": [
+	      {
+	        "user": "user:anne",
+	        "relation": "reader",
+	        "object": "document:2021-budget",
+	        "condition": {
+	          "name": "condition1",
+	          "context": {}
+	        }
+	      }
+	    ],
+	    "visitedPaths": {
+	      "additionalProp1": {
+	        "@type": "string",
+	        "additionalProp1": "string",
+	        "additionalProp2": "string",
+	        "additionalProp3": "string"
+	      },
+	      "additionalProp2": {
+	        "@type": "string",
+	        "additionalProp1": "string",
+	        "additionalProp2": "string",
+	        "additionalProp3": "string"
+	      },
+	      "additionalProp3": {
+	        "@type": "string",
+	        "additionalProp1": "string",
+	        "additionalProp2": "string",
+	        "additionalProp3": "string"
+	      }
+	    }
+	  },
+	  "expandRequest": {
+	    "store_id": "01YCP46JKYM8FJCQ37NMBYHE5X",
+	    "tuple_key": {
+	      "relation": "reader",
+	      "object": "document:2021-budget"
+	    },
+	    "authorization_model_id": "01G5JAVJ41T49E9TT3SKVS7X1J"
+	  },
+	  "reverseExpandRequest": {
+	    "storeId": "string",
+	    "objectType": "string",
+	    "relation": "string",
+	    "contextualTuples": [
+	      {
+	        "user": "user:anne",
+	        "relation": "reader",
+	        "object": "document:2021-budget",
+	        "condition": {
+	          "name": "condition1",
+	          "context": {}
+	        }
+	      }
+	    ],
+	    "edge": {
+	      "type": 0,
+	      "targetReference": {
+	        "type": "group",
+	        "relation": "member",
+	        "wildcard": {},
+	        "condition": "string"
+	      },
+*/
 func (s *Server) Dispatch(ctx context.Context, req *openfgav1.BaseRequest) (*openfgav1.BaseResponse, error) {
-	log.Println("Dispatched to Server - TODO Put server number")
-	return &openfgav1.BaseResponse{BaseResponse: &openfgav1.BaseResponse_CheckResponse{CheckResponse: &openfgav1.CheckResponse{Allowed: true}}}, nil
+	log.Println(fmt.Sprintf("Dispatched to Server %d Request - %s", 1, req.GetDispatchedCheckRequest()))
+	r := make(chan openfgav1.CheckResponse)
+	request := req.GetDispatchedCheckRequest()
+	childReq := openfgav1.CheckRequest{
+		StoreId: request.StoreId,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     request.TupleKey.User,
+			Relation: request.TupleKey.Relation,
+			Object:   request.TupleKey.Object,
+		},
+	}
+
+	go func() {
+		response, _ := s.Check(context.Background(), &childReq)
+		r <- *response
+	}()
+
+	tell := <-r
+	return &openfgav1.BaseResponse{BaseResponse: &openfgav1.BaseResponse_CheckResponse{CheckResponse: &tell}}, nil
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {

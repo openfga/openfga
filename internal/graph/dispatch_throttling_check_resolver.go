@@ -4,6 +4,7 @@ import (
 	"context"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"log"
 	"time"
 
@@ -97,7 +98,7 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 }
 
 func (r *DispatchThrottlingCheckResolver) Dispatch(ctx context.Context, req *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Throttling Dispatcher - %p", req.GetDispatchedCheckRequest())
+	log.Printf("Throttling Dispatcher - %s running in %s", req.GetDispatchedCheckRequest(), serverconfig.ServerName)
 	currentNumDispatch := metadata.GetDispatchCount()
 
 	if currentNumDispatch > r.config.Threshold {

@@ -4,6 +4,7 @@ import (
 	"context"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/dispatcher"
+	"github.com/openfga/openfga/internal/server/config"
 	"google.golang.org/protobuf/types/known/anypb"
 	"log"
 
@@ -30,7 +31,7 @@ func NewCycleDetectionCheckResolver() *CycleDetectionCheckResolver {
 
 // ResolveCheck implements CheckResolver.
 func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Cycle Check Dispatcher - %p", request.GetDispatchedCheckRequest())
+	log.Printf("Cycle Check Dispatcher - %s running in %s", request.GetDispatchedCheckRequest(), config.ServerName)
 	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()

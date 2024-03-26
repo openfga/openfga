@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+var ServerName string = ""
+
 const (
 	DefaultMaxRPCMessageSizeInBytes         = 512 * 1_204 // 512 KB
 	DefaultMaxTuplesPerWrite                = 100
@@ -232,6 +234,8 @@ type Config struct {
 	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
+
+	ServerName string
 
 	Datastore          DatastoreConfig
 	GRPC               GRPCConfig
