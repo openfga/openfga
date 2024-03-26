@@ -1591,9 +1591,8 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 		      define can_view: required_1 and required_2`,
 
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "required_1", "user:*"),
-				tuple.NewTupleKey("document:1", "required_2", "user:*"),
-
+				tuple.NewTupleKey("document:1", "required_1", "user:*"), // Invalid tuple, wildcard not allowed
+				tuple.NewTupleKey("document:1", "required_2", "user:*"), // Invalid tuple, wildcard not allowed
 				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
 				tuple.NewTupleKey("document:1", "required_2", "user:maria"),
 			},
@@ -1653,8 +1652,8 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 				tuple.NewTupleKey("document:1", "required_1", "user:will"),
 				tuple.NewTupleKey("document:1", "required_2", "user:will"),
 
-				tuple.NewTupleKey("document:1", "required_1", "user:*"),
-				tuple.NewTupleKey("document:1", "required_2", "user:*"),
+				tuple.NewTupleKey("document:1", "required_1", "user:*"), // Invalid tuple, wildcard not allowed
+				tuple.NewTupleKey("document:1", "required_2", "user:*"), // Invalid tuple, wildcard not allowed
 			},
 			expectedUsers: []string{"user:will"},
 		},

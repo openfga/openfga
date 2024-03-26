@@ -314,15 +314,16 @@ func (l *listUsersQuery) expandIntersection(
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	var wg sync.WaitGroup
+	defer wg.Done()
+
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
-	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
-
-	clauses := rewrite.Intersection.GetChild()
-	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(clauses))
-	for i, rewrite := range clauses {
+	childOperands := rewrite.Intersection.GetChild()
+	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(childOperands))
+	for i, rewrite := range childOperands {
 		i := i
 		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
@@ -342,16 +343,17 @@ func (l *listUsersQuery) expandIntersection(
 	}()
 
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(len(clauses))
+
+	wg.Add(len(childOperands))
 
 	wildcardCount := atomic.Uint32{}
+	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
 	foundUsersCountMap := make(map[string]uint32, 0)
 	for _, foundUsersChan := range intersectionFoundUsersChans {
-		go func(channel chan *openfgav1.User) {
+		go func(foundUsersChan chan *openfgav1.User) {
 			foundUsersMap := make(map[string]uint32, 0)
-			for fu := range channel {
-				key := tuple.UserProtoToString(fu)
+			for foundUser := range foundUsersChan {
+				key := tuple.UserProtoToString(foundUser)
 				foundUsersMap[key]++
 			}
 
@@ -374,14 +376,12 @@ func (l *listUsersQuery) expandIntersection(
 
 	for key, count := range foundUsersCountMap {
 		// Compare the number of times the specific user was returned for
-		// all intersection clauses plus the number of wildcards.
-		// If this summed value equals the number of clauses, the user satisfies
+		// all intersection operands plus the number of wildcards.
+		// If this summed value equals the number of operands, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
-		if (count + wildcardCount.Load()) < uint32(len(clauses)) {
-			continue
+		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
+			foundUsersChan <- tuple.StringToUserProto(key)
 		}
-
-		foundUsersChan <- tuple.StringToUserProto(key)
 	}
 
 	return <-errChan
