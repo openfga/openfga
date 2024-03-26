@@ -1695,6 +1695,276 @@ func TestListUsersEdgePruning(t *testing.T) {
 	tests.runListUsersTestCases(t)
 }
 
+func TestListUsersWildcardsAndIntersection(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	tests := ListUsersTests{
+		{
+			name: "wildcard_and_intersection",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type document
+            relations
+              define allowed: [user]
+              define viewer: [user:*,user] and allowed
+              define can_view: viewer`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "with_multiple_wildcards_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "is_public",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type document
+            relations
+			  define public_1: [user:*,user]
+			  define public_2: [user:*,user]
+			  define is_public: public_1 and public_2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "public_1", "user:maria"),
+				tuple.NewTupleKey("document:1", "public_2", "user:maria"),
+
+				tuple.NewTupleKey("document:1", "public_1", "user:*"),
+				tuple.NewTupleKey("document:1", "public_2", "user:*"),
+
+				tuple.NewTupleKey("document:1", "public_1", "user:jon"),
+			},
+			expectedUsers: []string{"user:maria", "user:*", "user:jon"},
+		},
+		{
+			name: "with_multiple_wildcards_2",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+		    schema 1.1
+		  type user
+		  type document
+		    relations
+		      define viewer: [user:*,user]
+		      define this_is_not_assigned_to_any_user: [user]
+		      define can_view: viewer and this_is_not_assigned_to_any_user`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "with_multiple_wildcards_3",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+		    schema 1.1
+		  type user
+		  type document
+		    relations
+		      define viewer: [user:*,user]
+		      define required: [user:*,user]
+		      define can_view: viewer and required`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "required", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "required", "user:will"),
+			},
+			expectedUsers: []string{"user:*", "user:will"},
+		},
+		{
+			name: "with_multiple_wildcards_4",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+		    schema 1.1
+		  type user
+		  type document
+		    relations
+		      define required_1: [user]
+		      define required_2: [user]
+		      define can_view: required_1 and required_2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "required_1", "user:*"), // Invalid tuple, wildcard not allowed
+				tuple.NewTupleKey("document:1", "required_2", "user:*"), // Invalid tuple, wildcard not allowed
+				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
+				tuple.NewTupleKey("document:1", "required_2", "user:maria"),
+			},
+			expectedUsers: []string{"user:maria"},
+		},
+
+		{
+			name: "with_multiple_wildcards_5",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+		    schema 1.1
+		  type user
+		  type document
+		    relations
+		      define required_1: [user]
+		      define required_2: [user:*]
+		      define can_view: required_1 and required_2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
+				tuple.NewTupleKey("document:1", "required_2", "user:*"),
+			},
+			expectedUsers: []string{"user:maria"},
+		},
+		{
+			name: "with_multiple_wildcards_6",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+		    schema 1.1
+		  type user
+		  type document
+		    relations
+		      define required_1: [user]
+		      define required_2: [user]
+		      define can_view: required_1 and required_2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
+				tuple.NewTupleKey("document:1", "required_1", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "required_1", "user:will"),
+				tuple.NewTupleKey("document:1", "required_2", "user:will"),
+
+				tuple.NewTupleKey("document:1", "required_1", "user:*"), // Invalid tuple, wildcard not allowed
+				tuple.NewTupleKey("document:1", "required_2", "user:*"), // Invalid tuple, wildcard not allowed
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
+			name: "with_multiple_wildcards_7",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+		    schema 1.1
+		  type user
+		  type document
+		    relations
+		      define required_1: [user,user:*]
+		      define required_2: [user,user:*]
+		      define can_view: required_1 and required_2`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
+				tuple.NewTupleKey("document:1", "required_1", "user:jon"),
+				tuple.NewTupleKey("document:1", "required_1", "user:*"),
+				tuple.NewTupleKey("document:1", "required_2", "user:will"),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
+			name: "wildcard_intermediate_expansion",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  
+		  type user
+		  
+		  type group
+			relations
+			  define member: [user:*, user]
+		  
+		  type document
+			relations
+			  define group: [group]
+			  define viewer: [group#member] and member from group
+			  define can_view: viewer`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:y#member"),
+				tuple.NewTupleKey("document:1", "group", "group:x"),
+				tuple.NewTupleKey("group:x", "member", "user:*"),
+				tuple.NewTupleKey("group:y", "member", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+	}
+	tests.runListUsersTestCases(t)
+}
+
 func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	storeID := ulid.Make().String()
 
