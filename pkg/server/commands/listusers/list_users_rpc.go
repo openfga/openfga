@@ -350,7 +350,7 @@ func (l *listUsersQuery) expandIntersection(
 	wg.Add(len(childOperands))
 
 	wildcardCount := atomic.Uint32{}
-	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
+	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	foundUsersCountMap := make(map[string]uint32, 0)
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan *openfgav1.User) {
@@ -430,7 +430,7 @@ func (l *listUsersQuery) expandExclusion(
 		subtractFoundUsersMap[key] = struct{}{}
 	}
 
-	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
+	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
 	for key := range baseFoundUsersMap {
 		if _, isSubtracted := subtractFoundUsersMap[key]; !isSubtracted && !subtractWildcardExists {
