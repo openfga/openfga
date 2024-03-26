@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -284,23 +286,15 @@ func (l *listUsersQuery) expandDirect(
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
-
 		userObject, userRelation := tuple.SplitObjectRelation(tupleKeyUser)
-
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		if userRelation == "" {
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
+					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
 					// we found one, time to return it!
-					foundUsersChan <- &openfgav1.User{
-						User: &openfgav1.User_Object{
-							Object: &openfgav1.Object{
-								Type: userObjectType,
-								Id:   userObjectID,
-							},
-						},
-					}
+					foundUsersChan <- user
 				}
 			}
 			continue
@@ -323,17 +317,19 @@ func (l *listUsersQuery) expandIntersection(
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
-	intersectionFoundUsersChan := make(chan *openfgav1.User, 1)
-
-	children := rewrite.Intersection.GetChild()
-	for _, childRewrite := range children {
-		copyChildRewrite := childRewrite
+	childOperands := rewrite.Intersection.GetChild()
+	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(childOperands))
+	for i, rewrite := range childOperands {
+		i := i
+		rewrite := rewrite
+		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
 		pool.Go(func(ctx context.Context) error {
-			return l.expandRewrite(ctx, req, copyChildRewrite, intersectionFoundUsersChan)
+			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
 		})
 	}
 
@@ -341,23 +337,56 @@ func (l *listUsersQuery) expandIntersection(
 
 	go func() {
 		err := pool.Wait()
-		close(intersectionFoundUsersChan)
+		for i := range intersectionFoundUsersChans {
+			close(intersectionFoundUsersChans[i])
+		}
 		errChan <- err
 		close(errChan)
 	}()
 
-	foundUsersCountMap := make(map[string]uint32, 0)
-	for fu := range intersectionFoundUsersChan {
-		key := tuple.UserProtoToString(fu)
-		foundUsersCountMap[key]++
-	}
+	var mu sync.Mutex
 
-	for key, c := range foundUsersCountMap {
-		// Compare the specific user's count, or the number of times
-		// the user was returned for all intersection clauses.
-		// If this count equals the number of clauses, the user satisfies
+	var wg sync.WaitGroup
+	wg.Add(len(childOperands))
+
+	wildcardCount := atomic.Uint32{}
+	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
+	foundUsersCountMap := make(map[string]uint32, 0)
+	for _, foundUsersChan := range intersectionFoundUsersChans {
+		go func(foundUsersChan chan *openfgav1.User) {
+			defer wg.Done()
+			foundUsersMap := make(map[string]uint32, 0)
+			for foundUser := range foundUsersChan {
+				key := tuple.UserProtoToString(foundUser)
+				foundUsersMap[key]++
+			}
+
+			_, wildcardExists := foundUsersMap[wildcardKey]
+			if wildcardExists {
+				wildcardCount.Add(1)
+			}
+			for userKey := range foundUsersMap {
+				mu.Lock()
+				// Increment the count for a user but decrement if a wildcard
+				// also exists to prevent double counting. This ensures accurate
+				// tracking for intersection criteria, avoiding inflated counts
+				// when both a user and a wildcard are present.
+				foundUsersCountMap[userKey]++
+				if wildcardExists {
+					foundUsersCountMap[userKey]--
+				}
+				mu.Unlock()
+			}
+		}(foundUsersChan)
+	}
+	wg.Wait()
+
+	for key, count := range foundUsersCountMap {
+		// Compare the number of times the specific user was returned for
+		// all intersection operands plus the number of wildcards.
+		// If this summed value equals the number of operands, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
-		if c == uint32(len(children)) {
+		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
 			foundUsersChan <- tuple.StringToUserProto(key)
 		}
 	}
@@ -401,7 +430,7 @@ func (l *listUsersQuery) expandExclusion(
 		subtractFoundUsersMap[key] = struct{}{}
 	}
 
-	wildcardKey := fmt.Sprintf("%s:*", req.GetUserFilters()[0].GetType())
+	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
 	for key := range baseFoundUsersMap {
 		if _, isSubtracted := subtractFoundUsersMap[key]; !isSubtracted && !subtractWildcardExists {
