@@ -49,8 +49,7 @@ type CachedResolveCheckResponse struct {
 func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveCheckResponse {
 	return &ResolveCheckResponse{
 		Allowed: c.Allowed,
-		ResolutionMetadata: &ResolutionMetadata{
-			Depth:               defaultResolveNodeLimit,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 0,
 		},
 	}
@@ -142,6 +141,11 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 // SetDelegate sets this CachedCheckResolver's dispatch delegate.
 func (c *CachedCheckResolver) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
+}
+
+// GetDelegate returns this CachedCheckResolver's dispatch delegate.
+func (c *CachedCheckResolver) GetDelegate() CheckResolver {
+	return c.delegate
 }
 
 // Close will deallocate resource allocated by the CachedCheckResolver

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -46,8 +47,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                              = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                                 = "authorization_model_id"
+	ExperimentalEnableModularModels ExperimentalFeatureFlag = "enable-modular-models"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -77,12 +79,24 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
-	//The name of the histogram is not referring to dispatch count, but we are not changing this as it will be a breaking change.
+	//request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms
 	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
 
 	requestDurationByQueryAndDispatchHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            requestDurationByQueryHistogramName,
+		Help:                            "[DEPRECATED - Use request_duration_ms instead] The request duration (in ms) labeled by method and buckets of datastore query counts and number of dispatches. This allows for reporting percentiles based on the number of datastore queries and number of dispatches required to resolve the request.",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
+
+	requestDurationHistogramName = "request_duration_ms"
+
+	requestDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            requestDurationHistogramName,
 		Help:                            "The request duration (in ms) labeled by method and buckets of datastore query counts and number of dispatches. This allows for reporting percentiles based on the number of datastore queries and number of dispatches required to resolve the request.",
 		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
 		NativeHistogramBucketFactor:     1.1,
@@ -114,15 +128,21 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
-	checkQueryCacheEnabled    bool
-	checkQueryCacheLimit      uint32
-	checkQueryCacheTTL        time.Duration
-	cachedCheckResolverCloser func()
+	checkQueryCacheEnabled bool
+	checkQueryCacheLimit   uint32
+	checkQueryCacheTTL     time.Duration
+	cachedCheckResolver    *graph.CachedCheckResolver
 
 	checkResolver graph.CheckResolver
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
+
+	dispatchThrottlingCheckResolverEnabled   bool
+	dispatchThrottlingCheckResolverFrequency time.Duration
+	dispatchThrottlingThreshold              uint32
+
+	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -280,6 +300,34 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
+// WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
+func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingCheckResolverEnabled = enabled
+	}
+}
+
+// WithDispatchThrottlingCheckResolverFrequency defines how frequent dispatch throttling will be evaluated.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingCheckResolverFrequency = frequency
+	}
+}
+
+// WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
+func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingThreshold = threshold
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -315,6 +363,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
 		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+
+		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultDispatchThrottlingEnabled,
+		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
+		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
 	}
 
 	for _, opt := range opts {
@@ -331,6 +383,24 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	cycleDetectionCheckResolver.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
+	if s.dispatchThrottlingCheckResolverEnabled {
+		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
+			Frequency: s.dispatchThrottlingCheckResolverFrequency,
+			Threshold: s.dispatchThrottlingThreshold,
+		}
+
+		s.logger.Info("Enabling dispatch throttling",
+			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
+			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
+		)
+
+		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
+		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
+
+		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+	}
+
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
@@ -341,10 +411,14 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		)
-		s.cachedCheckResolverCloser = cachedCheckResolver.Close
+		s.cachedCheckResolver = cachedCheckResolver
 
 		cachedCheckResolver.SetDelegate(localChecker)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		if s.dispatchThrottlingCheckResolver != nil {
+			s.dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		}
 	}
 
 	if s.datastore == nil {
@@ -366,8 +440,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	if s.cachedCheckResolverCloser != nil {
-		s.cachedCheckResolverCloser()
+	if s.dispatchThrottlingCheckResolver != nil {
+		s.dispatchThrottlingCheckResolver.Close()
+	}
+
+	if s.cachedCheckResolver != nil {
+		s.cachedCheckResolver.Close()
 	}
 
 	if s.checkResolver != nil {
@@ -468,6 +546,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
@@ -548,6 +633,13 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	).Observe(dispatchCount)
 
 	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
@@ -710,16 +802,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		),
 	)
 
+	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
+
 	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth:               s.resolveNodeLimit,
-			DatastoreQueryCount: 0,
-		},
+		RequestMetadata:      checkRequestMetadata,
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -744,7 +835,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		methodName,
 	).Observe(queryCount)
 
-	dispatchCount := float64(resp.GetResolutionMetadata().DispatchCount)
+	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
+	dispatchCount := float64(rawDispatchCount)
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -762,7 +854,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil
@@ -838,9 +937,12 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
+	enableModularModels := slices.Contains(s.experimentals, ExperimentalEnableModularModels)
+
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
+		commands.WithEnableModularModels(enableModularModels),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {

@@ -119,7 +119,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
 
-	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
+	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens, and where the keys will be fetched from")
+
+	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -198,48 +200,21 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
-	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_by_query_count_ms")
+	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
 
-	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_by_query_count_ms")
+	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
+
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
-}
-
-// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
-// It is the responsibility of the caller to call the release function.
-func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	return l.Addr().(*net.TCPAddr).Port, func() {
-		l.Close()
-	}
-}
-
-// MustDefaultConfigWithRandomPorts is meant to be used for tests only (TODO move to test utils).
-// It returns default server config but with random ports for the grpc and http addresses and with the playground, tracing and metrics turned off.
-// This function may panic if somehow a random port cannot be chosen.
-func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
-	config := serverconfig.DefaultConfig()
-
-	// Since this is used for tests, turn the following off:
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	httpPort, httpPortReleaser := TCPRandomPort()
-	defer httpPortReleaser()
-	grpcPort, grpcPortReleaser := TCPRandomPort()
-	defer grpcPortReleaser()
-
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-
-	return config
 }
 
 // ReadConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
@@ -390,7 +365,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
 	default:
 		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -513,6 +488,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
 		server.WithExperimentals(experimentals...),
 	)
 

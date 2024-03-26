@@ -29,10 +29,10 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		visitedPaths[tuple.TupleKeyToString(cyclicalTuple)] = struct{}{}
 
 		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            uuid.NewString(),
-			TupleKey:           cyclicalTuple,
-			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
-			VisitedPaths:       visitedPaths,
+			StoreID:         uuid.NewString(),
+			TupleKey:        cyclicalTuple,
+			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			VisitedPaths:    visitedPaths,
 		})
 
 		require.ErrorIs(t, err, ErrCycleDetected)
@@ -50,10 +50,10 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		cycleDetectionCheckResolver.SetDelegate(mockLocalChecker)
 
 		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            uuid.NewString(),
-			TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:will"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
-			VisitedPaths:       map[string]struct{}{},
+			StoreID:         uuid.NewString(),
+			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:will"),
+			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			VisitedPaths:    map[string]struct{}{},
 		})
 
 		require.NoError(t, err)

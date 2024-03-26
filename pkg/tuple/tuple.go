@@ -151,7 +151,7 @@ func NewExpandRequestTupleKey(object, relation string) *openfgav1.ExpandRequestT
 // ObjectKey returns the canonical key for the provided Object. The ObjectKey of an object
 // is the string 'objectType:objectId'.
 func ObjectKey(obj *openfgav1.Object) string {
-	return fmt.Sprintf("%s:%s", obj.GetType(), obj.GetId())
+	return BuildObject(obj.GetType(), obj.GetId())
 }
 
 type UserString = string
@@ -297,7 +297,7 @@ func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
 		return false
 	}
-	if user == "*" || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
+	if user == Wildcard || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
 	}
 
@@ -320,4 +320,9 @@ func IsTypedWildcard(s string) bool {
 	}
 
 	return false
+}
+
+// TypedPublicWildcard returns the string tuple representation for a given object type (ex: "user:*")
+func TypedPublicWildcard(objectType string) string {
+	return BuildObject(objectType, Wildcard)
 }
