@@ -1685,6 +1685,40 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			},
 			expectedUsers: []string{"user:will"},
 		},
+		{
+			name: "wildcard_intermediate_expansion",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  
+		  type user
+		  
+		  type group
+			relations
+			  define member: [user:*, user]
+		  
+		  type document
+			relations
+			  define group: [group]
+			  define viewer: [group#member] and member from group
+			  define can_view: viewer`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:y#member"),
+				tuple.NewTupleKey("document:1", "group", "group:x"),
+				tuple.NewTupleKey("group:x", "member", "user:*"),
+				tuple.NewTupleKey("group:y", "member", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }

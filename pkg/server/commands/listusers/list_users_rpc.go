@@ -314,8 +314,6 @@ func (l *listUsersQuery) expandIntersection(
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-	var wg sync.WaitGroup
-	defer wg.Done()
 
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
@@ -344,6 +342,7 @@ func (l *listUsersQuery) expandIntersection(
 
 	var mu sync.Mutex
 
+	var wg sync.WaitGroup
 	wg.Add(len(childOperands))
 
 	wildcardCount := atomic.Uint32{}
@@ -351,6 +350,7 @@ func (l *listUsersQuery) expandIntersection(
 	foundUsersCountMap := make(map[string]uint32, 0)
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan *openfgav1.User) {
+			defer wg.Done()
 			foundUsersMap := make(map[string]uint32, 0)
 			for foundUser := range foundUsersChan {
 				key := tuple.UserProtoToString(foundUser)
@@ -369,7 +369,6 @@ func (l *listUsersQuery) expandIntersection(
 				}
 				mu.Unlock()
 			}
-			wg.Done()
 		}(foundUsersChan)
 	}
 	wg.Wait()
