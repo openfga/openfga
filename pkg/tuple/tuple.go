@@ -252,7 +252,7 @@ func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
 		return false
 	}
-	if user == "*" || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
+	if user == Wildcard || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
 	}
 
