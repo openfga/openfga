@@ -78,7 +78,7 @@ func (u *UserRefTypedWildcard) GetObjectType() string {
 }
 
 func (u *UserRefTypedWildcard) String() string {
-	return fmt.Sprintf("%s:*", u.Type)
+	return tuple.TypedPublicWildcard(u.Type)
 }
 
 type UserRefObjectRelation struct {
@@ -192,7 +192,7 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // This function respects context timeouts and cancellations. If an
 // error is encountered (e.g. context timeout) before resolving all
 // objects, then the provided channel will NOT be closed, and it will
-// send the error through the channel.
+// return the error.
 //
 // If no errors occur, then Execute will yield all of the objects on
 // the provided channel and then close the channel to signal that it
@@ -428,7 +428,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		if publiclyAssignable {
 			// e.g. 'user:*'
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: fmt.Sprintf("%s:*", targetUserObjectType),
+				Object: tuple.TypedPublicWildcard(targetUserObjectType),
 			})
 		}
 

@@ -22,6 +22,7 @@ type WriteAuthorizationModelCommand struct {
 	backend                          storage.TypeDefinitionWriteBackend
 	logger                           logger.Logger
 	maxAuthorizationModelSizeInBytes int
+	enableModularModels              bool
 }
 
 type WriteAuthModelOption func(*WriteAuthorizationModelCommand)
@@ -38,11 +39,18 @@ func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
 	}
 }
 
+func WithEnableModularModels(enable bool) WriteAuthModelOption {
+	return func(m *WriteAuthorizationModelCommand) {
+		m.enableModularModels = enable
+	}
+}
+
 func NewWriteAuthorizationModelCommand(backend storage.TypeDefinitionWriteBackend, opts ...WriteAuthModelOption) *WriteAuthorizationModelCommand {
 	model := &WriteAuthorizationModelCommand{
 		backend:                          backend,
 		logger:                           logger.NewNoopLogger(),
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+		enableModularModels:              false,
 	}
 
 	for _, opt := range opts {
@@ -61,6 +69,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
 	if req.GetSchemaVersion() == "" {
 		req.SchemaVersion = typesystem.SchemaVersion1_1
+	}
+
+	if !w.enableModularModels && req.GetSchemaVersion() == typesystem.SchemaVersion1_2 {
+		return nil, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) are not supported")
 	}
 
 	model := &openfgav1.AuthorizationModel{

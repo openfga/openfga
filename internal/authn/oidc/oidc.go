@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,8 +24,9 @@ import (
 )
 
 type RemoteOidcAuthenticator struct {
-	IssuerURL string
-	Audience  string
+	MainIssuer    string
+	IssuerAliases []string
+	Audience      string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -47,13 +49,14 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
-		IssuerURL:  issuerURL,
-		Audience:   audience,
-		httpClient: client.StandardClient(),
+		MainIssuer:    mainIssuer,
+		IssuerAliases: issuerAliases,
+		Audience:      audience,
+		httpClient:    client.StandardClient(),
 	}
 	err := fetchJWKs(oidc)
 	if err != nil {
@@ -86,7 +89,16 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
-	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
+	validIssuers := []string{
+		oidc.MainIssuer,
+	}
+	validIssuers = append(validIssuers, oidc.IssuerAliases...)
+
+	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
+		return claims.VerifyIssuer(issuer, true)
+	})
+
+	if !ok {
 		return nil, errInvalidIssuer
 	}
 
@@ -149,7 +161,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 }
 
 func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, error) {
-	wellKnown := strings.TrimSuffix(oidc.IssuerURL, "/") + "/.well-known/openid-configuration"
+	wellKnown := strings.TrimSuffix(oidc.MainIssuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error forming request to get OIDC: %w", err)

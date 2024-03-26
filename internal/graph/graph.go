@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -41,23 +42,37 @@ func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 	return depth, ok
 }
 
-type ResolutionMetadata struct {
+type ResolveCheckRequestMetadata struct {
 	// Thinking of a Check as a tree of evaluations,
 	// Depth is the current level in the tree in the current path that we are exploring.
 	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
 	Depth uint32
 
-	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read.
+	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated so far, before this request is solved.
+	DatastoreQueryCount uint32
+
+	// DispatchCounter is the address to a shared counter that keeps track of how many calls to ResolveCheck we had to do
+	// to solve the root/parent problem.
+	// The contents of this counter will be written by concurrent goroutines.
+	// After the root problem has been solved, this value can be read.
+	DispatchCounter *atomic.Uint32
+}
+
+func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
+	return &ResolveCheckRequestMetadata{
+		Depth:               maxDepth,
+		DatastoreQueryCount: 0,
+		DispatchCounter:     new(atomic.Uint32),
+	}
+}
+
+type ResolveCheckResponseMetadata struct {
+	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated after this request is solved.
 	// Thinking of a Check as a tree of evaluations,
 	// If the solution is "allowed=true", one path was found. This is the value in the leaf node of that path, plus the sum of the paths that were
 	// evaluated and potentially discarded
 	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreQueryCount uint32
-
-	// The number of Check subproblems that had to be dispatched to resolve the parent subproblem this response is associated with.
-	// Thinking of a Check as a tree made of nodes of resolutions,
-	// DispatchCount will be, at one node, the sum of all the children nodes' DispatchCount.
-	DispatchCount uint32
 }
 
 type RelationshipEdgeType int
