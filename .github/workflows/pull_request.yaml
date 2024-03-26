@@ -99,7 +99,7 @@ jobs:
           tags: "openfga/openfga:dockertest"
 
       - name: Docker Tests
-        run: make test-docker-ci
+        run: make test-docker
 
   go-bench:
     runs-on: ubuntu-latest
@@ -121,7 +121,7 @@ jobs:
       - name: Run benchmark
         run: |
           set -o pipefail
-          make bench | tee ${{ github.sha }}_bench_output.txt
+          make test-bench | tee ${{ github.sha }}_bench_output.txt
 
       - name: Get CPU information
         uses: kenchan0130/actions-system-info@19ac84a24678e27ef7e91016765c221f97b1dc28 # v1
