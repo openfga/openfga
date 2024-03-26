@@ -446,8 +446,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "userset_user_assigned_multiple_groups",
-			TemporarilySkipReason: "because results not deduplicated",
+			name: "userset_user_assigned_multiple_groups",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
