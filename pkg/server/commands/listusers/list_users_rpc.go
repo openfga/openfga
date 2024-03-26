@@ -367,6 +367,10 @@ func (l *listUsersQuery) expandIntersection(
 			}
 			for userKey := range foundUsersMap {
 				mu.Lock()
+				// Increment the count for a user but decrement if a wildcard
+				// also exists to prevent double counting. This ensures accurate
+				// tracking for intersection criteria, avoiding inflated counts
+				// when both a user and a wildcard are present.
 				foundUsersCountMap[userKey]++
 				if wildcardExists {
 					foundUsersCountMap[userKey]--
