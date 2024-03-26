@@ -511,6 +511,70 @@ func TestListUsersUsersets(t *testing.T) {
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{"document:1#viewer"},
 		},
+		{
+			name: "evaluate_userset_in_computed_relation_of_ttu",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "repo", Id: "openfga/openfga"},
+				Relation: "reader",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type:     "organization",
+						Relation: "member",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type repo
+            relations
+              define owner: [organization]
+              define reader: repo_admin from owner
+          type organization
+            relations
+              define member: [user]
+              define repo_admin: [organization#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:openfga/openfga", "owner", "organization:openfga"),
+				tuple.NewTupleKey("organization:openfga", "admin", "organization:openfga#member"),
+				tuple.NewTupleKey("organization:openfga", "ember", "user:erik"),
+			},
+			expectedUsers: []string{"organization:openfga#member"},
+		},
+		{
+			name: "userset_with_intersection_in_computed_relation_of_ttu",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "repo", Id: "openfga/openfga"},
+				Relation: "reader",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type:     "organization",
+						Relation: "member",
+					},
+				},
+			},
+			model: `model
+            schema 1.1
+          type user
+          type repo
+            relations
+              define owner: [organization]
+              define allowed: [user]
+              define reader: repo_admin from owner and allowed
+              define can_read: reader
+          type organization
+            relations
+              define member: [user]
+              define repo_admin: [organization#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:openfga/openfga", "owner", "organization:openfga"),
+				tuple.NewTupleKey("organization:openfga", "repo_admin", "organization:openfga#member"),
+				tuple.NewTupleKey("organization:openfga", "member", "user:erik"),
+				tuple.NewTupleKey("organization:openfga", "member", "user:jim"),
+				tuple.NewTupleKey("repo:openfga/openfga", "allowed", "user:erik"),
+			},
+			expectedUsers: []string{"organization:openfga#member"},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
