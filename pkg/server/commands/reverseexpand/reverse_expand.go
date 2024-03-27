@@ -269,11 +269,9 @@ func (c *ReverseExpandQuery) execute(
 
 		sourceUserRel := val.ObjectRelation.GetRelation()
 
-		if req.edge == nil {
-			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-					return err
-				}
+		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
+				return err
 			}
 		}
 
