@@ -1522,8 +1522,7 @@ func TestListUsersWildcards(t *testing.T) {
 			expectedUsers: []string{"user:*"},
 		},
 		{
-			name:                  "wildcard_computed_ttu",
-			TemporarilySkipReason: "because results not deduplicated and data race occurring",
+			name: "wildcard_computed_ttu",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
