@@ -5325,10 +5325,10 @@ tests:
   - name: userset_defines_itself_2
     stages:
       - model: |
-          model  
-            schema 1.1  
+          model
+            schema 1.1
 
-          type user  
+          type user
 
           type document
             relations
@@ -5370,10 +5370,10 @@ tests:
   - name: userset_defines_itself_3
     stages:
       - model: |
-          model  
-            schema 1.1  
+          model
+            schema 1.1
 
-          type user  
+          type user
 
           type document
             relations
@@ -5414,8 +5414,8 @@ tests:
   - name: userset_defines_itself_4
     stages:
       - model: |
-          model  
-            schema 1.1  
+          model
+            schema 1.1
 
           type user  
 
@@ -5456,8 +5456,8 @@ tests:
   - name: userset_defines_itself_5
     stages:
       - model: |
-          model  
-            schema 1.1  
+          model
+            schema 1.1
 
           type user
 
@@ -5495,8 +5495,8 @@ tests:
   - name: userset_defines_itself_6
     stages:
       - model: |
-          model  
-            schema 1.1  
+          model
+            schema 1.1
 
           type user
 
@@ -5534,8 +5534,8 @@ tests:
   - name: userset_defines_itself_7
     stages:
       - model: |
-          model  
-            schema 1.1  
+          model
+            schema 1.1
 
           type user
 
@@ -5562,3 +5562,27 @@ tests:
               type: group
               relation: member
             expectation: ["group:1"]
+  - name: userset_defines_itself_8
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type document
+            relations
+              define writer: [user]
+              define viewer: [user] or writer
+        checkAssertions:
+        - tuple:
+            user: document:1#writer
+            relation: viewer
+            object: document:1
+          expectation: true
+        listObjectsAssertions:
+          - request:
+              user: document:1#writer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
