@@ -5295,7 +5295,7 @@ tests:
               relation: viewer
             expectation:
               - document:1
-  - name: userset_defines_itself
+  - name: userset_defines_itself_1
     stages:
       - model: |
           model
@@ -5322,3 +5322,243 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+  - name: userset_defines_itself_2
+    stages:
+      - model: |
+          model  
+            schema 1.1  
+
+          type user  
+
+          type document
+            relations
+              define viewer: editor or writer
+              define editor: [user]
+              define writer: [user]
+        checkAssertions:
+        - tuple:
+            user: document:1#writer
+            relation: viewer
+            object: document:1
+          expectation: true
+        - tuple:
+            user: document:1#editor
+            relation: viewer
+            object: document:1
+          expectation: true
+        - tuple:
+            user: document:1#viewer
+            relation: viewer
+            object: document:1
+          expectation: true
+        listObjectsAssertions:
+          - request:
+              user: document:1#writer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+          - request:
+              user: document:1#editor
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+  - name: userset_defines_itself_3
+    stages:
+      - model: |
+          model  
+            schema 1.1  
+
+          type user  
+
+          type document
+            relations
+              define writer: [user]
+              define viewer: writer
+        checkAssertions:
+        - tuple:
+            user: document:1#writer
+            relation: viewer
+            object: document:1
+          expectation: true
+        - tuple:
+            user: document:1#viewer
+            relation: viewer
+            object: document:1
+          expectation: true
+        - tuple:
+            user: document:1#viewer
+            relation: writer
+            object: document:1
+          expectation: false
+        listObjectsAssertions:
+          - request:
+              user: document:1#writer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: writer
+            expectation: []
+  - name: userset_defines_itself_4
+    stages:
+      - model: |
+          model  
+            schema 1.1  
+
+          type user  
+
+          type folder
+            relations
+              define viewer: [user]
+
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+        tuples:
+          - user: folder:x
+            relation: parent
+            object: document:1
+        checkAssertions:
+        - tuple:
+            user: folder:x#viewer
+            relation: viewer
+            object: document:1
+          expectation: true
+        - tuple:
+            user: document:1#viewer
+            relation: viewer
+            object: document:1
+          expectation: true
+        listObjectsAssertions:
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+          - request:
+              user: folder:x#viewer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]
+  - name: userset_defines_itself_5
+    stages:
+      - model: |
+          model  
+            schema 1.1  
+
+          type user
+
+          type document
+            relations
+              define allowed: [user]
+              define viewer: [user] and allowed
+        checkAssertions:
+        - tuple:
+            user: document:1#viewer
+            relation: allowed
+            object: document:1
+          expectation: false
+        - tuple:
+            user: document:1#allowed
+            relation: viewer
+            object: document:1
+          expectation: false
+        - tuple:
+            user: document:1#viewer
+            relation: viewer
+            object: document:1
+          expectation: true
+        listObjectsAssertions:
+          - request:
+              user: document:1#allowed
+              type: document
+              relation: viewer
+            expectation: []
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: allowed
+            expectation: []
+  - name: userset_defines_itself_6
+    stages:
+      - model: |
+          model  
+            schema 1.1  
+
+          type user
+
+          type document
+            relations
+              define restricted: [user]
+              define viewer: [user] but not restricted
+        checkAssertions:
+        - tuple:
+            user: document:1#viewer
+            relation: restricted
+            object: document:1
+          expectation: false
+        - tuple:
+            user: document:1#restricted
+            relation: viewer
+            object: document:1
+          expectation: false
+        - tuple:
+            user: document:1#viewer
+            relation: viewer
+            object: document:1
+          expectation: true
+        listObjectsAssertions:
+          - request:
+              user: document:1#restricted
+              type: document
+              relation: viewer
+            expectation: []
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: restricted
+            expectation: []
+  - name: userset_defines_itself_7
+    stages:
+      - model: |
+          model  
+            schema 1.1  
+
+          type user
+
+          type group
+            relations
+              define member: [user, group#member] but not other
+              define other: [user, group#member]
+        tuples:
+          - user: group:1#member
+            relation: other
+            object: group:1
+          - user: user:will
+            relation: member
+            object: group:1
+        checkAssertions:
+        - tuple:
+            user: group:1#member
+            relation: member
+            object: group:1
+          expectation: true
+        listObjectsAssertions:
+          - request:
+              user: group:1#member
+              type: group
+              relation: member
+            expectation: ["group:1"]
