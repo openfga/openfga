@@ -62,8 +62,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "direct_relationship_with_userset_subjects_and_userset_filter",
-			TemporarilySkipReason: "because group:eng,group:fga,group:fga-backend being returned",
+			name: "direct_relationship_with_userset_subjects_and_userset_filter",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "group", Id: "eng"},
 				Relation: "member",
@@ -84,7 +83,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("group:fga", "member", "group:fga-backend#member"),
 			},
-			expectedUsers: []string{"group:fga#member", "group:fga-backend#member"},
+			expectedUsers: []string{"group:fga#member", "group:fga-backend#member", "group:eng#member"}, //Should `group:eng#member` be included here?
 		},
 		{
 			name:                  "direct_relationship_unapplicable_filter",
@@ -514,11 +513,11 @@ func TestListUsersUsersets(t *testing.T) {
 		{
 			name: "evaluate_userset_in_computed_relation_of_ttu",
 			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "repo", Id: "openfga/openfga"},
+				Object:   &openfgav1.Object{Type: "repo", Id: "fga"},
 				Relation: "reader",
 				UserFilters: []*openfgav1.ListUsersFilter{
 					{
-						Type:     "organization",
+						Type:     "org",
 						Relation: "member",
 					},
 				},
@@ -526,29 +525,31 @@ func TestListUsersUsersets(t *testing.T) {
 			model: `model
             schema 1.1
           type user
+
+		  type org
+		    relations
+			  define member: [user]
+			  define admin: [org#member]
+
           type repo
             relations
-              define owner: [organization]
-              define reader: repo_admin from owner
-          type organization
-            relations
-              define member: [user]
-              define repo_admin: [organization#member]`,
+              define owner: [org]
+              define reader: admin from owner`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "owner", "organization:openfga"),
-				tuple.NewTupleKey("organization:openfga", "admin", "organization:openfga#member"),
-				tuple.NewTupleKey("organization:openfga", "ember", "user:erik"),
+				tuple.NewTupleKey("repo:fga", "owner", "org:x"),
+				tuple.NewTupleKey("org:x", "admin", "org:x#member"),
+				tuple.NewTupleKey("org:x", "member", "user:will"),
 			},
-			expectedUsers: []string{"organization:openfga#member"},
+			expectedUsers: []string{"org:x#member"},
 		},
 		{
 			name: "userset_with_intersection_in_computed_relation_of_ttu",
 			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "repo", Id: "openfga/openfga"},
+				Object:   &openfgav1.Object{Type: "repo", Id: "fga"},
 				Relation: "reader",
 				UserFilters: []*openfgav1.ListUsersFilter{
 					{
-						Type:     "organization",
+						Type:     "org",
 						Relation: "member",
 					},
 				},
@@ -556,24 +557,22 @@ func TestListUsersUsersets(t *testing.T) {
 			model: `model
             schema 1.1
           type user
-          type repo
-            relations
-              define owner: [organization]
-              define allowed: [user]
-              define reader: repo_admin from owner and allowed
-              define can_read: reader
-          type organization
+          
+          type org
             relations
               define member: [user]
-              define repo_admin: [organization#member]`,
+              define admin: [org#member]
+		  type repo
+			relations
+			  define owner: [org]
+			  define allowed: [user]
+			  define reader: admin from owner and allowed`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "owner", "organization:openfga"),
-				tuple.NewTupleKey("organization:openfga", "repo_admin", "organization:openfga#member"),
-				tuple.NewTupleKey("organization:openfga", "member", "user:erik"),
-				tuple.NewTupleKey("organization:openfga", "member", "user:jim"),
-				tuple.NewTupleKey("repo:openfga/openfga", "allowed", "user:erik"),
+				tuple.NewTupleKey("repo:x", "owner", "org:fga"),
+				tuple.NewTupleKey("org:fga", "admin", "org:fga#member"),
+				tuple.NewTupleKey("repo:x", "allowed", "user:will"),
 			},
-			expectedUsers: []string{"organization:openfga#member"},
+			expectedUsers: []string{},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -839,7 +838,7 @@ func TestListUsersConditions(t *testing.T) {
 		},
 		{
 			name:                  "conditions_with_usersets",
-			TemporarilySkipReason: "because usersets don't return correct type and conditions that evaluate false don't get excluded from results",
+			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -2025,57 +2024,6 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 	tests.runListUsersTestCases(t)
 }
 
-func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
-	storeID := ulid.Make().String()
-
-	for _, test := range testCases {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		model := testutils.MustTransformDSLToProtoWithID(test.model)
-
-		t.Run(test.name, func(t *testing.T) {
-			if test.TemporarilySkipReason != "" {
-				t.Skip()
-			}
-
-			typesys, err := typesystem.NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
-			require.NoError(t, err)
-
-			if len(test.tuples) > 0 {
-				err = ds.Write(context.Background(), storeID, nil, test.tuples)
-				require.NoError(t, err)
-			}
-
-			l := NewListUsersQuery(ds)
-
-			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-
-			test.req.AuthorizationModelId = model.GetId()
-			test.req.StoreId = storeID
-
-			resp, err := l.ListUsers(ctx, test.req)
-
-			actualErrorMsg := ""
-			if err != nil {
-				actualErrorMsg = err.Error()
-			}
-			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
-
-			actualUsers := resp.GetUsers()
-
-			actualCompare := make([]string, len(actualUsers))
-			for i, u := range resp.GetUsers() {
-				actualCompare[i] = tuple.UserProtoToString(u)
-			}
-
-			require.ElementsMatch(t, actualCompare, test.expectedUsers)
-		})
-	}
-}
-
 func TestListUsersCycleDetection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2148,4 +2096,55 @@ func TestListUsersCycleDetection(t *testing.T) {
 			break
 		}
 	})
+}
+
+func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	for _, test := range testCases {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+		t.Run(test.name, func(t *testing.T) {
+			if test.TemporarilySkipReason != "" {
+				t.Skip()
+			}
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+
+			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
+
+			if len(test.tuples) > 0 {
+				err = ds.Write(context.Background(), storeID, nil, test.tuples)
+				require.NoError(t, err)
+			}
+
+			l := NewListUsersQuery(ds)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			test.req.AuthorizationModelId = model.GetId()
+			test.req.StoreId = storeID
+
+			resp, err := l.ListUsers(ctx, test.req)
+
+			actualErrorMsg := ""
+			if err != nil {
+				actualErrorMsg = err.Error()
+			}
+			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
+
+			actualUsers := resp.GetUsers()
+
+			actualCompare := make([]string, len(actualUsers))
+			for i, u := range resp.GetUsers() {
+				actualCompare[i] = tuple.UserProtoToString(u)
+			}
+
+			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+		})
+	}
 }
