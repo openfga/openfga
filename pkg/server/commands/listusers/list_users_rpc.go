@@ -92,7 +92,7 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req)
-		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
+		if err := l.expand(ctx, internalRequest, foundUsersCh, false); err != nil {
 			expandErrCh <- err
 			return
 		}
@@ -175,18 +175,20 @@ func (l *listUsersQuery) expand(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
+	passedThroughIntersectionOrExclusion bool,
 ) error {
 	if enteredCycle(req) {
 		return nil
 	}
 	for _, f := range req.GetUserFilters() {
-		if req.GetObject().GetType() == f.GetType() {
-			foundUsersChan <- &openfgav1.User{
-				User: &openfgav1.User_Object{
-					Object: req.GetObject(),
-				},
-			}
+		if passedThroughIntersectionOrExclusion && f.GetRelation() != "" {
+			// E.g. if type repo has the relation `define c: a and b`,
+			// and target is repo:1#c,
+			// and the filter is repo#a,
+			// then we cannot add repo:1#a.
+			continue
 		}
+		l.tryAdd(req, f, foundUsersChan)
 	}
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
@@ -203,7 +205,30 @@ func (l *listUsersQuery) expand(
 	}
 
 	relationRewrite := relation.GetRewrite()
-	return l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
+	return l.expandRewrite(ctx, req, relationRewrite, foundUsersChan, passedThroughIntersectionOrExclusion)
+}
+
+func (l *listUsersQuery) tryAdd(req *internalListUsersRequest, f *openfgav1.ListUsersFilter, foundUsersChan chan<- *openfgav1.User) {
+	if req.GetObject().GetType() == f.GetType() {
+		if f.GetRelation() == "" {
+			foundUsersChan <- &openfgav1.User{
+				User: &openfgav1.User_Object{
+					Object: req.GetObject(),
+				},
+			}
+		} else if f.GetRelation() == req.GetRelation() {
+			tt, tid := tuple.SplitObject(tuple.ObjectKey(req.GetObject()))
+			foundUsersChan <- &openfgav1.User{
+				User: &openfgav1.User_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     tt,
+						Id:       tid,
+						Relation: f.GetRelation(),
+					},
+				},
+			}
+		}
+	}
 }
 
 func (l *listUsersQuery) expandRewrite(
@@ -211,20 +236,23 @@ func (l *listUsersQuery) expandRewrite(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
+	passedThroughIntersectionOrExclusion bool,
 ) error {
 	switch rewrite := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return l.expandDirect(ctx, req, foundUsersChan)
+		return l.expandDirect(ctx, req, foundUsersChan, passedThroughIntersectionOrExclusion)
 	case *openfgav1.Userset_ComputedUserset:
 		rewrittenReq := req.clone()
 		rewrittenReq.Relation = rewrite.ComputedUserset.GetRelation()
-		return l.expand(ctx, rewrittenReq, foundUsersChan)
+		return l.expand(ctx, rewrittenReq, foundUsersChan, passedThroughIntersectionOrExclusion)
 	case *openfgav1.Userset_TupleToUserset:
-		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
+		return l.expandTTU(ctx, req, rewrite, foundUsersChan, passedThroughIntersectionOrExclusion)
 	case *openfgav1.Userset_Intersection:
-		return l.expandIntersection(ctx, req, rewrite, foundUsersChan)
+		passedThroughIntersectionOrExclusion = true
+		return l.expandIntersection(ctx, req, rewrite, foundUsersChan, passedThroughIntersectionOrExclusion)
 	case *openfgav1.Userset_Difference:
-		return l.expandExclusion(ctx, req, rewrite, foundUsersChan)
+		passedThroughIntersectionOrExclusion = true
+		return l.expandExclusion(ctx, req, rewrite, foundUsersChan, passedThroughIntersectionOrExclusion)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -235,7 +263,7 @@ func (l *listUsersQuery) expandRewrite(
 		for _, childRewrite := range children {
 			childRewriteCopy := childRewrite
 			pool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
+				return l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan, passedThroughIntersectionOrExclusion)
 			})
 		}
 
@@ -249,6 +277,7 @@ func (l *listUsersQuery) expandDirect(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
+	passedThroughIntersectionOrExclusion bool,
 ) error {
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -304,7 +333,7 @@ func (l *listUsersQuery) expandDirect(
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = userRelation
-			return l.expand(ctx, rewrittenReq, foundUsersChan)
+			return l.expand(ctx, rewrittenReq, foundUsersChan, passedThroughIntersectionOrExclusion)
 		})
 	}
 
@@ -316,6 +345,7 @@ func (l *listUsersQuery) expandIntersection(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
+	passedThroughIntersectionOrExclusion bool,
 ) error {
 
 	pool := pool.New().WithContext(ctx)
@@ -329,7 +359,7 @@ func (l *listUsersQuery) expandIntersection(
 		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
 		pool.Go(func(ctx context.Context) error {
-			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i], passedThroughIntersectionOrExclusion)
 		})
 	}
 
@@ -399,20 +429,21 @@ func (l *listUsersQuery) expandExclusion(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Difference,
 	foundUsersChan chan<- *openfgav1.User,
+	passedThroughIntersectionOrExclusion bool,
 ) error {
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
 	var errs error
 	go func() {
-		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh, passedThroughIntersectionOrExclusion)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}
 		close(baseFoundUsersCh)
 	}()
 	go func() {
-		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh, passedThroughIntersectionOrExclusion)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 		}
@@ -450,6 +481,7 @@ func (l *listUsersQuery) expandTTU(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
 	foundUsersChan chan<- *openfgav1.User,
+	passedThroughIntersectionOrExclusion bool,
 ) error {
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
@@ -496,7 +528,7 @@ func (l *listUsersQuery) expandTTU(
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = computedRelation
-			return l.expand(ctx, rewrittenReq, foundUsersChan)
+			return l.expand(ctx, rewrittenReq, foundUsersChan, passedThroughIntersectionOrExclusion)
 		})
 	}
 

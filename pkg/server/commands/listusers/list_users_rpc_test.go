@@ -287,8 +287,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "userset_group_granularity",
-			TemporarilySkipReason: "because `group:eng` is being returned instead of `group:eng#member`",
+			name: "userset_group_granularity",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -330,8 +329,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "userset_group_granularity_with_direct_user_relationships",
-			TemporarilySkipReason: "because `group:eng` is being returned instead of `group:eng#member`",
+			name: "userset_group_granularity_with_direct_user_relationships",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -392,8 +390,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"user:jon", "user:hawker", "user:will"},
 		},
 		{
-			name:                  "userset_multiple_usersets_group_granularity",
-			TemporarilySkipReason: "because `group:eng`,`group:fga`,`group:other` is being returned instead of `group:eng#member`,`group:fga#member` and `group:other#member`",
+			name: "userset_multiple_usersets_group_granularity",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -470,8 +467,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "tuple_defines_itself",
-			TemporarilySkipReason: "because it wants to return `document:1`",
+			name: "tuple_defines_itself",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -778,7 +774,7 @@ func TestListUsersConditions(t *testing.T) {
 		},
 		{
 			name:                  "conditions_with_usersets",
-			TemporarilySkipReason: "because usersets don't return correct type and conditions that evaluate false don't get excluded from results",
+			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1069,8 +1065,7 @@ func TestListUsersUnion(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria", "user:jon"},
 		},
 		{
-			name:                  "union_all_possible_rewrites",
-			TemporarilySkipReason: "because `user:maria` not being returned",
+			name: "union_all_possible_rewrites",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1522,8 +1517,7 @@ func TestListUsersWildcards(t *testing.T) {
 			expectedUsers: []string{"user:*"},
 		},
 		{
-			name:                  "wildcard_computed_ttu",
-			TemporarilySkipReason: "because results not deduplicated and data race occurring",
+			name: "wildcard_computed_ttu",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -2070,7 +2064,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 					}},
 				},
 				visitedUsersetsMap: visitedUsersets,
-			}, channelWithResults)
+			}, channelWithResults, false)
 			if err != nil {
 				channelWithError <- err
 				return
