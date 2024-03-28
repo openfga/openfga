@@ -360,3 +360,9 @@ func TestGetObjectRelationAsString(t *testing.T) {
 		})
 	}
 }
+
+func TestTypedPublicWildcard(t *testing.T) {
+	require.Equal(t, "user:*", TypedPublicWildcard("user"))
+	require.Equal(t, "group:*", TypedPublicWildcard("group"))
+	require.Equal(t, ":*", TypedPublicWildcard("")) // Does not panic
+}

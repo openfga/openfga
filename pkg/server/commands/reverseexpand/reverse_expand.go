@@ -77,7 +77,7 @@ func (u *UserRefTypedWildcard) GetObjectType() string {
 }
 
 func (u *UserRefTypedWildcard) String() string {
-	return fmt.Sprintf("%s:*", u.Type)
+	return tuple.TypedPublicWildcard(u.Type)
 }
 
 type UserRefObjectRelation struct {
@@ -426,7 +426,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		if publiclyAssignable {
 			// e.g. 'user:*'
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: fmt.Sprintf("%s:*", targetUserObjectType),
+				Object: tuple.TypedPublicWildcard(targetUserObjectType),
 			})
 		}
 

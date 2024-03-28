@@ -298,7 +298,7 @@ func GetRelationReferenceAsString(rr *openfgav1.RelationReference) string {
 		return fmt.Sprintf("%s#%s", rr.GetType(), rr.GetRelation())
 	}
 	if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-		return fmt.Sprintf("%s:*", rr.GetType())
+		return tuple.TypedPublicWildcard(rr.GetType())
 	}
 
 	panic("unexpected relation reference")
