@@ -11,9 +11,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/pkg/storage/memory"
-
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -81,7 +80,7 @@ func PrepareTempConfigDir(t *testing.T) string {
 	t.Setenv("HOME", homedir)
 
 	confdir := filepath.Join(homedir, ".openfga")
-	require.NoError(t, os.Mkdir(confdir, 0750))
+	require.NoError(t, os.Mkdir(confdir, 0o750))
 
 	return confdir
 }

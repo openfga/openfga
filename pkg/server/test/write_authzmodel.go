@@ -44,7 +44,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		}
 	}
 
-	var tests = []struct {
+	tests := []struct {
 		name          string
 		request       *openfgav1.WriteAuthorizationModelRequest
 		allowSchema10 bool
@@ -137,7 +137,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			//TODO remove, same as union_has_entrypoint
+			// TODO remove, same as union_has_entrypoint
 			name: "self_referencing_type_restriction_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -153,7 +153,7 @@ type document
 			},
 		},
 		{
-			//TODO remove, same as this_has_no_entrypoints
+			// TODO remove, same as this_has_no_entrypoints
 			name: "self_referencing_type_restriction_without_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -168,7 +168,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			//TODO remove, same as intersection_has_no_entrypoint_and_no_cycle
+			// TODO remove, same as intersection_has_no_entrypoint_and_no_cycle
 			name: "self_referencing_type_restriction_without_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -184,7 +184,7 @@ type document
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			//TODO remove - same as difference_has_no_entrypoint_and_no_cycle
+			// TODO remove - same as difference_has_no_entrypoint_and_no_cycle
 			name: "self_referencing_type_restriction_without_entrypoint_3",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,

@@ -6,14 +6,12 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
-	"github.com/openfga/openfga/pkg/tuple"
-
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestInternalErrorDontLeakInternals(t *testing.T) {

@@ -63,7 +63,8 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 						Object:   "obj",
 						Relation: "viewer",
 					},
-				}})
+				},
+			})
 		return err
 	})
 

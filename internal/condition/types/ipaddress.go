@@ -15,7 +15,8 @@ import (
 var ipaddrLibraryDecls = map[string][]cel.FunctionOpt{
 	"ipaddress": {
 		cel.Overload("string_to_ipaddress", []*cel.Type{cel.StringType}, ipaddrCelType,
-			cel.UnaryBinding(stringToIPAddress))},
+			cel.UnaryBinding(stringToIPAddress)),
+	},
 }
 
 var ipaddrLib = &IPAddress{}

@@ -26,17 +26,19 @@ type writeCommandTest struct {
 	response *openfgav1.WriteResponse
 }
 
-var tk = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@openfga")
-var unconditionedTK = &openfgav1.TupleKeyWithoutCondition{
-	Object:   tk.GetObject(),
-	Relation: tk.GetRelation(),
-	User:     tk.GetUser(),
-}
+var (
+	tk              = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@openfga")
+	unconditionedTK = &openfgav1.TupleKeyWithoutCondition{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+)
 
 func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	var tests = []writeCommandTest{
+	tests := []writeCommandTest{
 		{
 			_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 			// input
@@ -420,8 +422,10 @@ type repo
 			// input
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{{
-						Object: "", Relation: "owner", User: "user:elbuo@github.com"},
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object: "", Relation: "owner", User: "user:elbuo@github.com",
+						},
 					},
 				},
 			},
@@ -448,8 +452,10 @@ type repo
 			// input
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{{
-						Object: "repo:openfga", Relation: "", User: "user:elbuo@github.com"},
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object: "repo:openfga", Relation: "", User: "user:elbuo@github.com",
+						},
 					},
 				},
 			},
@@ -478,8 +484,10 @@ type repo
 			// input
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{{
-						Object: "repo:openfga", Relation: "undefined", User: "user:elbuo@github.com"},
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object: "repo:openfga", Relation: "undefined", User: "user:elbuo@github.com",
+						},
 					},
 				},
 			},
@@ -529,9 +537,11 @@ type repo`).GetTypeDefinitions(),
 			// input
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{{
-						// invalid because object has no :
-						Object: "openfga", Relation: "owner", User: "user:github|jose@openfga"},
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							// invalid because object has no :
+							Object: "openfga", Relation: "owner", User: "user:github|jose@openfga",
+						},
 					},
 				},
 			},
@@ -590,8 +600,10 @@ type org
 			// input
 			request: &openfgav1.WriteRequest{
 				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
-						Object: "org:openfga", Relation: "owner", User: "user:github|jose@openfga"},
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{
+							Object: "org:openfga", Relation: "owner", User: "user:github|jose@openfga",
+						},
 					},
 				},
 			},

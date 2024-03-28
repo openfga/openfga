@@ -11,34 +11,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var (
-	RelationshipEdgeTransformer = cmp.Transformer("Sort", func(in []*RelationshipEdge) []*RelationshipEdge {
-		out := append([]*RelationshipEdge(nil), in...) // Copy input to avoid mutating it
+var RelationshipEdgeTransformer = cmp.Transformer("Sort", func(in []*RelationshipEdge) []*RelationshipEdge {
+	out := append([]*RelationshipEdge(nil), in...) // Copy input to avoid mutating it
 
-		// Sort by Type and then by edge and then by tupleset relation
-		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Type != out[j].Type {
-				return out[i].Type < out[j].Type
-			}
+	// Sort by Type and then by edge and then by tupleset relation
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Type != out[j].Type {
+			return out[i].Type < out[j].Type
+		}
 
-			if typesystem.GetRelationReferenceAsString(out[i].TargetReference) != typesystem.GetRelationReferenceAsString(out[j].TargetReference) {
-				return typesystem.GetRelationReferenceAsString(out[i].TargetReference) < typesystem.GetRelationReferenceAsString(out[j].TargetReference)
-			}
+		if typesystem.GetRelationReferenceAsString(out[i].TargetReference) != typesystem.GetRelationReferenceAsString(out[j].TargetReference) {
+			return typesystem.GetRelationReferenceAsString(out[i].TargetReference) < typesystem.GetRelationReferenceAsString(out[j].TargetReference)
+		}
 
-			if out[i].TuplesetRelation != out[j].TuplesetRelation {
-				return out[i].TuplesetRelation < out[j].TuplesetRelation
-			}
+		if out[i].TuplesetRelation != out[j].TuplesetRelation {
+			return out[i].TuplesetRelation < out[j].TuplesetRelation
+		}
 
-			return true
-		})
-
-		return out
+		return true
 	})
-)
+
+	return out
+})
 
 func TestRelationshipEdge_String(t *testing.T) {
 	for _, tc := range []struct {

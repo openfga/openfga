@@ -20,7 +20,7 @@ func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		expectedError    error
 	}
 
-	var tests = []readAssertionsQueryTest{
+	tests := []readAssertionsQueryTest{
 		{
 			_name:   "ReturnsAssertionModelNotFound",
 			request: &openfgav1.ReadAssertionsRequest{StoreId: "store", AuthorizationModelId: "test"},

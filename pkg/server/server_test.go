@@ -1200,7 +1200,8 @@ type document
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: "user:*"},
 				{Object: "user:bob"},
-			}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
+			},
+		}).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 		t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{

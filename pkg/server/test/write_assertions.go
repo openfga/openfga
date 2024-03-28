@@ -40,7 +40,7 @@ type repo
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 
-	var tests = []writeAssertionsTestSettings{
+	tests := []writeAssertionsTestSettings{
 		{
 			_name: "writing_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{{
@@ -161,7 +161,7 @@ type repo
 	modelID, err := writeAuthzModelCmd.Execute(ctx, githubModelReq)
 	require.NoError(t, err)
 
-	var tests = []writeAssertionsTestSettings{
+	tests := []writeAssertionsTestSettings{
 		{
 			_name: "writing_assertion_with_invalid_relation_fails",
 			assertions: []*openfgav1.Assertion{

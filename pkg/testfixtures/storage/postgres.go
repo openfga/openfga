@@ -9,7 +9,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types/container"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -17,6 +16,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/openfga/openfga/assets"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (

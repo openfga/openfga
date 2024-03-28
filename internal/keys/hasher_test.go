@@ -12,7 +12,7 @@ import (
 )
 
 func TestTupleKeysHasherSortsFirst(t *testing.T) {
-	var testCases = map[string]struct {
+	testCases := map[string]struct {
 		tuplesReversed []*openfgav1.TupleKey
 		tuplesOriginal []*openfgav1.TupleKey
 	}{
@@ -91,7 +91,7 @@ func TestTupleKeysHasherSortsFirst(t *testing.T) {
 }
 
 func TestContextHasher(t *testing.T) {
-	var testCases = []struct {
+	testCases := []struct {
 		name     string
 		context1 map[string]any
 		context2 map[string]any

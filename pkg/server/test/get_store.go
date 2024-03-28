@@ -24,7 +24,7 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		err              error
 	}
 
-	var tests = []getStoreQueryTest{
+	tests := []getStoreQueryTest{
 		{
 			_name:   "ReturnsNotFound",
 			request: &openfgav1.GetStoreRequest{StoreId: "non-existent store"},

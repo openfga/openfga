@@ -103,7 +103,6 @@ type TLSConfig struct {
 
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
-
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string

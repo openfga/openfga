@@ -14,9 +14,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -520,7 +519,6 @@ type document
 	localCheckResolver.SetDelegate(cachedCheckResolver)
 
 	res, err := cachedCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-
 		StoreID:          storeID,
 		TupleKey:         tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples: nil,
@@ -531,7 +529,6 @@ type document
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 
 	res, err = cachedCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-
 		StoreID:          storeID,
 		TupleKey:         tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples: nil,

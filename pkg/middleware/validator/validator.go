@@ -9,9 +9,7 @@ import (
 
 type ctxKey string
 
-var (
-	requestIsValidatedCtxKey = ctxKey("request-validated")
-)
+var requestIsValidatedCtxKey = ctxKey("request-validated")
 
 func contextWithRequestIsValidated(ctx context.Context) context.Context {
 	return context.WithValue(ctx, requestIsValidatedCtxKey, true)

@@ -9,7 +9,7 @@ import (
 )
 
 func TestPrimitives(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name          string
 		paramType     ParameterType
 		input         any

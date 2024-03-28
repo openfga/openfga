@@ -10,12 +10,13 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/assets"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (

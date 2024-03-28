@@ -16,7 +16,7 @@ import (
 )
 
 func TestNewCompiled(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name      string
 		condition *openfgav1.Condition
 		err       *condition.CompilationError
@@ -110,7 +110,7 @@ func TestNewCompiled(t *testing.T) {
 }
 
 func TestEvaluate(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name      string
 		condition *openfgav1.Condition
 		context   map[string]interface{}
@@ -273,7 +273,7 @@ func TestEvaluate(t *testing.T) {
 }
 
 func TestEvaluateWithMaxCost(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name      string
 		condition *openfgav1.Condition
 		context   map[string]any
@@ -518,7 +518,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 	// be resolved before the 1 microsecond context timeout.
 	numLoops := 500
 
-	var tests = []struct {
+	tests := []struct {
 		name           string
 		condition      *openfgav1.Condition
 		context        map[string]any

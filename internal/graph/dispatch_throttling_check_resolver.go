@@ -33,20 +33,19 @@ type DispatchThrottlingCheckResolver struct {
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
-var (
-	dispatchThrottlingResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:                       build.ProjectName,
-		Name:                            "dispatch_throttling_resolver_delay_ms",
-		Help:                            "Time spent waiting for dispatch throttling resolver",
-		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
-		NativeHistogramBucketFactor:     1.1,
-		NativeHistogramMaxBucketNumber:  100,
-		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method"})
-)
+var dispatchThrottlingResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Namespace:                       build.ProjectName,
+	Name:                            "dispatch_throttling_resolver_delay_ms",
+	Help:                            "Time spent waiting for dispatch throttling resolver",
+	Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: time.Hour,
+}, []string{"grpc_service", "grpc_method"})
 
 func NewDispatchThrottlingCheckResolver(
-	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
+	config DispatchThrottlingCheckResolverConfig,
+) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		config:          config,
 		ticker:          time.NewTicker(config.Frequency),
