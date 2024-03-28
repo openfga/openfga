@@ -500,6 +500,7 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs *multierror.Error
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -508,6 +509,24 @@ func (l *listUsersQuery) expandTTU(
 			}
 
 			return err
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+		if len(condEvalResult.MissingParameters) > 0 {
+			errs = multierror.Append(errs, condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(tupleKey),
+					condEvalResult.MissingParameters),
+			))
+			continue
+		}
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		userObject := tupleKey.GetUser()

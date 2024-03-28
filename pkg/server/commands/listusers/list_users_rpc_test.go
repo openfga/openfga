@@ -850,6 +850,42 @@ func TestListUsersConditions(t *testing.T) {
 			},
 			expectedUsers: []string{"user:will", "user:poovam", "user:maria"},
 		},
+
+		{
+			name: "conditions_with_ttu",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+	
+		  type folder
+			relations
+			  define viewer: [user]
+	
+		  type document
+			relations
+			  define parent: [folder with isTrue]
+			  define viewer: viewer from parent
+	
+			condition isTrue(param: string) {
+				param == "true"
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "isTrue", conditionContextWithTrueParam),
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:y", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKey("folder:y", "viewer", "user:maria"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
