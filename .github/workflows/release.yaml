@@ -45,7 +45,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@e1523de7571e31dbe865fd2e80c5c7c23ae71eb4 # v3.4.0
 
-      - uses: anchore/sbom-action/download-syft@9fece9e20048ca9590af301449208b2b8861333b # v0.15.9
+      - uses: anchore/sbom-action/download-syft@ab5d7b5f48981941c4c5d6bf33aeb98fe3bae38c # v0.15.10
 
       - name: Run GoReleaser
         id: goreleaser
@@ -110,7 +110,7 @@ jobs:
           args: --file=Dockerfile
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@05963f47d870e2cb19a537396c1f668a348c7d8f # pin@v2
+        uses: github/codeql-action/upload-sarif@1b1aada464948af03b950897e5eb522f92603cc2 # pin@v2
         with:
           sarif_file: snyk.sarif
 
@@ -150,7 +150,7 @@ jobs:
     permissions: read-all
     steps:
       - name: Install the verifier
-        uses: slsa-framework/slsa-verifier/actions/installer@7e1e47d7d793930ab0082c15c2b971fdb53a3c95 # pin@v2.4.1
+        uses: slsa-framework/slsa-verifier/actions/installer@eb7007070baa04976cb9e25a0d8034f8db030a86 # pin@v2.5.1
 
       - name: Download assets
         env:
