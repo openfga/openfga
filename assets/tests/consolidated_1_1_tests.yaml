@@ -5624,3 +5624,72 @@ tests:
               type: document
               relation: viewer
             expectation: [document:1]
+  - name: userset_defines_itself_10
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type doc
+            relations
+              define d: [user]
+              define c: [user]
+              define b: c or d
+              define a: b
+        checkAssertions:
+          - tuple:
+              user: doc:1#d
+              relation: b
+              object: doc:1
+            expectation: true
+          - tuple:
+              user: doc:1#c
+              relation: b
+              object: doc:1
+            expectation: true
+          - tuple:
+              user: doc:1#c
+              relation: a
+              object: doc:1
+            expectation: true
+          - tuple:
+              user: doc:1#d
+              relation: a
+              object: doc:1
+            expectation: true
+          - tuple:
+              user: doc:1#b
+              relation: a
+              object: doc:1
+            expectation: true
+          - tuple:
+              user: doc:1#a
+              relation: a
+              object: doc:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: doc:1#d
+              type: doc
+              relation: b
+            expectation: [doc:1]
+          - request:
+              user: doc:1#c
+              type: doc
+              relation: b
+            expectation: [doc:1]
+          - request:
+              user: doc:1#c
+              type: doc
+              relation: a
+            expectation: [doc:1]
+          - request:
+              user: doc:1#d
+              type: doc
+              relation: a
+            expectation: [doc:1]
+          - request:
+              user: doc:1#b
+              type: doc
+              relation: a
+            expectation: [doc:1]
