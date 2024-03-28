@@ -757,8 +757,7 @@ func TestListUsersConditions(t *testing.T) {
 			expectedUsers: []string{"user:jon", "user:maria"},
 		},
 		{
-			name:                  "conditions_with_false_evaluation",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_false_evaluation",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -815,8 +814,7 @@ func TestListUsersConditions(t *testing.T) {
 			expectedUsers: []string{"group:eng#member"},
 		},
 		{
-			name:                  "conditions_with_computed_relationships",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_computed_relationships",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",

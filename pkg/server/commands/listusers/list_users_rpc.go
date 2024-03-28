@@ -11,6 +11,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -275,6 +277,7 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs *multierror.Error
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -283,6 +286,24 @@ func (l *listUsersQuery) expandDirect(
 			}
 
 			return err
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+		if len(condEvalResult.MissingParameters) > 0 {
+			errs = multierror.Append(errs, condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(tupleKey),
+					condEvalResult.MissingParameters),
+			))
+			continue
+		}
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
