@@ -80,7 +80,7 @@ jobs:
           tags: ${{ secrets.OPENFGA_ECR_URI }}:${{ steps.vars.outputs.sha_short }}
 
       - name: helm setup
-        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        uses: koslib/helm-eks-action@1a33950b71043864ef7cdd7bfad8d45ec856c21e # april 5, 2023
         with:
           command: |
             aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.OPENFGA_EKS_CLUSTER }} --role-arn ${{ secrets.AWS_IAM_ROLE }} --kubeconfig ./kubeconfig
@@ -99,7 +99,7 @@ jobs:
 #              --username github-action
 
       - name: helm deploy
-        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        uses: koslib/helm-eks-action@1a33950b71043864ef7cdd7bfad8d45ec856c21e # april 5, 2023
         env:
           KUBE_CONFIG_DATA: ${{ env.KUBE_CONFIG_DATA }}
         with:
@@ -123,7 +123,7 @@ jobs:
               --set openfga.resources.requests.memory=1Gi,openfga.resources.requests.cpu=500m
 
       - name: helm destroy
-        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        uses: koslib/helm-eks-action@1a33950b71043864ef7cdd7bfad8d45ec856c21e # april 5, 2023
         with:
           command: |
             helm uninstall openfgabench-${{ steps.vars.outputs.sha_short }}
