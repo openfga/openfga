@@ -1,8 +1,7 @@
-package throttler
+package graph
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/graph"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,21 +17,21 @@ type DispatchThrottlingCheckResolverConfig struct {
 	Threshold uint32
 }
 
-// DispatchThrottler will prioritize requests with fewer dispatches over
+// DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
 // requests with more dispatches.
 // Initially, request's dispatches will not be throttled and will be processed
 // immediately. When the number of request dispatches is above the Threshold, the dispatches are placed
 // in the throttling queue. One item form the throttling queue will be processed ticker.
 // This allows a check / list objects request to be gradually throttled.
-type DispatchThrottler struct {
-	delegate        graph.CheckResolver
+type DispatchThrottlingCheckResolver struct {
+	delegate        CheckResolver
 	config          DispatchThrottlingCheckResolverConfig
 	ticker          *time.Ticker
 	throttlingQueue chan struct{}
 	done            chan struct{}
 }
 
-var _ graph.CheckResolver = (*DispatchThrottler)(nil)
+var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
 var (
 	dispatchThrottlingResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -47,8 +46,8 @@ var (
 )
 
 func NewDispatchThrottlingCheckResolver(
-	config DispatchThrottlingCheckResolverConfig) *DispatchThrottler {
-	dispatchThrottlingCheckResolver := &DispatchThrottler{
+	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
+	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		config:          config,
 		ticker:          time.NewTicker(config.Frequency),
 		throttlingQueue: make(chan struct{}),
@@ -59,19 +58,19 @@ func NewDispatchThrottlingCheckResolver(
 	return dispatchThrottlingCheckResolver
 }
 
-func (r *DispatchThrottler) SetDelegate(delegate graph.CheckResolver) {
+func (r *DispatchThrottlingCheckResolver) SetDelegate(delegate CheckResolver) {
 	r.delegate = delegate
 }
 
-func (r *DispatchThrottler) GetDelegate() graph.CheckResolver {
+func (r *DispatchThrottlingCheckResolver) GetDelegate() CheckResolver {
 	return r.delegate
 }
 
-func (r *DispatchThrottler) Close() {
+func (r *DispatchThrottlingCheckResolver) Close() {
 	r.done <- struct{}{}
 }
 
-func (r *DispatchThrottler) nonBlockingSend(signalChan chan struct{}) {
+func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan struct{}) {
 	select {
 	case signalChan <- struct{}{}:
 		// message sent
@@ -80,7 +79,7 @@ func (r *DispatchThrottler) nonBlockingSend(signalChan chan struct{}) {
 	}
 }
 
-func (r *DispatchThrottler) runTicker() {
+func (r *DispatchThrottlingCheckResolver) runTicker() {
 	for {
 		select {
 		case <-r.done:
@@ -94,7 +93,11 @@ func (r *DispatchThrottler) runTicker() {
 	}
 }
 
-func (r *DispatchThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
+func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
+	req *ResolveCheckRequest,
+) (*ResolveCheckResponse, error) {
+	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
+
 	if currentNumDispatch > r.config.Threshold {
 		start := time.Now()
 		<-r.throttlingQueue
@@ -107,12 +110,6 @@ func (r *DispatchThrottler) Throttle(ctx context.Context, currentNumDispatch uin
 			rpcInfo.Method,
 		).Observe(float64(timeWaiting))
 	}
-}
 
-func (r *DispatchThrottler) ResolveCheck(ctx context.Context,
-	req *graph.ResolveCheckRequest,
-) (*graph.ResolveCheckResponse, error) {
-	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
-	r.Throttle(ctx, currentNumDispatch)
 	return r.delegate.ResolveCheck(ctx, req)
 }
