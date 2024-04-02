@@ -53,6 +53,10 @@ $(GO_BIN)/CompileDaemon:
 
 $(GO_BIN)/openfga: install
 
+generate-mocks: $(GO_BIN)/mockgen ## Generate mock stubs
+	${call print, "Generating mock stubs"}
+	@go generate ./...
+
 #-----------------------------------------------------------------------------------------------------------------------
 # Building & Installing
 #-----------------------------------------------------------------------------------------------------------------------
@@ -103,10 +107,6 @@ test-docker: ## Run tests requiring Docker
 test-bench: test-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
 	@go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
-
-test-mocks: $(GO_BIN)/mockgen ## Generate test mocks
-	${call print, "Generating test mocks"}
-	@go generate ./...
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Development
