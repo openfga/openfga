@@ -530,9 +530,69 @@ tests:
                 relation: viewer
                 user: user:jon
             expectation: true
-
-            #listobjects assertsion
-            ##############
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              s: "hello"
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              s: "not hello"
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              x: 10
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              x: 9999
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              s: "hello"
+              x: 9999
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              s: "hello"
+              x: 9999
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              s: "hello"
+              x: 10
+            expectation:
+              - document:1
   - name: direct_relations_with_multi_arity_condition
     stages:
       - model: |
