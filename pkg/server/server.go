@@ -682,6 +682,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		utils.Bucketize(uint(metadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	log.Printf("✅ List Objects Result: Found %d Objects", len(result.GetListObjectsResponse().Objects))
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.GetListObjectsResponse().Objects,
 	}, nil
@@ -958,6 +960,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		utils.Bucketize(uint(metadata.GetDispatchCount()), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
+
+	log.Printf("✅ Check Result: Check Response is allowed - %t", res.Allowed)
 
 	return res, nil
 }

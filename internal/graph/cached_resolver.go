@@ -167,7 +167,7 @@ func (c *CachedCheckResolver) Dispatch(
 	metadata *openfgav1.DispatchMetadata,
 	additionalParameters any,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Cached Dispatcher - %s running in %s", request.GetDispatchedCheckRequest(), serverconfig.ServerName)
+	log.Printf("Cached Dispatcher in %s", serverconfig.ServerName)
 	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()

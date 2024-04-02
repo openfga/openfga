@@ -31,7 +31,7 @@ func NewCycleDetectionCheckResolver() *CycleDetectionCheckResolver {
 
 // ResolveCheck implements CheckResolver.
 func (c CycleDetectionCheckResolver) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Cycle Check Dispatcher - %s running in %s", request.GetDispatchedCheckRequest(), config.ServerName)
+	log.Printf("🚲 Cycle Check Dispatcher running in %s", config.ServerName)
 	req := request.GetDispatchedCheckRequest()
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()

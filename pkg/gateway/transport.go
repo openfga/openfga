@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
@@ -46,11 +45,11 @@ func NewRPCTransport(l logger.Logger) *RPCTransport {
 // SetHeader tries to set a header. If an error occurred, it logs an error.
 func (g *RPCTransport) SetHeader(ctx context.Context, key, value string) {
 	if err := grpc.SetHeader(ctx, metadata.Pairs(key, value)); err != nil {
-		g.logger.ErrorWithContext(
-			ctx,
-			"failed to set grpc header",
-			zap.Error(err),
-			zap.String("header", key),
-		)
+		//g.logger.ErrorWithContext(
+		//	ctx,
+		//	"failed to set grpc header",
+		//	zap.Error(err),
+		//	zap.String("header", key),
+		//)
 	}
 }

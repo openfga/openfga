@@ -418,7 +418,7 @@ func (c *LocalChecker) Dispatch(
 	metadata *openfgav1.DispatchMetadata,
 	additionalParameters any,
 ) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Local Check Dispatcher - %s running in %s", request.GetDispatchedCheckRequest(), serverconfig.ServerName)
+	log.Printf("🎯 Local Check Dispatcher running in %s", serverconfig.ServerName)
 	req := request.GetDispatchedCheckRequest()
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()

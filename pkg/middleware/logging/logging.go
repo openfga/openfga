@@ -75,7 +75,7 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 		return
 	}
 
-	r.logger.Info(grpcReqCompleteKey, r.fields...)
+	//r.logger.Info(grpcReqCompleteKey, r.fields...)
 }
 
 // PostMsgSend is invoked once after a unary response or multiple times in

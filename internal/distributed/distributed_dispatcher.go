@@ -28,7 +28,6 @@ var _ dispatcher.Dispatcher = (*DistributedDispatcher)(nil)
 
 // Command to run multiple servers - go run . run --http-addr 0.0.0.0:8082 --metrics-addr 0.0.0.0:2113 --grpc-addr 0.0.0.0:8083 --playground-port 3001  --dispatch-throttling-enabled=true --datastore-engine=postgres --datastore-uri='postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
 func (d *DistributedDispatcher) Dispatch(ctx context.Context, request *openfgav1.BaseRequest, metadata *openfgav1.DispatchMetadata, additionalParameters any) (*openfgav1.BaseResponse, *openfgav1.DispatchMetadata, error) {
-	log.Printf("Distributed Dispatcher - %s running in %s", request.GetDispatchedCheckRequest(), serverconfig.ServerName)
 	switch (request.GetBaseRequest()).(type) {
 	case *openfgav1.BaseRequest_DispatchedCheckRequest:
 		{
@@ -36,10 +35,10 @@ func (d *DistributedDispatcher) Dispatch(ctx context.Context, request *openfgav1
 			relation := request.GetDispatchedCheckRequest().TupleKey.Relation
 			object := request.GetDispatchedCheckRequest().TupleKey.Object
 			if relation == "owner" && serverconfig.ServerName == "server-1" {
-				log.Println(fmt.Sprintf("Distributed Dispatch for %s#%s@%s", user, relation, object))
+				log.Printf("🌐 Distributed Dispatcher - %s#%s@%s running in %s", object, relation, user, serverconfig.ServerName)
 				resp, err := http.Post("http://localhost:8082/stores/dispatch-check", "application/json", bytes.NewBuffer([]byte(fmt.Sprintf(`{"dispatchedCheckRequest":{"storeId":"01HSHHEYFKMR0B80HK18YNK055", "authorizationModelId":"none","tupleKey":{"user":"%s","relation":"%s","object":"%s","condition":{"name":"condition1","context":{}}}}}`, user, relation, object))))
 				if err != nil {
-					log.Println(err)
+					log.Printf("❌ Distributed Dispatcher - Node not found")
 					break
 				}
 				if resp != nil {

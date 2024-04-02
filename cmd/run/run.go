@@ -412,10 +412,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
-				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
-				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
-				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+				grpc_ctxtags.UnaryServerInterceptor(), // needed for logging
+				requestid.NewUnaryInterceptor(),       // add request_id to ctxtags
+				storeid.NewUnaryInterceptor(),         // if available, add store_id to ctxtags
+				//logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
 			}...,
 		),
