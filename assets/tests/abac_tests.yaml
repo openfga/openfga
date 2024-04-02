@@ -24,7 +24,7 @@ tests:
               user: user:jon
               relation: viewer
               object: document:1
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
@@ -44,7 +44,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2000
+            expectation:
           - request:
               user: user:jon
               type: document
@@ -92,7 +92,7 @@ tests:
               user: user:jon
               relation: viewer
               object: document:1
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
@@ -112,7 +112,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2000
+            expectation: 
           - request:
               user: user:jon
               type: document
@@ -165,7 +165,7 @@ tests:
               user: user:jon
               relation: viewer
               object: document:1
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
@@ -185,7 +185,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2000
+            expectation:
           - request:
               user: user:jon
               type: document
@@ -227,7 +227,7 @@ tests:
               object: document:1
               relation: writer
               user: user:aardvark
-            errorCode: 2000
+            expectation: false
           - tuple:
               object: document:1
               relation: writer
@@ -247,7 +247,7 @@ tests:
               user: user:aardvark
               type: document
               relation: writer
-            errorCode: 2000
+            expectation:
           - request:
               user: user:aardvark
               type: document
@@ -296,7 +296,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            errorCode: 2000
+            expectation: false
           - tuple:
               object: document:1
               relation: viewer
@@ -316,7 +316,7 @@ tests:
               user: user:aardvark
               type: document
               relation: viewer
-            errorCode: 2000
+            expectation:
           - request:
               user: user:aardvark
               type: document
@@ -357,7 +357,7 @@ tests:
               user: user:jon
               relation: viewer
               object: document:1
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
@@ -377,7 +377,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2000
+            expectation:
           - request:
               user: user:jon
               type: document
@@ -437,7 +437,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            errorCode: 2000
+            expectation:
           - request:
               user: user:jon
               type: document
@@ -447,7 +447,7 @@ tests:
               "y": 5
             expectation:
               - document:1
-  - name: relation_through_ttu_with_condition
+  - name: relation_through_ttu_with_multiple_conditions
     stages:
       - model: |
           model
@@ -492,7 +492,7 @@ tests:
               user: user:jon
               relation: viewer
               object: document:1
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
@@ -513,14 +513,14 @@ tests:
               object: document:1
             context:
               "s": "foo"
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
               object: document:1
             context:
               "x": 15
-            errorCode: 2000
+            expectation: false
           - tuple:
               user: user:jon
               relation: viewer
@@ -530,7 +530,10 @@ tests:
                 relation: viewer
                 user: user:jon
             expectation: true
-  - name: direct_relations_with_condition
+
+            #listobjects assertsion
+            ##############
+  - name: direct_relations_with_multi_arity_condition
     stages:
       - model: |
           model
@@ -539,53 +542,120 @@ tests:
 
           type document
             relations
-              define viewer: [user with condxy]
+              define viewer: [user with condXY]
 
-          condition condxy(x: int, y: int) {
-            x < 100 || y < 50
+          condition condXY(x: bool, y: bool) {
+            x == true || y == true
           }
         tuples:
           - user: user:jon
             relation: viewer
             object: document:1
             condition:
-              name: condxy
+              name: condXY
         checkAssertions:
           - tuple:
               user: user:jon
               relation: viewer
               object: document:1
-            errorCode: 2000
-          - tuple:
-              user: user:jon
-              relation: viewer
-              object: document:1
-            context:
-              "x": 10
-              "y": 5
-            expectation: true
-          - tuple:
-              user: user:jon
-              relation: viewer
-              object: document:1
-            context:
-              "x": 101
-              "y": 51
             expectation: false
           - tuple:
               user: user:jon
               relation: viewer
               object: document:1
             context:
-              "x": 10
-            errorCode: 2000
+              "x": true
+              "y": true
+            expectation: true
           - tuple:
               user: user:jon
               relation: viewer
               object: document:1
             context:
-              "y": 10
-            errorCode: 2000
+              "x": false
+              "y": false
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": true
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "y": true
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": false
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "y": false
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": true
+              "y": true
+            expectation:
+             - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": false
+              "y": false
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": true
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "y": true
+            expectation:
+             - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": false
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "y": false
+            expectation:
   - name: prior_conditions_ignored
     stages:
       - model: |
@@ -735,6 +805,20 @@ tests:
               relation: viewer
               user: user:jon
             context:
+              "x": 1.7976931348
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            context:
+              "x": 0.000000
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            context:
               "x": "1.79769313486231570814527423731704356798070e+309"
             errorCode: 2000
           - tuple:
@@ -764,6 +848,21 @@ tests:
               type: document
               relation: viewer
             context:
+              "x": 1.7976931348
+            expectation:
+             - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": 0.000000
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
               "x": "1.79769313486231570814527423731704356798070e+309"
             errorCode: 2000
           - request:
@@ -786,4 +885,4 @@ tests:
               user: user:jon
             context:
               "x": -1.79769313486231570814527423731704356798070e+309
-            errorCode: 2000
+            errorCode: 2000 
