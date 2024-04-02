@@ -852,7 +852,33 @@ tests:
               object: document:2
               relation: viewer
             expectation:
-
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+             - folder:X#editor
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#writer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
   - name: tuple_to_userset_and_intersection
     stages:
       - model: |
@@ -939,6 +965,13 @@ tests:
               object: document:1
               relation: viewer
             expectation:
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
           - request:
               filters:
                 - folder
