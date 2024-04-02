@@ -550,16 +550,6 @@ func (c *LocalChecker) ResolveCheck(
 	object := tupleKey.GetObject()
 	relation := tupleKey.GetRelation()
 
-	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
-	if relation == userRelation && object == userObject {
-		return &ResolveCheckResponse{
-			Allowed: true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-			},
-		}, nil
-	}
-
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
