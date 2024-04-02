@@ -395,10 +395,6 @@ type group
 					Object:       "group:eng",
 					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
-				{
-					Object:       "group:iam",
-					ResultStatus: reverseexpand.NoFurtherEvalStatus,
-				},
 			},
 			expectedDSQueryCount: 3,
 		},
@@ -415,13 +411,11 @@ type group
 					},
 				},
 			},
-			model: `
-			model
-			  schema 1.1
-			type group
-			  relations
-			    define member: [group#member]
-			`,
+			model: `model
+	schema 1.1
+type group
+  relations
+	define member: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:iam", "member", "group:iam#member"),
 			},

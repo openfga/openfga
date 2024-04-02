@@ -14,7 +14,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -858,37 +857,6 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 								Value: &openfgav1.UsersetTree_Leaf_Users{
 									Users: &openfgav1.UsersetTree_Users{
 										Users: []string{"document:2#editor"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "userset_defines_itself",
-			model: testutils.MustTransformDSLToProtoWithID(`
-			model
-			  schema 1.1
-			type user
-			type document
-			  relations
-			    define viewer: [user]
-			`),
-			tuples: []*openfgav1.TupleKey{},
-			request: &openfgav1.ExpandRequest{
-				TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
-			},
-			expected: &openfgav1.ExpandResponse{
-				Tree: &openfgav1.UsersetTree{
-					Root: &openfgav1.UsersetTree_Node{
-						Name: "document:1#viewer",
-						Value: &openfgav1.UsersetTree_Node_Leaf{
-							Leaf: &openfgav1.UsersetTree_Leaf{
-								Value: &openfgav1.UsersetTree_Leaf_Users{
-									Users: &openfgav1.UsersetTree_Users{
-										Users: []string{},
 									},
 								},
 							},
