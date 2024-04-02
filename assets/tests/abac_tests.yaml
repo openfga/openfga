@@ -594,7 +594,7 @@ tests:
               define viewer: [user with condXY]
 
           condition condXY(x: bool, y: bool) {
-            x == true || y == true
+            x || y
           }
         tuples:
           - user: user:jon
