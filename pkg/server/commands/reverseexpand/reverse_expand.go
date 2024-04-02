@@ -18,6 +18,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -510,7 +511,17 @@ LoopOnIterator:
 			errs = multierror.Append(errs, err)
 			continue
 		}
+
 		if !condEvalResult.ConditionMet {
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = multierror.Append(errs, condition.NewEvaluationError(
+					tk.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(tk),
+						condEvalResult.MissingParameters),
+				))
+			}
+
 			continue
 		}
 
