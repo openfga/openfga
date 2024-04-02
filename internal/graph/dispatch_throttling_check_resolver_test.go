@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/throttler"
 	"sync"
 	"testing"
 	"time"
@@ -19,12 +20,13 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
+		dispatchThrottlingConfig := throttler.DispatchThrottlingConfig{
 			// We set timer ticker to 1 hour to avoid it interfering with test
 			Frequency: 1 * time.Hour,
 			Threshold: 200,
 		}
-		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
+		dispatchThrottler := throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dut := NewDispatchThrottlingCheckResolver(dispatchThrottler)
 		defer dut.Close()
 
 		initialMockResolver := NewMockCheckResolver(ctrl)
@@ -54,12 +56,13 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
+		dispatchThrottlingConfig := throttler.DispatchThrottlingConfig{
 			// We set timer ticker to 1 hour to avoid it interfering with test
-			Frequency: 1 * time.Hour,
+			Frequency: 1 * time.Second,
 			Threshold: 200,
 		}
-		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
+		dispatchThrottler := throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dut := NewDispatchThrottlingCheckResolver(dispatchThrottler)
 		defer dut.Close()
 
 		initialMockResolver := NewMockCheckResolver(ctrl)
@@ -99,7 +102,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		require.Equal(t, 0, resolveCheckDispatchedCounter)
 
 		// simulate tick happening and we release a dispatch
-		dut.nonBlockingSend(dut.throttlingQueue)
+		dispatchThrottler.ReleaseDispatch()
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
 	})

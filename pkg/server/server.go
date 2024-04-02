@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler"
 	"net/http"
 	"slices"
 	"sort"
@@ -141,6 +142,7 @@ type Server struct {
 	dispatchThrottlingCheckResolverFrequency time.Duration
 	dispatchThrottlingThreshold              uint32
 
+	dispatchThrottler               *throttler.DispatchThrottler
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 }
 
@@ -383,7 +385,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.dispatchThrottlingCheckResolverEnabled {
-		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
+		dispatchThrottlingConfig := throttler.DispatchThrottlingConfig{
 			Frequency: s.dispatchThrottlingCheckResolverFrequency,
 			Threshold: s.dispatchThrottlingThreshold,
 		}
@@ -393,7 +395,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
 		)
 
-		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		s.dispatchThrottler = throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(s.dispatchThrottler)
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
@@ -492,6 +495,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		commands.WithDispatchThrottler(s.dispatchThrottler),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
@@ -593,6 +597,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		s.checkResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithDispatchThrottler(s.dispatchThrottler),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),

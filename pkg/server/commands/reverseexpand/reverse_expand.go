@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler"
 	"sync"
 	"sync/atomic"
 
@@ -110,6 +111,7 @@ type UserRef struct {
 
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
+	dispatchThrottler       *throttler.DispatchThrottler
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
@@ -126,6 +128,12 @@ type ReverseExpandQueryOption func(d *ReverseExpandQuery)
 func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeLimit = limit
+	}
+}
+
+func WithDispatchThrottler(dispatchThrottler *throttler.DispatchThrottler) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.dispatchThrottler = dispatchThrottler
 	}
 }
 
@@ -333,7 +341,10 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			if c.dispatchThrottler != nil {
+				c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
+			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = multierror.Append(errs, err)
@@ -538,7 +549,10 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			if c.dispatchThrottler != nil {
+				c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
+			}
 			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
