@@ -939,7 +939,6 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            temporarilySkipReason: "because reflexive relationships not supported yet"
           - request:
               filters:
                 - folder
@@ -1032,7 +1031,14 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            temporarilySkipReason: "because reflexive relationships not supported yet"
+             - folder:X#writer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
   - name: union_and_tuple_to_userset
     stages:
       - model: |
@@ -1368,7 +1374,6 @@ tests:
                 - document#writer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because returned results don't return true on check"
             expectation:
               - document:1#writer
           - request:
@@ -1376,8 +1381,8 @@ tests:
                 - document#editor
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
+             - document:1#editor
           - request:
               filters:
                 - user
@@ -1852,7 +1857,6 @@ tests:
                 - document#writer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
           - request:
               filters:
@@ -2011,8 +2015,8 @@ tests:
                 - folder#viewer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
+             - folder:X#viewer
           - request:
               filters:
                 - document#writer
@@ -2203,15 +2207,15 @@ tests:
                 - document#writer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
+             - document:1#writer
           - request:
               filters:
                 - document#editor
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
+              - document:1#editor
           - request:
               filters:
                 - user
@@ -5687,7 +5691,6 @@ tests:
                 - group#member
               object: document:a
               relation: viewer
-            temporarilySkipReason: "because returned results don't return true on check"
             expectation:
               - group:fga#member
           - request:
@@ -5795,7 +5798,6 @@ tests:
                 - document#can_view
               object: document:a
               relation: can_see
-            temporarilySkipReason: "because returned results don't return true on check"
             expectation:
               - document:a#can_view
           - request:
@@ -5803,8 +5805,8 @@ tests:
                 - document#viewer
               object: document:a
               relation: can_see
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
+             - document:a#viewer
   - name: evaluate_userset_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -6035,7 +6037,6 @@ tests:
                 - folder#viewer
               object: document:1
               relation: can_view
-            temporarilySkipReason:  "because returned results don't return true on check"
             expectation:
               - folder:X#viewer
           - request:
@@ -6043,7 +6044,6 @@ tests:
                 - organization#viewer
               object: document:1
               relation: can_view
-            temporarilySkipReason:  "because returned results don't return true on check"
             expectation:
               - organization:openfga#viewer
   - name: userset_with_intersection_in_computed_relation_of_ttu
@@ -6148,7 +6148,6 @@ tests:
                 - organization#member
               object: repo:openfga/openfga
               relation: can_read
-            temporarilySkipReason: "because reflexive relationships not supported yet"
             expectation:
           - request:
               filters:
@@ -7186,7 +7185,6 @@ tests:
                 - group#member
               object: group:eng
               relation: member
-            temporarilySkipReason:  "because returned results don't return true on check"
             expectation:
               - group:eng#member
               - group:fga#member
