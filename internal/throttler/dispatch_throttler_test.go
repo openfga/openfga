@@ -1,7 +1,8 @@
-package graph
+package throttler
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/graph"
 	"sync"
 	"testing"
 	"time"
@@ -27,20 +28,20 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
 
-		initialMockResolver := NewMockCheckResolver(ctrl)
+		initialMockResolver := graph.NewMockCheckResolver(ctrl)
 		dut.SetDelegate(initialMockResolver)
 
 		// this is to simulate how many times request has been dispatched
 		// Since this is a small value, we will not expect throttling
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &graph.ResolveCheckRequest{RequestMetadata: graph.NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
-		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
+		response := &graph.ResolveCheckResponse{Allowed: true, ResolutionMetadata: &graph.ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 10,
 		}}
 
 		// Here, we count how many times the resolve check is dispatched by the DUT
 		resolveCheckDispatchedCounter := 0
-		initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).DoAndReturn(func(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+		initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			resolveCheckDispatchedCounter++
 			return response, nil
 		}).Times(1)
@@ -62,12 +63,12 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()
 
-		initialMockResolver := NewMockCheckResolver(ctrl)
+		initialMockResolver := graph.NewMockCheckResolver(ctrl)
 		dut.SetDelegate(initialMockResolver)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &graph.ResolveCheckRequest{RequestMetadata: graph.NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(201)
-		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
+		response := &graph.ResolveCheckResponse{Allowed: true, ResolutionMetadata: &graph.ResolveCheckResponseMetadata{
 			DatastoreQueryCount: 10,
 		}}
 
@@ -77,7 +78,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		var goFuncDone sync.WaitGroup
 		goFuncDone.Add(1)
 
-		initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).DoAndReturn(func(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+		initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			resolveCheckDispatchedCounter++
 			return response, nil
 		}).Times(1)

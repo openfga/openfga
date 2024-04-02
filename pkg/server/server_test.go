@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler"
 	"math"
 	"os"
 	"path"
@@ -1454,7 +1455,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDatastore(ds),
 		)
 		t.Cleanup(s.Close)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
+		require.Nil(t, s.dispatchThrottler)
 		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
 
 		require.False(t, s.checkQueryCacheEnabled)
@@ -1486,12 +1487,12 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
 		require.EqualValues(t, 50, s.dispatchThrottlingThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.dispatchThrottler)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*throttler.DispatchThrottler)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
@@ -1511,7 +1512,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
+		require.Nil(t, s.dispatchThrottler)
 
 		require.True(t, s.checkQueryCacheEnabled)
 		require.NotNil(t, s.cachedCheckResolver)
@@ -1542,12 +1543,12 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
 		require.EqualValues(t, 50, s.dispatchThrottlingThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.dispatchThrottler)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*throttler.DispatchThrottler)
 		require.True(t, ok)
 
 		require.True(t, s.checkQueryCacheEnabled)

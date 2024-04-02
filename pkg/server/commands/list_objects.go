@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -54,7 +55,8 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	checkResolver graph.CheckResolver
+	checkResolver     graph.CheckResolver
+	dispatchThrottler *throttler.DispatchThrottler
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -82,6 +84,12 @@ type ListObjectsQueryOption func(d *ListObjectsQuery)
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.listObjectsDeadline = deadline
+	}
+}
+
+func WithDispatchThrottler(throttler *throttler.DispatchThrottler) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.dispatchThrottler = throttler
 	}
 }
 
@@ -256,6 +264,7 @@ func (q *ListObjectsQuery) evaluate(
 			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
+			reverseexpand.WithDispatchThrottler(q.dispatchThrottler),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 		)

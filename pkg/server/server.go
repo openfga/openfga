@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler"
 	"net/http"
 	"slices"
 	"sort"
@@ -141,7 +142,7 @@ type Server struct {
 	dispatchThrottlingCheckResolverFrequency time.Duration
 	dispatchThrottlingThreshold              uint32
 
-	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
+	dispatchThrottler *throttler.DispatchThrottler
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -383,7 +384,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.dispatchThrottlingCheckResolverEnabled {
-		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
+		dispatchThrottlingConfig := throttler.DispatchThrottlingCheckResolverConfig{
 			Frequency: s.dispatchThrottlingCheckResolverFrequency,
 			Threshold: s.dispatchThrottlingThreshold,
 		}
@@ -393,9 +394,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
 		)
 
-		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dispatchThrottlingCheckResolver := throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
-		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
+		s.dispatchThrottler = dispatchThrottlingCheckResolver
 
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 	}
@@ -413,8 +414,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.cachedCheckResolver = cachedCheckResolver
 
 		cachedCheckResolver.SetDelegate(localChecker)
-		if s.dispatchThrottlingCheckResolver != nil {
-			s.dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
+		if s.dispatchThrottler != nil {
+			s.dispatchThrottler.SetDelegate(cachedCheckResolver)
 		} else {
 			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 		}
@@ -439,8 +440,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	if s.dispatchThrottlingCheckResolver != nil {
-		s.dispatchThrottlingCheckResolver.Close()
+	if s.dispatchThrottler != nil {
+		s.dispatchThrottler.Close()
 	}
 
 	if s.cachedCheckResolver != nil {
@@ -491,6 +492,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		s.checkResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithDispatchThrottler(s.dispatchThrottler),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -593,6 +595,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		s.checkResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithDispatchThrottler(s.dispatchThrottler),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
