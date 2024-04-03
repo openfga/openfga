@@ -179,11 +179,20 @@ func (l *listUsersQuery) expand(
 	if enteredCycle(req) {
 		return nil
 	}
-	for _, f := range req.GetUserFilters() {
-		if req.GetObject().GetType() == f.GetType() {
+
+	reqObjectType := req.GetObject().GetType()
+	reqObjectID := req.GetObject().GetId()
+	reqRelation := req.GetRelation()
+
+	for _, userFilter := range req.GetUserFilters() {
+		if reqObjectType == userFilter.GetType() && reqRelation == userFilter.GetRelation() {
 			foundUsersChan <- &openfgav1.User{
-				User: &openfgav1.User_Object{
-					Object: req.GetObject(),
+				User: &openfgav1.User_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     reqObjectType,
+						Id:       reqObjectID,
+						Relation: reqRelation,
+					},
 				},
 			}
 		}
