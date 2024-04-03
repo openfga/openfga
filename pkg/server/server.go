@@ -660,6 +660,12 @@ func (s *Server) ListUsers(
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
 	datastore := s.datastore
 	//datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
 

@@ -3459,7 +3459,6 @@ tests:
               - object: folder:x #invalid
                 relation: viewer
                 user: user:aardvark
-            temporarilySkipReason: "because contextual tuples need to be validated"
             errorCode: 2027 # ErrorCode_invalid_tuple
 
   - name: validation_invalid_relation_in_contextual_tuple
@@ -3662,7 +3661,6 @@ tests:
               - object: document:1
                 relation: parent
                 user: user:* #invalid
-            temporarilySkipReason: "because contextual tuples need to be validated"
             errorCode: 2027
         listUsersAssertions:
           - request:
@@ -3674,7 +3672,6 @@ tests:
               - object: document:1
                 relation: parent
                 user: user:* #invalid
-            temporarilySkipReason: "because contextual tuples need to be validated"
             errorCode: 2027 # ErrorCode_invalid_tuple
   - name: list_objects_considers_input_contextual_tuples
     stages:
@@ -4076,7 +4073,6 @@ tests:
               - user: user:* #not allowed
                 relation: owner
                 object: organization:1
-            temporarilySkipReason: "because contextual tuples need to be validated"
             errorCode: 2027 # ErrorCode_invalid_tuple
       - model: | # reverse expansion
           model
@@ -4108,7 +4104,6 @@ tests:
               - user: user:* #not allowed
                 relation: owner
                 object: organization:1
-            temporarilySkipReason: "because contextual tuples need to be validated"
             errorCode: 2027 # ErrorCode_invalid_tuple
   - name: list_objects_error_if_unknown_type_in_request
     stages:
