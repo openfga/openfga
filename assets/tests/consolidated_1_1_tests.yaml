@@ -3282,9 +3282,8 @@ tests:
               filters:
                 - user
               object: user:aardvark
-              relation: viewer #non-existent on type user
-            temporarilySkipReason: "because model validation errors not emitted yet"
-            errorCode: 2000 # ErrorCode_validation_error
+              relation: viewer #non-existent relation on type user
+            errorCode: 2022 # ErrorCode_validation_error
 
   - name: validation_type_not_in_model
     stages:
@@ -3307,8 +3306,7 @@ tests:
                 - user
               object: group:fga #non-existent type
               relation: viewer
-            temporarilySkipReason: "because model validation errors not emitted yet"
-            errorCode: 2000 # ErrorCode_validation_error
+            errorCode: 2021
 
   - name: validation_user_type_not_in_model
     stages:
@@ -3337,8 +3335,7 @@ tests:
                 - folder #non-existent type
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because model validation errors not emitted yet"
-            errorCode: 2000 # ErrorCode_validation_error
+            errorCode: 2021
 
   - name: validation_userset_type_not_in_model
     stages:
@@ -3367,8 +3364,7 @@ tests:
                 - folder#writer #non-existent type & relation
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because model validation errors not emitted yet"
-            errorCode: 2000 # ErrorCode_validation_error
+            errorCode: 2021
   - name: validation_userset_relation_not_in_model
     stages:
       - model: |
@@ -3396,8 +3392,7 @@ tests:
                 - document#writer #non-existent relation
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because relation validation doesn't return empty set yet"
-            errorCode: 2000 # ErrorCode_validation_error
+            errorCode: 2022 # ErrorCode_validation_error
   - name: validation_user_invalid
     stages:
       - model: |
@@ -3500,7 +3495,6 @@ tests:
               - object: document:1
                 relation: writer #invalid
                 user: user:aardvark
-            temporarilySkipReason: "because contextual tuples validation errors not implemented yet"
             errorCode: 2027 # ErrorCode_invalid_tuple
 
   - name: validation_invalid_user_in_contextual_tuple
@@ -3542,7 +3536,6 @@ tests:
               - object: document:1
                 relation: viewer
                 user: employee:aardvark #invalid
-            temporarilySkipReason: "because contextual tuples validation errors not implemented yet"
             errorCode: 2027 # ErrorCode_invalid_tuple
   - name: validation_invalid_userset_in_contextual_tuple
     stages:
@@ -3586,7 +3579,6 @@ tests:
               - object: document:1
                 relation: viewer
                 user: group:fga#undefined #invalid
-            temporarilySkipReason: "because contextual tuples validation errors not implemented yet"
             errorCode: 2027 # ErrorCode_invalid_tuple
   - name: validation_invalid_wildcard_in_contextual_tuple
     stages:
@@ -3627,7 +3619,6 @@ tests:
               - object: document:1
                 relation: viewer
                 user: user:* #invalid
-            temporarilySkipReason: "because contextual tuples not validated yet"
             errorCode: 2027 # ErrorCode_invalid_tuple
   - name: val_contextual_tuples_and_wildcard_in_ttu_evaluation
     stages:

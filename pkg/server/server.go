@@ -653,7 +653,13 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+
 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+
+	err = listusers.ValidateListUsersRequest(req, typesys)
 	if err != nil {
 		return nil, err
 	}
