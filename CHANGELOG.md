@@ -23,7 +23,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Contributions
 
-* release: add homebrew release job by @chenrui333 ([#780](https://github.com/openfga/openfga/pull/780))
+* Add homebrew release job by @chenrui333 ([#780](https://github.com/openfga/openfga/pull/780))
 
 ## [1.5.1] - 2024-03-19
 
