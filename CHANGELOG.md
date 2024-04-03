@@ -21,10 +21,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Bumped up the `grpc-health-probe` dependency in the published Docker image to the latest release which fixes some vulnerabilities ([#1507](https://github.com/openfga/openfga/pull/1507))
 
-### Changed
-
-* Refactored Makefile commands ([#1454](https://github.com/openfga/openfga/pull/1454))
-
 ### Contributions
 
 * release: add homebrew release job by @chenrui333 ([#780](https://github.com/openfga/openfga/pull/780))
