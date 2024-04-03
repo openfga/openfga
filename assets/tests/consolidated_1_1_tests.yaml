@@ -6506,7 +6506,7 @@ tests:
               object: document:1
               relation: can_view
             expectation:
-              - group:fga#member # TODO is this OK? not all users of group:fga#member have the can_view relation
+              - group:fga#member
   - name: list_objects_does_not_return_duplicates
     stages:
       - model: | #concurrent checks
