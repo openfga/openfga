@@ -14,7 +14,6 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
@@ -638,14 +637,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 
 				if !condEvalResult.ConditionMet {
-					if len(condEvalResult.MissingParameters) > 0 {
-						evalErr := condition.NewEvaluationError(
-							tupleKey.GetCondition().GetName(),
-							fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
-						)
-						telemetry.TraceError(span, evalErr)
-						return nil, evalErr
-					}
 					return response, nil
 				}
 
@@ -705,16 +696,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					errs = multierror.Append(errs, err)
 					continue
 				}
-
 				if !condEvalResult.ConditionMet {
-					if len(condEvalResult.MissingParameters) > 0 {
-						errs = multierror.Append(errs, condition.NewEvaluationError(
-							t.GetCondition().GetName(),
-							fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-								tuple.TupleKeyToString(t),
-								condEvalResult.MissingParameters),
-						))
-					}
 					continue
 				}
 
@@ -876,19 +858,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 			if err != nil {
 				errs = multierror.Append(errs, err)
-
 				continue
 			}
-
 			if !condEvalResult.ConditionMet {
-				if len(condEvalResult.MissingParameters) > 0 {
-					errs = multierror.Append(errs, condition.NewEvaluationError(
-						t.GetCondition().GetName(),
-						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(t),
-							condEvalResult.MissingParameters),
-					))
-				}
 				continue
 			}
 

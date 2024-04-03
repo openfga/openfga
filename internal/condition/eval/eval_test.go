@@ -78,6 +78,96 @@ condition correct_ip(ip: string) {
 			conditionMet: true,
 			expectedErr:  "",
 		},
+		{
+			name:     "multiple_condition_params_all_provided_and_evaluates_true",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condXY", nil),
+			model: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+    define can_view: [user with condXY]
+
+condition condXY(x: bool, y: bool) {
+	x || y
+}`),
+			context:      map[string]interface{}{"x": true, "y": true},
+			conditionMet: true,
+			expectedErr:  "",
+		},
+		{
+			name:     "multiple_condition_params_none_provided_and_evaluates_false",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condXY", nil),
+			model: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+    define can_view: [user with condXY]
+
+condition condXY(x: bool, y: bool) {
+	x || y
+}`),
+			context:      map[string]interface{}{},
+			conditionMet: false,
+			expectedErr:  "'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[x y]'",
+		},
+		{
+			name:     "multiple_condition_params_all_provided_and_evaluates_false",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condXY", nil),
+			model: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+    define can_view: [user with condXY]
+
+condition condXY(x: bool, y: bool) {
+	x || y
+}`),
+			context:      map[string]interface{}{"x": false, "y": false},
+			conditionMet: false,
+			expectedErr:  "",
+		},
+		{
+			name:     "multiple_condition_params_some_provided_and_evaluates_false",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condXY", nil),
+			model: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+    define can_view: [user with condXY]
+
+condition condXY(x: bool, y: bool) {
+	x || y
+}`),
+			context:      map[string]interface{}{"x": false},
+			conditionMet: false,
+			expectedErr:  "'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[y]'",
+		},
+		{
+			name:     "multiple_condition_params_some_provided_and_evaluates_true",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condXY", nil),
+			model: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+    define can_view: [user with condXY]
+
+condition condXY(x: bool, y: bool) {
+	x || y
+}`),
+			context:      map[string]interface{}{"x": true},
+			conditionMet: true,
+			expectedErr:  "",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

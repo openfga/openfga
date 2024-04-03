@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/metrics"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -33,48 +34,61 @@ func EvaluateTupleCondition(
 
 	tupleCondition := tupleKey.GetCondition()
 	conditionName := tupleCondition.GetName()
-	if conditionName != "" {
-		start := time.Now()
-		span.SetAttributes(attribute.String("condition_name", conditionName))
+	if conditionName == "" {
+		return &condition.EvaluationResult{
+			ConditionMet: true,
+		}, nil
+	}
+	start := time.Now()
+	span.SetAttributes(attribute.String("condition_name", conditionName))
 
-		evaluableCondition, ok := typesys.GetCondition(conditionName)
-		if !ok {
-			err := condition.NewEvaluationError(conditionName, fmt.Errorf("condition was not found"))
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
+	evaluableCondition, ok := typesys.GetCondition(conditionName)
+	if !ok {
+		err := condition.NewEvaluationError(conditionName, fmt.Errorf("condition was not found"))
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
 
-		span.SetAttributes(attribute.String("condition_expression", evaluableCondition.GetExpression()))
+	span.SetAttributes(attribute.String("condition_expression", evaluableCondition.GetExpression()))
 
-		// merge both contexts
-		contextFields := []map[string]*structpb.Value{
-			{},
-		}
-		if context != nil {
-			contextFields = []map[string]*structpb.Value{context.GetFields()}
-		}
+	// merge both contexts
+	contextFields := []map[string]*structpb.Value{
+		{},
+	}
+	if context != nil {
+		contextFields = []map[string]*structpb.Value{context.GetFields()}
+	}
 
-		tupleContext := tupleCondition.GetContext()
-		if tupleContext != nil {
-			contextFields = append(contextFields, tupleContext.GetFields())
-		}
+	tupleContext := tupleCondition.GetContext()
+	if tupleContext != nil {
+		contextFields = append(contextFields, tupleContext.GetFields())
+	}
 
-		conditionResult, err := evaluableCondition.Evaluate(ctx, contextFields...)
-		if err != nil {
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
+	conditionResult, err := evaluableCondition.Evaluate(ctx, contextFields...)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
 
-		metrics.Metrics.ObserveEvaluationDuration(time.Since(start))
-		metrics.Metrics.ObserveEvaluationCost(conditionResult.Cost)
+	metrics.Metrics.ObserveEvaluationDuration(time.Since(start))
+	metrics.Metrics.ObserveEvaluationCost(conditionResult.Cost)
 
-		span.SetAttributes(attribute.Bool("condition_met", conditionResult.ConditionMet))
-		span.SetAttributes(attribute.String("condition_cost", strconv.FormatUint(conditionResult.Cost, 10)))
-		span.SetAttributes(attribute.StringSlice("condition_missing_params", conditionResult.MissingParameters))
+	span.SetAttributes(attribute.Bool("condition_met", conditionResult.ConditionMet))
+	span.SetAttributes(attribute.String("condition_cost", strconv.FormatUint(conditionResult.Cost, 10)))
+	span.SetAttributes(attribute.StringSlice("condition_missing_params", conditionResult.MissingParameters))
+
+	if conditionResult.ConditionMet {
 		return &conditionResult, nil
 	}
 
-	return &condition.EvaluationResult{
-		ConditionMet: true,
-	}, nil
+	if len(conditionResult.MissingParameters) > 0 {
+		err = condition.NewEvaluationError(
+			tupleKey.GetCondition().GetName(),
+			fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+				tuple.TupleKeyToString(tupleKey),
+				conditionResult.MissingParameters),
+		)
+	}
+
+	return &conditionResult, err
 }
