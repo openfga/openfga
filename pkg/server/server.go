@@ -395,7 +395,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
 		)
 
-		s.dispatchThrottler = throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		s.dispatchThrottler = throttler.NewDispatchThrottler(dispatchThrottlingConfig)
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(s.dispatchThrottler)
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver

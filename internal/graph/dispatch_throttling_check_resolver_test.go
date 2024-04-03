@@ -25,7 +25,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			Frequency: 1 * time.Hour,
 			Threshold: 200,
 		}
-		dispatchThrottler := throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dispatchThrottler := throttler.NewDispatchThrottler(dispatchThrottlingConfig)
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottler)
 		defer dut.Close()
 
@@ -61,7 +61,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			Frequency: 1 * time.Second,
 			Threshold: 200,
 		}
-		dispatchThrottler := throttler.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dispatchThrottler := throttler.NewDispatchThrottler(dispatchThrottlingConfig)
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottler)
 		defer dut.Close()
 

@@ -31,7 +31,7 @@ type DispatchThrottler struct {
 	done            chan struct{}
 }
 
-func NewDispatchThrottlingCheckResolver(
+func NewDispatchThrottler(
 	config DispatchThrottlingConfig) *DispatchThrottler {
 	dispatchThrottler := &DispatchThrottler{
 		config:          config,
