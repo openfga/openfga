@@ -17,12 +17,13 @@ import (
 
 func TestEvaluateTupleCondition(t *testing.T) {
 	tests := []struct {
-		name         string
-		tupleKey     *openfgav1.TupleKey
-		model        *openfgav1.AuthorizationModel
-		context      map[string]interface{}
-		conditionMet bool
-		expectedErr  string
+		name           string
+		tupleKey       *openfgav1.TupleKey
+		model          *openfgav1.AuthorizationModel
+		context        map[string]interface{}
+		conditionMet   bool
+		expectedErr    string
+		expectedAltErr string
 	}{
 		{
 			name:     "condition_in_tuple_key_not_found_in_model",
@@ -40,7 +41,7 @@ condition correct_ip(ip: string) {
 }`),
 			context:      map[string]interface{}{"ip": "192.168.0.1"},
 			conditionMet: false,
-			expectedErr:  "'unknown' - condition was not found",
+			expectedErr:  "failed to evaluate relationship condition: 'unknown' - condition was not found",
 		},
 		{
 			name:     "condition_not_met",
@@ -110,9 +111,10 @@ type document
 condition condXY(x: bool, y: bool) {
 	x || y
 }`),
-			context:      map[string]interface{}{},
-			conditionMet: false,
-			expectedErr:  "'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[x y]'",
+			context:        map[string]interface{}{},
+			conditionMet:   false,
+			expectedErr:    "failed to evaluate relationship condition: 'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[x y]'",
+			expectedAltErr: "failed to evaluate relationship condition: 'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[y x]'",
 		},
 		{
 			name:     "multiple_condition_params_all_provided_and_evaluates_false",
@@ -148,7 +150,7 @@ condition condXY(x: bool, y: bool) {
 }`),
 			context:      map[string]interface{}{"x": false},
 			conditionMet: false,
-			expectedErr:  "'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[y]'",
+			expectedErr:  "failed to evaluate relationship condition: 'condXY' - tuple 'document:1#viewer@user:maria' is missing context parameters '[y]'",
 		},
 		{
 			name:     "multiple_condition_params_some_provided_and_evaluates_true",
@@ -183,9 +185,12 @@ condition condXY(x: bool, y: bool) {
 			if err != nil {
 				var evalError *condition.EvaluationError
 				require.ErrorAs(t, err, &evalError)
-				require.EqualError(t, evalError, test.expectedErr)
+				if test.expectedErr != err.Error() && test.expectedAltErr != err.Error() {
+					t.Errorf("Unexpected error message: got %v, want %v or %v", err.Error(), test.expectedErr, test.expectedAltErr)
+				}
 			} else {
 				require.Empty(t, test.expectedErr)
+				require.Empty(t, test.expectedAltErr)
 				require.Equal(t, test.conditionMet, condEvalResult.ConditionMet)
 			}
 		})
