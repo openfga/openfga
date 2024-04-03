@@ -21,6 +21,7 @@ import (
 var tracer = otel.Tracer("openfga/internal/condition/eval")
 
 // EvaluateTupleCondition returns a bool indicating if the provided tupleKey's condition (if any) was met.
+// If the bool is false, it may be accompanied with an error which the caller should inspect.
 func EvaluateTupleCondition(
 	ctx context.Context,
 	tupleKey *openfgav1.TupleKey,
