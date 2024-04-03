@@ -45,6 +45,7 @@ type listObjectsTestCase struct {
 	allResults             []string // all the results. the server may return less
 	maxResults             uint32
 	minimumResultsExpected uint32
+	expectSkippableError   string
 	listObjectsDeadline    time.Duration // 10 seconds if not set
 	readTuplesDelay        time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
 	useCheckCache          bool
@@ -453,6 +454,68 @@ condition condition1(x: int) {
 			allResults:             []string{"document:1"},
 			useCheckCache:          false,
 		},
+		{
+			name: "tuple_with_condition_is_missing_parameters_but_we_still_get_one_result",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: [user with condX] or viewer from parent
+				
+				condition condX(x: int) {
+					x > 100
+				}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKeyWithCondition("document:2", "viewer", "user:jon", "condX", nil),
+			},
+			user:                   "user:jon",
+			objectType:             "document",
+			relation:               "viewer",
+			context:                nil,
+			maxResults:             1,
+			minimumResultsExpected: 1,
+			allResults:             []string{"document:1"},
+			expectSkippableError:   "failed to evaluate relationship condition: 'condX' - tuple 'document:2#viewer@user:jon' is missing context parameters '[x]'",
+		},
+		{
+			name: "tuple_with_condition_fails_evaluation_but_we_still_get_one_result",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: [user with condfloat] or viewer from parent
+				
+				condition condfloat(x: double) {
+					x > 0.0
+				}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKeyWithCondition("document:2", "viewer", "user:jon", "condfloat", nil),
+			},
+			user:                   "user:jon",
+			objectType:             "document",
+			relation:               "viewer",
+			context:                testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+			maxResults:             1,
+			minimumResultsExpected: 1,
+			allResults:             []string{"document:1"},
+			expectSkippableError:   "failed to evaluate relationship condition: parameter type error on condition 'condfloat' - failed to convert context parameter 'x': number cannot be represented as a float64: 1.797693135e+309",
+		},
 	}
 
 	for _, test := range testCases {
@@ -543,8 +606,13 @@ condition condition1(x: int) {
 				}, server)
 				close(server.channel)
 				<-done
+				if test.expectSkippableError != "" {
+					require.ErrorContains(t, err, test.expectSkippableError)
+					// Streaming API can return an error and results, so we don't return here.
+				} else {
+					require.NoError(t, err)
+				}
 
-				require.NoError(t, err)
 				// there is no upper bound of the number of results for the streamed version
 				require.GreaterOrEqual(t, len(streamedObjectIds), int(test.minimumResultsExpected))
 				require.ElementsMatch(t, test.allResults, streamedObjectIds)

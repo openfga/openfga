@@ -119,6 +119,9 @@ type ReverseExpandQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
+
+	skippableErrors      *multierror.Error // GUARDED_BY(skippableErrorsMutex)
+	skippableErrorsMutex sync.RWMutex
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -206,6 +209,11 @@ func (c *ReverseExpandQuery) Execute(
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err
+	}
+	c.skippableErrorsMutex.RLock()
+	defer c.skippableErrorsMutex.RUnlock()
+	if c.skippableErrors.ErrorOrNil() != nil {
+		return c.skippableErrors.ErrorOrNil()
 	}
 
 	close(resultChan)
@@ -500,18 +508,25 @@ LoopOnIterator:
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			telemetry.TraceError(span, err)
+			c.skippableErrorsMutex.Lock()
+			c.skippableErrors = multierror.Append(err, c.skippableErrors)
+			c.skippableErrorsMutex.Unlock()
 			continue
 		}
 
 		if !condEvalResult.ConditionMet {
 			if len(condEvalResult.MissingParameters) > 0 {
-				errs = multierror.Append(errs, condition.NewEvaluationError(
+				err := condition.NewEvaluationError(
 					tk.GetCondition().GetName(),
 					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
 						tuple.TupleKeyToString(tk),
 						condEvalResult.MissingParameters),
-				))
+				)
+				telemetry.TraceError(span, err)
+				c.skippableErrorsMutex.Lock()
+				c.skippableErrors = multierror.Append(err, c.skippableErrors)
+				c.skippableErrorsMutex.Unlock()
 			}
 
 			continue

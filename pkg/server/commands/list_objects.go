@@ -177,6 +177,7 @@ type listObjectsRequest interface {
 // The resultsChan is **always** closed by evaluate when it is done with its work,
 // which is either when all results have been yielded, the deadline has been met,
 // or some other terminal error case has occurred.
+// Context cancellation or deadline errors are NOT sent through the channel.
 func (q *ListObjectsQuery) evaluate(
 	ctx context.Context,
 	req listObjectsRequest,
@@ -380,6 +381,8 @@ func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
 // or until q.listObjectsDeadline is hit, whichever happens first.
+// If a non-terminal (skippable) error occurs, and we were not able to fulfil q.listObjectsMaxResults
+// we send the error only.
 func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
@@ -406,7 +409,7 @@ func (q *ListObjectsQuery) Execute(
 
 	objects := make([]string, 0)
 
-	var errs *multierror.Error
+	var skippableErrors *multierror.Error
 
 	for result := range resultsChan {
 		if result.Err != nil {
@@ -414,12 +417,8 @@ func (q *ListObjectsQuery) Execute(
 				return nil, result.Err
 			}
 
-			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-				errs = multierror.Append(errs, result.Err)
-				continue
-			}
-
-			if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+			if IsSkippableError(result.Err) {
+				skippableErrors = multierror.Append(skippableErrors, serverErrors.ValidationError(result.Err))
 				continue
 			}
 
@@ -429,8 +428,8 @@ func (q *ListObjectsQuery) Execute(
 		objects = append(objects, result.ObjectID)
 	}
 
-	if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
-		return nil, errs
+	if len(objects) < int(maxResults) && skippableErrors.ErrorOrNil() != nil {
+		return nil, skippableErrors
 	}
 
 	return &ListObjectsResponse{
@@ -441,7 +440,8 @@ func (q *ListObjectsQuery) Execute(
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
-// until q.listObjectsDeadline is hit
+// until q.listObjectsDeadline is hit or an error occurs, whatever happens first.
+// If a non-terminal (skippable) error occurs, we send it at the end of the stream, after all results.
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
@@ -461,14 +461,17 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		return nil, err
 	}
 
+	var skippableErrors *multierror.Error
+
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 				return nil, result.Err
 			}
 
-			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-				return nil, serverErrors.ValidationError(result.Err)
+			if IsSkippableError(result.Err) {
+				skippableErrors = multierror.Append(skippableErrors, serverErrors.ValidationError(result.Err))
+				continue
 			}
 
 			return nil, serverErrors.HandleError("", result.Err)
@@ -481,5 +484,13 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 	}
 
+	if skippableErrors.ErrorOrNil() != nil {
+		return nil, skippableErrors.ErrorOrNil()
+	}
+
 	return resolutionMetadata, nil
+}
+
+func IsSkippableError(err error) bool {
+	return errors.Is(err, condition.ErrEvaluationFailed)
 }
