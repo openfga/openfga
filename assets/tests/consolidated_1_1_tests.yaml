@@ -852,7 +852,33 @@ tests:
               object: document:2
               relation: viewer
             expectation:
-
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+             - folder:X#editor
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#writer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
   - name: tuple_to_userset_and_intersection
     stages:
       - model: |
@@ -939,7 +965,13 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
           - request:
               filters:
                 - folder
@@ -1032,7 +1064,14 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
+             - folder:X#writer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
   - name: union_and_tuple_to_userset
     stages:
       - model: |
@@ -1368,7 +1407,6 @@ tests:
                 - document#writer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because usersets not returned properly yet, returns `document:1` instead"
             expectation:
               - document:1#writer
           - request:
@@ -1376,8 +1414,8 @@ tests:
                 - document#editor
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
+             - document:1#editor
           - request:
               filters:
                 - user
@@ -1852,7 +1890,6 @@ tests:
                 - document#writer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
           - request:
               filters:
@@ -2011,8 +2048,8 @@ tests:
                 - folder#viewer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
+             - folder:X#viewer
           - request:
               filters:
                 - document#writer
@@ -2203,15 +2240,15 @@ tests:
                 - document#writer
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
+             - document:1#writer
           - request:
               filters:
                 - document#editor
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
+              - document:1#editor
           - request:
               filters:
                 - user
@@ -2756,7 +2793,6 @@ tests:
                 - group#member
               object: document:1
               relation: viewer
-            temporarilySkipReason: "because usersets not returned properly yet, returns `group:x` instead"
             expectation:
               - group:x#member
   - name: wildcard_direct
@@ -3144,7 +3180,6 @@ tests:
                 - group#member
               object: document:public
               relation: viewer
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
               - group:fga#member
   - name: wildcard_obeys_the_types_in_stages
@@ -5443,7 +5478,6 @@ tests:
                 - group#member
               object: folder:a
               relation: can_view
-            temporarilySkipReason: "because userset relations not being returned properly, `group:fga` returned"
             expectation:
               - group:fga#member
           - request:
@@ -5548,7 +5582,6 @@ tests:
                 - group#member
               object: folder:a
               relation: can_view
-            temporarilySkipReason: "because userset relations not being returned properly, `group:fga` returned"
             expectation:
               - group:fga#member
   - name: contextual_tuple_ref_relation_disjoint
@@ -5620,7 +5653,6 @@ tests:
                 - group#member
               object: diagram:a
               relation: viewer
-            temporarilySkipReason: "because userset relations not being returned properly, `group:fga` returned"
             expectation:
               - group:fga#member
   - name: reverse_expand_relation_not_match
@@ -5678,7 +5710,6 @@ tests:
                 - group#member
               object: document:a
               relation: viewer
-            temporarilySkipReason: "because userset relations not being returned properly, `group:fga` returned"
             expectation:
               - group:fga#member
           - request:
@@ -5786,7 +5817,6 @@ tests:
                 - document#can_view
               object: document:a
               relation: can_see
-            temporarilySkipReason: "because usersets not returned properly yet, returns `document:a` instead"
             expectation:
               - document:a#can_view
           - request:
@@ -5794,8 +5824,8 @@ tests:
                 - document#viewer
               object: document:a
               relation: can_see
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
+             - document:a#viewer
   - name: evaluate_userset_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -5846,7 +5876,6 @@ tests:
                 - organization#member
               object: repo:openfga/openfga
               relation: reader
-            temporarilySkipReason: "because userset relations not being returned properly, `organization:openfga` returned"
             expectation:
               - organization:openfga#member
           - request:
@@ -6027,7 +6056,6 @@ tests:
                 - folder#viewer
               object: document:1
               relation: can_view
-            temporarilySkipReason: "because usersets not returned properly yet, returns `folder:X` instead"
             expectation:
               - folder:X#viewer
           - request:
@@ -6035,7 +6063,6 @@ tests:
                 - organization#viewer
               object: document:1
               relation: can_view
-            temporarilySkipReason: "because usersets not returned properly yet, returns `organization:openfga` instead"
             expectation:
               - organization:openfga#viewer
   - name: userset_with_intersection_in_computed_relation_of_ttu
@@ -6134,15 +6161,12 @@ tests:
                 - organization#member
               object: repo:openfga/openfga
               relation: reader
-            temporarilySkipReason: "because userset relations not being returned properly, `organization:openfga` returned"
             expectation:
-              - organization:openfga#member
           - request:
               filters:
                 - organization#member
               object: repo:openfga/openfga
               relation: can_read
-            temporarilySkipReason: "because we need to remember if previous recursive calls had intersection or exclusion"
             expectation:
           - request:
               filters:
@@ -6467,9 +6491,8 @@ tests:
                 - group#member
               object: document:1
               relation: can_view
-            temporarilySkipReason: "because usersets not returned properly yet, returns `group:fga` instead"
             expectation:
-              - group:fga#member # TODO is this OK? not all users of group:fga#member have the can_view relation
+              - group:fga#member
   - name: list_objects_does_not_return_duplicates
     stages:
       - model: | #concurrent checks
@@ -7181,7 +7204,6 @@ tests:
                 - group#member
               object: group:eng
               relation: member
-            temporarilySkipReason: "because usersets not returned properly yet, returns `group:eng`,`group:fga` and `group:fga-backend` instead"
             expectation:
               - group:eng#member
               - group:fga#member
