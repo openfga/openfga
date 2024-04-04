@@ -325,7 +325,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, client) })
 	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, client) })
-
+	t.Run("TestListUsers", func(t *testing.T) { GRPCListUsersTest(t, client) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
@@ -975,6 +975,203 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := client.ListObjects(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	type output struct {
+		errorCode codes.Code
+	}
+
+	tests := []struct {
+		name   string
+		input  *openfgav1.ListUsersRequest
+		output output
+	}{
+		{
+			name: "too_many_user_filters",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}, {Type: "employee"}},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "zero_user_filters",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.ListUsersFilter{},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "object_no_type_defined",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Object: &openfgav1.Object{
+					Id: "1",
+				},
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "object_no_id_defined",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Object: &openfgav1.Object{
+					Type: "user",
+				},
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name:  "empty_request",
+			input: &openfgav1.ListUsersRequest{},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_too_short",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              "1",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_extra_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String() + "A",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_storeID_because_invalid_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_extra_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String() + "A",
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid_authorization_model_ID_because_invalid_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				UserFilters:          []*openfgav1.ListUsersFilter{{Type: "user"}},
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_object",
+			input: &openfgav1.ListUsersRequest{
+				AuthorizationModelId: ulid.Make().String(),
+				StoreId:              ulid.Make().String(),
+				UserFilters:          []*openfgav1.ListUsersFilter{{Type: "user"}},
+				Relation:             "viewer",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing_relation",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := client.ListUsers(context.Background(), test.input)
 
 			s, ok := status.FromError(err)
 			require.True(t, ok)

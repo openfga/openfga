@@ -1649,79 +1649,6 @@ func TestListUsersValidation(t *testing.T) {
 		expectedErrorMsg string
 	}{
 		{
-			name: "too_many_user_filters",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "document",
-					},
-					{
-						Type: "user",
-					},
-				},
-			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid number of user filters, exactly one required",
-		},
-		{
-			name: "no_user_filters",
-			req: &openfgav1.ListUsersRequest{
-				Object:      &openfgav1.Object{Type: "document", Id: "1"},
-				Relation:    "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{},
-			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid number of user filters, exactly one required",
-		},
-		{
-			name: "no_object_type",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid object provided, type required",
-		},
-		{
-			name: "no_object_id",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid object provided, id required",
-		},
-		{
-			name: "no_relation",
-			req: &openfgav1.ListUsersRequest{
-				Object: &openfgav1.Object{Type: "document", Id: "1"},
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2000) desc = relation required",
-		},
-		{
 			name: "invalid_user_filter_type",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
@@ -1799,7 +1726,7 @@ func TestListUsersValidation(t *testing.T) {
 			},
 			model:            model,
 			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: `rpc error: code = Code(2027) desc = Invalid tuple 'user:"user:will" relation:"viewer" object:"invalid_object_type:1"'. Reason: type 'invalid_object_type' not found`,
+			expectedErrorMsg: "rpc error: code = Code(2027) desc = Invalid tuple 'user:\"user:will\"  relation:\"viewer\"  object:\"invalid_object_type:1\"'. Reason: type 'invalid_object_type' not found",
 		},
 		{
 			name: "contextual_tuple_invalid_user_type",
@@ -1815,7 +1742,7 @@ func TestListUsersValidation(t *testing.T) {
 			},
 			model:            model,
 			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: `rpc error: code = Code(2027) desc = Invalid tuple 'user:"invalid_user_type:will" relation:"viewer" object:"document:1"'. Reason: type 'invalid_user_type' not found`,
+			expectedErrorMsg: "rpc error: code = Code(2027) desc = Invalid tuple 'user:\"invalid_user_type:will\"  relation:\"viewer\"  object:\"document:1\"'. Reason: type 'invalid_user_type' not found",
 		},
 		{
 			name: "contextual_tuple_invalid_relation",
@@ -1831,7 +1758,7 @@ func TestListUsersValidation(t *testing.T) {
 			},
 			model:            model,
 			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: `rpc error: code = Code(2027) desc = Invalid tuple 'user:"user:will" relation:"invalid_relation" object:"document:1"'. Reason: relation 'document#invalid_relation' not found`,
+			expectedErrorMsg: "rpc error: code = Code(2027) desc = Invalid tuple 'user:\"user:will\"  relation:\"invalid_relation\"  object:\"document:1\"'. Reason: relation 'document#invalid_relation' not found",
 		},
 	}
 
