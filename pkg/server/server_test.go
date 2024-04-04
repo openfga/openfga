@@ -1625,3 +1625,260 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 		require.NoError(t, err)
 	})
 }
+
+func TestListUsersValidation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := `
+	model
+		schema 1.1
+	type user
+
+	type document
+		relations
+			define viewer: [user]`
+
+	tests := []struct {
+		name             string
+		req              *openfgav1.ListUsersRequest
+		model            string
+		tuples           []*openfgav1.TupleKey
+		expectedUsers    []string
+		expectedErrorMsg string
+	}{
+		{
+			name: "too_many_user_filters",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "document",
+					},
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid number of user filters, exactly one required",
+		},
+		{
+			name: "no_user_filters",
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid number of user filters, exactly one required",
+		},
+		{
+			name: "no_object_type",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid object provided, type required",
+		},
+		{
+			name: "no_object_id",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2000) desc = invalid object provided, id required",
+		},
+		{
+			name: "no_relation",
+			req: &openfgav1.ListUsersRequest{
+				Object: &openfgav1.Object{Type: "document", Id: "1"},
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2000) desc = relation required",
+		},
+		{
+			name: "invalid_user_filter_type",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "folder", //invalid type
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2021) desc = type 'folder' not found",
+		},
+		{
+			name: "invalid_user_filter_relation",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type:     "user",
+						Relation: "editor", //invalid relation
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2022) desc = relation 'user#editor' not found",
+		},
+		{
+			name: "invalid_target_object_type",
+			req: &openfgav1.ListUsersRequest{
+				Object: &openfgav1.Object{
+					Type: "folder", // invalid type
+					Id:   "1",
+				},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2021) desc = type 'folder' not found",
+		},
+		{
+			name: "invalid_relation",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "owner", // invalid relation
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: "rpc error: code = Code(2022) desc = relation 'document#owner' not found",
+		},
+		{
+			name: "contextual_tuple_invalid_object_type",
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("invalid_object_type:1", "viewer", "user:will"),
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: `rpc error: code = Code(2027) desc = Invalid tuple 'user:"user:will" relation:"viewer" object:"invalid_object_type:1"'. Reason: type 'invalid_object_type' not found`,
+		},
+		{
+			name: "contextual_tuple_invalid_user_type",
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "viewer", "invalid_user_type:will"),
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: `rpc error: code = Code(2027) desc = Invalid tuple 'user:"invalid_user_type:will" relation:"viewer" object:"document:1"'. Reason: type 'invalid_user_type' not found`,
+		},
+		{
+			name: "contextual_tuple_invalid_relation",
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "invalid_relation", "user:will"),
+					},
+				},
+			},
+			model:            model,
+			tuples:           []*openfgav1.TupleKey{},
+			expectedErrorMsg: `rpc error: code = Code(2027) desc = Invalid tuple 'user:"user:will" relation:"invalid_relation" object:"document:1"'. Reason: relation 'document#invalid_relation' not found`,
+		},
+	}
+
+	storeID := ulid.Make().String()
+	for _, test := range tests {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+		t.Run(test.name, func(t *testing.T) {
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+
+			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
+
+			if len(test.tuples) > 0 {
+				err = ds.Write(context.Background(), storeID, nil, test.tuples)
+				require.NoError(t, err)
+			}
+
+			s := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			t.Cleanup(s.Close)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			test.req.AuthorizationModelId = model.GetId()
+			test.req.StoreId = storeID
+
+			resp, err := s.ListUsers(ctx, test.req)
+
+			actualErrorMsg := ""
+			if err != nil {
+				actualErrorMsg = err.Error()
+			}
+			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
+
+			actualUsers := resp.GetUsers()
+
+			actualCompare := make([]string, len(actualUsers))
+			for i, u := range resp.GetUsers() {
+				actualCompare[i] = tuple.UserProtoToString(u)
+			}
+
+			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+		})
+	}
+}
