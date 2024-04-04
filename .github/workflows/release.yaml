@@ -196,14 +196,4 @@ jobs:
              --certificate-identity-regexp '^https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v[0-9]+.[0-9]+.[0-9]+$' \
              $IMAGE@$DIGEST
 
-  homebrew:
-    needs: [ goreleaser ]
-    name: Bump Homebrew formula
-    runs-on: ubuntu-latest
-    steps:
-      - uses: mislav/bump-homebrew-formula-action@b3327118b2153c82da63fd9cbf58942146ee99f0 # v3.1
-        with:
-          formula-name: openfga
-        env:
-          # token belongs to @miparnisari and expires on March 6, 2025.
-          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_COMMITTER_TOKEN }}
+  # homebrew bump happens automagically after a few hours, see https://github.com/Homebrew/homebrew-core/commits/master/Formula/o/openfga.rb
