@@ -59,26 +59,8 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 }
 
 func ValidateListUsersRequest(req *openfgav1.ListUsersRequest, typesys *typesystem.TypeSystem) error {
-	userFilters := req.GetUserFilters()
-
-	if req.GetObject().GetType() == "" {
-		return serverErrors.ValidationError(fmt.Errorf("invalid object provided, type required"))
-	}
-
-	if req.GetObject().GetId() == "" {
-		return serverErrors.ValidationError(fmt.Errorf("invalid object provided, id required"))
-	}
-
-	if req.GetRelation() == "" {
-		return serverErrors.ValidationError(fmt.Errorf("relation required"))
-	}
-
-	if len(userFilters) != 1 {
-		return serverErrors.ValidationError(fmt.Errorf("invalid number of user filters, exactly one required"))
-	}
-
 	//Validate user filter type
-	for _, userFilter := range userFilters {
+	for _, userFilter := range req.GetUserFilters() {
 		filterObjectType := userFilter.GetType()
 		filterObjectRelation := userFilter.GetRelation()
 

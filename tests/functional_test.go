@@ -325,7 +325,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, client) })
 	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, client) })
-	t.Run("TestListUsers", func(t *testing.T) { GRPCListUsersTest(t, client) })
+	t.Run("TestListUsersValidation", func(t *testing.T) { GRPCListUsersTest(t, client) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
