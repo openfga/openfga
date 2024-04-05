@@ -910,13 +910,11 @@ tests:
                 - user
               relation: viewer
               object: document:1
-            temporarilySkipReason: "partially applied condition param behavior still needs to be defined"
           - request:
               filters:
                 - user
               relation: viewer
               object: document:1
-            temporarilySkipReason: "partially applied condition param behavior still needs to be defined"
           - request:
               filters:
                 - user
