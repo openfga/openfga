@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 
+	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -284,6 +285,7 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs *multierror.Error
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -292,6 +294,15 @@ func (l *listUsersQuery) expandDirect(
 			}
 
 			return err
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
@@ -317,7 +328,12 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	return pool.Wait()
+	errs = multierror.Append(errs, pool.Wait())
+	if errs.ErrorOrNil() != nil {
+		return errs
+	}
+
+	return nil
 }
 
 func (l *listUsersQuery) expandIntersection(
@@ -488,6 +504,7 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs *multierror.Error
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -496,6 +513,15 @@ func (l *listUsersQuery) expandTTU(
 			}
 
 			return err
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = multierror.Append(errs, err)
+			continue
+		}
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		userObject := tupleKey.GetUser()
@@ -509,7 +535,12 @@ func (l *listUsersQuery) expandTTU(
 		})
 	}
 
-	return pool.Wait()
+	errs = multierror.Append(errs, pool.Wait())
+	if errs.ErrorOrNil() != nil {
+		return errs
+	}
+
+	return nil
 }
 
 func enteredCycle(req *internalListUsersRequest) bool {

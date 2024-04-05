@@ -4,6 +4,7 @@ import (
 	"maps"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type listUsersRequest interface {
@@ -13,6 +14,7 @@ type listUsersRequest interface {
 	GetRelation() string
 	GetUserFilters() []*openfgav1.ListUsersFilter
 	GetContextualTuples() *openfgav1.ContextualTupleKeys
+	GetContext() *structpb.Struct
 }
 
 type internalListUsersRequest struct {
@@ -69,6 +71,13 @@ func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTu
 	return r.ContextualTuples
 }
 
+func (r *internalListUsersRequest) GetContext() *structpb.Struct {
+	if r == nil {
+		return nil
+	}
+	return r.Context
+}
+
 func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 	return &internalListUsersRequest{
 		ListUsersRequest: &openfgav1.ListUsersRequest{
@@ -78,6 +87,7 @@ func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 			Relation:             o.GetRelation(),
 			UserFilters:          o.GetUserFilters(),
 			ContextualTuples:     o.GetContextualTuples(),
+			Context:              o.GetContext(),
 		},
 		visitedUsersetsMap: make(map[string]struct{}),
 	}

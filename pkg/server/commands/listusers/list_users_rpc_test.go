@@ -28,6 +28,7 @@ type ListUsersTests []struct {
 	tuples                []*openfgav1.TupleKey
 	expectedUsers         []string
 	expectedErrorMsg      string
+	context               map[string]interface{}
 }
 
 func TestListUsersDirectRelationship(t *testing.T) {
@@ -783,19 +784,9 @@ func TestListUsersConditions(t *testing.T) {
 	relations
 	  define viewer: [user with isTrue]
   
-  condition isTrue(param: string) {
-	param == "true"
+  condition isTrue(param: bool) {
+	param == true
   }`
-
-	conditionContextWithTrueParam, err := structpb.NewStruct(map[string]interface{}{
-		"param": "true",
-	})
-	require.NoError(t, err)
-
-	conditionContextWithFalseParam, err := structpb.NewStruct(map[string]interface{}{
-		"param": "false",
-	})
-	require.NoError(t, err)
 
 	tests := ListUsersTests{
 		{
@@ -809,17 +800,17 @@ func TestListUsersConditions(t *testing.T) {
 					},
 				},
 			},
-			model: model,
+			model:   model,
+			context: map[string]interface{}{"param": true},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", conditionContextWithTrueParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", conditionContextWithTrueParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 			},
 			expectedUsers: []string{"user:jon", "user:maria"},
 		},
 		{
-			name:                  "conditions_with_false_evaluation",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_false_evaluation",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -829,17 +820,17 @@ func TestListUsersConditions(t *testing.T) {
 					},
 				},
 			},
-			model: model,
+			model:   model,
+			context: map[string]interface{}{"param": false},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", conditionContextWithFalseParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 			},
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "conditions_with_usersets",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_usersets",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -863,21 +854,21 @@ func TestListUsersConditions(t *testing.T) {
 			relations
 			  define viewer: [group#member with isTrue, user]
 		  
-		  condition isTrue(param: string) {
-			param == "true"
+		  condition isTrue(param: bool) {
+			param
 		  }`,
+			context: map[string]interface{}{"param": true},
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:eng#member", "isTrue", conditionContextWithTrueParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:eng#member", "isTrue", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "isTrue", nil),
 				tuple.NewTupleKey("group:eng", "member", "user:jon"),
 				tuple.NewTupleKey("group:eng", "member", "user:maria"),
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
 			},
-			expectedUsers: []string{"group:eng#member"},
+			expectedUsers: []string{"group:eng#member", "group:fga#member"},
 		},
 		{
-			name:                  "conditions_with_computed_relationships",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_computed_relationships",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -902,16 +893,158 @@ func TestListUsersConditions(t *testing.T) {
 			  define editor: [user] or owner
 			  define viewer: [user with isTrue] or editor or owner
 		  
-		  condition isTrue(param: string) {
-			param == "true"
+		  condition isTrue(param: bool) {
+			param
 		  }`,
+			context: map[string]interface{}{"param": true},
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", conditionContextWithTrueParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
 				tuple.NewTupleKey("document:1", "editor", "user:poovam"),
 			},
 			expectedUsers: []string{"user:will", "user:poovam", "user:maria"},
+		},
+		{
+			name: "conditions_with_ttu",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+	
+		  type folder
+			relations
+			  define viewer: [user]
+	
+		  type document
+			relations
+			  define parent: [folder with isTrue]
+			  define viewer: viewer from parent
+	
+			condition isTrue(param: bool) {
+				param
+			}`,
+			context: map[string]interface{}{"param": true},
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "isTrue", nil),
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:y", "isTrue", nil),
+				tuple.NewTupleKey("folder:y", "viewer", "user:maria"),
+			},
+			expectedUsers: []string{"user:jon", "user:maria"},
+		},
+		{
+			name: "multiple_conditions_no_param_provided",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+	
+		  type document
+			relations
+			  define viewer: [user]
+	
+			condition isEqualToFive(param1: int) {
+				param1 == 5
+			}
+			
+			condition isEqualToTen(param2: int) {
+				param2 == 10
+				
+			}`,
+			context: map[string]interface{}{},
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "multiple_conditions_some_params_provided",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+	
+		  type document
+			relations
+			  define viewer: [user with isEqualToFive, user with isEqualToTen]
+	
+			condition isEqualToFive(param1: int) {
+				param1 == 5
+			}
+			
+			condition isEqualToTen(param2: int) {
+				param2 == 10
+				
+			}`,
+			context: map[string]interface{}{
+				"param1": 5,
+			},
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
+			},
+			expectedUsers: []string{"user:will"},
+		},
+		{
+			name: "multiple_conditions_all_params_provided",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+	
+		  type document
+			relations
+				define viewer: [user with isEqualToFive, user with isEqualToTen]
+	
+			condition isEqualToFive(param1: int) {
+				param1 == 5
+			}
+			
+			condition isEqualToTen(param2: int) {
+				param2 == 10
+			}`,
+			context: map[string]interface{}{
+				"param1": 5,
+				"param2": 10,
+			},
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
+			},
+			expectedUsers: []string{"user:will", "user:maria"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2024,6 +2157,63 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 	tests.runListUsersTestCases(t)
 }
 
+func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	for _, test := range testCases {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+		t.Run(test.name, func(t *testing.T) {
+			if test.TemporarilySkipReason != "" {
+				t.Skip()
+			}
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+
+			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
+
+			if len(test.tuples) > 0 {
+				err = ds.Write(context.Background(), storeID, nil, test.tuples)
+				require.NoError(t, err)
+			}
+
+			l := NewListUsersQuery(ds)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			test.req.AuthorizationModelId = model.GetId()
+			test.req.StoreId = storeID
+
+			if test.context != nil {
+				c, err := structpb.NewStruct(test.context)
+				require.NoError(t, err)
+				test.req.Context = c
+			}
+
+			resp, err := l.ListUsers(ctx, test.req)
+
+			actualErrorMsg := ""
+			if err != nil {
+				actualErrorMsg = err.Error()
+			}
+			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
+
+			actualUsers := resp.GetUsers()
+
+			actualCompare := make([]string, len(actualUsers))
+			for i, u := range resp.GetUsers() {
+				actualCompare[i] = tuple.UserProtoToString(u)
+			}
+
+			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+		})
+	}
+}
+
 func TestListUsersCycleDetection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2096,55 +2286,4 @@ func TestListUsersCycleDetection(t *testing.T) {
 			break
 		}
 	})
-}
-
-func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
-	storeID := ulid.Make().String()
-
-	for _, test := range testCases {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		model := testutils.MustTransformDSLToProtoWithID(test.model)
-
-		t.Run(test.name, func(t *testing.T) {
-			if test.TemporarilySkipReason != "" {
-				t.Skip()
-			}
-
-			typesys, err := typesystem.NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
-			require.NoError(t, err)
-
-			if len(test.tuples) > 0 {
-				err = ds.Write(context.Background(), storeID, nil, test.tuples)
-				require.NoError(t, err)
-			}
-
-			l := NewListUsersQuery(ds)
-
-			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-
-			test.req.AuthorizationModelId = model.GetId()
-			test.req.StoreId = storeID
-
-			resp, err := l.ListUsers(ctx, test.req)
-
-			actualErrorMsg := ""
-			if err != nil {
-				actualErrorMsg = err.Error()
-			}
-			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
-
-			actualUsers := resp.GetUsers()
-
-			actualCompare := make([]string, len(actualUsers))
-			for i, u := range resp.GetUsers() {
-				actualCompare[i] = tuple.UserProtoToString(u)
-			}
-
-			require.ElementsMatch(t, actualCompare, test.expectedUsers)
-		})
-	}
 }
