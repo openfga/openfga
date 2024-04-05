@@ -785,7 +785,7 @@ func TestListUsersConditions(t *testing.T) {
 	  define viewer: [user with isTrue]
   
   condition isTrue(param: bool) {
-	param == true
+	param
   }`
 
 	tests := ListUsersTests{
@@ -2157,63 +2157,6 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 	tests.runListUsersTestCases(t)
 }
 
-func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
-	storeID := ulid.Make().String()
-
-	for _, test := range testCases {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		model := testutils.MustTransformDSLToProtoWithID(test.model)
-
-		t.Run(test.name, func(t *testing.T) {
-			if test.TemporarilySkipReason != "" {
-				t.Skip()
-			}
-
-			typesys, err := typesystem.NewAndValidate(context.Background(), model)
-			require.NoError(t, err)
-
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
-			require.NoError(t, err)
-
-			if len(test.tuples) > 0 {
-				err = ds.Write(context.Background(), storeID, nil, test.tuples)
-				require.NoError(t, err)
-			}
-
-			l := NewListUsersQuery(ds)
-
-			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-
-			test.req.AuthorizationModelId = model.GetId()
-			test.req.StoreId = storeID
-
-			if test.context != nil {
-				c, err := structpb.NewStruct(test.context)
-				require.NoError(t, err)
-				test.req.Context = c
-			}
-
-			resp, err := l.ListUsers(ctx, test.req)
-
-			actualErrorMsg := ""
-			if err != nil {
-				actualErrorMsg = err.Error()
-			}
-			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
-
-			actualUsers := resp.GetUsers()
-
-			actualCompare := make([]string, len(actualUsers))
-			for i, u := range resp.GetUsers() {
-				actualCompare[i] = tuple.UserProtoToString(u)
-			}
-
-			require.ElementsMatch(t, actualCompare, test.expectedUsers)
-		})
-	}
-}
-
 func TestListUsersCycleDetection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2286,4 +2229,61 @@ func TestListUsersCycleDetection(t *testing.T) {
 			break
 		}
 	})
+}
+
+func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	for _, test := range testCases {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+		t.Run(test.name, func(t *testing.T) {
+			if test.TemporarilySkipReason != "" {
+				t.Skip()
+			}
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+
+			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			require.NoError(t, err)
+
+			if len(test.tuples) > 0 {
+				err = ds.Write(context.Background(), storeID, nil, test.tuples)
+				require.NoError(t, err)
+			}
+
+			l := NewListUsersQuery(ds)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			test.req.AuthorizationModelId = model.GetId()
+			test.req.StoreId = storeID
+
+			if test.context != nil {
+				c, err := structpb.NewStruct(test.context)
+				require.NoError(t, err)
+				test.req.Context = c
+			}
+
+			resp, err := l.ListUsers(ctx, test.req)
+
+			actualErrorMsg := ""
+			if err != nil {
+				actualErrorMsg = err.Error()
+			}
+			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
+
+			actualUsers := resp.GetUsers()
+
+			actualCompare := make([]string, len(actualUsers))
+			for i, u := range resp.GetUsers() {
+				actualCompare[i] = tuple.UserProtoToString(u)
+			}
+
+			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+		})
+	}
 }
