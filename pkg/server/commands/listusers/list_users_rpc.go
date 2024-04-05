@@ -117,8 +117,18 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 	g := graph.New(typesys)
 
 	userFilters := req.GetUserFilters()
-	source := typesystem.DirectRelationReference(userFilters[0].GetType(), userFilters[0].GetRelation())
-	target := typesystem.DirectRelationReference(req.GetObject().GetType(), req.GetRelation())
+
+	userFilterType := userFilters[0].GetType()
+	userFilterRelation := userFilters[0].GetRelation()
+	targetType := req.GetObject().GetType()
+	targetRelation := req.GetRelation()
+
+	if userFilterType == targetType && userFilterRelation == targetRelation {
+		return true, nil // reflexive userset
+	}
+
+	source := typesystem.DirectRelationReference(userFilterType, userFilterRelation)
+	target := typesystem.DirectRelationReference(targetType, targetRelation)
 
 	edges, err := g.GetPrunedRelationshipEdges(target, source)
 	if err != nil {

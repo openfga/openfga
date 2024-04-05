@@ -488,8 +488,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "userset_defines_itself",
-			TemporarilySkipReason: "because reflexive relationships not supported yet",
+			name: "userset_defines_itself",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1312,7 +1311,7 @@ func TestListUsersExclusion(t *testing.T) {
 		},
 		{
 			name:                  "exclusion_and_self_referential_tuples_1",
-			TemporarilySkipReason: "because reflexive relationships not supported yet",
+			TemporarilySkipReason: "because exclusion not working between users and underlying usersets",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "group", Id: "1"},
 				Relation: "member",
