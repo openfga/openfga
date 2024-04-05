@@ -42,21 +42,11 @@ var (
 	}
 
 	depthExceededHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 2,
-			},
-		}, ErrResolutionDepthExceeded
+		return nil, ErrResolutionDepthExceeded
 	}
 
 	cyclicErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 2,
-			},
-		}, ErrCycleDetected
+		return nil, ErrCycleDetected
 	}
 )
 

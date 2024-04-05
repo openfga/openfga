@@ -467,8 +467,9 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 				if !errors.Is(subResult.err, ErrCycleDetected) {
 					subErr = subResult.err
-					continue
 				}
+
+				continue
 			}
 
 			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
