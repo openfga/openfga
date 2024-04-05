@@ -467,8 +467,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "tuple_defines_itself",
-			TemporarilySkipReason: "because it wants to return `document:1`",
+			name: "tuple_defines_itself",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1130,8 +1129,7 @@ func TestListUsersUnion(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria", "user:jon"},
 		},
 		{
-			name:                  "union_all_possible_rewrites",
-			TemporarilySkipReason: "because `user:maria` not being returned",
+			name: "union_all_possible_rewrites",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
