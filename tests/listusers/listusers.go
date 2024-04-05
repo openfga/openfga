@@ -163,7 +163,7 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 							Object:               convertedRequest.GetObject(),
 							Relation:             convertedRequest.GetRelation(),
 							UserFilters:          convertedRequest.GetUserFilters(),
-							Context:              convertedRequest.GetContext(),
+							Context:              assertion.Context,
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},

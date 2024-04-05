@@ -191,7 +191,6 @@ tests:
               relation: viewer
             context:
               "ts": "2023-10-11T09:00:00.000Z"
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
               - group:eng#member
   - name: nested_indirect_relation_with_condition
@@ -298,7 +297,6 @@ tests:
               relation: viewer
             context:
               "user_ip": "192.168.1.0"
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
               - group:eng#member
           - request:
@@ -308,7 +306,6 @@ tests:
               relation: viewer
             context:
               "user_ip": "192.168.0.1"
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
               - group:eng#member
               - group:fga#member
@@ -506,7 +503,6 @@ tests:
               relation: viewer
             context:
                "x": 99
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
               - folder:x#viewer
   - name: direct_relation_with_condition
@@ -821,9 +817,8 @@ tests:
               relation: viewer
             context:
               "x": 10
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
-              - folder:b#member
+              - folder:b#viewer
           - request:
               filters:
                 - folder#viewer
@@ -831,9 +826,8 @@ tests:
               relation: viewer
             context:
               "s": "hello"
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
-              - folder:a#member
+              - folder:a#viewer
           - request:
               filters:
                 - folder#viewer
@@ -842,10 +836,9 @@ tests:
             context:
               "s": "hello"
               "x": 10
-            temporarilySkipReason: "usersets not being returned properly"
             expectation:
-              - folder:a#member
-              - folder:b#member
+              - folder:a#viewer
+              - folder:b#viewer
           - request:
               filters:
                 - folder#viewer
