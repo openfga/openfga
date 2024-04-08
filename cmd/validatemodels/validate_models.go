@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/mssql"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -63,6 +64,8 @@ func runValidate(_ *cobra.Command, _ []string) error {
 		db, err = mysql.New(uri, sqlcommon.NewConfig())
 	case "postgres":
 		db, err = postgres.New(uri, sqlcommon.NewConfig())
+	case "mssql":
+		db, err = mssql.New(uri, sqlcommon.NewConfig())
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	case "memory":

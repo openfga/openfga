@@ -62,6 +62,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/mssql"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -386,6 +387,11 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
+		}
+	case "mssql":
+		datastore, err = mssql.New(config.Datastore.URI, dsCfg)
+		if err != nil {
+			return nil, fmt.Errorf("initialize mssql datastore: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)

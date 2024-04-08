@@ -382,11 +382,11 @@ func Write(
 				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			)
 		}
-
+		var nilSlice []uint8
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
 			tk.GetRelation(), tk.GetUser(),
-			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+			"", nilSlice, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id, dbInfo.sqlTime,
 		)
@@ -486,7 +486,7 @@ func WriteAuthorizationModel(
 	return nil
 }
 
-func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
+func ConstructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
 	var modelID string
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
@@ -549,7 +549,7 @@ func FindLatestAuthorizationModel(
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	return constructAuthorizationModelFromSQLRows(rows)
+	return ConstructAuthorizationModelFromSQLRows(rows)
 }
 
 // ReadAuthorizationModel reads the model corresponding to store and model ID.
@@ -570,7 +570,7 @@ func ReadAuthorizationModel(
 		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
-	return constructAuthorizationModelFromSQLRows(rows)
+	return ConstructAuthorizationModelFromSQLRows(rows)
 }
 
 // IsReady returns true if the connection to the datastore is successful

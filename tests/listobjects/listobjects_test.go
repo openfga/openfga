@@ -19,6 +19,10 @@ func TestListObjectsPostgres(t *testing.T) {
 	testRunAll(t, "postgres")
 }
 
+func TestListObjectsMSSQL(t *testing.T) {
+	testRunAll(t, "mssql")
+}
+
 func TestListObjectsMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }

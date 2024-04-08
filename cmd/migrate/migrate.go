@@ -107,6 +107,26 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 		// Replace CLI uri with the one we just updated.
 		uri = dbURI.String()
+
+	case "mssql":
+		driver = "sqlserver"
+		migrationsPath = assets.MSSQLMigrationDir
+
+		// Parse the database uri with url.Parse() and update username/password, if set via flags
+		dbURI, err := url.Parse(uri)
+		if err != nil {
+			log.Fatalf("invalid database uri: %v\n", err)
+		}
+		if username == "" && dbURI.User != nil {
+			username = dbURI.User.Username()
+		}
+		if password == "" && dbURI.User != nil {
+			password, _ = dbURI.User.Password()
+		}
+		dbURI.User = url.UserPassword(username, password)
+
+		// Replace CLI uri with the one we just updated.
+		uri = dbURI.String()
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:

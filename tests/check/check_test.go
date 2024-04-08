@@ -44,6 +44,10 @@ func TestCheckPostgres(t *testing.T) {
 	testRunAll(t, "postgres")
 }
 
+func TestCheckMSSQL(t *testing.T) {
+	testRunAll(t, "mssql")
+}
+
 func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
@@ -314,6 +318,10 @@ func BenchmarkCheckMemory(b *testing.B) {
 
 func BenchmarkCheckPostgres(b *testing.B) {
 	benchmarkAll(b, "postgres")
+}
+
+func BenchmarkCheckMSSQL(b *testing.B) {
+	benchmarkAll(b, "mssql")
 }
 
 func BenchmarkCheckMySQL(b *testing.B) {

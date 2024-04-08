@@ -34,6 +34,10 @@ func TestListUsersPostgres(t *testing.T) {
 	testRunAll(t, "postgres")
 }
 
+func TestListUsersMSSQL(t *testing.T) {
+	testRunAll(t, "mssql")
+}
+
 func TestListUsersMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
