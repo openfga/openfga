@@ -27,7 +27,7 @@ jobs:
           make test-bench | tee bench_output.txt
 
       - name: Get benchmark as JSON
-        uses: benchmark-action/github-action-benchmark@cc9ac13ce81036c9b67fcfe2cb95ca366684b9ea # v1.19.3
+        uses: benchmark-action/github-action-benchmark@1846227a307d8c0149b960b986d46f8f4c95db0c # v1.20.1
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
