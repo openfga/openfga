@@ -89,7 +89,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-modular-models"]
+                "enum": []
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
