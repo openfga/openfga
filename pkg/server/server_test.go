@@ -1625,3 +1625,62 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 		require.NoError(t, err)
 	})
 }
+
+func TestExperimentalListUsers(t *testing.T) {
+	ctx := context.Background()
+
+	req := &openfgav1.ListUsersRequest{}
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
+
+	server := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
+	t.Cleanup(server.Close)
+
+	t.Run("list_users_errors_if_not_experimentally_enabled", func(t *testing.T) {
+		_, err := server.ListUsers(ctx, req)
+		require.Error(t, err)
+		require.Equal(t, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server", err.Error())
+	})
+
+	t.Run("list_users_does_not_error_if_experimentally_enabled", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
+		_, err := server.ListUsers(ctx, req)
+
+		require.Error(t, err)
+		require.Equal(t, "authorization model not found", err.Error())
+	})
+}
+
+func TestIsExperimentallyEnabled(t *testing.T) {
+	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
+
+	server := Server{}
+
+	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
+		require.False(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{someExperimentalFlag}
+
+		require.True(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")}
+
+		require.True(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{ExperimentalFeatureFlag("some-other-feature")}
+
+		require.False(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+}
