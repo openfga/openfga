@@ -304,7 +304,6 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "user:andres"),
 			},
