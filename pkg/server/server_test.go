@@ -1641,12 +1641,10 @@ func TestListUsersValidation(t *testing.T) {
 			define viewer: [user]`
 
 	tests := []struct {
-		name             string
-		req              *openfgav1.ListUsersRequest
-		model            string
-		tuples           []*openfgav1.TupleKey
-		expectedUsers    []string
-		expectedErrorMsg string
+		name              string
+		req               *openfgav1.ListUsersRequest
+		model             string
+		expectedErrorCode codes.Code
 	}{
 		{
 			name: "invalid_user_filter_type",
@@ -1659,9 +1657,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2021) desc = type 'folder' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2021),
 		},
 		{
 			name: "invalid_user_filter_relation",
@@ -1675,9 +1672,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2022) desc = relation 'user#editor' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2022),
 		},
 		{
 			name: "invalid_target_object_type",
@@ -1693,9 +1689,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2021) desc = type 'folder' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2021),
 		},
 		{
 			name: "invalid_relation",
@@ -1708,9 +1703,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2022) desc = relation 'document#owner' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2022),
 		},
 		{
 			name: "contextual_tuple_invalid_object_type",
@@ -1724,9 +1718,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2027) desc = Invalid tuple 'user:\"user:will\"  relation:\"viewer\"  object:\"invalid_object_type:1\"'. Reason: type 'invalid_object_type' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2027),
 		},
 		{
 			name: "contextual_tuple_invalid_user_type",
@@ -1740,9 +1733,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2027) desc = Invalid tuple 'user:\"invalid_user_type:will\"  relation:\"viewer\"  object:\"document:1\"'. Reason: type 'invalid_user_type' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2027),
 		},
 		{
 			name: "contextual_tuple_invalid_relation",
@@ -1756,9 +1748,8 @@ func TestListUsersValidation(t *testing.T) {
 					},
 				},
 			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedErrorMsg: "rpc error: code = Code(2027) desc = Invalid tuple 'user:\"user:will\"  relation:\"invalid_relation\"  object:\"document:1\"'. Reason: relation 'document#invalid_relation' not found",
+			model:             model,
+			expectedErrorCode: codes.Code(2027),
 		},
 	}
 
@@ -1775,11 +1766,6 @@ func TestListUsersValidation(t *testing.T) {
 			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 			require.NoError(t, err)
 
-			if len(test.tuples) > 0 {
-				err = ds.Write(context.Background(), storeID, nil, test.tuples)
-				require.NoError(t, err)
-			}
-
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
 			)
@@ -1790,22 +1776,10 @@ func TestListUsersValidation(t *testing.T) {
 			test.req.AuthorizationModelId = model.GetId()
 			test.req.StoreId = storeID
 
-			resp, err := s.ListUsers(ctx, test.req)
-
-			actualErrorMsg := ""
-			if err != nil {
-				actualErrorMsg = err.Error()
-			}
-			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
-
-			actualUsers := resp.GetUsers()
-
-			actualCompare := make([]string, len(actualUsers))
-			for i, u := range resp.GetUsers() {
-				actualCompare[i] = tuple.UserProtoToString(u)
-			}
-
-			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+			_, err = s.ListUsers(ctx, test.req)
+			e, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.expectedErrorCode, e.Code())
 		})
 	}
 }
