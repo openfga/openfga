@@ -664,7 +664,7 @@ func (s *Server) ListUsers(
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
 	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
-		return nil, fmt.Errorf("ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
+		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
 	}
 
 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
