@@ -32,6 +32,7 @@ func testRunAll(t *testing.T, engine string) {
 	run.NewRunCommand()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
+	cfg.Experimentals = []string{"enable-list-users"}
 
 	tests.StartServer(t, cfg)
 
