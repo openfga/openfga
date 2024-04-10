@@ -14,7 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T) {
+func TestWriteAuthorizationModel(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
