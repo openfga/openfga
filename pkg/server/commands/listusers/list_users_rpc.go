@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -305,8 +304,7 @@ func (l *listUsersQuery) expandDirect(
 		return err
 	}
 
-	ds := storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
-	iter, err := ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
 	})
@@ -509,8 +507,7 @@ func (l *listUsersQuery) expandTTU(
 		return err
 	}
 
-	ds := storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
-	iter, err := ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
 	})
