@@ -672,7 +672,7 @@ func (s *Server) ListUsers(
 		}
 	}
 
-	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys())
+	datastore := s.datastore
 
 	listUsersQuery := listusers.NewListUsersQuery(datastore)
 	return listUsersQuery.ListUsers(ctx, req)
