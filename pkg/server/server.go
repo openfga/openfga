@@ -126,6 +126,7 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
+	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
