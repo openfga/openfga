@@ -1646,6 +1646,10 @@ func TestExperimentalListUsers(t *testing.T) {
 		_, err := server.ListUsers(ctx, req)
 		require.Error(t, err)
 		require.Equal(t, "rpc error: code = Unimplemented desc = ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Unimplemented, e.Code())
 	})
 
 	t.Run("list_users_does_not_error_if_experimentally_enabled", func(t *testing.T) {
