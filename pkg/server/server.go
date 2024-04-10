@@ -50,6 +50,7 @@ const (
 	AuthorizationModelIDHeader                              = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey                                 = "authorization_model_id"
 	ExperimentalEnableModularModels ExperimentalFeatureFlag = "enable-modular-models"
+	ExperimentalEnableListUsers     ExperimentalFeatureFlag = "enable-list-users"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -336,6 +337,15 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	}
 
 	return s
+}
+
+func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
+	for _, e := range s.experimentals {
+		if e == flag {
+			return true
+		}
+	}
+	return false
 }
 
 // NewServerWithOpts returns a new server.
@@ -653,6 +663,10 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
+		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
+	}
+
 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
