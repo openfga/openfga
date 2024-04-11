@@ -13,8 +13,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -59,51 +57,6 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	}
 
 	return l
-}
-
-func ValidateListUsersRequest(req *openfgav1.ListUsersRequest, typesys *typesystem.TypeSystem) error {
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-	}
-	//Validate user filter type
-	for _, userFilter := range req.GetUserFilters() {
-		filterObjectType := userFilter.GetType()
-		filterObjectRelation := userFilter.GetRelation()
-
-		_, typeExists := typesys.GetTypeDefinition(filterObjectType)
-		if !typeExists {
-			return serverErrors.TypeNotFound(filterObjectType)
-		}
-
-		if userFilter.GetRelation() != "" {
-			_, err := typesys.GetRelation(filterObjectType, filterObjectRelation)
-			if err != nil {
-				if errors.Is(err, typesystem.ErrRelationUndefined) {
-					return serverErrors.RelationNotFound(filterObjectRelation, filterObjectType, nil)
-				}
-				return serverErrors.HandleError("", err)
-			}
-		}
-	}
-
-	//Validate target relation
-	objectType := req.GetObject().GetType()
-	targetRelation := req.GetRelation()
-	_, err := typesys.GetRelation(objectType, targetRelation)
-	if err != nil {
-		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return serverErrors.TypeNotFound(objectType)
-		}
-
-		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return serverErrors.RelationNotFound(targetRelation, objectType, nil)
-		}
-
-		return serverErrors.HandleError("", err)
-	}
-	return nil
 }
 
 // ListUsers assumes that the typesystem is in the context.
