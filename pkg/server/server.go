@@ -35,7 +35,6 @@ import (
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -126,6 +125,7 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
+	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
@@ -658,47 +658,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	return nil
 }
-
-func (s *Server) ListUsers(
-	ctx context.Context,
-	req *openfgav1.ListUsersRequest,
-) (*openfgav1.ListUsersResponse, error) {
-	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
-		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
-	}
-
-	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	datastore := s.datastore
-	//datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
-
-	listUsersQuery := listusers.NewListUsersQuery(datastore)
-	return listUsersQuery.ListUsers(ctx, req)
-}
-
-// func (s *Server) StreamedListUsers(
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	ctx := srv.Context()
-
-// 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-// 	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
-
-// 	listUsersQuery := listusers.NewListUsersQuery(datastore)
-// 	return listUsersQuery.StreamedListUsers(ctx, req, srv)
-// }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()

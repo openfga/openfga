@@ -11,10 +11,11 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -36,6 +37,7 @@ type listUsersQuery struct {
 
 type ListUsersQueryOption func(l *listUsersQuery)
 
+// NewListUsersQuery is not meant to be shared.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
 		ds: ds,
@@ -57,15 +59,16 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	return l
 }
 
+// ListUsers assumes that the typesystem is in the context.
 func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
 	}
-
 	hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
 	if err != nil {
 		return nil, err
@@ -264,8 +267,7 @@ func (l *listUsersQuery) expandDirect(
 		return err
 	}
 
-	ds := storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
-	iter, err := ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
 	})
@@ -326,7 +328,6 @@ func (l *listUsersQuery) expandIntersection(
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
@@ -468,8 +469,7 @@ func (l *listUsersQuery) expandTTU(
 		return err
 	}
 
-	ds := storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
-	iter, err := ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
 	})
