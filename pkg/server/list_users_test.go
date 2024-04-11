@@ -181,6 +181,35 @@ func TestListUsersValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestModelIdNotFound(t *testing.T) {
+	ctx := context.Background()
+
+	req := &openfgav1.ListUsersRequest{
+		StoreId: "some-store-id",
+	}
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound)
+
+	server := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
+	server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
+	t.Cleanup(server.Close)
+
+	resp, err := server.ListUsers(ctx, req)
+	require.Nil(t, resp)
+	require.Error(t, err)
+
+	e, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(2020), e.Code())
+}
+
 func TestExperimentalListUsers(t *testing.T) {
 	ctx := context.Background()
 
