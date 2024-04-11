@@ -1769,6 +1769,7 @@ func TestListUsersValidation(t *testing.T) {
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
 			)
+			s.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 			t.Cleanup(s.Close)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
@@ -1779,6 +1780,8 @@ func TestListUsersValidation(t *testing.T) {
 			_, err = s.ListUsers(ctx, test.req)
 			e, ok := status.FromError(err)
 			require.True(t, ok)
+
+			fmt.Println("Actual", e.Code().String(), "Expected", test.expectedErrorCode.String())
 			require.Equal(t, test.expectedErrorCode, e.Code())
 		})
 	}

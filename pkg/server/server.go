@@ -22,6 +22,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/server"
+
 	"github.com/openfga/openfga/pkg/gateway"
 
 	"github.com/openfga/openfga/internal/build"
@@ -35,7 +37,6 @@ import (
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -126,6 +127,7 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
+	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
@@ -671,24 +673,7 @@ func (s *Server) ListUsers(
 	if err != nil {
 		return nil, err
 	}
-
-	err = listusers.ValidateListUsersRequest(req, typesys)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return nil, serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
-	datastore := s.datastore
-
-	listUsersQuery := listusers.NewListUsersQuery(datastore)
-	return listUsersQuery.ListUsers(ctx, req)
+	return server.ListUsers(typesys, s.datastore, ctx, req)
 }
 
 // func (s *Server) StreamedListUsers(
