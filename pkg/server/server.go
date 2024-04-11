@@ -22,8 +22,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/internal/server"
-
 	"github.com/openfga/openfga/pkg/gateway"
 
 	"github.com/openfga/openfga/internal/build"
@@ -660,40 +658,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	return nil
 }
-
-func (s *Server) ListUsers(
-	ctx context.Context,
-	req *openfgav1.ListUsersRequest,
-) (*openfgav1.ListUsersResponse, error) {
-	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
-		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
-	}
-
-	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-	return server.ListUsers(typesys, s.datastore, ctx, req)
-}
-
-// func (s *Server) StreamedListUsers(
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	ctx := srv.Context()
-
-// 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-// 	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
-
-// 	listUsersQuery := listusers.NewListUsersQuery(datastore)
-// 	return listUsersQuery.StreamedListUsers(ctx, req, srv)
-// }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()

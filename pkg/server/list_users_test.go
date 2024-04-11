@@ -2,15 +2,19 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -157,13 +161,57 @@ func TestListUsersValidation(t *testing.T) {
 			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 			require.NoError(t, err)
 
+			s := MustNewServerWithOpts(
+				WithDatastore(ds),
+			)
+			s.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
+			t.Cleanup(s.Close)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
 			test.req.AuthorizationModelId = model.GetId()
 			test.req.StoreId = storeID
 
-			_, err = ListUsers(typesys, ds, context.Background(), test.req)
+			_, err = s.ListUsers(ctx, test.req)
 			e, ok := status.FromError(err)
 			require.True(t, ok)
+
+			fmt.Println("Actual", e.Code().String(), "Expected", test.expectedErrorCode.String())
 			require.Equal(t, test.expectedErrorCode, e.Code())
 		})
 	}
+}
+func TestExperimentalListUsers(t *testing.T) {
+	ctx := context.Background()
+
+	req := &openfgav1.ListUsersRequest{}
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
+
+	server := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
+	t.Cleanup(server.Close)
+
+	t.Run("list_users_errors_if_not_experimentally_enabled", func(t *testing.T) {
+		_, err := server.ListUsers(ctx, req)
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = Unimplemented desc = ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Unimplemented, e.Code())
+	})
+
+	t.Run("list_users_does_not_error_if_experimentally_enabled", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
+		_, err := server.ListUsers(ctx, req)
+
+		require.Error(t, err)
+		require.Equal(t, "authorization model not found", err.Error())
+	})
 }
