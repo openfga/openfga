@@ -34,5 +34,9 @@ func (s *Server) ListUsers(
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	listUsersQuery := listusers.NewListUsersQuery(s.datastore)
-	return listUsersQuery.ListUsers(ctx, req)
+
+	return listUsersQuery.ListUsers(ctx, &listusers.ListUsersRequest{
+		ListUsersRequest: req,
+		Depth:            s.resolveNodeLimit,
+	})
 }

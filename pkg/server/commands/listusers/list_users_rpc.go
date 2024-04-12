@@ -62,7 +62,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 // ListUsers assumes that the typesystem is in the context.
 func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
-	req *openfgav1.ListUsersRequest,
+	req *ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
 	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
@@ -116,7 +116,7 @@ func (l *listUsersQuery) ListUsers(
 	}, nil
 }
 
-func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUsersRequest) (bool, error) {
+func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *ListUsersRequest) (bool, error) {
 	g := graph.New(typesys)
 
 	userFilters := req.GetUserFilters()
@@ -176,11 +176,14 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
-	req *internalListUsersRequest,
+	req *ListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
 	if enteredCycle(req) {
 		return nil
+	}
+	if req.GetDepth() == 0 {
+		return graph.ErrResolutionDepthExceeded
 	}
 
 	reqObjectType := req.GetObject().GetType()
@@ -215,12 +218,13 @@ func (l *listUsersQuery) expand(
 	}
 
 	relationRewrite := relation.GetRewrite()
+	req.Depth--
 	return l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
 }
 
 func (l *listUsersQuery) expandRewrite(
 	ctx context.Context,
-	req *internalListUsersRequest,
+	req *ListUsersRequest,
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
@@ -259,7 +263,7 @@ func (l *listUsersQuery) expandRewrite(
 
 func (l *listUsersQuery) expandDirect(
 	ctx context.Context,
-	req *internalListUsersRequest,
+	req *ListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
@@ -324,7 +328,7 @@ func (l *listUsersQuery) expandDirect(
 
 func (l *listUsersQuery) expandIntersection(
 	ctx context.Context,
-	req *internalListUsersRequest,
+	req *ListUsersRequest,
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
@@ -406,7 +410,7 @@ func (l *listUsersQuery) expandIntersection(
 
 func (l *listUsersQuery) expandExclusion(
 	ctx context.Context,
-	req *internalListUsersRequest,
+	req *ListUsersRequest,
 	rewrite *openfgav1.Userset_Difference,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
@@ -457,7 +461,7 @@ func (l *listUsersQuery) expandExclusion(
 
 func (l *listUsersQuery) expandTTU(
 	ctx context.Context,
-	req *internalListUsersRequest,
+	req *ListUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
@@ -512,7 +516,7 @@ func (l *listUsersQuery) expandTTU(
 	return pool.Wait()
 }
 
-func enteredCycle(req *internalListUsersRequest) bool {
+func enteredCycle(req *ListUsersRequest) bool {
 	key := fmt.Sprintf("%s#%s", tuple.ObjectKey(req.GetObject()), req.Relation)
 	if _, loaded := req.visitedUsersetsMap[key]; loaded {
 		return true
