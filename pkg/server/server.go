@@ -175,7 +175,7 @@ func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	}
 }
 
-// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check or ListObjects call will allow.
+// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check, ListObjects or ListUsers call will allow.
 // Thinking of a request as a tree of evaluations, this option controls
 // how many levels we will evaluate before throwing an error that the authorization model is too complex.
 func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
@@ -185,7 +185,7 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 }
 
 // WithResolveNodeBreadthLimit sets a limit on the number of goroutines that can be created
-// when evaluating a subtree of a Check or ListObjects call.
+// when evaluating a subtree of a Check, ListObjects or ListUsers call.
 // Thinking of a Check request as a tree of evaluations, this option controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation

@@ -163,8 +163,8 @@ func TestListUsersValidation(t *testing.T) {
 
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
+				WithExperimentals(ExperimentalEnableListUsers),
 			)
-			s.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 			t.Cleanup(s.Close)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
@@ -197,8 +197,8 @@ func TestModelIdNotFound(t *testing.T) {
 
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalEnableListUsers),
 	)
-	server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 	t.Cleanup(server.Close)
 
 	resp, err := server.ListUsers(ctx, req)
