@@ -163,8 +163,8 @@ func TestListUsersValidation(t *testing.T) {
 
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
+				WithExperimentals(ExperimentalEnableListUsers),
 			)
-			s.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 			t.Cleanup(s.Close)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
@@ -241,6 +241,6 @@ func TestExperimentalListUsers(t *testing.T) {
 		_, err := server.ListUsers(ctx, req)
 
 		require.Error(t, err)
-		require.Equal(t, "authorization model not found", err.Error())
+		require.Equal(t, "rpc error: code = Code(2020) desc = No authorization models found for store ''", err.Error())
 	})
 }
