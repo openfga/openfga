@@ -6949,8 +6949,7 @@ tests:
                 - user
               object: resource:abc
               relation: a1
-            temporarilySkipReason: "because depth protection not implemented yet"
-            errorCode: 2002 #ErrorCode_authorization_model_resolution_too_complex
+            errorCode: 2002
   - name: race_condition_same_user_same_object_diff_relation
     stages:
       - model: |
