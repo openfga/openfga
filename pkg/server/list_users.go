@@ -2,12 +2,15 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -35,8 +38,14 @@ func (s *Server) ListUsers(
 
 	listUsersQuery := listusers.NewListUsersQuery(s.datastore)
 
-	return listUsersQuery.ListUsers(ctx, &listusers.ListUsersRequest{
+	resp, err := listUsersQuery.ListUsers(ctx, &listusers.ListUsersRequest{
 		ListUsersRequest: req,
 		Depth:            s.resolveNodeLimit,
 	})
+	if err != nil {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+	}
+	return resp, err
 }
