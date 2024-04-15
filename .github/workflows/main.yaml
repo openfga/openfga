@@ -27,7 +27,7 @@ jobs:
           make test-bench | tee bench_output.txt
 
       - name: Get benchmark as JSON
-        uses: benchmark-action/github-action-benchmark@cc9ac13ce81036c9b67fcfe2cb95ca366684b9ea # v1.19.3
+        uses: benchmark-action/github-action-benchmark@1846227a307d8c0149b960b986d46f8f4c95db0c # v1.20.1
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
@@ -41,7 +41,7 @@ jobs:
           comment-on-alert: true
 
       - name: Get CPU information
-        uses: kenchan0130/actions-system-info@19ac84a24678e27ef7e91016765c221f97b1dc28 # v1
+        uses: kenchan0130/actions-system-info@7aa4dfce36837f6cc820d6b2287925b3892c74d2 # v1
         id: system-info
 
       - name: Save benchmark JSON to cache
