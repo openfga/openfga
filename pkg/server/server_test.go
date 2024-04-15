@@ -1625,3 +1625,31 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 		require.NoError(t, err)
 	})
 }
+
+func TestIsExperimentallyEnabled(t *testing.T) {
+	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
+
+	server := Server{}
+
+	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
+		require.False(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{someExperimentalFlag}
+
+		require.True(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")}
+
+		require.True(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
+		server.experimentals = []ExperimentalFeatureFlag{ExperimentalFeatureFlag("some-other-feature")}
+
+		require.False(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+}

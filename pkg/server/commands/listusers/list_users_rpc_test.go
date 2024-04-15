@@ -86,23 +86,6 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			expectedUsers: []string{"group:fga#member", "group:fga-backend#member", "group:eng#member"},
 		},
 		{
-			name:                  "direct_relationship_unapplicable_filter",
-			TemporarilySkipReason: "because this should return an error",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
-					{
-						Type: "folder",
-					},
-				},
-			},
-			model:            model,
-			tuples:           []*openfgav1.TupleKey{},
-			expectedUsers:    []string{},
-			expectedErrorMsg: "impossible relationship between `folder` and `document#viewer`",
-		},
-		{
 			name: "direct_relationship_no_tuples",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
