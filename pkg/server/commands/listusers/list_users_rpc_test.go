@@ -2138,7 +2138,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	}
 }
 
-func TestListUsersUtterlyDiabolicalNegation(t *testing.T) {
+func TestListUsersChainedNegation(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
