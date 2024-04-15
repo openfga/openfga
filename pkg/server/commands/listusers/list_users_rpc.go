@@ -69,14 +69,25 @@ func (l *listUsersQuery) ListUsers(
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
-	hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
-	if err != nil {
-		return nil, err
+
+	hasReflexiveUserset := false
+	for _, userFilter := range req.GetUserFilters() {
+		hasReflexiveUserset = userFilter.GetType() == req.GetObject().GetType() && userFilter.GetRelation() == req.GetRelation()
+		if hasReflexiveUserset {
+			continue
+		}
 	}
-	if !hasPossibleEdges {
-		return &openfgav1.ListUsersResponse{
-			Users: []*openfgav1.User{},
-		}, nil
+
+	if !hasReflexiveUserset {
+		hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
+		if err != nil {
+			return nil, err
+		}
+		if !hasPossibleEdges {
+			return &openfgav1.ListUsersResponse{
+				Users: []*openfgav1.User{},
+			}, nil
+		}
 	}
 
 	foundUsersCh := make(chan *openfgav1.User, 1)
@@ -121,17 +132,8 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 	userFilters := req.GetUserFilters()
 
-	userFilterType := userFilters[0].GetType()
-	userFilterRelation := userFilters[0].GetRelation()
-	targetType := req.GetObject().GetType()
-	targetRelation := req.GetRelation()
-
-	if userFilterType == targetType && userFilterRelation == targetRelation {
-		return true, nil // reflexive userset
-	}
-
-	source := typesystem.DirectRelationReference(userFilterType, userFilterRelation)
-	target := typesystem.DirectRelationReference(targetType, targetRelation)
+	source := typesystem.DirectRelationReference(userFilters[0].GetType(), userFilters[0].GetRelation())
+	target := typesystem.DirectRelationReference(req.GetObject().GetType(), req.GetRelation())
 
 	edges, err := g.GetPrunedRelationshipEdges(target, source)
 	if err != nil {
