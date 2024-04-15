@@ -96,6 +96,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		go func() {
 			defer goFuncDone.Done()
 			goFuncInitiated.Done()
+			ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
 			_, err := dut.ResolveCheck(ctx, req)
 			//nolint:testifylint
 			require.NoError(t, err)
@@ -110,6 +111,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut.nonBlockingSend(dut.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
-		require.False(t, grpc_ctxtags.Extract(ctx).Has(telemetry.Throttled))
+		require.True(t, grpc_ctxtags.Extract(ctx).Has(telemetry.Throttled))
 	})
 }
