@@ -6890,7 +6890,6 @@ tests:
                 - user
               object: folder:5
               relation: can_read
-            temporarilySkipReason: "because actually not sure. Still needs to be understood why."
             expectation:
               - user:harriette
   - name: resolution_too_complex_throws_error
