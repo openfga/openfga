@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"strconv"
 	"time"
 )
@@ -426,33 +425,4 @@ func MustDefaultConfig() *Config {
 	config.Metrics.Enabled = false
 
 	return config
-}
-
-// MustDefaultConfigWithRandomPorts returns default server config but with random ports for the grpc and http addresses
-// and with the playground, tracing and metrics turned off.
-// This function may panic if somehow a random port cannot be chosen.
-func MustDefaultConfigWithRandomPorts() *Config {
-	config := MustDefaultConfig()
-
-	httpPort, httpPortReleaser := TCPRandomPort()
-	defer httpPortReleaser()
-	grpcPort, grpcPortReleaser := TCPRandomPort()
-	defer grpcPortReleaser()
-
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-
-	return config
-}
-
-// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
-// It is the responsibility of the caller to call the release function right before trying to listen on the given port.
-func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	return l.Addr().(*net.TCPAddr).Port, func() {
-		l.Close()
-	}
 }
