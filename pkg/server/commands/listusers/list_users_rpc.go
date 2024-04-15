@@ -70,15 +70,10 @@ func (l *listUsersQuery) ListUsers(
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
 
-	hasReflexiveUserset := false
-	for _, userFilter := range req.GetUserFilters() {
-		hasReflexiveUserset = userFilter.GetType() == req.GetObject().GetType() && userFilter.GetRelation() == req.GetRelation()
-		if hasReflexiveUserset {
-			continue
-		}
-	}
+	userFilter := req.GetUserFilters()[0]
+	isReflexiveUserset := userFilter.GetType() == req.GetObject().GetType() && userFilter.GetRelation() == req.GetRelation()
 
-	if !hasReflexiveUserset {
+	if !isReflexiveUserset {
 		hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
 		if err != nil {
 			return nil, err
