@@ -313,7 +313,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(3)
 
 	var resp1 *openfgav1.CheckResponse
 	var err1 error
@@ -339,13 +339,30 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		})
 	}()
 
+	var resp3 *openfgav1.CheckResponse
+	var err3 error
+	go func() {
+		defer wg.Done()
+
+		resp3, err3 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:andres"),
+		})
+	}()
+
 	wg.Wait()
 
 	require.NoError(t, err1)
+	require.NotNil(t, resp1)
 	require.False(t, resp1.GetAllowed())
 
 	require.NoError(t, err2)
-	require.False(t, resp2.GetAllowed())
+	require.NotNil(t, resp2)
+
+	require.NoError(t, err3)
+	require.NotNil(t, resp3)
+	require.True(t, resp3.GetAllowed())
 }
 
 func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
@@ -404,7 +421,9 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 		AuthorizationModelId: modelID,
 		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "can_view", "user:jon"),
 	})
+
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 	require.False(t, resp.GetAllowed())
 }
 

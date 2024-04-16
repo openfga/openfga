@@ -42,8 +42,11 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 			VisitedPaths:    visitedPaths,
 		})
 
-		require.ErrorIs(t, err, ErrCycleDetected)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+		require.NotNil(t, resp.ResolutionMetadata)
 	})
 
 	t.Run("no_cycle_detected_delegates_request", func(t *testing.T) {
@@ -119,5 +122,6 @@ func TestIntegrationWithLocalChecker(t *testing.T) {
 		RequestMetadata:      NewCheckRequestMetadata(25),
 	})
 	require.NoError(t, err)
-	require.True(t, resp.GetAllowed())
+	require.NotNil(t, resp)
+	require.False(t, resp.GetAllowed())
 }

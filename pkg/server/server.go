@@ -774,7 +774,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
 
