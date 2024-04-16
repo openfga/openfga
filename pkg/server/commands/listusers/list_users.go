@@ -22,9 +22,9 @@ type internalListUsersRequest struct {
 	// It prevents stack overflows by preventing visiting the same userset twice.
 	visitedUsersetsMap map[string]struct{}
 
-	// depth is the current depths of the traversal expressed as a positive, decrementing integer.
-	// When expansion of list users recursively traverses one level, we decrement by one. If this
-	// counter is 0, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
+	// depth is the current depths of the traversal expressed as a positive, incrementing integer.
+	// When expansion of list users recursively traverses one level, we increment by one. If this
+	// counter hits the limit, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
 	// or endless cycle of recursion.
 	depth uint32
 }

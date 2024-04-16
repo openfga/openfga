@@ -43,6 +43,7 @@ func (s *Server) ListUsers(
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
+		return nil, serverErrors.HandleError("", err)
 	}
 	return resp, err
 }
