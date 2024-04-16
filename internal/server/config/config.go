@@ -180,9 +180,10 @@ type CheckQueryCache struct {
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling
 type DispatchThrottlingConfig struct {
-	Enabled   bool
-	Frequency time.Duration
-	Threshold uint32
+	Enabled      bool
+	Frequency    time.Duration
+	Threshold    uint32
+	MaxThreshold uint32
 }
 
 type Config struct {
@@ -331,6 +332,9 @@ func (cfg *Config) Verify() error {
 		if cfg.DispatchThrottling.Threshold <= 0 {
 			return errors.New("dispatch throttling threshold must be non-negative integer")
 		}
+		if cfg.DispatchThrottling.MaxThreshold != 0 && cfg.DispatchThrottling.Threshold > cfg.DispatchThrottling.MaxThreshold {
+			return errors.New("dispatch throttling threshold must be less than or equal to max threshold")
+		}
 	}
 
 	return nil
@@ -410,9 +414,10 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:   DefaultDispatchThrottlingEnabled,
-			Frequency: DefaultDispatchThrottlingFrequency,
-			Threshold: DefaultDispatchThrottlingThreshold,
+			Enabled:      DefaultDispatchThrottlingEnabled,
+			Frequency:    DefaultDispatchThrottlingFrequency,
+			Threshold:    DefaultDispatchThrottlingThreshold,
+			MaxThreshold: 0,
 		},
 	}
 }

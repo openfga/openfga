@@ -14,8 +14,9 @@ import (
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver
 type DispatchThrottlingCheckResolverConfig struct {
-	Frequency time.Duration
-	Threshold uint32
+	Frequency    time.Duration
+	Threshold    uint32
+	MaxThreshold uint32
 }
 
 // DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
@@ -99,7 +100,17 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 ) (*ResolveCheckResponse, error) {
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
-	if currentNumDispatch > r.config.Threshold {
+	threshold := r.config.Threshold
+
+	thresholdInContext := ctx.Value(telemetry.DispatchThrottlingThreshold)
+	if thresholdInContext != nil {
+		thresholdInInt, ok := thresholdInContext.(int)
+		if ok {
+			threshold = min(uint32(thresholdInInt), r.config.MaxThreshold)
+		}
+	}
+
+	if currentNumDispatch > threshold {
 		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
 
 		start := time.Now()

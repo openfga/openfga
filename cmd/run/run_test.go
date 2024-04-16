@@ -1111,6 +1111,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+
+	val = res.Get("properties.dispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MaxThreshold)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1195,6 +1199,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1209,6 +1214,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
 		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
+		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 
 		return nil
 	}

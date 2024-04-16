@@ -138,6 +138,7 @@ type Server struct {
 	dispatchThrottlingCheckResolverEnabled   bool
 	dispatchThrottlingCheckResolverFrequency time.Duration
 	dispatchThrottlingThreshold              uint32
+	dispatchThrottlingMaxThreshold           uint32
 
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 }
@@ -319,9 +320,19 @@ func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenF
 }
 
 // WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
+// In addition, it will update dispatchThrottlingMaxThreshold if required
 func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingThreshold = threshold
+		s.dispatchThrottlingMaxThreshold = max(s.dispatchThrottlingMaxThreshold, threshold)
+	}
+}
+
+// WithDispatchThrottlingCheckResolverMaxThreshold define the maximum threshold values allowed
+// It will ensure dispatchThrottlingMaxThreshold will never be smaller than threshold
+func WithDispatchThrottlingCheckResolverMaxThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingMaxThreshold = max(threshold, s.dispatchThrottlingThreshold)
 	}
 }
 
@@ -382,13 +393,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.dispatchThrottlingCheckResolverEnabled {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
-			Frequency: s.dispatchThrottlingCheckResolverFrequency,
-			Threshold: s.dispatchThrottlingThreshold,
+			Frequency:    s.dispatchThrottlingCheckResolverFrequency,
+			Threshold:    s.dispatchThrottlingThreshold,
+			MaxThreshold: s.dispatchThrottlingMaxThreshold,
 		}
 
 		s.logger.Info("Enabling dispatch throttling",
 			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
 			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
+			zap.Uint32("MaxThreshold", s.dispatchThrottlingMaxThreshold),
 		)
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)

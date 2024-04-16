@@ -208,7 +208,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
 
-	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the default threshold on number of dispatches above which requests will be throttled.")
+
+	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the threshold value as maximum")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -491,6 +493,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
 		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
 		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
+		server.WithDispatchThrottlingCheckResolverMaxThreshold(config.DispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
 	)
 

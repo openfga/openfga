@@ -5,10 +5,15 @@ import (
 )
 
 type rpcContextName string
+type dispatchThrottlingThreshold int
 
 const (
 	rpcInfoContextName rpcContextName = "rpcInfo"
 	Throttled          string         = "Throttled"
+)
+
+const (
+	DispatchThrottlingThreshold dispatchThrottlingThreshold = iota
 )
 
 type RPCInfo struct {
