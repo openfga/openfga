@@ -255,9 +255,6 @@ func TestListUsers_ErrorCases(t *testing.T) {
 	ctx := context.Background()
 	store := ulid.Make().String()
 
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
 	t.Run("graph_resolution_errors", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(memory.New()),
