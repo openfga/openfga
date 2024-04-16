@@ -158,7 +158,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 		checkCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("is_cached", true))
 
-		return cachedResp.Value(), nil
+		// return a copy to avoid races across goroutines
+		return CloneResolveCheckResponse(cachedResp.Value()), nil
 	}
 	span.SetAttributes(attribute.Bool("is_cached", false))
 
