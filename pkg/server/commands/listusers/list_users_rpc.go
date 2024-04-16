@@ -188,7 +188,7 @@ func (l *listUsersQuery) expand(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
-	if req.depth == l.resolveNodeLimit {
+	if req.depth >= l.resolveNodeLimit {
 		return graph.ErrResolutionDepthExceeded
 	}
 	req.depth++
