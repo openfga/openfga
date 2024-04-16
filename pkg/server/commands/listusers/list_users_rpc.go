@@ -28,7 +28,7 @@ type listUsersQuery struct {
 
 type foundUser struct {
 	user       *openfgav1.User
-	subtracted []*openfgav1.User
+	exceptions []*openfgav1.User
 }
 
 /*
@@ -88,10 +88,14 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
+	exceptionsUnique := make(map[tuple.UserString]struct{}, 1000)
 	done := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundObject.user)] = struct{}{}
+			for _, exception := range foundObject.exceptions {
+				exceptionsUnique[tuple.UserProtoToString(exception)] = struct{}{}
+			}
 		}
 
 		done <- struct{}{}
@@ -116,8 +120,13 @@ func (l *listUsersQuery) ListUsers(
 	for foundUser := range foundUsersUnique {
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
+	exceptions := make([]*openfgav1.User, 0, len(exceptionsUnique))
+	for foundException := range exceptionsUnique {
+		exceptions = append(exceptions, tuple.StringToUserProto(foundException))
+	}
 	return &openfgav1.ListUsersResponse{
-		Users: foundUsers,
+		Users:      foundUsers,
+		Exceptions: exceptions,
 	}, nil
 }
 
@@ -448,7 +457,7 @@ func (l *listUsersQuery) expandExclusion(
 	subtractFoundUsersMap := make(map[string]struct{}, len(baseFoundUsersMap))
 	negatedSubtractionMap := make(map[string]struct{})
 	for fu := range subtractFoundUsersCh {
-		for _, s := range fu.subtracted {
+		for _, s := range fu.exceptions {
 			negatedSubtractionMap[tuple.UserProtoToString(s)] = struct{}{}
 		}
 		key := tuple.UserProtoToString(fu.user)
@@ -461,13 +470,17 @@ func (l *listUsersQuery) expandExclusion(
 	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
 
 	if baseWildcardExists && !subtractWildcardExists {
+		// In cases where there is a public-typed wildcard (ex: user:*) returned
+		// as the base case of a negation operator ("but not") and there are subjects
+		// that are negated, it is not correct to purely return the public typed
+		// wildcard. We also need to keep track of the exceptions to this wildcard.
 		subtractedUsers := make([]*openfgav1.User, 0, len(subtractFoundUsersMap))
 		for key := range subtractFoundUsersMap {
 			subtractedUsers = append(subtractedUsers, tuple.StringToUserProto(key))
 		}
 		foundUsersChan <- foundUser{
 			user:       tuple.StringToUserProto(wildcardKey),
-			subtracted: subtractedUsers,
+			exceptions: subtractedUsers,
 		}
 	}
 

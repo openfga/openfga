@@ -27,6 +27,7 @@ type ListUsersTests []struct {
 	model                 string
 	tuples                []*openfgav1.TupleKey
 	expectedUsers         []string
+	butNot                []string
 	expectedErrorMsg      string
 }
 
@@ -1415,6 +1416,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
+			butNot:        []string{"user:maria"},
 		},
 		{
 			name: "exclusion_and_wildcards_5",
@@ -1463,6 +1465,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:will"),
 			},
 			expectedUsers: []string{"user:*", "user:maria"},
+			butNot:        []string{"user:jon", "user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2087,6 +2090,153 @@ func TestListUsersCycleDetection(t *testing.T) {
 	})
 }
 
+func TestListUsersChainedNegation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := `model
+		schema 1.1
+	type user
+	type document
+		relations
+			define viewer: [user, user:*] but not blocked
+			define blocked: [user, user:*] but not unblocked
+			define unblocked: [user, user:*]`
+
+	tests := ListUsersTests{
+		{
+			name: "chained_negation_1",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_2",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_3",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_4",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:*"},
+		},
+		{
+			name: "chained_negation_5",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*"},
+		},
+		{
+			name: "chained_negation_6",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_7",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_8",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:maria"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_9",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "chained_negation_10",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:*"},
+			butNot:        []string{"user:maria"},
+		},
+		{
+			name: "chained_negation_11",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_12",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*", "user:jon"},
+		},
+		{
+			name: "chained_negation_13",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*", "user:jon", "user:maria"},
+		},
+	}
+
+	for i := range tests {
+		tests[i].model = model
+		tests[i].req = &openfgav1.ListUsersRequest{
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+		}
+	}
+
+	tests.runListUsersTestCases(t)
+}
+
 func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	storeID := ulid.Make().String()
 
@@ -2127,156 +2277,18 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
 
 			actualUsers := resp.GetUsers()
-
 			actualCompare := make([]string, len(actualUsers))
-			for i, u := range resp.GetUsers() {
+			for i, u := range actualUsers {
 				actualCompare[i] = tuple.UserProtoToString(u)
 			}
-
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+
+			exceptUsers := resp.GetExceptions()
+			actualCompare = make([]string, len(exceptUsers))
+			for i, u := range exceptUsers {
+				actualCompare[i] = tuple.UserProtoToString(u)
+			}
+			require.ElementsMatch(t, actualCompare, test.butNot)
 		})
 	}
-}
-
-func TestListUsersChainedNegation(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	model := `model
-		schema 1.1
-	type user
-	type document
-		relations
-			define viewer: [user, user:*] but not blocked
-			define blocked: [user, user:*] but not unblocked
-			define unblocked: [user, user:*]`
-
-	tests := ListUsersTests{
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{"user:*"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "blocked", "user:*"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
-			},
-			expectedUsers: []string{"user:*"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:*"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:maria"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "blocked", "user:*"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{"user:*"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{"user:*"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:*"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
-			},
-			expectedUsers: []string{"user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
-			},
-			expectedUsers: []string{"user:*", "user:jon"},
-		},
-		{
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
-				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
-			},
-			expectedUsers: []string{"user:*", "user:jon", "user:maria"},
-		},
-	}
-
-	for i := range tests {
-		tests[i].model = model
-		tests[i].name = fmt.Sprintf("chained_negation_%d", i+1)
-		tests[i].req = &openfgav1.ListUsersRequest{
-			Object:      &openfgav1.Object{Type: "document", Id: "1"},
-			Relation:    "viewer",
-			UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
-		}
-	}
-
-	tests.runListUsersTestCases(t)
 }
