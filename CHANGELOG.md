@@ -22,7 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 
-* Modular Models (Schema 1.2) support is enabled by default and the experimental flag for it has been dropped (https://github.com/openfga/openfga/pull/1520)
+* [Modular Models (Schema 1.2)](https://openfga.dev/docs/modeling/modular-models) support is enabled by default and the experimental flag for it has been dropped (https://github.com/openfga/openfga/pull/1520)
 * Bumped to Go 1.21.9 (https://github.com/openfga/openfga/pull/1523)
 
 ### Security
