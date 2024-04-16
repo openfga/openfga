@@ -453,6 +453,39 @@ func TestResolveCheckExpired(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCachedCheckResolver_CycleDetected(t *testing.T) {
+	cachedCheckResolver := NewCachedCheckResolver()
+	defer cachedCheckResolver.Close()
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	mockCheckResolver := NewMockCheckResolver(mockCtrl)
+	cachedCheckResolver.SetDelegate(mockCheckResolver)
+
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(&ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 1,
+				CycleDetected:       true,
+			},
+		}, nil)
+
+	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
+	require.True(t, resp.GetResolutionMetadata().CycleDetected)
+
+	resp, err = cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
+	require.True(t, resp.GetResolutionMetadata().CycleDetected)
+}
+
 func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	t.Parallel()
 
@@ -500,7 +533,7 @@ type document
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	checkCache := ccache.New(
-		ccache.Configure[*CachedResolveCheckResponse]().MaxSize(100),
+		ccache.Configure[*ResolveCheckResponse]().MaxSize(100),
 	)
 	defer checkCache.Stop()
 

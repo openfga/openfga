@@ -43,7 +43,12 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	_, cycleDetected := req.VisitedPaths[key]
 	span.SetAttributes(attribute.Bool("cycle_detected", cycleDetected))
 	if cycleDetected {
-		return nil, ErrCycleDetected
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				CycleDetected: true,
+			},
+		}, nil
 	}
 
 	req.VisitedPaths[key] = struct{}{}
