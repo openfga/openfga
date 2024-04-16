@@ -10,6 +10,12 @@ import (
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/openfga/openfga/pkg/telemetry"
+
+	"github.com/openfga/openfga/pkg/logger"
 
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
@@ -20,7 +26,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
+
 type listUsersQuery struct {
+	logger                  logger.Logger
 	ds                      storage.RelationshipTupleReader
 	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
@@ -37,10 +46,17 @@ type listUsersQuery struct {
 
 type ListUsersQueryOption func(l *listUsersQuery)
 
+func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
+	return func(rq *listUsersQuery) {
+		rq.logger = l
+	}
+}
+
 // NewListUsersQuery is not meant to be shared.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		ds: ds,
+		logger: logger.NewNoopLogger(),
+		ds:     ds,
 		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
 			typesys, exists := typesystem.TypesystemFromContext(ctx)
 			if !exists {
@@ -64,6 +80,9 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	ctx, span := tracer.Start(ctx, "ListUsers")
+	defer span.End()
+
 	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
@@ -109,6 +128,7 @@ func (l *listUsersQuery) ListUsers(
 
 	select {
 	case err := <-expandErrCh:
+		telemetry.TraceError(span, err)
 		return nil, err
 	case <-done:
 		break
@@ -117,6 +137,7 @@ func (l *listUsersQuery) ListUsers(
 	for foundUser := range foundUsersUnique {
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
+	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 	return &openfgav1.ListUsersResponse{
 		Users: foundUsers,
 	}, nil
@@ -186,7 +207,11 @@ func (l *listUsersQuery) expand(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	ctx, span := tracer.Start(ctx, "expand")
+	defer span.End()
+
 	if enteredCycle(req) {
+		span.SetAttributes(attribute.Bool("cycle_detected", true))
 		return nil
 	}
 
@@ -222,7 +247,12 @@ func (l *listUsersQuery) expand(
 	}
 
 	relationRewrite := relation.GetRewrite()
-	return l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
+	err = l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return err
+	}
+	return nil
 }
 
 func (l *listUsersQuery) expandRewrite(
@@ -231,19 +261,23 @@ func (l *listUsersQuery) expandRewrite(
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	ctx, span := tracer.Start(ctx, "expandRewrite")
+	defer span.End()
+
+	var err error
 	switch rewrite := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return l.expandDirect(ctx, req, foundUsersChan)
+		err = l.expandDirect(ctx, req, foundUsersChan)
 	case *openfgav1.Userset_ComputedUserset:
 		rewrittenReq := req.clone()
 		rewrittenReq.Relation = rewrite.ComputedUserset.GetRelation()
-		return l.expand(ctx, rewrittenReq, foundUsersChan)
+		err = l.expand(ctx, rewrittenReq, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
-		return l.expandTTU(ctx, req, rewrite, foundUsersChan)
+		err = l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
-		return l.expandIntersection(ctx, req, rewrite, foundUsersChan)
+		err = l.expandIntersection(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Difference:
-		return l.expandExclusion(ctx, req, rewrite, foundUsersChan)
+		err = l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 
 		pool := pool.New().WithContext(ctx)
@@ -258,10 +292,16 @@ func (l *listUsersQuery) expandRewrite(
 			})
 		}
 
-		return pool.Wait()
+		err = pool.Wait()
 	default:
 		panic("unexpected userset rewrite encountered")
 	}
+
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return err
+	}
+	return nil
 }
 
 func (l *listUsersQuery) expandDirect(
@@ -269,6 +309,8 @@ func (l *listUsersQuery) expandDirect(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	ctx, span := tracer.Start(ctx, "expandDirect")
+	defer span.End()
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return err
@@ -279,6 +321,7 @@ func (l *listUsersQuery) expandDirect(
 		Relation: req.GetRelation(),
 	})
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return err
 	}
 	defer iter.Stop()
@@ -326,7 +369,12 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	return pool.Wait()
+	err = pool.Wait()
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return err
+	}
+	return nil
 }
 
 func (l *listUsersQuery) expandIntersection(
@@ -335,6 +383,8 @@ func (l *listUsersQuery) expandIntersection(
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	ctx, span := tracer.Start(ctx, "expandIntersection")
+	defer span.End()
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
@@ -417,6 +467,8 @@ func (l *listUsersQuery) expandExclusion(
 	rewrite *openfgav1.Userset_Difference,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	ctx, span := tracer.Start(ctx, "expandExclusion")
+	defer span.End()
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
@@ -459,7 +511,12 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	return errs
+	finalErr := errs
+	if finalErr != nil {
+		telemetry.TraceError(span, finalErr)
+		return finalErr
+	}
+	return nil
 }
 
 func (l *listUsersQuery) expandTTU(
@@ -468,6 +525,8 @@ func (l *listUsersQuery) expandTTU(
 	rewrite *openfgav1.Userset_TupleToUserset,
 	foundUsersChan chan<- *openfgav1.User,
 ) error {
+	ctx, span := tracer.Start(ctx, "expandTTU")
+	defer span.End()
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
@@ -481,6 +540,7 @@ func (l *listUsersQuery) expandTTU(
 		Relation: tuplesetRelation,
 	})
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return err
 	}
 	defer iter.Stop()
@@ -516,7 +576,12 @@ func (l *listUsersQuery) expandTTU(
 		})
 	}
 
-	return pool.Wait()
+	err = pool.Wait()
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return err
+	}
+	return nil
 }
 
 func enteredCycle(req *internalListUsersRequest) bool {

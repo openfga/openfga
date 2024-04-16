@@ -1,6 +1,7 @@
 package listusers
 
 import (
+	"context"
 	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -11,7 +12,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func ValidateListUsersRequest(req *openfgav1.ListUsersRequest, typesys *typesystem.TypeSystem) error {
+func ValidateListUsersRequest(ctx context.Context, req *openfgav1.ListUsersRequest, typesys *typesystem.TypeSystem) error {
+	_, span := tracer.Start(ctx, "validateListUsersRequest")
+	defer span.End()
 	if err := validateContextualTuples(req, typesys); err != nil {
 		return err
 	}
