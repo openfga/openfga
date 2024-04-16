@@ -27,7 +27,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Security
 
-* Patch [CVE-2024-31452](https://github.com/openfga/openfga/security/advisories/GHSA-8cph-m685-6v6r) - a critical issue where Check API returns incorrect results for some models and tuples. See the CVE report for more details.
+* Patch [CVE-2024-31452](https://github.com/openfga/openfga/security/advisories/GHSA-8cph-m685-6v6r) - a critical issue where Check and ListObjects APIs returns incorrect results for some models and tuples. See the CVE report for more details.
 
 ## [1.5.2] - 2024-04-03
 
