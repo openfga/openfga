@@ -2735,6 +2735,62 @@ tests:
               relation: viewer
             expectation:
               - user:cheetah
+  - name: exclusion_between_userset_and_type
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member] but not blocked
+              define blocked: [user, group#member]
+        tuples:
+          - object: group:1
+            relation: blocked
+            user: group:1#member
+          - object: group:1
+            relation: member
+            user: user:will
+        checkAssertions:
+          - tuple:
+              object: group:1
+              relation: member
+              user: user:will
+            expectation: true
+          - tuple:
+              object: group:1
+              relation: blocked
+              user: group:1#member
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:will
+              type: group
+              relation: member
+            expectation:
+              - group:1
+          - request:
+              user: group:1#member
+              type: group
+              relation: blocked
+            expectation:
+             - group:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: group:1
+              relation: member
+            expectation:
+              - user:will
+          - request:
+              filters:
+                - user
+              object: group:1
+              relation: member
+            expectation:
+              - user:will
   - name: userset_as_user
     stages:
       - model: |
@@ -7234,6 +7290,14 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
   - name: userset_defines_itself_2
     stages:
       - model: |
@@ -7279,6 +7343,28 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#writer
+          - request:
+              filters:
+                - document#editor
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#editor
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
   - name: userset_defines_itself_3
     stages:
       - model: |
@@ -7323,6 +7409,27 @@ tests:
               type: document
               relation: writer
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#writer
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: writer
+            expectation:
   - name: userset_defines_itself_4
     stages:
       - model: |
@@ -7365,6 +7472,21 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
+          - request:
+              filters:
+                - folder#viewer
+              object: folder:x
+              relation: viewer
+            expectation:
+              - folder:x#viewer
   - name: userset_defines_itself_5
     stages:
       - model: |
@@ -7404,6 +7526,19 @@ tests:
               type: document
               relation: allowed
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#allowed
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: allowed
+            expectation:
   - name: userset_defines_itself_6
     stages:
       - model: |
@@ -7448,6 +7583,26 @@ tests:
               type: document
               relation: restricted
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+            - document:1#viewer
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: restricted
+            expectation:
+          - request:
+              filters:
+                - document#restricted
+              object: document:1
+              relation: viewer
+            expectation:
   - name: userset_defines_itself_7
     stages:
       - model: |
@@ -7479,6 +7634,14 @@ tests:
               type: group
               relation: member
             expectation: ["group:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - group#member
+              object: group:1
+              relation: member
+            expectation:
+            - group:1#member
   - name: userset_defines_itself_8
     stages:
       - model: |
@@ -7503,6 +7666,14 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+            - document:1#writer
   - name: userset_defines_itself_9
     stages:
       - model: |
@@ -7536,6 +7707,14 @@ tests:
               type: document
               relation: viewer
             expectation: [document:1]
+        listUsersAssertions:
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            expectation:
+            - group:fga#member
   - name: userset_defines_itself_10
     stages:
       - model: |
@@ -7605,3 +7784,39 @@ tests:
               type: doc
               relation: a
             expectation: [doc:1]
+        listUsersAssertions:
+          - request:
+              filters:
+                - doc#d
+              object: doc:1
+              relation: b
+            expectation:
+            - doc:1#d
+          - request:
+              filters:
+                - doc#c
+              object: doc:1
+              relation: b
+            expectation:
+            - doc:1#c
+          - request:
+              filters:
+                - doc#c
+              object: doc:1
+              relation: a
+            expectation:
+            - doc:1#c
+          - request:
+              filters:
+                - doc#d
+              object: doc:1
+              relation: a
+            expectation:
+            - doc:1#d
+          - request:
+              filters:
+                - doc#b
+              object: doc:1
+              relation: a
+            expectation:
+            - doc:1#b
