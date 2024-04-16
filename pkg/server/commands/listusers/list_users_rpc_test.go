@@ -12,6 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -2137,7 +2138,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 			},
 			model:            model,
 			tuples:           depthNotExceededTuples,
-			expectedErrorMsg: "resolution depth exceeded",
+			expectedErrorMsg: graph.ErrResolutionDepthExceeded.Error(),
 		},
 		{
 			name: "depth_should_not_exceed_limit",
