@@ -8,6 +8,27 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.3] - 2024-04-16
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.2...v1.5.3)
+
+### Added
+
+* Apply tags to requests that have been intentionally throttled (https://github.com/openfga/openfga/pull/1531). This will add a new field "throttled" to such logs.
+
+### Fixed
+
+* Fix panic that occurred on Check API with some authorization models and tuples (https://github.com/openfga/openfga/pull/1517)
+
+### Changed
+
+* Remove experimentals for modular models/schema 1.2 (https://github.com/openfga/openfga/pull/1520)
+* Bumped to Go 1.21.9 (https://github.com/openfga/openfga/pull/1523)
+
+### Security
+
+* Patch CVE-2024-31452- a critical issue where Check API returns incorrect results for some models and tuples. See the CVE report for more details.
+
 ## [1.5.2] - 2024-04-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.1...v1.5.2)
@@ -989,7 +1010,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
 [1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2
 [1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
 [1.5.0]: https://github.com/openfga/openfga/releases/tag/v1.5.0
