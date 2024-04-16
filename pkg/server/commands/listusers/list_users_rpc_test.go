@@ -30,6 +30,8 @@ type ListUsersTests []struct {
 	expectedErrorMsg      string
 }
 
+const maximumRecursiveDepth = 25
+
 func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2020,7 +2022,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 	// Times(0) ensures that we exit quickly
 	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	l := NewListUsersQuery(mockDatastore)
+	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
 	channelWithResults := make(chan *openfgav1.User)
 	channelWithError := make(chan error, 1)
@@ -2046,7 +2048,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 		visitedUsersets[visitedUsersetKey] = struct{}{}
 
 		go func() {
-			err := l.expand(ctx, &ListUsersRequest{
+			err := l.expand(ctx, &internalListUsersRequest{
 				ListUsersRequest: &openfgav1.ListUsersRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
@@ -2060,7 +2062,6 @@ func TestListUsersCycleDetection(t *testing.T) {
 					}},
 				},
 				visitedUsersetsMap: visitedUsersets,
-				Depth:              25,
 			}, channelWithResults)
 			if err != nil {
 				channelWithError <- err
@@ -2185,17 +2186,14 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds)
+			l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 			test.req.AuthorizationModelId = model.GetId()
 			test.req.StoreId = storeID
 
-			resp, err := l.ListUsers(ctx, &ListUsersRequest{
-				ListUsersRequest: test.req,
-				Depth:            25,
-			})
+			resp, err := l.ListUsers(ctx, test.req)
 
 			actualErrorMsg := ""
 			if err != nil {
