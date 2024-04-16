@@ -14,20 +14,20 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Added
 
-* Apply tags to requests that have been intentionally throttled (https://github.com/openfga/openfga/pull/1531). This will add a new field "throttled" to such logs.
+* Apply tags to requests that have been intentionally throttled (https://github.com/openfga/openfga/pull/1531). This will add a new log field titled "throttled" to such requests.
 
 ### Fixed
 
-* Fix panic that occurred on Check API with some authorization models and tuples (https://github.com/openfga/openfga/pull/1517)
+* Panic that occurred on Check API with some authorization models and tuples (https://github.com/openfga/openfga/pull/1517)
 
 ### Changed
 
-* Remove experimentals for modular models/schema 1.2 (https://github.com/openfga/openfga/pull/1520)
+* Modular Models (Schema 1.2) support is enabled by default and the experimental flag for it has been dropped (https://github.com/openfga/openfga/pull/1520)
 * Bumped to Go 1.21.9 (https://github.com/openfga/openfga/pull/1523)
 
 ### Security
 
-* Patch CVE-2024-31452- a critical issue where Check API returns incorrect results for some models and tuples. See the CVE report for more details.
+* Patch [CVE-2024-31452](https://github.com/openfga/openfga/security/advisories/GHSA-8cph-m685-6v6r) - a critical issue where Check API returns incorrect results for some models and tuples. See the CVE report for more details.
 
 ## [1.5.2] - 2024-04-03
 
