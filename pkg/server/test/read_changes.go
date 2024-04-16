@@ -287,7 +287,7 @@ func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Cont
 	return ctx, datastore, nil
 }
 
-// writeTuplesConcurrently writes two groups of tuples concurrently to expose potential race issues when reading changes
+// writeTuplesConcurrently writes two groups of tuples concurrently to expose potential race issues when reading changes.
 func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenFGADatastore, tupleGroupOne, tupleGroupTwo []*openfgav1.TupleKey) (context.Context, storage.ChangelogBackend) {
 	t.Helper()
 	ctx := context.Background()

@@ -18,7 +18,7 @@ import (
 )
 
 // TestClientBootstrapper defines a client interface definition that can be used by tests
-// to bootstrap OpenFGA resources (stores, models, relationship tuples, etc..) needed to
+// to bootstrap OpenFGA resources (stores, models, relationship tuples, etc..) Needed to
 // execute tests.
 type TestClientBootstrapper interface {
 	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)

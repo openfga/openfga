@@ -47,14 +47,14 @@ type stage struct {
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
-// ClientInterface defines interface for running ListObjects and StreamedListObjects tests
+// ClientInterface defines interface for running ListObjects and StreamedListObjects tests.
 type ClientInterface interface {
 	check.ClientInterface
 	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
 	StreamedListObjects(ctx context.Context, in *openfgav1.StreamedListObjectsRequest, opts ...grpc.CallOption) (openfgav1.OpenFGAService_StreamedListObjectsClient, error)
 }
 
-// RunAllTests will invoke all list objects tests
+// RunAllTests will invoke all list objects tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListObjects", func(t *testing.T) {

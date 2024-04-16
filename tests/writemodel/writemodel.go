@@ -346,13 +346,13 @@ type team
 	},
 }
 
-// ClientInterface defines interface for running WriteAuthorizationModel tests
+// ClientInterface defines interface for running WriteAuthorizationModel tests.
 type ClientInterface interface {
 	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)
 	WriteAuthorizationModel(ctx context.Context, in *openfgav1.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgav1.WriteAuthorizationModelResponse, error)
 }
 
-// RunAllTests will run all write model tests
+// RunAllTests will run all write model tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("WriteTest", func(t *testing.T) {

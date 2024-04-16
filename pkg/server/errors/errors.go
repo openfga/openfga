@@ -16,7 +16,7 @@ import (
 const InternalServerErrorMsg = "Internal Server Error"
 
 var (
-	// AuthorizationModelResolutionTooComplex is used to avoid stack overflows
+	// AuthorizationModelResolutionTooComplex is used to avoid stack overflows.
 	AuthorizationModelResolutionTooComplex = status.Error(codes.Code(openfgav1.ErrorCode_authorization_model_resolution_too_complex), "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting")
 	InvalidWriteInput                      = status.Error(codes.Code(openfgav1.ErrorCode_invalid_write_input), "Invalid input. Make sure you provide at least one write, or at least one delete")
 	InvalidContinuationToken               = status.Error(codes.Code(openfgav1.ErrorCode_invalid_continuation_token), "Invalid continuation token")
@@ -131,7 +131,7 @@ func HandleError(public string, err error) error {
 	return NewInternalError(public, err)
 }
 
-// HandleTupleValidateError provide common routines for handling tuples validation error
+// HandleTupleValidateError provide common routines for handling tuples validation error.
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:

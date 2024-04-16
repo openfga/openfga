@@ -575,7 +575,7 @@ condition condition1(x: int) {
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
 var listObjectsResponse *commands.ListObjectsResponse //nolint
 
-// setupListObjectsBenchmark writes the model and lots of tuples
+// setupListObjectsBenchmark writes the model and lots of tuples.
 func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeID string) (*openfgav1.AuthorizationModel, string, int) {
 	b.Helper()
 	modelID := ulid.Make().String()
