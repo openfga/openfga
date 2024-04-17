@@ -89,7 +89,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		}).Times(1)
 
 		ctx := context.Background()
-		ctx = context.WithValue(ctx, telemetry.DispatchThrottlingThreshold, 205)
+		ctx = context.WithValue(ctx, telemetry.DispatchThrottlingThreshold, uint32(205))
 
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
@@ -193,7 +193,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		goFuncInitiated.Add(1)
 
 		ctx := context.Background()
-		ctx = context.WithValue(ctx, telemetry.DispatchThrottlingThreshold, 205)
+		ctx = context.WithValue(ctx, telemetry.DispatchThrottlingThreshold, uint32(205))
 
 		go func() {
 			defer goFuncDone.Done()

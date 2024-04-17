@@ -5,7 +5,7 @@ import (
 )
 
 type rpcContextName string
-type dispatchThrottlingThreshold int
+type dispatchThrottlingThreshold uint32
 
 const (
 	rpcInfoContextName rpcContextName = "rpcInfo"
