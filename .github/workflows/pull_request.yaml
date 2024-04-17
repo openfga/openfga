@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - feat/abac
 
 permissions:
   contents: read
@@ -13,26 +14,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
           check-latest: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@3a919529898de77ec3da873e3063ca4b10e7f5cc # v3.7.0
+        uses: golangci/golangci-lint-action@3cfe3a4abbb849e10058ce4af15d205b6da42804 # v4.0.0
         with:
           version: latest
+          args: -v -c .golangci.yaml
 
-  unit-tests:
+  tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -44,72 +46,72 @@ jobs:
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
-      - name: Unit Tests
-        run: make unit-test
+      - name: Tests
+        run: make test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@eaaf4bedf32dbdc6b720b63067d99c4d77d6047d # v3.1.4
+        uses: codecov/codecov-action@84508663e988701840491b86de86b666e8a86bed # v4.3.0
         with:
           files: ./coverageunit.out
           verbose: true
-          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
 
   govulncheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
       - name: Run govulncheck
-        uses: golang/govulncheck-action@7da72f730e37eeaad891fcff0a532d27ed737cd4 # v1.0.1
+        uses: golang/govulncheck-action@3a32958c2706f7048305d5a2e53633d7e37e97d0 # v1.0.2
         with:
           go-version-file: go.mod
 
-  functional-tests:
-      runs-on: ubuntu-latest
-      timeout-minutes: 15
-      steps:
-        - name: Checkout code
-          uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
-        - name: Set up Go
-          uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
-          with:
-            go-version-file: './go.mod'
-            cache-dependency-path: './go.sum'
-            check-latest: true
-
-        - id: go-cache-paths
-          name: Get Go cache paths
-          run: |
-            echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
-            echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-        - name: Set up Docker Buildx
-          uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
-
-        # build the openfga/openfga image for the functional tests
-        - name: Build and push openfga/openfga:functionaltest
-          uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
-          with:
-            file: Dockerfile
-            push: false # don't publish the built container for functional tests
-            load: true
-            tags: "openfga/openfga:functionaltest"
-
-        - name: Functional Tests
-          run: make functional-test
-
-  go-bench:
+  docker-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
+      - name: Set up Go
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        with:
+          go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
+          check-latest: true
+
+      - id: go-cache-paths
+        name: Get Go cache paths
+        run: |
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
+
+      - name: Build and push openfga/openfga:dockertest
+        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
+        with:
+          file: Dockerfile
+          push: false # don't publish the built container for Docker tests
+          load: true
+          tags: "openfga/openfga:dockertest"
+
+      - name: Docker Tests
+        run: make test-docker
+
+  go-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Set up Go
-        uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -119,7 +121,11 @@ jobs:
       - name: Run benchmark
         run: |
           set -o pipefail
-          make bench | tee ${{ github.sha }}_bench_output.txt
+          make test-bench | tee ${{ github.sha }}_bench_output.txt
+
+      - name: Get CPU information
+        uses: kenchan0130/actions-system-info@7aa4dfce36837f6cc820d6b2287925b3892c74d2 # v1
+        id: system-info
 
       - name: Get Main branch SHA
         id: get-main-branch-sha
@@ -128,14 +134,15 @@ jobs:
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
       - name: Get benchmark JSON from main branch
-        uses: actions/cache/restore@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
+        id: cache
+        uses: actions/cache/restore@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
         with:
           path: ./cache/benchmark-data.json
-          key: ${{ steps.get-main-branch-sha.outputs.sha }}-go-benchmark
-          fail-on-cache-miss: true
+          key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark
 
-      - name: Compare benchmarks
-        uses: benchmark-action/github-action-benchmark@70405016b032d44f409e4b1b451c40215cbe2393 # v1.18.0
+      - name: Compare benchmarks with Main
+        uses: benchmark-action/github-action-benchmark@1846227a307d8c0149b960b986d46f8f4c95db0c # v1.20.1
+        if: steps.cache.outputs.cache-hit == 'true'
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
@@ -148,5 +155,19 @@ jobs:
           # Workflow will fail when an alert happens
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Enable Job Summary for PRs
+          summary-always: true
+
+      - name: Run benchmarks but don't compare to Main branch
+        uses: benchmark-action/github-action-benchmark@1846227a307d8c0149b960b986d46f8f4c95db0c # v1.20.1
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          # What benchmark tool the output.txt came from
+          tool: 'go'
+          # Where the output from the benchmark tool is stored
+          output-file-path: ${{ github.sha }}_bench_output.txt
+          # Write benchmarks to this file, do not publish to GitHub Pages
+          save-data-file: false
+          external-data-json-path: ./cache/benchmark-data.json
           # Enable Job Summary for PRs
           summary-always: true

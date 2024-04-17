@@ -2,8 +2,7 @@ project_name: openfga
 
 before:
   hooks:
-    - make install-tools
-    - go generate ./...
+    - make generate-mocks
 
 builds:
   -
@@ -20,6 +19,7 @@ builds:
       - "-X github.com/openfga/openfga/internal/build.Version=v{{ .Version }}"
       - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
       - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
+      - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
 
 dockers:
   - goos: linux

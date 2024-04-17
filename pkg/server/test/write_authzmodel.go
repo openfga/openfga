@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -137,227 +137,241 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
+			//TODO remove, same as union_has_entrypoint
 			name: "self_referencing_type_restriction_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define editor: [user] as self
-				    define viewer: [document#viewer] as self or editor
-				`),
+type document
+  relations
+	define editor: [user]
+	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 		},
 		{
+			//TODO remove, same as this_has_no_entrypoints
 			name: "self_referencing_type_restriction_without_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
-				type document
-				  relations
-				    define viewer: [document#viewer] as self
-				`),
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type document
+  relations
+	define viewer: [document#viewer]`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			//TODO remove, same as intersection_has_no_entrypoint_and_no_cycle
 			name: "self_referencing_type_restriction_without_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
-				type document
-				  relations
-				    define editor: [user] as self
-				    define viewer: [document#viewer] as self and editor
-				`),
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type document
+  relations
+	define editor: [user]
+	define viewer: [document#viewer] and editor`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			//TODO remove - same as difference_has_no_entrypoint_and_no_cycle
 			name: "self_referencing_type_restriction_without_entrypoint_3",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
-				type document
-				  relations
-				    define restricted: [user] as self
-				    define viewer: [document#viewer] as self but not restricted
-				`),
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type document
+  relations
+	define restricted: [user]
+	define viewer: [document#viewer] but not restricted`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as intersection_has_no_entrypoint_and_has_cycle_2
 			name: "rewritten_relation_in_intersection_unresolvable",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define admin: [user] as self
-				    define action1 as admin and action2 and action3
-				    define action2 as admin and action1 and action3
-				    define action3 as admin and action1 and action2
-				`),
+type document
+  relations
+	define admin: [user]
+	define action1: admin and action2 and action3
+	define action2: admin and action1 and action3
+	define action3: admin and action1 and action2`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as this_has_entrypoints_through_user
 			name: "direct_relationship_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define viewer: [user] as self
-				`),
+type document
+  relations
+	define viewer: [user]`).GetTypeDefinitions(),
 			},
 		},
 		{
+			// TODO remove - same as computed_relation_has_entrypoint_through_user
 			name: "computed_relationship_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define editor: [user] as self
-				    define viewer as editor
-				`),
+type document
+  relations
+	define editor: [user]
+	define viewer: editor`).GetTypeDefinitions(),
 			},
 		},
 		{
+			// TODO remove - same as difference_has_no_entrypoint_and_has_cycle
 			name: "rewritten_relation_in_exclusion_unresolvable",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define admin: [user] as self
-				    define action1 as admin but not action2
-				    define action2 as admin but not action3
-				    define action3 as admin but not action1
-				`),
+type document
+  relations
+	define admin: [user]
+	define action1: admin but not action2
+	define action2: admin but not action3
+	define action3: admin but not action1`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as intersection_has_no_entrypoint_and_no_cycle
 			name: "no_entrypoint_3a",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define viewer: [document#viewer] as self and editor
-				    define editor: [user] as self
-				`),
+type document
+  relations
+	define viewer: [document#viewer] and editor
+	define editor: [user]`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as difference_has_no_entrypoint_and_no_cycle
 			name: "no_entrypoint_3b",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define viewer: [document#viewer] as self but not editor
-				    define editor: [user] as self
-				`),
+type document
+  relations
+	define viewer: [document#viewer] but not editor
+	define editor: [user]`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO this test is invalid - "editor from parent" is invalid - "folder#editor" is not defined
+			// Replaced by computed_relation_has_no_entrypoints
 			name: "no_entrypoint_4",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type folder
-				  relations
-				    define parent: [document] as self
-				    define viewer as editor from parent
+type folder
+  relations
+	define parent: [document]
+	define viewer: editor from parent
 
-				type document
-				  relations
-				    define parent: [folder] as self
-				    define editor as viewer
-				    define viewer as editor from parent
-				`),
+type document
+  relations
+	define parent: [folder]
+	define editor: viewer
+	define viewer: editor from parent`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - same as difference_has_entrypoints_and_no_cycle_2
 			name: "self_referencing_type_restriction_with_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define restricted: [user] as self
-				    define editor: [user] as self
-				    define viewer: [document#viewer] as self or editor
-				    define can_view as viewer but not restricted
-				    define can_view_actual as can_view
-				`),
+type document
+  relations
+	define restricted: [user]
+	define editor: [user]
+	define viewer: [document#viewer] or editor
+	define can_view: viewer but not restricted
+	define can_view_actual: can_view`).GetTypeDefinitions(),
 			},
 		},
 		{
+			// TODO remove - same as union_has_entrypoint_through_user
 			name: "self_referencing_type_restriction_with_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define editor: [user] as self
-				    define viewer: [document#viewer] as self or editor
-				`),
+type document
+  relations
+	define editor: [user]
+	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 			},
 		},
 		{
 			name: "relation_with_union_of_ttu_rewrites",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
-				type org
-				  relations
-				    define admin: [user] as self
-				    define member: [user] as self
-				type group
-				  relations
-				    define member: [user] as self
-				type feature
-				  relations
-				    define accessible as admin from subscriber_org or member from subscriber_group
-				    define subscriber_group: [group] as self
-				    define subscriber_org: [org] as self
-				`),
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type org
+  relations
+	define admin: [user]
+	define member: [user]
+type group
+  relations
+	define member: [user]
+type feature
+  relations
+	define accessible: admin from subscriber_org or member from subscriber_group
+	define subscriber_group: [group]
+	define subscriber_org: [org]`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -391,58 +405,61 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - it's in TestHasCycle
 			name: "many_circular_computed_relations",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type canvas
-				  relations
-					define can_edit as editor or owner
-					define editor: [user, account#member] as self
-					define owner: [user] as self
-					define viewer: [user, account#member] as self
+type canvas
+  relations
+	define can_edit: editor or owner
+	define editor: [user, account#member]
+	define owner: [user]
+	define viewer: [user, account#member]
 
-				type account
-				  relations
-					define admin: [user] as self or member or super_admin or owner
-					define member: [user] as self or owner or admin or super_admin
-					define owner: [user] as self
-					define super_admin: [user] as self or admin or member
-				`),
+type account
+  relations
+	define admin: [user] or member or super_admin or owner
+	define member: [user] or owner or admin or super_admin
+	define owner: [user]
+	define super_admin: [user] or admin or member`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - it's in TestHasCycle (intersection_and_union)
 			name: "circular_relations_involving_intersection",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type other
-				  relations
-					define x: [user] as self and y
-					define y: [user] as self and z
-					define z: [user] as self or x
-				`),
+type other
+  relations
+	define x: [user] and y
+	define y: [user] and z
+	define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
+			// TODO remove - it's in TestHasCycle (exclusion_and_union)
 			name: "circular_relations_involving_exclusion",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type other
-				  relations
-					define x: [user] as self but not y
-					define y: [user] as self but not z
-					define z: [user] as self or x
-				`),
+type other
+  relations
+	define x: [user] but not y
+	define y: [user] but not z
+	define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -453,35 +470,610 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				SchemaVersion: testutils.CreateRandomString(
 					serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 				),
-				TypeDefinitions: parser.MustParse(`
-				type user
-
-				type other
-				  relations
-					define x: [user] as self but not y
-					define y: [user] as self but not z
-					define z: [user] as self or x
-				`),
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
+		},
+
+		// conditions
+		{
+			name: "condition_valid",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "condition_fails_undefined",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"invalid_condition_name",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_syntax_error",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "{",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_invalid_parameter_type",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_invalid_output_type",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_key_condition_name_mismatch",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition3",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_missing_parameters",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: nil,
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_missing_parameter",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param2": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_undefined",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"invalid_condition_name",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_syntax_error",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_invalid_parameter_type",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_invalid_output_type",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_key_condition_name_mismatch",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition3",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_missing_parameter",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: nil,
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(
-				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
-			)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore)
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.errCode, status.Code())
 
 			if err == nil {
-				_, err = ulid.Parse(resp.AuthorizationModelId)
+				_, err = ulid.Parse(resp.GetAuthorizationModelId())
 				require.NoError(t, err)
 			}
 		})

@@ -1,4 +1,3 @@
-// Package postgres contains an implementation of the storage interface that works with Postgres.
 package postgres
 
 import (
@@ -15,30 +14,37 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/postgres")
 
+// Postgres provides a Postgres based implementation of [storage.OpenFGADatastore].
 type Postgres struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
+	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 }
 
+// Ensures that Postgres implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
+// New creates a new [Postgres] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
@@ -105,27 +111,36 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
+	var collector prometheus.Collector
 	if cfg.ExportMetrics {
-		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
+		collector = collectors.NewDBStatsCollector(db, "openfga")
+		if err := prometheus.Register(collector); err != nil {
 			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}
 	}
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"))
 
 	return &Postgres{
-		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
+		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
+		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 	}, nil
 }
 
-// Close closes any open connections and cleans up residual resources
-// used by this storage adapter instance.
+// Close see [storage.OpenFGADatastore].Close.
 func (p *Postgres) Close() {
+	if p.dbStatsCollector != nil {
+		prometheus.Unregister(p.dbStatsCollector)
+	}
 	p.db.Close()
 }
 
+// Read see [storage.RelationshipTupleReader].Read.
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
@@ -133,6 +148,7 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 	return p.read(ctx, store, tupleKey, nil)
 }
 
+// ReadPage see [storage.RelationshipTupleReader].ReadPage.
 func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
@@ -151,7 +167,10 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	defer span.End()
 
 	sb := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -190,6 +209,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// Write see [storage.RelationshipTupleWriter].Write.
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
 	ctx, span := tracer.Start(ctx, "postgres.Write")
 	defer span.End()
@@ -199,9 +219,10 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	now := time.Now().UTC()
-	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, deletes, writes, now)
+	return sqlcommon.Write(ctx, p.dbInfo, store, deletes, writes, now)
 }
 
+// ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadUserTuple")
 	defer span.End()
@@ -209,9 +230,15 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var record sqlcommon.TupleRecord
+	var conditionName sql.NullString
+	var conditionContext []byte
+	var record storage.TupleRecord
+
 	err := p.stbl.
-		Select("object_type", "object_id", "relation", "_user").
+		Select(
+			"object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context",
+		).
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -222,19 +249,43 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 			"user_type":   userType,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
+		Scan(
+			&record.ObjectType,
+			&record.ObjectID,
+			&record.Relation,
+			&record.User,
+			&conditionName,
+			&conditionContext,
+		)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	if conditionName.String != "" {
+		record.ConditionName = conditionName.String
+
+		if conditionContext != nil {
+			var conditionContextStruct structpb.Struct
+			if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+				return nil, err
+			}
+			record.ConditionContext = &conditionContextStruct
+		}
 	}
 
 	return record.AsTuple(), nil
 }
 
+// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := p.stbl.
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -252,11 +303,11 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	if len(filter.AllowedUserTypeRestrictions) > 0 {
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				orConditions = append(orConditions, sq.Like{"_user": userset.GetType() + ":%#" + userset.GetRelation()})
 			}
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
+				orConditions = append(orConditions, sq.Eq{"_user": userset.GetType() + ":*"})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -269,6 +320,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadStartingWithUser")
 	defer span.End()
@@ -283,7 +335,10 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	}
 
 	rows, err := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -298,22 +353,26 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
+// MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
 func (p *Postgres) MaxTuplesPerWrite() int {
 	return p.maxTuplesPerWriteField
 }
 
+// ReadAuthorizationModel see [storage.AuthorizationModelReadBackend].ReadAuthorizationModel.
 func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, p.dbInfo, store, modelID)
 }
 
+// ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
-	sb := p.stbl.Select("authorization_model_id").
+	sb := p.stbl.
+		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -377,30 +436,20 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	return models, token, nil
 }
 
-func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
+func (p *Postgres) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModel")
 	defer span.End()
 
-	var modelID string
-	err := p.stbl.
-		Select("authorization_model_id").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		Limit(1).
-		QueryRowContext(ctx).
-		Scan(&modelID)
-	if err != nil {
-		return "", sqlcommon.HandleSQLError(err)
-	}
-
-	return modelID, nil
+	return sqlcommon.FindLatestAuthorizationModel(ctx, p.dbInfo, store)
 }
 
+// MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
 func (p *Postgres) MaxTypesPerAuthorizationModel() int {
 	return p.maxTypesPerModelField
 }
 
+// WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
 func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
 	ctx, span := tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
@@ -411,10 +460,10 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerModelField)
 	}
 
-	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, p.dbInfo, store, model)
 }
 
-// CreateStore is slightly different between Postgres and MySQL
+// CreateStore adds a new store to the Postgres storage.
 func (p *Postgres) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "postgres.CreateStore")
 	defer span.End()
@@ -424,7 +473,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgav1.Store) (*op
 	err := p.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.Id, store.Name, "NOW()", "NOW()").
+		Values(store.GetId(), store.GetName(), "NOW()", "NOW()").
 		Suffix("returning id, name, created_at").
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
@@ -440,6 +489,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgav1.Store) (*op
 	}, nil
 }
 
+// GetStore retrieves the details of a specific store from the Postgres using its storeID.
 func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "postgres.GetStore")
 	defer span.End()
@@ -471,11 +521,13 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgav1.Store, e
 	}, nil
 }
 
+// ListStores provides a paginated list of all stores present in the Postgres storage.
 func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
-	sb := p.stbl.Select("id", "name", "created_at", "updated_at").
+	sb := p.stbl.
+		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
@@ -530,6 +582,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	return stores, nil, nil
 }
 
+// DeleteStore removes a store from the Postgres storage.
 func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "postgres.DeleteStore")
 	defer span.End()
@@ -546,7 +599,7 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
-// WriteAssertions is slightly different between Postgres and MySQL
+// WriteAssertions see [storage.AssertionsBackend].WriteAssertions.
 func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	ctx, span := tracer.Start(ctx, "postgres.WriteAssertions")
 	defer span.End()
@@ -569,6 +622,7 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 	return nil
 }
 
+// ReadAssertions see [storage.AssertionsBackend].ReadAssertions.
 func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAssertions")
 	defer span.End()
@@ -596,9 +650,10 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 		return nil, err
 	}
 
-	return assertions.Assertions, nil
+	return assertions.GetAssertions(), nil
 }
 
+// ReadChanges see [storage.ChangelogBackend].ReadChanges.
 func (p *Postgres) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
@@ -608,7 +663,11 @@ func (p *Postgres) ReadChanges(
 	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
-	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+	sb := p.stbl.
+		Select(
+			"ulid", "object_type", "object_id", "relation", "_user", "operation",
+			"condition_name", "condition_context", "inserted_at",
+		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
@@ -626,10 +685,10 @@ func (p *Postgres) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token
+		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
 	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token
+		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -644,18 +703,43 @@ func (p *Postgres) ReadChanges(
 		var objectType, objectID, relation, user string
 		var operation int
 		var insertedAt time.Time
+		var conditionName sql.NullString
+		var conditionContext []byte
 
-		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
+		err = rows.Scan(
+			&ulid,
+			&objectType,
+			&objectID,
+			&relation,
+			&user,
+			&operation,
+			&conditionName,
+			&conditionContext,
+			&insertedAt,
+		)
 		if err != nil {
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
+		var conditionContextStruct structpb.Struct
+		if conditionName.String != "" {
+			if conditionContext != nil {
+				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+
+		tk := tupleUtils.NewTupleKeyWithCondition(
+			tupleUtils.BuildObject(objectType, objectID),
+			relation,
+			user,
+			conditionName.String,
+			&conditionContextStruct,
+		)
+
 		changes = append(changes, &openfgav1.TupleChange{
-			TupleKey: &openfgav1.TupleKey{
-				Object:   tupleUtils.BuildObject(objectType, objectID),
-				Relation: relation,
-				User:     user,
-			},
+			TupleKey:  tk,
 			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
@@ -673,8 +757,7 @@ func (p *Postgres) ReadChanges(
 	return changes, contToken, nil
 }
 
-// IsReady reports whether this Postgres datastore instance is ready
-// to accept connections.
-func (p *Postgres) IsReady(ctx context.Context) (bool, error) {
+// IsReady see [sqlcommon.IsReady].
+func (p *Postgres) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, p.db)
 }

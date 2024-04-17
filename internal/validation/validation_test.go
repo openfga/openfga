@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 func TestValidateTuple(t *testing.T) {
@@ -74,7 +75,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("invalid relation"),
+				Cause:    fmt.Errorf("the 'relation' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "group#group", "user:jon"),
 			},
 		},
@@ -87,7 +88,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("invalid relation"),
+				Cause:    fmt.Errorf("the 'relation' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "organization:openfga", "user:jon"),
 			},
 		},
@@ -100,8 +101,21 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("invalid relation"),
+				Cause:    fmt.Errorf("the 'relation' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "my relation", "user:jon"),
+			},
+		},
+		{
+			name:  "unknown_relation",
+			tuple: tuple.NewTupleKey("document:1", "unknown", "user:jon"),
+			model: &openfgav1.AuthorizationModel{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{Type: "document"},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("relation 'document#unknown' not found"),
+				TupleKey: tuple.NewTupleKey("document:1", "unknown", "user:jon"),
 			},
 		},
 		{
@@ -213,7 +227,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    &tuple.TypeNotFoundError{TypeName: "employee"},
+				Cause:    &tuple.TypeNotFoundError{TypeName: "group"},
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
 		},
@@ -247,7 +261,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("relation 'group#member' was not found"),
+				Cause:    fmt.Errorf("relation 'group#member' not found"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
 		},
@@ -418,7 +432,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("unexpected user 'folder:1#parent' with tupleset relation 'document#parent'"),
+				Cause:    fmt.Errorf("unexpected user 'folder:1#parent' with tupleset relation 'document#ancestor'"),
 				TupleKey: tuple.NewTupleKey("document:1", "ancestor", "folder:1#parent"),
 			},
 		},
@@ -489,7 +503,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("unexpected rewrite encountered with tupelset relation 'document#parent'"),
+				Cause:    fmt.Errorf("unexpected rewrite encountered with tupleset relation 'document#parent'"),
 				TupleKey: tuple.NewTupleKey("document:1", "parent", "folder:1"),
 			},
 		},
@@ -674,7 +688,59 @@ func TestValidateTuple(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := ValidateTuple(typesystem.New(test.model), test.tuple)
-			require.ErrorIs(t, err, test.expectedError)
+			if test.expectedError != nil {
+				require.ErrorIs(t, err, test.expectedError)
+				require.Equal(t, err.Error(), test.expectedError.Error())
+			}
 		})
+	}
+}
+
+func BenchmarkValidateTuple(b *testing.B) {
+	model := &openfgav1.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"parent": typesystem.This(),
+					"viewer": typesystem.TupleToUserset("parent", "viewer"),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"parent": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "folder"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ts := typesystem.New(model)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := ValidateTuple(ts, tuple.NewTupleKey("folder:x", "viewer", fmt.Sprintf("user:%v", i)))
+		require.NoError(b, err)
 	}
 }

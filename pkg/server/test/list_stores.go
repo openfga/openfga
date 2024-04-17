@@ -5,44 +5,42 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/logger"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	// clean up all stores from other tests
-	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
-	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
+	getStoresQuery := commands.NewListStoresQuery(datastore)
+	deleteCmd := commands.NewDeleteStoreCommand(datastore)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {
-		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+		listStoresResponse, err := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 			ContinuationToken: deleteContinuationToken,
 		})
-		for _, store := range listStoresResponse.Stores {
-			if _, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
-				StoreId: store.Id,
-			}); err != nil {
-				t.Fatalf("failed cleaning stores with %v", err)
-			}
+		require.NoError(t, err)
+		for _, store := range listStoresResponse.GetStores() {
+			_, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
+				StoreId: store.GetId(),
+			})
+			require.NoError(t, err)
 		}
-		deleteContinuationToken = listStoresResponse.ContinuationToken
+		deleteContinuationToken = listStoresResponse.GetContinuationToken()
 	}
 
 	// ensure there are actually no stores
 	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{})
 	require.NoError(t, actualError)
-	require.Equal(t, 0, len(listStoresResponse.Stores))
+	require.Empty(t, listStoresResponse.GetStores())
 
 	// create two stores
-	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore)
 	firstStoreName := testutils.CreateRandomString(10)
 	_, err := createStoreQuery.Execute(ctx, &openfgav1.CreateStoreRequest{Name: firstStoreName})
 	require.NoError(t, err, "error creating store 1")
@@ -56,18 +54,18 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 		ContinuationToken: "",
 	})
 	require.NoError(t, actualError)
-	require.Equal(t, 1, len(listStoresResponse.Stores))
-	require.Equal(t, firstStoreName, listStoresResponse.Stores[0].Name)
-	require.NotEmpty(t, listStoresResponse.ContinuationToken)
+	require.Len(t, listStoresResponse.GetStores(), 1)
+	require.Equal(t, firstStoreName, listStoresResponse.GetStores()[0].GetName())
+	require.NotEmpty(t, listStoresResponse.GetContinuationToken())
 
 	// first page: 2nd store
 	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: listStoresResponse.ContinuationToken,
+		ContinuationToken: listStoresResponse.GetContinuationToken(),
 	})
 	require.NoError(t, actualError)
-	require.Equal(t, 1, len(secondListStoresResponse.Stores))
-	require.Equal(t, secondStoreName, secondListStoresResponse.Stores[0].Name)
+	require.Len(t, secondListStoresResponse.GetStores(), 1)
+	require.Equal(t, secondStoreName, secondListStoresResponse.GetStores()[0].GetName())
 	// no token <=> no more results
-	require.Empty(t, secondListStoresResponse.ContinuationToken)
+	require.Empty(t, secondListStoresResponse.GetContinuationToken())
 }

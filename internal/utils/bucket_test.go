@@ -69,3 +69,8 @@ func TestBucketize(t *testing.T) {
 		})
 	}
 }
+
+func TestLinearBuckets(t *testing.T) {
+	buckets := LinearBuckets(1.0, 100, 10)
+	require.Equal(t, []float64{1, 12, 23, 34, 45, 56, 67, 78, 89, 100}, buckets)
+}

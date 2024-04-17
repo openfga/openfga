@@ -23,12 +23,29 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/cors"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"go.opentelemetry.io/otel/trace/noop"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/gateway"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/gateway"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
@@ -47,20 +64,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/cors"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -116,7 +119,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
 
-	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
+	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens, and where the keys will be fetched from")
+
+	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -150,6 +155,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("log-level", defaultConfig.Log.Level, "the log level to use")
 
+	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
+
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
@@ -172,9 +179,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-authorization-model-size-in-bytes", defaultConfig.MaxAuthorizationModelSizeInBytes, "the maximum size in bytes allowed for persisting an Authorization Model.")
 
-	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects query. A high number means that you want ListObjects latency to be low, at the expense of other queries performance")
+	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects or StreamedListObjects query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
-	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number means that you want Check latency to be low, at the expense of other queries performance")
+	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
 	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 
@@ -182,7 +189,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("resolve-node-breadth-limit", defaultConfig.ResolveNodeBreadthLimit, "defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree")
 
-	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
+	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects and StreamedListObjects requests")
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
@@ -193,45 +200,21 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
-	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
+	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
+
+	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms (request_duration_by_query_count_ms is deprecated)")
+
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
-}
-
-// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
-// It is the responsibility of the caller to call the release function.
-func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	return l.Addr().(*net.TCPAddr).Port, func() {
-		l.Close()
-	}
-}
-
-// MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
-// This function may panic if somehow a random port cannot be chosen.
-func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
-	config := serverconfig.DefaultConfig()
-
-	// Since this is used for tests, turn the following off:
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	httpPort, httpPortReleaser := TCPRandomPort()
-	defer httpPortReleaser()
-	grpcPort, grpcPortReleaser := TCPRandomPort()
-	defer grpcPortReleaser()
-
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-
-	return config
 }
 
 // ReadConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
@@ -265,7 +248,7 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
+	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
 
 	serverCtx := &ServerContext{Logger: logger}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
@@ -289,8 +272,11 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	tp := sdktrace.NewTracerProvider()
+	var tracerProviderCloser func()
+
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
@@ -309,7 +295,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			options = append(options, telemetry.WithOTLPInsecure())
 		}
 
-		tp = telemetry.MustNewTracerProvider(options...)
+		tp := telemetry.MustNewTracerProvider(options...)
+		tracerProviderCloser = func() {
+			_ = tp.ForceFlush(ctx)
+			_ = tp.Shutdown(ctx)
+		}
+	} else {
+		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -373,7 +365,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
 	default:
 		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -381,21 +373,30 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		requestid.NewUnaryInterceptor(),
-		validator.UnaryServerInterceptor(),
-		grpc_ctxtags.UnaryServerInterceptor(),
-	}
-
-	streamingInterceptors := []grpc.StreamServerInterceptor{
-		requestid.NewStreamingInterceptor(),
-		validator.StreamServerInterceptor(),
-		grpc_ctxtags.StreamServerInterceptor(),
+	serverOpts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+		grpc.ChainUnaryInterceptor(
+			[]grpc.UnaryServerInterceptor{
+				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
+				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
+				validator.UnaryServerInterceptor(),
+			}...,
+		),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				requestid.NewStreamingInterceptor(),
+				validator.StreamServerInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(),
+			}...,
+		),
 	}
 
 	if config.Metrics.Enabled {
-		unaryInterceptors = append(unaryInterceptors, grpc_prometheus.UnaryServerInterceptor)
-		streamingInterceptors = append(streamingInterceptors, grpc_prometheus.StreamServerInterceptor)
+		serverOpts = append(serverOpts,
+			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
 
 		if config.Metrics.EnableRPCHistograms {
 			grpc_prometheus.EnableHandlingTimeHistogram()
@@ -403,28 +404,23 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	if config.Trace.Enabled {
-		unaryInterceptors = append(unaryInterceptors, otelgrpc.UnaryServerInterceptor())
-		streamingInterceptors = append(streamingInterceptors, otelgrpc.StreamServerInterceptor())
+		serverOpts = append(serverOpts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 
-	unaryInterceptors = append(unaryInterceptors,
-		storeid.NewUnaryInterceptor(),
-		logging.NewLoggingInterceptor(s.Logger),
-		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
+		[]grpc.UnaryServerInterceptor{
+			grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+		}...),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+				// The following interceptors wrap the server stream with our own
+				// wrapper and must come last.
+				storeid.NewStreamingInterceptor(),
+				logging.NewStreamingLoggingInterceptor(s.Logger),
+			}...,
+		),
 	)
-
-	streamingInterceptors = append(streamingInterceptors,
-		grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
-		// The following interceptors wrap the server stream with our own
-		// wrapper and must come last.
-		storeid.NewStreamingInterceptor(),
-		logging.NewStreamingLoggingInterceptor(s.Logger),
-	)
-
-	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(unaryInterceptors...),
-		grpc.ChainStreamInterceptor(streamingInterceptors...),
-	}
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
@@ -435,7 +431,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			return err
 		}
 
-		opts = append(opts, grpc.Creds(creds))
+		serverOpts = append(serverOpts, grpc.Creds(creds))
 
 		s.Logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
 	} else {
@@ -465,8 +461,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info(fmt.Sprintf("📈 starting metrics server on '%s'", config.Metrics.Addr))
 
 		go func() {
-			http.Handle("/metrics", promhttp.Handler())
-			if err := http.ListenAndServe(config.Metrics.Addr, nil); err != nil {
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", promhttp.Handler())
+			if err := http.ListenAndServe(config.Metrics.Addr, mux); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
 				}
@@ -489,7 +486,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
+		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
 		server.WithExperimentals(experimentals...),
 	)
 
@@ -502,7 +503,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	)
 
 	// nosemgrep: grpc-server-insecure-connection
-	grpcServer := grpc.NewServer(opts...)
+	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
@@ -689,7 +690,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-done:
@@ -714,12 +715,15 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	grpcServer.GracefulStop()
 
+	svr.Close()
+
 	authenticator.Close()
 
 	datastore.Close()
 
-	_ = tp.ForceFlush(ctx)
-	_ = tp.Shutdown(ctx)
+	if tracerProviderCloser != nil {
+		tracerProviderCloser()
+	}
 
 	s.Logger.Info("server exited. goodbye 👋")
 

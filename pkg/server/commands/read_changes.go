@@ -6,6 +6,8 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -19,14 +21,39 @@ type ReadChangesQuery struct {
 	horizonOffset time.Duration
 }
 
-// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
-func NewReadChangesQuery(backend storage.ChangelogBackend, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
-	return &ReadChangesQuery{
-		backend:       backend,
-		logger:        logger,
-		encoder:       encoder,
-		horizonOffset: time.Duration(horizonOffset) * time.Minute,
+type ReadChangesQueryOption func(*ReadChangesQuery)
+
+func WithReadChangesQueryLogger(l logger.Logger) ReadChangesQueryOption {
+	return func(rq *ReadChangesQuery) {
+		rq.logger = l
 	}
+}
+
+func WithReadChangesQueryEncoder(e encoder.Encoder) ReadChangesQueryOption {
+	return func(rq *ReadChangesQuery) {
+		rq.encoder = e
+	}
+}
+
+func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption {
+	return func(rq *ReadChangesQuery) {
+		rq.horizonOffset = time.Duration(horizonOffset) * time.Minute
+	}
+}
+
+// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`
+func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
+	rq := &ReadChangesQuery{
+		backend:       backend,
+		logger:        logger.NewNoopLogger(),
+		encoder:       encoder.NewBase64Encoder(),
+		horizonOffset: time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+	}
+
+	for _, opt := range opts {
+		opt(rq)
+	}
+	return rq
 }
 
 // Execute the ReadChangesQuery, returning paginated `openfga.TupleChange`(s) and a possibly non-empty continuation token.
@@ -37,7 +64,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	}
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 
-	changes, contToken, err := q.backend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
+	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), req.GetType(), paginationOptions, q.horizonOffset)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1.ReadChangesResponse{

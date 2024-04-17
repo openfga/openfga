@@ -38,10 +38,23 @@ func NewMockOidcServer(issuerURL string) (*mockOidcServer, error) {
 	return mockServer, nil
 }
 
+func (server *mockOidcServer) NewAliasMockServer(aliasURL string) *mockOidcServer {
+	mockServer := &mockOidcServer{
+		issuerURL:  aliasURL,
+		privateKey: server.privateKey,
+		publicKey:  server.privateKey.Public().(*rsa.PublicKey),
+	}
+
+	mockServer.start()
+	return mockServer
+}
+
 func (server mockOidcServer) start() {
 	port := strings.Split(server.issuerURL, ":")[2]
 
-	http.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+	mockHandler := http.NewServeMux()
+
+	mockHandler.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewEncoder(w).Encode(map[string]string{
 			"issuer":   server.issuerURL,
 			"jwks_uri": fmt.Sprintf("%s/jwks.json", server.issuerURL),
@@ -51,7 +64,7 @@ func (server mockOidcServer) start() {
 		}
 	})
 
-	http.HandleFunc("/jwks.json", func(w http.ResponseWriter, r *http.Request) {
+	mockHandler.HandleFunc("/jwks.json", func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"keys": []map[string]string{
 				{
@@ -68,7 +81,7 @@ func (server mockOidcServer) start() {
 	})
 
 	go func() {
-		log.Fatal(http.ListenAndServe(":"+port, nil))
+		log.Fatal(http.ListenAndServe(":"+port, mockHandler))
 	}()
 }
 

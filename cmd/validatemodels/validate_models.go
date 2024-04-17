@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const (
@@ -107,16 +108,16 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 		// validate each store
 		for _, store := range stores {
-			latestModelID, err := db.FindLatestAuthorizationModelID(ctx, store.Id)
+			latestModel, err := db.FindLatestAuthorizationModel(ctx, store.GetId())
 			if err != nil {
-				fmt.Printf("no models in store %s \n", store.Id)
+				fmt.Printf("no models in store %s \n", store.GetId())
 			}
 
 			continuationTokenModels := ""
 
 			for {
 				// fetch a page of models for that store
-				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.Id, storage.PaginationOptions{
+				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.GetId(), storage.PaginationOptions{
 					PageSize: 100,
 					From:     continuationTokenModels,
 				})
@@ -129,9 +130,9 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 					_, err := typesystem.NewAndValidate(context.Background(), model)
 
 					validationResult := validationResult{
-						StoreID:       store.Id,
-						ModelID:       model.Id,
-						IsLatestModel: model.Id == latestModelID,
+						StoreID:       store.GetId(),
+						ModelID:       model.GetId(),
+						IsLatestModel: model.GetId() == latestModel.GetId(),
 					}
 
 					if err != nil {

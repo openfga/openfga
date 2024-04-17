@@ -2,61 +2,58 @@ package storagewrappers
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
 	store := ulid.Make().String()
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
-	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKey{}, []*openfgav1.TupleKey{
+	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKeyWithoutCondition{}, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
 	})
 	require.NoError(t, err)
 
-	// create a limited tuple reader that allows 1 concurrent read a time
+	// Create a limited tuple reader that allows 1 concurrent read a time.
 	limitedTupleReader := NewBoundedConcurrencyTupleReader(slowBackend, 1)
 
-	// do reads from 4 goroutines - each should be run serially. Should be >4 seconds
+	// Do reads from 4 goroutines - each should be run serially. Should be >4 seconds.
 	const numRoutine = 4
 
-	var wg sync.WaitGroup
-	wg.Add(numRoutine)
+	var wg errgroup.Group
 
 	start := time.Now()
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"))
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
 			Object:   "obj:1",
 			Relation: "viewer",
 		})
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.Read(context.Background(), store, nil)
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.ReadStartingWithUser(
 			context.Background(),
 			store,
@@ -67,11 +64,11 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 						Relation: "viewer",
 					},
 				}})
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	wg.Wait()
+	err = wg.Wait()
+	require.NoError(t, err)
 
 	end := time.Now()
 

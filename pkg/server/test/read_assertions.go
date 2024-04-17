@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -32,15 +32,14 @@ func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := testutils.CreateRandomString(10)
 
-			query := commands.NewReadAssertionsQuery(datastore, logger)
+			query := commands.NewReadAssertionsQuery(datastore)
 			test.request.StoreId = store
-			actualResponse, actualError := query.Execute(ctx, test.request.StoreId, test.request.AuthorizationModelId)
+			actualResponse, actualError := query.Execute(ctx, test.request.GetStoreId(), test.request.GetAuthorizationModelId())
 
 			if test.expectedError != nil {
 				require.ErrorIs(t, actualError, test.expectedError)

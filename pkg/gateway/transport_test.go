@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 func TestRPCTransport(t *testing.T) {
