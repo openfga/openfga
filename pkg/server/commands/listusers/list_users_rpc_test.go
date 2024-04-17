@@ -2089,7 +2089,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 			define parent: [folder]
 			define viewer: [user] or viewer from parent`
 
-	depthNotExceededTuples := []*openfgav1.TupleKey{
+	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:26", "viewer", "user:maria"),
 		tuple.NewTupleKey("folder:25", "parent", "folder:26"),
 		tuple.NewTupleKey("folder:24", "parent", "folder:25"),
@@ -2134,7 +2134,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 				},
 			},
 			model:            model,
-			tuples:           depthNotExceededTuples,
+			tuples:           tuples,
 			expectedErrorMsg: graph.ErrResolutionDepthExceeded.Error(),
 		},
 		{
@@ -2152,7 +2152,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 				},
 			},
 			model:         model,
-			tuples:        depthNotExceededTuples,
+			tuples:        tuples,
 			expectedUsers: []string{"user:maria"},
 		},
 	}
