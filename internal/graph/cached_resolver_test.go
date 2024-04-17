@@ -416,7 +416,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 	}
 }
 
-func TestResolveCheck_ConcurrentCachedReads(t *testing.T) {
+func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
