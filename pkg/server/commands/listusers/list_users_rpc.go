@@ -125,8 +125,8 @@ func (l *listUsersQuery) ListUsers(
 		exceptions = append(exceptions, tuple.StringToUserProto(foundException))
 	}
 	return &openfgav1.ListUsersResponse{
-		Users:      foundUsers,
-		Exceptions: exceptions,
+		Users:         foundUsers,
+		ExcludedUsers: exceptions,
 	}, nil
 }
 

@@ -2283,7 +2283,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			}
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
 
-			exceptUsers := resp.GetExceptions()
+			exceptUsers := resp.GetExcludedUsers()
 			actualCompare = make([]string, len(exceptUsers))
 			for i, u := range exceptUsers {
 				actualCompare[i] = tuple.UserProtoToString(u)
