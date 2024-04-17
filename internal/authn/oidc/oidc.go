@@ -7,22 +7,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/MicahParks/keyfunc"
 	"github.com/golang-jwt/jwt/v4"
-	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/openfga/openfga/internal/authn"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/internal/authn"
 )
 
 type RemoteOidcAuthenticator struct {
-	IssuerURL string
-	Audience  string
+	MainIssuer    string
+	IssuerAliases []string
+	Audience      string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -31,25 +35,30 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	jwkRefreshInterval, _ = time.ParseDuration("48h")
+	jwkRefreshInterval = 48 * time.Hour
 
-	errInvalidAudience = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
-	errInvalidClaims   = status.Error(codes.Code(openfgapb.AuthErrorCode_invalid_claims), "invalid claims")
-	errInvalidIssuer   = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
-	errInvalidSubject  = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
-	errInvalidToken    = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+	errInvalidAudience = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
+	errInvalidClaims   = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
+	errInvalidIssuer   = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
+	errInvalidSubject  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
+	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+
+	fetchJWKs = fetchJWK
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
+	client := retryablehttp.NewClient()
+	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
-		IssuerURL:  issuerURL,
-		Audience:   audience,
-		httpClient: retryablehttp.NewClient().StandardClient(),
+		MainIssuer:    mainIssuer,
+		IssuerAliases: issuerAliases,
+		Audience:      audience,
+		httpClient:    client.StandardClient(),
 	}
-	err := oidc.fetchKeys()
+	err := fetchJWKs(oidc)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +89,16 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
-	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
+	validIssuers := []string{
+		oidc.MainIssuer,
+	}
+	validIssuers = append(validIssuers, oidc.IssuerAliases...)
+
+	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
+		return claims.VerifyIssuer(issuer, true)
+	})
+
+	if !ok {
 		return nil, errInvalidIssuer
 	}
 
@@ -114,14 +132,13 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	return principal, nil
 }
 
-func (oidc *RemoteOidcAuthenticator) fetchKeys() error {
+func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 	oidcConfig, err := oidc.GetConfiguration()
 	if err != nil {
 		return fmt.Errorf("error fetching OIDC configuration: %w", err)
 	}
 
 	oidc.JwksURI = oidcConfig.JWKsURI
-
 	jwks, err := oidc.GetKeys()
 	if err != nil {
 		return fmt.Errorf("error fetching OIDC keys: %w", err)
@@ -144,7 +161,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 }
 
 func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, error) {
-	wellKnown := strings.TrimSuffix(oidc.IssuerURL, "/") + "/.well-known/openid-configuration"
+	wellKnown := strings.TrimSuffix(oidc.MainIssuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error forming request to get OIDC: %w", err)

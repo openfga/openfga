@@ -1,85 +1,460 @@
+// Package server contains the endpoint handlers.
 package server
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/gateway"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/gateway"
+
+	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
+	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
-
-	checkConcurrencyLimit = 100
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
 
+var (
+	dispatchCountHistogramName = "dispatch_count"
+
+	dispatchCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            dispatchCountHistogramName,
+		Help:                            "The number of dispatches required to resolve a query (e.g. Check).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
+	datastoreQueryCountHistogramName = "datastore_query_count"
+
+	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            datastoreQueryCountHistogramName,
+		Help:                            "The number of database queries required to resolve a query (e.g. Check or ListObjects).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
+	//request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms
+	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
+
+	requestDurationByQueryAndDispatchHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            requestDurationByQueryHistogramName,
+		Help:                            "[DEPRECATED - Use request_duration_ms instead] The request duration (in ms) labeled by method and buckets of datastore query counts and number of dispatches. This allows for reporting percentiles based on the number of datastore queries and number of dispatches required to resolve the request.",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
+
+	requestDurationHistogramName = "request_duration_ms"
+
+	requestDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            requestDurationHistogramName,
+		Help:                            "The request duration (in ms) labeled by method and buckets of datastore query counts and number of dispatches. This allows for reporting percentiles based on the number of datastore queries and number of dispatches required to resolve the request.",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
+)
+
 // A Server implements the OpenFGA service backend as both
 // a GRPC and HTTP server.
 type Server struct {
-	openfgapb.UnimplementedOpenFGAServiceServer
+	openfgav1.UnimplementedOpenFGAServiceServer
 
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
-	encoder   encoder.Encoder
-	transport gateway.Transport
-	config    *Config
+	logger                           logger.Logger
+	datastore                        storage.OpenFGADatastore
+	encoder                          encoder.Encoder
+	transport                        gateway.Transport
+	resolveNodeLimit                 uint32
+	resolveNodeBreadthLimit          uint32
+	changelogHorizonOffset           int
+	listObjectsDeadline              time.Duration
+	listObjectsMaxResults            uint32
+	maxConcurrentReadsForListObjects uint32
+	maxConcurrentReadsForCheck       uint32
+	maxAuthorizationModelSizeInBytes int
+	experimentals                    []ExperimentalFeatureFlag
+	serviceName                      string
+
+	typesystemResolver     typesystem.TypesystemResolverFunc
+	typesystemResolverStop func()
+
+	checkQueryCacheEnabled bool
+	checkQueryCacheLimit   uint32
+	checkQueryCacheTTL     time.Duration
+	cachedCheckResolver    *graph.CachedCheckResolver
+
+	checkResolver graph.CheckResolver
+
+	requestDurationByQueryHistogramBuckets         []uint
+	requestDurationByDispatchCountHistogramBuckets []uint
+
+	dispatchThrottlingCheckResolverEnabled   bool
+	dispatchThrottlingCheckResolverFrequency time.Duration
+	dispatchThrottlingThreshold              uint32
+
+	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 }
 
-type Dependencies struct {
-	Datastore    storage.OpenFGADatastore
-	Logger       logger.Logger
-	Transport    gateway.Transport
-	TokenEncoder encoder.Encoder
-}
+type OpenFGAServiceV1Option func(s *Server)
 
-type Config struct {
-	ResolveNodeLimit       uint32
-	ChangelogHorizonOffset int
-	ListObjectsDeadline    time.Duration
-	ListObjectsMaxResults  uint32
-	Experimentals          []ExperimentalFeatureFlag
-}
-
-// New creates a new Server which uses the supplied backends
-// for managing data.
-func New(dependencies *Dependencies, config *Config) *Server {
-
-	return &Server{
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+// WithDatastore passes a datastore to the Server.
+// You must call [storage.OpenFGADatastore.Close] on it after you have stopped using it.
+func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastore = ds
 	}
 }
 
-func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
-	storeID := req.GetStoreId()
+func WithLogger(l logger.Logger) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.logger = l
+	}
+}
+
+func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.encoder = encoder
+	}
+}
+
+// WithTransport sets the connection transport.
+func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.transport = t
+	}
+}
+
+// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check or ListObjects call will allow.
+// Thinking of a request as a tree of evaluations, this option controls
+// how many levels we will evaluate before throwing an error that the authorization model is too complex.
+func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.resolveNodeLimit = limit
+	}
+}
+
+// WithResolveNodeBreadthLimit sets a limit on the number of goroutines that can be created
+// when evaluating a subtree of a Check or ListObjects call.
+// Thinking of a Check request as a tree of evaluations, this option controls,
+// on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
+// If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
+// is deeply nested), or if you have lots of users for (object, relation) pairs,
+// you should set this option to be a low number (e.g. 1000)
+func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.resolveNodeBreadthLimit = limit
+	}
+}
+
+// WithChangelogHorizonOffset sets an offset (in minutes) from the current time.
+// Changes that occur after this offset will not be included in the response of ReadChanges API.
+// If your datastore is eventually consistent or if you have a database with replication delay, we recommend setting this (e.g. 1 minute)
+func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.changelogHorizonOffset = offset
+	}
+}
+
+// WithListObjectsDeadline affect the ListObjects API and Streamed ListObjects API only.
+// It sets the maximum amount of time that the server will spend gathering results.
+func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDeadline = deadline
+	}
+}
+
+// WithListObjectsMaxResults affects the ListObjects API only.
+// It sets the maximum number of results that this API will return.
+func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsMaxResults = limit
+	}
+}
+
+// WithMaxConcurrentReadsForListObjects sets a limit on the number of datastore reads that can be in flight for a given ListObjects call.
+// This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. if Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForListObjects = max
+	}
+}
+
+// WithMaxConcurrentReadsForCheck sets a limit on the number of datastore reads that can be in flight for a given Check call.
+// This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. if Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForCheck = max
+	}
+}
+
+func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.experimentals = experimentals
+	}
+}
+
+// WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
+// This cache is shared for all requests.
+// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL
+func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheEnabled = enabled
+	}
+}
+
+// WithCheckQueryCacheLimit sets the cache size limit (in items)
+// Needs WithCheckQueryCacheEnabled set to true.
+func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheLimit = limit
+	}
+}
+
+// WithCheckQueryCacheTTL sets the TTL of cached checks and list objects partial results
+// Needs WithCheckQueryCacheEnabled set to true.
+func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheTTL = ttl
+	}
+}
+
+// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		s.requestDurationByQueryHistogramBuckets = buckets
+	}
+}
+
+// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		s.requestDurationByDispatchCountHistogramBuckets = buckets
+	}
+}
+
+func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxAuthorizationModelSizeInBytes = size
+	}
+}
+
+// WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
+func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingCheckResolverEnabled = enabled
+	}
+}
+
+// WithDispatchThrottlingCheckResolverFrequency defines how frequent dispatch throttling will be evaluated.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingCheckResolverFrequency = frequency
+	}
+}
+
+// WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
+func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.dispatchThrottlingThreshold = threshold
+	}
+}
+
+// MustNewServerWithOpts see NewServerWithOpts
+func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
+	s, err := NewServerWithOpts(opts...)
+	if err != nil {
+		panic(fmt.Errorf("failed to construct the OpenFGA server: %w", err))
+	}
+
+	return s
+}
+
+// NewServerWithOpts returns a new server.
+// You must call Close on it after you are done using it.
+func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
+	s := &Server{
+		logger:                           logger.NewNoopLogger(),
+		encoder:                          encoder.NewBase64Encoder(),
+		transport:                        gateway.NewNoopTransport(),
+		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
+		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
+		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
+		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
+		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
+		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+
+		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
+		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
+		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
+		checkResolver:          nil,
+
+		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
+		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
+		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+
+		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultDispatchThrottlingEnabled,
+		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
+		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
+	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
+	s.checkResolver = cycleDetectionCheckResolver
+
+	localChecker := graph.NewLocalChecker(
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+	)
+
+	cycleDetectionCheckResolver.SetDelegate(localChecker)
+	localChecker.SetDelegate(cycleDetectionCheckResolver)
+
+	if s.dispatchThrottlingCheckResolverEnabled {
+		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
+			Frequency: s.dispatchThrottlingCheckResolverFrequency,
+			Threshold: s.dispatchThrottlingThreshold,
+		}
+
+		s.logger.Info("Enabling dispatch throttling",
+			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
+			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
+		)
+
+		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(dispatchThrottlingConfig)
+		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
+		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
+
+		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+	}
+
+	if s.checkQueryCacheEnabled {
+		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
+			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
+			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
+
+		cachedCheckResolver := graph.NewCachedCheckResolver(
+			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		)
+		s.cachedCheckResolver = cachedCheckResolver
+
+		cachedCheckResolver.SetDelegate(localChecker)
+		if s.dispatchThrottlingCheckResolver != nil {
+			s.dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		}
+	}
+
+	if s.datastore == nil {
+		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+	}
+
+	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
+	}
+
+	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+
+	return s, nil
+}
+
+// Close releases the server resources.
+func (s *Server) Close() {
+	if s.dispatchThrottlingCheckResolver != nil {
+		s.dispatchThrottlingCheckResolver.Close()
+	}
+
+	if s.cachedCheckResolver != nil {
+		s.cachedCheckResolver.Close()
+	}
+
+	if s.checkResolver != nil {
+		s.checkResolver.Close()
+	}
+
+	s.typesystemResolverStop()
+}
+
+func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	start := time.Now()
+
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
@@ -89,44 +464,100 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
-	modelID := req.GetAuthorizationModelId()
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
+	const methodName = "listobjects"
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  methodName,
+	})
+
+	storeID := req.GetStoreId()
+
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	q, err := commands.NewListObjectsQuery(
+		s.datastore,
+		s.checkResolver,
+		commands.WithLogger(s.logger),
+		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
+		return nil, serverErrors.NewInternalError("", err)
+	}
+
+	result, err := q.Execute(
+		typesystem.ContextWithTypesystem(ctx, typesys),
+		&openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			ContextualTuples:     req.GetContextualTuples(),
+			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
+			Type:                 targetObjectType,
+			Relation:             req.GetRelation(),
+			User:                 req.GetUser(),
+			Context:              req.GetContext(),
+		},
+	)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		if errors.Is(err, condition.ErrEvaluationFailed) {
+			return nil, serverErrors.ValidationError(err)
 		}
 
 		return nil, err
 	}
+	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
 
-	typesys := typesystem.New(model)
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreQueryCount)
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+	dispatchCount := float64(*result.ResolutionMetadata.DispatchCount)
 
-	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-	}
-	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
-		StoreId:              storeID,
-		ContextualTuples:     req.GetContextualTuples(),
-		AuthorizationModelId: modelID,
-		Type:                 targetObjectType,
-		Relation:             req.Relation,
-		User:                 req.User,
-	})
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
+
+	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	return &openfgav1.ListObjectsResponse{
+		Objects: result.Objects,
+	}, nil
 }
 
-func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
+func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	start := time.Now()
+
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
 		attribute.String("object_type", req.GetType()),
@@ -135,39 +566,87 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	const methodName = "streamedlistobjects"
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  methodName,
+	})
+
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return err
 	}
 
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	q, err := commands.NewListObjectsQuery(
+		s.datastore,
+		s.checkResolver,
+		commands.WithLogger(s.logger),
+		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
-		}
-
-		return serverErrors.HandleError("", err)
+		return serverErrors.NewInternalError("", err)
 	}
 
-	typesys := typesystem.New(model)
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+	resolutionMetadata, err := q.ExecuteStreamed(
+		typesystem.ContextWithTypesystem(ctx, typesys),
+		req,
+		srv,
+	)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return err
 	}
+	datastoreQueryCount := float64(*resolutionMetadata.DatastoreQueryCount)
 
-	req.AuthorizationModelId = modelID
-	return q.ExecuteStreamed(ctx, req, srv)
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreQueryCount)
+
+	dispatchCount := float64(*resolutionMetadata.DispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
+
+	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	return nil
 }
 
-func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
+func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -176,8 +655,22 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	))
 	defer span.End()
 
-	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
-	return q.Execute(ctx, &openfgapb.ReadRequest{
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "Read",
+	})
+
+	q := commands.NewReadQuery(s.datastore,
+		commands.WithReadQueryLogger(s.logger),
+		commands.WithReadQueryEncoder(s.encoder),
+	)
+	return q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),
 		TupleKey:          tk,
 		PageSize:          req.GetPageSize(),
@@ -185,27 +678,43 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	})
 }
 
-func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
+func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "Write",
+	})
+
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, s.logger)
-	return cmd.Execute(ctx, &openfgapb.WriteRequest{
+	cmd := commands.NewWriteCommand(
+		s.datastore,
+		commands.WithWriteCmdLogger(s.logger),
+	)
+	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
 }
 
-func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
+func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	start := time.Now()
+
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -214,32 +723,25 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	))
 	defer span.End()
 
-	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
-		return nil, serverErrors.InvalidCheckInput
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "Check",
+	})
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-		return nil, err
-	}
-
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	typesys := typesystem.New(model)
-
-	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
+	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 
@@ -250,75 +752,155 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx,
+		storagewrappers.NewBoundedConcurrencyTupleReader(
+			storagewrappers.NewCombinedTupleReader(
+				s.datastore,
+				req.GetContextualTuples().GetTupleKeys(),
+			),
+			s.maxConcurrentReadsForCheck,
+		),
+	)
 
-	checkResolver := graph.NewLocalChecker(
-		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit)
+	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
 
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
-		TupleKey:             req.GetTupleKey(),
-		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.config.ResolveNodeLimit,
-		},
+		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
+		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
+		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+		Context:              req.GetContext(),
+		RequestMetadata:      checkRequestMetadata,
 	})
 	if err != nil {
+		telemetry.TraceError(span, err)
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+
+		if errors.Is(err, condition.ErrEvaluationFailed) {
+			return nil, serverErrors.ValidationError(err)
 		}
 
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	res := &openfgapb.CheckResponse{
+	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+	const methodName = "check"
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(queryCount)
+
+	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
+	dispatchCount := float64(rawDispatchCount)
+
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
+
+	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
+	requestDurationByQueryAndDispatchHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	return res, nil
 }
 
-func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
+func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
-		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "Expand",
+	})
+
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
-	q := commands.NewExpandQuery(s.datastore, s.logger)
-	return q.Execute(ctx, &openfgapb.ExpandRequest{
+	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
+	return q.Execute(ctx, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tk,
 	})
 }
 
-func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
+func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel", trace.WithAttributes(
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
 
-	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "ReadAuthorizationModels",
+	})
+
+	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
+func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "WriteAuthorizationModel",
+	})
+
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
+		commands.WithWriteAuthModelLogger(s.logger),
+		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
+	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -329,29 +911,54 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	return res, nil
 }
 
-func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
+func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "ReadAuthorizationModels",
+	})
+
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
+		commands.WithReadAuthModelsQueryLogger(s.logger),
+		commands.WithReadAuthModelsQueryEncoder(s.encoder),
+	)
 	return c.Execute(ctx, req)
 }
 
-func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
+func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "WriteAssertions",
+	})
+
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
-	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
+	c := commands.NewWriteAssertionsCommand(s.datastore, commands.WithWriteAssertCmdLogger(s.logger))
+	res, err := c.Execute(ctx, &openfgav1.WriteAssertionsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Assertions:           req.GetAssertions(),
 	})
 	if err != nil {
@@ -363,33 +970,71 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	return res, nil
 }
 
-func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertionsRequest) (*openfgapb.ReadAssertionsResponse, error) {
+func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "ReadAssertions",
+	})
+
+	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
-	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
-	return q.Execute(ctx, req.GetStoreId(), modelID)
+
+	q := commands.NewReadAssertionsQuery(s.datastore, commands.WithReadAssertionsQueryLogger(s.logger))
+	return q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
 }
 
-func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
+func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadChangesQuery", trace.WithAttributes(
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
 	defer span.End()
 
-	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "ReadChanges",
+	})
+
+	q := commands.NewReadChangesQuery(s.datastore,
+		commands.WithReadChangesQueryLogger(s.logger),
+		commands.WithReadChangesQueryEncoder(s.encoder),
+		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
+	)
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequest) (*openfgapb.CreateStoreResponse, error) {
+func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
 	ctx, span := tracer.Start(ctx, "CreateStore")
 	defer span.End()
 
-	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "CreateStore",
+	})
+
+	c := commands.NewCreateStoreCommand(s.datastore, commands.WithCreateStoreCmdLogger(s.logger))
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -400,11 +1045,22 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequ
 	return res, nil
 }
 
-func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequest) (*openfgapb.DeleteStoreResponse, error) {
+func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
 	ctx, span := tracer.Start(ctx, "DeleteStore")
 	defer span.End()
 
-	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "DeleteStore",
+	})
+
+	cmd := commands.NewDeleteStoreCommand(s.datastore, commands.WithDeleteStoreCmdLogger(s.logger))
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -415,66 +1071,95 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequ
 	return res, nil
 }
 
-func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (*openfgapb.GetStoreResponse, error) {
+func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
 	ctx, span := tracer.Start(ctx, "GetStore")
 	defer span.End()
 
-	q := commands.NewGetStoreQuery(s.datastore, s.logger)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "GetStore",
+	})
+
+	q := commands.NewGetStoreQuery(s.datastore, commands.WithGetStoreQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresRequest) (*openfgapb.ListStoresResponse, error) {
+func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
 	ctx, span := tracer.Start(ctx, "ListStores")
 	defer span.End()
 
-	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "ListStores",
+	})
+
+	q := commands.NewListStoresQuery(s.datastore,
+		commands.WithListStoresQueryLogger(s.logger),
+		commands.WithListStoresQueryEncoder(s.encoder),
+	)
 	return q.Execute(ctx, req)
 }
 
-// IsReady reports whether this OpenFGA server instance is ready to accept
-// traffic.
+// IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
+// for your datastore.
 func (s *Server) IsReady(ctx context.Context) (bool, error) {
-
 	// for now we only depend on the datastore being ready, but in the future
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.
-	return s.datastore.IsReady(ctx)
+
+	status, err := s.datastore.IsReady(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if status.IsReady {
+		return true, nil
+	}
+
+	s.logger.WarnWithContext(ctx, "datastore is not ready", zap.Any("status", status.Message))
+	return false, nil
 }
 
-// resolveAuthorizationModelID takes a modelID. If it is empty, it will find
-// and return the latest authorization modelID. If is not empty, it will
-// validate it and return it.
-//
-// This allows caching of types. If the user inserts a new authorization model
-// and doesn't provide this field (which should be rate limited more
-// aggressively) the in-flight requests won't be affected and newer calls will
-// use the updated authorization model.
-func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
-	ctx, span := tracer.Start(ctx, "resolveAuthorizationModelID")
+// resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and
+// it sets some response metadata based on the model resolution.
+func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
+	ctx, span := tracer.Start(ctx, "resolveTypesystem")
 	defer span.End()
 
-	defer func() {
-		span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(modelID)})
-		grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, modelID)
-		_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
-	}()
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			if modelID == "" {
+				return nil, serverErrors.LatestAuthorizationModelNotFound(storeID)
+			}
 
-	var err error
-	if modelID != "" {
-		if _, err := ulid.Parse(modelID); err != nil {
-			return "", serverErrors.AuthorizationModelNotFound(modelID)
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 
-		return modelID, nil
-	}
-
-	if modelID, err = s.datastore.FindLatestAuthorizationModelID(ctx, store); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return "", serverErrors.LatestAuthorizationModelNotFound(store)
+		if errors.Is(err, typesystem.ErrInvalidModel) {
+			return nil, serverErrors.ValidationError(err)
 		}
 
-		return "", serverErrors.HandleError("", err)
+		return nil, serverErrors.HandleError("", err)
 	}
 
-	return modelID, nil
+	resolvedModelID := typesys.GetAuthorizationModelID()
+
+	span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
+	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
+	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
+
+	return typesys, nil
 }

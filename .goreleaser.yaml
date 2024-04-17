@@ -2,11 +2,10 @@ project_name: openfga
 
 before:
   hooks:
-    - make install-tools
-    - go generate ./...
+    - make generate-mocks
 
 builds:
-  - 
+  -
     main: ./cmd/openfga
     binary: openfga
     env:
@@ -20,6 +19,7 @@ builds:
       - "-X github.com/openfga/openfga/internal/build.Version=v{{ .Version }}"
       - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
       - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
+      - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
 
 dockers:
   - goos: linux
@@ -119,11 +119,9 @@ docker_signs:
     - "--yes" # needed on cosign 2.0.0+
 
 brews:
-  - tap:
+  - repository:
       owner: openfga
       name: homebrew-tap
-      pull_request:
-        enabled: true
     homepage: "https://openfga.dev/"
     description: "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar."
     license: "Apache-2.0"
@@ -147,8 +145,7 @@ brews:
       system "#{bin}/openfga version"
 
 archives:
-  - rlcp: true
-    files:
+  - files:
       - assets
 
 checksum:

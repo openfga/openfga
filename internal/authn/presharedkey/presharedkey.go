@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+
 	"github.com/openfga/openfga/internal/authn"
 )
 
@@ -27,7 +28,7 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 }
 
 func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.AuthClaims, error) {
-	authHeader, err := grpc_auth.AuthFromMD(ctx, "Bearer")
+	authHeader, err := grpcauth.AuthFromMD(ctx, "Bearer")
 	if err != nil {
 		return nil, authn.ErrMissingBearerToken
 	}

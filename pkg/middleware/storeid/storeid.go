@@ -17,13 +17,17 @@ type ctxKey string
 const (
 	storeIDCtxKey ctxKey = "store-id-context-key"
 	storeIDKey    string = "store_id"
-	storeIDHeader string = "openfga-store-id"
+
+	// StoreIDHeader represents the HTTP header name used to
+	// specify the OpenFGA store identifier in API requests.
+	StoreIDHeader string = "Openfga-Store-Id"
 )
 
 type storeidHandle struct {
 	storeid string
 }
 
+// StoreIDFromContext retrieves the store ID stored in the provided context.
 func StoreIDFromContext(ctx context.Context) (string, bool) {
 	if c := ctx.Value(storeIDCtxKey); c != nil {
 		handle := c.(*storeidHandle)
@@ -37,8 +41,8 @@ func contextWithHandle(ctx context.Context) context.Context {
 	return context.WithValue(ctx, storeIDCtxKey, &storeidHandle{})
 }
 
+// SetStoreIDInContext sets the store ID in the provided context based on information from the request.
 func SetStoreIDInContext(ctx context.Context, req interface{}) {
-
 	handle := ctx.Value(storeIDCtxKey)
 	if handle == nil {
 		return
@@ -71,11 +75,14 @@ type reporter struct {
 	ctx context.Context
 }
 
+// PostCall is a placeholder for handling actions after a gRPC call.
 func (r *reporter) PostCall(error, time.Duration) {}
 
+// PostMsgSend is a placeholder for handling actions after sending a message in streaming requests.
 func (r *reporter) PostMsgSend(interface{}, error, time.Duration) {}
 
-func (r *reporter) PostMsgReceive(msg interface{}, err error, _ time.Duration) {
+// PostMsgReceive is invoked after receiving a message in streaming requests.
+func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 	if m, ok := msg.(hasGetStoreID); ok {
 		storeID := m.GetStoreId()
 
@@ -84,13 +91,12 @@ func (r *reporter) PostMsgReceive(msg interface{}, err error, _ time.Duration) {
 
 		grpc_ctxtags.Extract(r.ctx).Set(storeIDKey, storeID)
 
-		_ = grpc.SetHeader(r.ctx, metadata.Pairs(storeIDHeader, storeID))
+		_ = grpc.SetHeader(r.ctx, metadata.Pairs(StoreIDHeader, storeID))
 	}
 }
 
 func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
-
 		ctx = contextWithHandle(ctx)
 
 		r := reporter{ctx}

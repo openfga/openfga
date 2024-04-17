@@ -49,7 +49,7 @@ jobs:
     environment: AWSLoadTest
     steps:
       - name: Checkout code
-        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
         with:
           ref: ${{ github.event.inputs.ref }}
 
@@ -58,29 +58,29 @@ jobs:
         run: echo "sha_short=$(git rev-parse --short=8 ${{ github.event.inputs.ref }})" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4b4e9c3e2d4531116a6f8ba8e71fc6e2cb6e6c8c # v2.5.0
+        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
 
       - name: Set AWS Credentials
-        uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2.0.0
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to AWS ECR
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # v2.1.0
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20 # v3.1.0
         with:
           registry: ${{ secrets.OPENFGA_REGISTRY }}
 
       - name: Build, tag, and push image to AWS ECR
         timeout-minutes: 10
-        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671 # v4.0.0
+        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
         with:
           context: .
           push: true
           tags: ${{ secrets.OPENFGA_ECR_URI }}:${{ steps.vars.outputs.sha_short }}
 
       - name: helm setup
-        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        uses: koslib/helm-eks-action@1a33950b71043864ef7cdd7bfad8d45ec856c21e # april 5, 2023
         with:
           command: |
             aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.OPENFGA_EKS_CLUSTER }} --role-arn ${{ secrets.AWS_IAM_ROLE }} --kubeconfig ./kubeconfig
@@ -99,7 +99,7 @@ jobs:
 #              --username github-action
 
       - name: helm deploy
-        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        uses: koslib/helm-eks-action@1a33950b71043864ef7cdd7bfad8d45ec856c21e # april 5, 2023
         env:
           KUBE_CONFIG_DATA: ${{ env.KUBE_CONFIG_DATA }}
         with:
@@ -123,7 +123,7 @@ jobs:
               --set openfga.resources.requests.memory=1Gi,openfga.resources.requests.cpu=500m
 
       - name: helm destroy
-        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        uses: koslib/helm-eks-action@1a33950b71043864ef7cdd7bfad8d45ec856c21e # april 5, 2023
         with:
           command: |
             helm uninstall openfgabench-${{ steps.vars.outputs.sha_short }}

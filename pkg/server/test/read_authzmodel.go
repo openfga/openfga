@@ -4,38 +4,38 @@ import (
 	"context"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/pkg/logger"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	var tests = []struct {
 		name    string
 		storeID string
-		model   *openfgapb.AuthorizationModel
+		model   *openfgav1.AuthorizationModel
 	}{
 		{
 			name:    "write_and_read_a_1.0_model",
 			storeID: ulid.Make().String(),
-			model: &openfgapb.AuthorizationModel{
+			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "user",
 					},
 					{
 						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
+						Relations: map[string]*openfgav1.Userset{
 							"reader": {
-								Userset: &openfgapb.Userset_This{},
+								Userset: &openfgav1.Userset_This{},
 							},
 						},
 					},
@@ -45,35 +45,34 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 		{
 			name:    "write_and_read_an_1.1_model",
 			storeID: ulid.Make().String(),
-			model: &openfgapb.AuthorizationModel{
+			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type document
-				  relations
-				    define reader: [user] as self
-				`),
+type document
+  relations
+	define reader: [user]`).GetTypeDefinitions(),
 			},
 		},
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := datastore.WriteAuthorizationModel(ctx, test.storeID, test.model)
 			require.NoError(t, err)
 
-			resp, err := commands.NewReadAuthorizationModelQuery(datastore, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
+			resp, err := commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: test.storeID,
-				Id:      test.model.Id,
+				Id:      test.model.GetId(),
 			})
 			require.NoError(t, err)
-			require.Equal(t, test.model.Id, resp.GetAuthorizationModel().GetId())
-			require.Equal(t, test.model.SchemaVersion, resp.GetAuthorizationModel().GetSchemaVersion())
+			require.Equal(t, test.model.GetId(), resp.GetAuthorizationModel().GetId())
+			require.Equal(t, test.model.GetSchemaVersion(), resp.GetAuthorizationModel().GetSchemaVersion())
 		})
 	}
 }
@@ -81,14 +80,14 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 	type readAuthorizationModelQueryTest struct {
 		_name         string
-		request       *openfgapb.ReadAuthorizationModelRequest
+		request       *openfgav1.ReadAuthorizationModelRequest
 		expectedError error
 	}
 
 	var tests = []readAuthorizationModelQueryTest{
 		{
 			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
-			request: &openfgapb.ReadAuthorizationModelRequest{
+			request: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 				Id:      "123",
 			},
@@ -97,36 +96,33 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			_, err := commands.NewReadAuthorizationModelQuery(datastore, logger).Execute(ctx, test.request)
+			_, err := commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, test.request)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
 }
 
 func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
-	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 	storeID := ulid.Make().String()
 
 	t.Run("writing_without_any_type_definitions_does_not_write_anything", func(t *testing.T) {
-		model := &openfgapb.AuthorizationModel{
+		model := &openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{},
+			TypeDefinitions: []*openfgav1.TypeDefinition{},
 		}
 
 		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
-		require.NoError(err)
+		require.NoError(t, err)
 
-		_, err = commands.NewReadAuthorizationModelQuery(datastore, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
+		_, err = commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
 			StoreId: storeID,
-			Id:      model.Id,
+			Id:      model.GetId(),
 		})
-		require.ErrorContains(err, serverErrors.AuthorizationModelNotFound(model.Id).Error())
+		require.ErrorContains(t, err, serverErrors.AuthorizationModelNotFound(model.GetId()).Error())
 	})
 }

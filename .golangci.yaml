@@ -1,6 +1,9 @@
 run:
   timeout: 3m
   modules-download-mode: readonly
+  allow-parallel-runners: true
+  build-tags:
+    - docker
 
 linters:
   enable:
@@ -8,3 +11,50 @@ linters:
     - gofmt
     - goimports
     - stylecheck
+    - importas
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - mirror
+    - misspell
+    - staticcheck
+    - tagalign
+    - testifylint
+    - typecheck
+    - unused
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+    - protogetter
+    # TODO enable https://github.com/openfga/openfga/issues/598
+    # - bodyclose
+    # - contextcheck
+    # - exhaustive
+    # - errorlint
+    # - gochecknoglobals
+    # - gocritic
+    # - godot
+    # - gosec
+    # - noctx
+    # - inamedparam
+    # - perfsprint
+    # - prealloc
+    # - tparallel
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
+  goimports:
+    local-prefixes: "github.com/openfga/openfga"
+  importas:
+    # Do not allow unaliased imports of aliased packages.
+    no-unaliased: true
+    # Do not allow non-required aliases.
+    no-extra-aliases: false
+    alias:
+      - pkg: github.com/openfga/api/proto/openfga/v1
+        alias: openfgav1

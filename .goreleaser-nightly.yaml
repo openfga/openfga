@@ -2,8 +2,7 @@ project_name: openfga-nightly
 
 before:
   hooks:
-    - make install-tools
-    - go generate ./...
+    - make generate-mocks
 
 builds:
   - main: ./cmd/openfga
@@ -19,6 +18,7 @@ builds:
       - "-X github.com/openfga/openfga/internal/build.Version=nightly"
       - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
       - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
+      - "-X github.com/openfga/openfga/internal/build.ProjectName={{.ProjectName}}"
 
 # Do not make github release
 release:

@@ -1,0 +1,18 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^(https?)://localhost"
+    },
+    {
+      "pattern": "^https://github.com/openfga/rfcs/blob"
+    },
+    {
+      "pattern": "https://app.fossa.com/api/projects/git\%2Bgithub.com\%2Fopenfga%2Fopenfga.svg?type=shield"
+    }
+],
+  "aliveStatusCodes": [
+      0,
+      200,
+      429
+  ]
+}

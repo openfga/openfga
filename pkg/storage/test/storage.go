@@ -1,50 +1,55 @@
 package test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 var (
 	cmpOpts = []cmp.Option{
-		cmpopts.IgnoreUnexported(
-			openfgapb.AuthorizationModel{},
-			openfgapb.TypeDefinition{},
-			openfgapb.Userset{},
-			openfgapb.Userset_This{},
-			openfgapb.DirectUserset{},
-			openfgapb.TupleKey{},
-			openfgapb.Tuple{},
-			openfgapb.TupleChange{},
-			openfgapb.Assertion{},
-		),
-		cmpopts.IgnoreFields(openfgapb.Tuple{}, "Timestamp"),
-		cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp"),
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
 		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
 	}
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
-	// tuples
+	t.Run("TestDatastoreIsReady", func(t *testing.T) {
+		status, err := ds.IsReady(context.Background())
+		require.NoError(t, err)
+		require.True(t, status.IsReady)
+	})
+	// Tuples.
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
-	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
-	t.Run("TestListObjectsByType", func(t *testing.T) { ListObjectsByTypeTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 
-	// authorization models
+	// TODO I suspect there is overlap in test scenarios. Consolidate them into one
+	t.Run("ReadPageTestCorrectnessOfContinuationTokens", func(t *testing.T) { ReadPageTestCorrectnessOfContinuationTokens(t, ds) })
+	t.Run("ReadPageTestCorrectnessOfContinuationTokensV2", func(t *testing.T) { ReadPageTestCorrectnessOfContinuationTokensV2(t, ds) })
+
+	// TODO Consolidate them into one, since both Read and ReadPage should respect the same set of filters
+	t.Run("ReadTestCorrectnessOfTuples", func(t *testing.T) { ReadTestCorrectnessOfTuples(t, ds) })
+	t.Run("ReadPageTestCorrectnessOfTuples", func(t *testing.T) { ReadPageTestCorrectnessOfTuples(t, ds) })
+
+	// Authorization models.
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, ds) })
-	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, ds) })
+	t.Run("TestFindLatestAuthorizationModel", func(t *testing.T) { FindLatestAuthorizationModelTest(t, ds) })
 
-	// assertions
+	// Assertions.
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, ds) })
 
-	// stores
+	// Stores.
 	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
 }

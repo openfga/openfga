@@ -5,42 +5,40 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/openfga/openfga/pkg/logger"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	type getStoreQueryTest struct {
 		_name            string
-		request          *openfgapb.GetStoreRequest
-		expectedResponse *openfgapb.GetStoreResponse
+		request          *openfgav1.GetStoreRequest
+		expectedResponse *openfgav1.GetStoreResponse
 		err              error
 	}
 
 	var tests = []getStoreQueryTest{
 		{
 			_name:   "ReturnsNotFound",
-			request: &openfgapb.GetStoreRequest{StoreId: "non-existent store"},
+			request: &openfgav1.GetStoreRequest{StoreId: "non-existent store"},
 			err:     serverErrors.StoreIDNotFound,
 		},
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStoreFields := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.GetStoreResponse{}), "created_at", "updated_at", "id")
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-
-			query := commands.NewGetStoreQuery(datastore, logger)
+			query := commands.NewGetStoreQuery(datastore)
 			resp, err := query.Execute(ctx, test.request)
 
 			if test.err != nil {
@@ -48,7 +46,7 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.Nil(t, resp)
 			} else {
 				require.NoError(t, err)
-				if diff := cmp.Diff(test.expectedResponse, resp, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
+				if diff := cmp.Diff(test.expectedResponse, resp, ignoreStoreFields, protocmp.Transform()); diff != "" {
 					t.Errorf("store mismatch (-want +got):\n%s", diff)
 				}
 			}
@@ -58,27 +56,24 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	store := testutils.CreateRandomString(10)
-	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore)
 
-	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: store})
+	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgav1.CreateStoreRequest{Name: store})
 	require.NoError(t, err)
 
-	query := commands.NewGetStoreQuery(datastore, logger)
-	actualResponse, actualError := query.Execute(ctx, &openfgapb.GetStoreRequest{StoreId: createStoreResponse.Id})
+	query := commands.NewGetStoreQuery(datastore)
+	actualResponse, actualError := query.Execute(ctx, &openfgav1.GetStoreRequest{StoreId: createStoreResponse.GetId()})
 	require.NoError(t, actualError)
 
-	expectedResponse := &openfgapb.GetStoreResponse{
-		Id:   createStoreResponse.Id,
+	expectedResponse := &openfgav1.GetStoreResponse{
+		Id:   createStoreResponse.GetId(),
 		Name: store,
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
-
-	if diff := cmp.Diff(expectedResponse, actualResponse, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
+	ignoreStoreFields := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.GetStoreResponse{}), "created_at", "updated_at", "id")
+	if diff := cmp.Diff(expectedResponse, actualResponse, ignoreStoreFields, protocmp.Transform()); diff != "" {
 		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }

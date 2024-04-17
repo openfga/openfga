@@ -5,46 +5,44 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/pkg/logger"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	type createStoreTestSettings struct {
 		name    string
-		request *openfgapb.CreateStoreRequest
+		request *openfgav1.CreateStoreRequest
 	}
 
 	var tests = []createStoreTestSettings{
 		{
 			name: "CreateStoreSucceeds",
-			request: &openfgapb.CreateStoreRequest{
+			request: &openfgav1.CreateStoreRequest{
 				Name: testutils.CreateRandomString(10),
 			},
 		},
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
-			resp, err := commands.NewCreateStoreCommand(datastore, logger).Execute(ctx, test.request)
+			resp, err := commands.NewCreateStoreCommand(datastore).Execute(ctx, test.request)
 			require.NoError(t, err)
 
-			require.Equal(t, test.request.Name, resp.Name)
+			require.Equal(t, test.request.GetName(), resp.GetName())
 
-			_, err = ulid.Parse(resp.Id)
+			_, err = ulid.Parse(resp.GetId())
 			require.NoError(t, err)
 
-			require.NotEmpty(t, resp.CreatedAt)
-			require.NotEmpty(t, resp.UpdatedAt)
-			require.Equal(t, resp.CreatedAt, resp.UpdatedAt)
+			require.NotEmpty(t, resp.GetCreatedAt())
+			require.NotEmpty(t, resp.GetUpdatedAt())
+			require.Equal(t, resp.GetCreatedAt(), resp.GetUpdatedAt())
 		})
 	}
 }

@@ -15,6 +15,9 @@ jobs:
       contents: write
       packages: write # publish a new github release
       id-token: write # needed for keyless signing
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+      subjects-as-file: ${{ steps.hashes.outputs.handle }}
     steps:
       - name: Extract Version from Tag
         id: tag_name
@@ -23,28 +26,30 @@ jobs:
         shell: bash
 
       - name: Checkout
-        uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
           check-latest: true
 
       - name: Login to Docker Hub
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # v2.1.0
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20 # v3.1.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: sigstore/cosign-installer@dd6b2e2b610a11fd73dd187a43d57cc1394e35f9 # v3.0.5
-      - uses: anchore/sbom-action/download-syft@422cb34a0f8b599678c41b21163ea6088edb2624 # v0.14.1
+      - uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
+
+      - uses: anchore/sbom-action/download-syft@ab5d7b5f48981941c4c5d6bf33aeb98fe3bae38c # v0.15.10
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@f82d6c1c344bcacabba2c841718984797f664a6b # v4.2.0
+        id: goreleaser
+        uses: goreleaser/goreleaser-action@7ec5c2b0c6cdda6e8bbb49444bc797dd33d74dd8 # v5.0.0
         with:
           distribution: goreleaser
           version: latest
@@ -53,9 +58,142 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GORELEASER_GITHUB_TOKEN }}
 
       - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@579f64ca0abced29dbbc44ab4c6a0b9e33ab3588 # v3.4.1
+        uses: peter-evans/dockerhub-description@e98e4d1628a5f3be2be7c231e50981aee98723ae # v4.0.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: openfga/openfga
           short-description: ${{ github.event.repository.description }}
+
+      - name: Generate binary hashes
+        id: binary
+        env:
+          ARTIFACTS: "${{ steps.goreleaser.outputs.artifacts }}"
+        run: |
+          set -euo pipefail
+          hashes=$(echo $ARTIFACTS | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
+          echo $hashes > digests.txt
+
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@c747fe7769adf3656dc7d588b161cb614d7abfee # pin@v1.10.0
+        id: hashes
+        with:
+          path: digests.txt
+
+      - name: Image digest
+        id: image
+        env:
+          ARTIFACTS: "${{ steps.goreleaser.outputs.artifacts }}"
+        run: |
+          set -euo pipefail
+          artifact=$(echo "$ARTIFACTS" | jq -r '[.[] | select (.type=="Docker Manifest")][0]')
+          image=$(echo "$artifact" | jq -r '.path' | cut -d':' -f1)
+          digest=$(echo "$artifact" | jq -r '.extra.Digest')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  snyk:
+    needs: [ goreleaser ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # needed for uploading results to GitHub Code Scanning
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        continue-on-error: true
+        uses: snyk/actions/docker@8349f9043a8b7f0f3ee8885bf28f0b388d2446e8 # pin@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: openfga/openfga
+          args: --file=Dockerfile
+
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@df5a14dc28094dc936e103b37d749c6628682b60 # pin@v2
+        with:
+          sarif_file: snyk.sarif
+
+  binary-provenance:
+    needs: [ goreleaser ]
+    permissions:
+      actions: read # To read the workflow path.
+      id-token: write # To sign the provenance.
+      contents: write # To add assets to a release.
+
+    # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.10.0
+    with:
+      base64-subjects-as-file: "${{ needs.goreleaser.outputs.subjects-as-file }}"
+      provenance-name: "openfga.intoto.jsonl"
+      upload-assets: true # upload to a new release
+
+  image-provenance:
+    needs: [ goreleaser ]
+    permissions:
+      actions: read
+      id-token: write
+      packages: write
+
+    # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.10.0
+    with:
+      image: openfga/openfga
+      digest: ${{ needs.goreleaser.outputs.digest }}
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  verification-with-slsa-verifier:
+    needs: [ goreleaser, binary-provenance ]
+    runs-on: ubuntu-latest
+    permissions: read-all
+    steps:
+      - name: Install the verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@eb7007070baa04976cb9e25a0d8034f8db030a86 # pin@v2.5.1
+
+      - name: Download assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROVENANCE: "${{ needs.binary-provenance.outputs.provenance-name }}"
+        run: |
+          set -euo pipefail
+          gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" \
+            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom"
+
+      - name: Verify assets
+        env:
+          PROVENANCE: "${{ needs.binary-provenance.outputs.provenance-name }}"
+        run: |
+          slsa-verifier verify-artifact \
+            --provenance-path "$PROVENANCE" \
+            --source-uri "github.com/$GITHUB_REPOSITORY" \
+            --source-tag "$GITHUB_REF_NAME" \
+            *.tar.gz *.tar.gz.sbom
+
+  verification-with-cosign:
+    needs: [ goreleaser, image-provenance ]
+    runs-on: ubuntu-latest
+    permissions: read-all
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20 # v3.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
+
+      - name: Verify image
+        env:
+          IMAGE: openfga/openfga
+          DIGEST: ${{ needs.goreleaser.outputs.digest }}
+        run: |
+          cosign verify-attestation \
+             --type slsaprovenance \
+             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+             --certificate-identity-regexp '^https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v[0-9]+.[0-9]+.[0-9]+$' \
+             $IMAGE@$DIGEST
+
+  # homebrew bump happens automagically after a few hours, see https://github.com/Homebrew/homebrew-core/commits/master/Formula/o/openfga.rb

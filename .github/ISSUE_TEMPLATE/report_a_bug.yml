@@ -1,0 +1,144 @@
+name: 🐛 Report a bug
+description: Have you found a bug or issue? Create a bug report for OpenFGA
+labels: [ "bug" ]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: markdown
+    attributes:
+      value: |
+        **Please do not report security vulnerabilities here**. Use https://github.com/openfga/openfga/security/advisories/new or send us an email at security@openfga.dev instead.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have looked into the [README](https://github.com/openfga/openfga/blob/main/README.md) and have not found a suitable solution or answer.
+          required: true
+        - label: I have looked into the [documentation](https://openfga.dev/docs) and have not found a suitable solution or answer.
+          required: true
+        - label: I have searched the [issues](https://github.com/openfga/openfga/issues) and have not found a suitable solution or answer.
+          required: true
+        - label: I have upgraded to the [latest version](https://github.com/openfga/openfga/releases/latest) of OpenFGA and the issue still persists.
+          required: true
+        - label: I have searched the [OpenFGA Community](https://openfga.dev/community) and have not found a suitable solution or answer.
+          required: true
+        - label: I agree to the terms within the [OpenFGA Code of Conduct](https://github.com/openfga/.github/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Provide a clear and concise description of the issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expectation
+    attributes:
+      label: Expectation
+      description: Tell us about the behavior you expected to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Detail the steps taken to reproduce this error and, ideally, share a repo of a minimal reproducible example. State whether this issue can be reproduced consistently or if it is intermittent.
+      placeholder: |
+        1. Given...
+        2. When...
+        3. Then...
+    validations:
+      required: true
+
+  - type: textarea
+    id: store-data
+    attributes:
+      label: Store data
+      description: If applicable, provide information about your authorization model, tuples, and the Check or ListObjects calls you're making.
+      value: |
+        ```yaml
+        model_file: |
+          model
+            schema 1.1
+          type user
+          type organization
+            relations
+              define member: [user]
+        tuples:
+          - user: user:anne
+            relation: member
+            object: organization:openfga
+          - user: user:bob
+            relation: member
+            object: organization:openfga
+        tests: # remove this if not a bug in Check or ListObjects API
+          - name: test-1
+            check:
+              - user: user:anne
+                object: organization:openfga
+                assertions:
+                  member: true
+            list_objects:
+              - user: user:anne
+                type: organization
+                assertions:
+                  member:
+                    - organization:openfga
+        ```
+    validations:
+      required: false
+
+  - type: input
+    id: environment-openfga-version
+    attributes:
+      label: OpenFGA version
+      description: The version of OpenFGA you're using.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment-openfga-runnable
+    attributes:
+      label: How are you running OpenFGA?
+      options:
+        - As a binary
+        - In Docker
+        - In Kubernetes
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment-datastore-version
+    attributes:
+      label: What datastore are you using?
+      options:
+        - In-Memory
+        - MySQL
+        - Postgres
+    validations:
+      required: true
+
+  - type: input
+    id: environment-openfga-flags
+    attributes:
+      label: OpenFGA Flags
+      description: Are you running OpenFGA with any configuration overrides or with any of the flags mentioned in `./openfga run --help`?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Do you have any logs or traces that could help us debug the problem?
+    validations:
+      required: false

@@ -1,3 +1,4 @@
+// Package tuple contains code to manipulate tuples and errors related to tuples.
 package tuple
 
 import (
@@ -5,8 +6,21 @@ import (
 	"regexp"
 	"strings"
 
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 )
+
+type TupleWithCondition interface {
+	TupleWithoutCondition
+	GetCondition() *openfgav1.RelationshipCondition
+}
+
+type TupleWithoutCondition interface {
+	GetUser() string
+	GetObject() string
+	GetRelation() string
+	String() string
+}
 
 type UserType string
 
@@ -24,18 +38,120 @@ var (
 	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
-func NewTupleKey(object, relation, user string) *openfgapb.TupleKey {
-	return &openfgapb.TupleKey{
+func ConvertCheckRequestTupleKeyToTupleKey(tk *openfgav1.CheckRequestTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func ConvertAssertionTupleKeyToTupleKey(tk *openfgav1.AssertionTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func ConvertReadRequestTupleKeyToTupleKey(tk *openfgav1.ReadRequestTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func TupleKeyToTupleKeyWithoutCondition(tk *openfgav1.TupleKey) *openfgav1.TupleKeyWithoutCondition {
+	return &openfgav1.TupleKeyWithoutCondition{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func TupleKeyWithoutConditionToTupleKey(tk *openfgav1.TupleKeyWithoutCondition) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func TupleKeysWithoutConditionToTupleKeys(tks ...*openfgav1.TupleKeyWithoutCondition) []*openfgav1.TupleKey {
+	converted := make([]*openfgav1.TupleKey, 0, len(tks))
+	for _, tk := range tks {
+		converted = append(converted, TupleKeyWithoutConditionToTupleKey(tk))
+	}
+
+	return converted
+}
+
+func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
 		Object:   object,
 		Relation: relation,
 		User:     user,
 	}
 }
 
+func NewTupleKeyWithCondition(
+	object, relation, user, conditionName string,
+	context *structpb.Struct,
+) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:    object,
+		Relation:  relation,
+		User:      user,
+		Condition: NewRelationshipCondition(conditionName, context),
+	}
+}
+
+func NewRelationshipCondition(name string, context *structpb.Struct) *openfgav1.RelationshipCondition {
+	if name == "" {
+		return nil
+	}
+
+	if context == nil {
+		return &openfgav1.RelationshipCondition{
+			Name:    name,
+			Context: &structpb.Struct{},
+		}
+	}
+
+	return &openfgav1.RelationshipCondition{
+		Name:    name,
+		Context: context,
+	}
+}
+
+func NewAssertionTupleKey(object, relation, user string) *openfgav1.AssertionTupleKey {
+	return &openfgav1.AssertionTupleKey{
+		Object:   object,
+		Relation: relation,
+		User:     user,
+	}
+}
+
+func NewCheckRequestTupleKey(object, relation, user string) *openfgav1.CheckRequestTupleKey {
+	return &openfgav1.CheckRequestTupleKey{
+		Object:   object,
+		Relation: relation,
+		User:     user,
+	}
+}
+
+func NewExpandRequestTupleKey(object, relation string) *openfgav1.ExpandRequestTupleKey {
+	return &openfgav1.ExpandRequestTupleKey{
+		Object:   object,
+		Relation: relation,
+	}
+}
+
 // ObjectKey returns the canonical key for the provided Object. The ObjectKey of an object
 // is the string 'objectType:objectId'.
-func ObjectKey(obj *openfgapb.Object) string {
-	return fmt.Sprintf("%s:%s", obj.Type, obj.Id)
+func ObjectKey(obj *openfgav1.Object) string {
+	return BuildObject(obj.GetType(), obj.GetId())
 }
 
 // SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string
@@ -56,7 +172,7 @@ func BuildObject(objectType, objectID string) string {
 }
 
 // GetObjectRelationAsString returns a string like "object#relation". If there is no relation it returns "object"
-func GetObjectRelationAsString(objectRelation *openfgapb.ObjectRelation) string {
+func GetObjectRelationAsString(objectRelation *openfgav1.ObjectRelation) string {
 	if objectRelation.GetRelation() != "" {
 		return fmt.Sprintf("%s#%s", objectRelation.GetObject(), objectRelation.GetRelation())
 	}
@@ -111,8 +227,14 @@ func GetUserTypeFromUser(user string) UserType {
 
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters)
-func TupleKeyToString(tk *openfgapb.TupleKey) string {
+func TupleKeyToString(tk TupleWithoutCondition) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
+}
+
+// TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
+// (i.e. no forbidden characters)
+func TupleKeyWithConditionToString(tk TupleWithCondition) string {
+	return fmt.Sprintf("%s#%s@%s (condition %s)", tk.GetObject(), tk.GetRelation(), tk.GetUser(), tk.GetCondition())
 }
 
 // IsValidObject determines if a string s is a valid object. A valid object contains exactly one `:` and no `#` or spaces.
@@ -130,7 +252,7 @@ func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
 		return false
 	}
-	if user == "*" || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
+	if user == Wildcard || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
 	}
 
@@ -153,4 +275,9 @@ func IsTypedWildcard(s string) bool {
 	}
 
 	return false
+}
+
+// TypedPublicWildcard returns the string tuple representation for a given object type (ex: "user:*")
+func TypedPublicWildcard(objectType string) string {
+	return BuildObject(objectType, Wildcard)
 }
