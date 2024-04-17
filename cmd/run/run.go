@@ -240,6 +240,7 @@ func ReadConfig() (*serverconfig.Config, error) {
 	return config, nil
 }
 
+// run validates the configuration and then starts the server.
 func run(_ *cobra.Command, _ []string) {
 	config, err := ReadConfig()
 	if err != nil {
@@ -274,7 +275,8 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
-// Run returns an error if the server was unable to start successfully.
+// Run assumes that the configuration is valid.
+// It returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	var tracerProviderCloser func()
