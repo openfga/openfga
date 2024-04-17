@@ -1222,6 +1222,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 func TestHTTPHeaders(t *testing.T) {
 	t.Parallel()
 	cfg := serverconfig.MustDefaultConfigWithRandomPorts()
+	cfg.Experimentals = []string{"enable-list-users"}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -1282,6 +1283,11 @@ type document
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
 			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
+		`listusers`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-users", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"object": { "type": "document", "id": "1" } , "relation": "viewer", "user_filters": [ {"type":"user"} ]}`,
+		},
 		`expand`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
@@ -1303,6 +1309,7 @@ type document
 
 			httpResponse, err := httpClient.Do(req)
 			require.NoError(t, err)
+			defer httpResponse.Body.Close()
 
 			// These are set in the server RPCs
 			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
