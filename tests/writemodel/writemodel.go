@@ -27,9 +27,9 @@ var testCases = map[string]struct {
 	//		define member: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	// implemented in Fails_If_Using_This_As_Type_Name
-	//"case2": {
+	// "case2": {
 	//	model: `
 	//	type user
 	//	type this
@@ -37,9 +37,9 @@ var testCases = map[string]struct {
 	//		define member: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	// implemented in Fails_If_Using_Self_As_Relation_Name
-	//"case3": {
+	// "case3": {
 	//	model: `
 	//	type user
 	//	type group
@@ -47,9 +47,9 @@ var testCases = map[string]struct {
 	//		define self: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	// implemented in Fails_If_Using_This_As_Relation_Name
-	//"case4": {
+	// "case4": {
 	//	model: `
 	//	type user
 	//	type group
@@ -57,7 +57,7 @@ var testCases = map[string]struct {
 	//		define this: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	"case6": {
 		model: `model
 	schema 1.1
@@ -248,8 +248,8 @@ type group
 	//	"case25": {
 	//		model: `model
 	//	schema 1.1
-	//type user
-	//type org
+	// type user
+	// type org
 	//  relations
 	//	define member`,
 	//		code: 2056,

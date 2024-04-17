@@ -200,7 +200,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 }
 
-func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *commands.ReadChangesQuery) {
+func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *commands.ReadChangesQuery) { //nolint:revive
 	ignoreTimestampOpts := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp")
 	var res *openfgav1.ReadChangesResponse
 	var err error

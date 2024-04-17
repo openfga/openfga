@@ -93,23 +93,26 @@ func NewEncodedError(errorCode int32, message string) *EncodedError {
 	var httpStatusCode int
 	var grpcStatusCode codes.Code
 	var code string
-	if errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode {
+
+	switch {
+	case errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode:
 		httpStatusCode = http.StatusUnauthorized
 		code = openfgav1.AuthErrorCode(errorCode).String()
 		grpcStatusCode = codes.Unauthenticated
-	} else if errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode {
+	case errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode:
 		httpStatusCode = http.StatusBadRequest
 		code = openfgav1.ErrorCode(errorCode).String()
 		grpcStatusCode = codes.InvalidArgument
-	} else if errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
+	case errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode:
 		httpStatusCode = http.StatusInternalServerError
 		code = openfgav1.InternalErrorCode(errorCode).String()
 		grpcStatusCode = codes.Internal
-	} else {
+	default:
 		httpStatusCode = http.StatusNotFound
 		code = openfgav1.NotFoundErrorCode(errorCode).String()
 		grpcStatusCode = codes.NotFound
 	}
+
 	return &EncodedError{
 		HTTPStatusCode: httpStatusCode,
 		GRPCStatusCode: grpcStatusCode,

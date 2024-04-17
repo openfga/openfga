@@ -21,8 +21,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/gateway"
-
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
@@ -30,6 +28,7 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -76,7 +75,7 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
-	//Request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms.
+	// Request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms.
 	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
 
 	requestDurationByQueryAndDispatchHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{

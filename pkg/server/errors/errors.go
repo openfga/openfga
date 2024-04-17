@@ -114,21 +114,22 @@ func InvalidAuthorizationModelInput(err error) error {
 // HandleError is used to surface some errors, and hide others.
 // Use `public` if you want to return a useful error message to the user.
 func HandleError(public string, err error) error {
-	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
+	switch {
+	case errors.Is(err, storage.ErrTransactionalWriteFailed):
 		return status.Error(codes.Aborted, err.Error())
-	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
+	case errors.Is(err, storage.ErrInvalidWriteInput):
 		return WriteFailedDueToInvalidInput(err)
-	} else if errors.Is(err, storage.ErrInvalidContinuationToken) {
+	case errors.Is(err, storage.ErrInvalidContinuationToken):
 		return InvalidContinuationToken
-	} else if errors.Is(err, storage.ErrMismatchObjectType) {
+	case errors.Is(err, storage.ErrMismatchObjectType):
 		return MismatchObjectType
-	} else if errors.Is(err, storage.ErrCancelled) {
+	case errors.Is(err, storage.ErrCancelled):
 		return RequestCancelled
-	} else if errors.Is(err, storage.ErrDeadlineExceeded) {
+	case errors.Is(err, storage.ErrDeadlineExceeded):
 		return RequestDeadlineExceeded
+	default:
+		return NewInternalError(public, err)
 	}
-
-	return NewInternalError(public, err)
 }
 
 // HandleTupleValidateError provide common routines for handling tuples validation error.

@@ -312,7 +312,7 @@ type document
 
 func TestFunctionalGRPC(t *testing.T) {
 	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
-	//defer goleak.VerifyNone(t)
+	// defer goleak.VerifyNone(t)
 	client := newOpenFGAServerAndClient(t)
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, client) })
