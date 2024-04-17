@@ -7,6 +7,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	language "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -197,8 +199,8 @@ func TestModelIdNotFound(t *testing.T) {
 
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalEnableListUsers),
 	)
-	server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 	t.Cleanup(server.Close)
 
 	resp, err := server.ListUsers(ctx, req)
@@ -242,5 +244,69 @@ func TestExperimentalListUsers(t *testing.T) {
 
 		require.Error(t, err)
 		require.Equal(t, "rpc error: code = Code(2020) desc = No authorization models found for store ''", err.Error())
+	})
+}
+
+func TestListUsers_ErrorCases(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	t.Run("graph_resolution_errors", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithResolveNodeLimit(2),
+			WithExperimentals(ExperimentalEnableListUsers),
+		)
+		t.Cleanup(s.Close)
+
+		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       store,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: language.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+
+type group
+  relations
+	define member: [user, group#member]
+
+type document
+  relations
+	define viewer: [group#member]`).GetTypeDefinitions(),
+		})
+		require.NoError(t, err)
+
+		_, err = s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId: store,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
+					tuple.NewTupleKey("group:1", "member", "group:2#member"),
+					tuple.NewTupleKey("group:2", "member", "group:3#member"),
+					tuple.NewTupleKey("group:3", "member", "user:jon"),
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		t.Run("resolution_depth_exceeded_error_unary", func(t *testing.T) {
+			res, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:              store,
+				AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			})
+
+			require.Nil(t, res)
+			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+		})
 	})
 }

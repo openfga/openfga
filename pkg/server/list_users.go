@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,9 +12,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/telemetry"
 
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -47,14 +50,17 @@ func (s *Server) ListUsers(
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	listUsersQuery := listusers.NewListUsersQuery(s.datastore,
-		listusers.WithListUsersQueryLogger(s.logger))
+	listUsersQuery := listusers.NewListUsersQuery(s.datastore, listusers.WithResolveNodeLimit(s.resolveNodeLimit), listusers.WithListUsersQueryLogger(s.logger))
+
 	resp, err := listUsersQuery.ListUsers(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+		return nil, serverErrors.HandleError("", err)
 	}
-	return resp, nil
+	return resp, err
 }
 
 func userFiltersToString(filter []*openfgav1.ListUsersFilter) string {

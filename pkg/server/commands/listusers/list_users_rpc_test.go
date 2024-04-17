@@ -12,6 +12,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -29,6 +30,8 @@ type ListUsersTests []struct {
 	expectedUsers         []string
 	expectedErrorMsg      string
 }
+
+const maximumRecursiveDepth = 25
 
 func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
@@ -2017,7 +2020,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 	// Times(0) ensures that we exit quickly
 	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	l := NewListUsersQuery(mockDatastore)
+	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
 	channelWithResults := make(chan *openfgav1.User)
 	channelWithError := make(chan error, 1)
@@ -2076,6 +2079,87 @@ func TestListUsersCycleDetection(t *testing.T) {
 	})
 }
 
+func TestListUsersDepthExceeded(t *testing.T) {
+	model := `model
+	schema 1.1
+		type user
+
+	type folder
+		relations
+			define parent: [folder]
+			define viewer: [user] or viewer from parent`
+
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("folder:26", "viewer", "user:maria"),
+		tuple.NewTupleKey("folder:25", "parent", "folder:26"),
+		tuple.NewTupleKey("folder:24", "parent", "folder:25"),
+		tuple.NewTupleKey("folder:23", "parent", "folder:24"),
+		tuple.NewTupleKey("folder:22", "parent", "folder:23"),
+		tuple.NewTupleKey("folder:21", "parent", "folder:22"),
+		tuple.NewTupleKey("folder:20", "parent", "folder:21"),
+		tuple.NewTupleKey("folder:19", "parent", "folder:20"),
+		tuple.NewTupleKey("folder:18", "parent", "folder:19"),
+		tuple.NewTupleKey("folder:17", "parent", "folder:18"),
+		tuple.NewTupleKey("folder:16", "parent", "folder:17"),
+		tuple.NewTupleKey("folder:15", "parent", "folder:16"),
+		tuple.NewTupleKey("folder:14", "parent", "folder:15"),
+		tuple.NewTupleKey("folder:13", "parent", "folder:14"),
+		tuple.NewTupleKey("folder:12", "parent", "folder:13"),
+		tuple.NewTupleKey("folder:11", "parent", "folder:12"),
+		tuple.NewTupleKey("folder:10", "parent", "folder:11"),
+		tuple.NewTupleKey("folder:9", "parent", "folder:10"),
+		tuple.NewTupleKey("folder:8", "parent", "folder:9"),
+		tuple.NewTupleKey("folder:7", "parent", "folder:8"),
+		tuple.NewTupleKey("folder:6", "parent", "folder:7"),
+		tuple.NewTupleKey("folder:5", "parent", "folder:6"),
+		tuple.NewTupleKey("folder:4", "parent", "folder:5"),
+		tuple.NewTupleKey("folder:3", "parent", "folder:4"),
+		tuple.NewTupleKey("folder:2", "parent", "folder:3"), // folder:2 will not exceed depth limit of 25
+		tuple.NewTupleKey("folder:1", "parent", "folder:2"), // folder:1 will exceed depth limit of 25
+	}
+
+	tests := ListUsersTests{
+		{
+			name: "depth_should_exceed_limit",
+			req: &openfgav1.ListUsersRequest{
+				Object: &openfgav1.Object{
+					Type: "folder",
+					Id:   "1", // Exceeded because we expand up until folder:1, beyond 25 allowable levels
+				},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:            model,
+			tuples:           tuples,
+			expectedErrorMsg: graph.ErrResolutionDepthExceeded.Error(),
+		},
+		{
+			name: "depth_should_not_exceed_limit",
+			req: &openfgav1.ListUsersRequest{
+				Object: &openfgav1.Object{
+					Type: "folder",
+					Id:   "2", // Does not exceed limit because we expand up until folder:2, up to the allowable 25 levels
+				},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:         model,
+			tuples:        tuples,
+			expectedUsers: []string{"user:maria"},
+		},
+	}
+
+	tests.runListUsersTestCases(t)
+}
+
 func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	storeID := ulid.Make().String()
 
@@ -2100,7 +2184,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds)
+			l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 

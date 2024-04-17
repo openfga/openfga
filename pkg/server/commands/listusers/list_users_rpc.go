@@ -33,6 +33,7 @@ type listUsersQuery struct {
 	ds                      storage.RelationshipTupleReader
 	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
+	resolveNodeLimit        uint32
 }
 
 /*
@@ -66,6 +67,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 			return typesys, nil
 		},
 		resolveNodeBreadthLimit: 20,
+		resolveNodeLimit:        25,
 	}
 
 	for _, opt := range opts {
@@ -73,6 +75,13 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	}
 
 	return l
+}
+
+// WithResolveNodeLimit see server.WithResolveNodeLimit
+func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.resolveNodeLimit = limit
+	}
 }
 
 // ListUsers assumes that the typesystem is in the context.
@@ -210,6 +219,11 @@ func (l *listUsersQuery) expand(
 ) error {
 	ctx, span := tracer.Start(ctx, "expand")
 	defer span.End()
+	span.SetAttributes(attribute.Int("depth", int(req.depth)))
+	if req.depth >= l.resolveNodeLimit {
+		return graph.ErrResolutionDepthExceeded
+	}
+	req.depth++
 
 	if enteredCycle(req) {
 		span.SetAttributes(attribute.Bool("cycle_detected", true))
