@@ -20,7 +20,7 @@ func down003(ctx context.Context, tx *sql.Tx) error {
 }
 
 func init() {
-	Migrations.Register(
+	Migrations.MustRegister(
 		&migrate.Migration{
 			Version:  3,
 			Forward:  up003,

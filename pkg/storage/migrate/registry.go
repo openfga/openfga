@@ -22,7 +22,7 @@ type Registry struct {
 	Migrations map[int64]*Migration
 }
 
-func (r *Registry) Register(m *Migration) {
+func (r *Registry) MustRegister(m *Migration) {
 	if _, ok := r.Migrations[m.Version]; ok {
 		panic(fmt.Errorf("migration with version %d already registered", m.Version))
 	}
