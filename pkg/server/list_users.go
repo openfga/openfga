@@ -2,12 +2,9 @@ package server
 
 import (
 	"context"
-<<<<<<< HEAD
 	"errors"
-=======
 	"fmt"
 	"strings"
->>>>>>> fcc29a4b643a6035164be1290a2e7c9c9355b9a5
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -15,12 +12,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-<<<<<<< HEAD
 	"github.com/openfga/openfga/internal/graph"
-=======
 	"github.com/openfga/openfga/pkg/telemetry"
 
->>>>>>> fcc29a4b643a6035164be1290a2e7c9c9355b9a5
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
