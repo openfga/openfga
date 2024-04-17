@@ -26,7 +26,7 @@ func (s *Server) ListUsers(
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("object", fmt.Sprintf("%s:%s", req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
-		attribute.String("user_filters", UserFiltersToString(req.GetUserFilters())),
+		attribute.String("user_filters", userFiltersToString(req.GetUserFilters())),
 	))
 	defer span.End()
 	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
@@ -57,7 +57,7 @@ func (s *Server) ListUsers(
 	return resp, nil
 }
 
-func UserFiltersToString(filter []*openfgav1.ListUsersFilter) string {
+func userFiltersToString(filter []*openfgav1.ListUsersFilter) string {
 	var s strings.Builder
 	for _, f := range filter {
 		s.WriteString(f.GetType())

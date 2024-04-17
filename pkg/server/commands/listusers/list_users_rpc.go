@@ -98,6 +98,7 @@ func (l *listUsersQuery) ListUsers(
 			return nil, err
 		}
 		if !hasPossibleEdges {
+			span.SetAttributes(attribute.Bool("no_possible_edges", true))
 			return &openfgav1.ListUsersResponse{
 				Users: []*openfgav1.User{},
 			}, nil
@@ -511,10 +512,9 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	finalErr := errs
-	if finalErr != nil {
-		telemetry.TraceError(span, finalErr)
-		return finalErr
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }
