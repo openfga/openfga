@@ -589,7 +589,7 @@ type repo
 	require.True(t, checkResponse.GetAllowed())
 }
 
-func TestListObjectsReleasesConnections(t *testing.T) {
+func TestReleasesConnections(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -606,7 +606,7 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-		WithMaxConcurrentReadsForListObjects(1),
+		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(s.Close)
 
@@ -628,39 +628,81 @@ type document
 	modelID := writeAuthzModelResp.GetAuthorizationModelId()
 
 	numTuples := 2000
-	tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-	for i := 0; i < numTuples; i++ {
-		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
-		tuples = append(tuples, tk)
-	}
+	t.Run("list_objects", func(t *testing.T) {
+		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+		for i := 0; i < numTuples; i++ {
+			tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
-	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: tuples,
-		},
+			tuples = append(tuples, tk)
+		}
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: tuples,
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Type:                 "document",
+			Relation:             "editor",
+			User:                 "user:jon",
+		})
+		require.NoError(t, err)
+
+		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer timeoutCancel()
+
+		// If ListObjects is still hogging the database connection pool even after responding, then this fails.
+		// If ListObjects is closing up its connections effectively then this will not fail.
+		status, err := ds.IsReady(timeoutCtx)
+		require.NoError(t, err)
+		require.True(t, status.IsReady)
 	})
-	require.NoError(t, err)
 
-	_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Type:                 "document",
-		Relation:             "editor",
-		User:                 "user:jon",
+	t.Run("list_users", func(t *testing.T) {
+		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+		for i := 0; i < numTuples; i++ {
+			tk := tuple.NewTupleKey("document:1", "editor", fmt.Sprintf("user:%d", i))
+
+			tuples = append(tuples, tk)
+		}
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: tuples,
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = s.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Relation:             "editor",
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+		})
+		require.NoError(t, err)
+
+		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer timeoutCancel()
+
+		// If ListUsers is still hogging the database connection pool even after responding, then this fails.
+		// If ListUsers is closing up its connections effectively then this will not fail.
+		status, err := ds.IsReady(timeoutCtx)
+		require.NoError(t, err)
+		require.True(t, status.IsReady)
 	})
-	require.NoError(t, err)
-
-	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer timeoutCancel()
-
-	// If ListObjects is still hogging the database connection pool even after responding, then this fails.
-	// If ListObjects is closing up its connections effectively then this will not fail.
-	status, err := ds.IsReady(timeoutCtx)
-	require.NoError(t, err)
-	require.True(t, status.IsReady)
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {
