@@ -606,7 +606,6 @@ func TestReleasesConnections(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-		WithMaxConcurrentReadsForListObjects(1),
 		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(s.Close)
