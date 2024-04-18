@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -56,6 +57,9 @@ type ResolveCheckRequestMetadata struct {
 	// The contents of this counter will be written by concurrent goroutines.
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
+
+	// GrpcTagMutex protects grpc_ctxtags from being concurrently set by multiple threads
+	GrpcTagMutex sync.Mutex
 }
 
 func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
@@ -63,6 +67,7 @@ func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
 		Depth:               maxDepth,
 		DatastoreQueryCount: 0,
 		DispatchCounter:     new(atomic.Uint32),
+		GrpcTagMutex:        sync.Mutex{},
 	}
 }
 

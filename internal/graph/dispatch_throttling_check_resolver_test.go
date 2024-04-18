@@ -113,4 +113,65 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
 		require.True(t, grpc_ctxtags.Extract(ctx).Has(telemetry.Throttled))
 	})
+
+	t.Run("multi_above_threshold_should_be_throttled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
+			// We set timer ticker to 1 hour to avoid it interfering with test
+			Frequency: 1 * time.Hour,
+			Threshold: 200,
+		}
+		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
+		defer dut.Close()
+
+		initialMockResolver := NewMockCheckResolver(ctrl)
+		dut.SetDelegate(initialMockResolver)
+
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req.GetRequestMetadata().DispatchCounter.Store(201)
+		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: 10,
+		}}
+
+		// Here, we count how many times the resolve check is dispatched by the DUT
+		resolveCheckDispatchedCounter := 0
+
+		var goFuncDone sync.WaitGroup
+		goFuncDone.Add(2)
+
+		initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).DoAndReturn(func(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			resolveCheckDispatchedCounter++
+			return response, nil
+		}).Times(2)
+
+		var goFuncInitiated sync.WaitGroup
+		goFuncInitiated.Add(2)
+
+		ctx := context.Background()
+		ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
+
+		for i := 0; i < 2; i++ {
+			go func() {
+				defer goFuncDone.Done()
+				goFuncInitiated.Done()
+				_, err := dut.ResolveCheck(ctx, req)
+				//nolint:testifylint
+				require.NoError(t, err)
+			}()
+		}
+
+		goFuncInitiated.Wait()
+		// Before we send the tick, we don't expect the dispatch to run
+		time.Sleep(1 * time.Millisecond)
+		require.Equal(t, 0, resolveCheckDispatchedCounter)
+
+		// simulate tick happening and we release a dispatch
+		dut.nonBlockingSend(dut.throttlingQueue)
+		dut.nonBlockingSend(dut.throttlingQueue)
+		goFuncDone.Wait()
+		require.Equal(t, 2, resolveCheckDispatchedCounter)
+		require.True(t, grpc_ctxtags.Extract(ctx).Has(telemetry.Throttled))
+	})
 }

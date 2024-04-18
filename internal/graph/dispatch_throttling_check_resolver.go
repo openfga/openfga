@@ -100,7 +100,9 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
 	if currentNumDispatch > r.config.Threshold {
+		req.GetRequestMetadata().GrpcTagMutex.Lock()
 		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
+		req.GetRequestMetadata().GrpcTagMutex.Unlock()
 
 		start := time.Now()
 		<-r.throttlingQueue
