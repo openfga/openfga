@@ -342,7 +342,7 @@ func (l *listUsersQuery) expandDirect(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(typesys), // ignore tuples that don't conform to the model
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 
@@ -486,19 +486,19 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
-	var errsBase error
-	var errsSub error
+	var errBase error
+	var errSub error
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		if err != nil {
-			errsBase = err
+			errBase = err
 		}
 		close(baseFoundUsersCh)
 	}()
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
 		if err != nil {
-			errsSub = err
+			errSub = err
 		}
 		close(subtractFoundUsersCh)
 	}()
@@ -526,9 +526,7 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	var errs error
-	errs = errors.Join(errs, errsBase)
-	errs = errors.Join(errs, errsSub)
+	errs := errors.Join(errBase, errSub)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
