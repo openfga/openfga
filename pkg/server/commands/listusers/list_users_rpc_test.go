@@ -2210,3 +2210,9 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 		})
 	}
 }
+
+func TestListUsersDatastoreQueryCount(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+}

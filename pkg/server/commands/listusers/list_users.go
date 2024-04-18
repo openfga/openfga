@@ -2,6 +2,7 @@ package listusers
 
 import (
 	"maps"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
@@ -27,6 +28,8 @@ type internalListUsersRequest struct {
 	// counter hits the limit, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
 	// or endless cycle of recursion.
 	depth uint32
+
+	datastoreQueryCount *atomic.Uint32
 }
 
 var _ listUsersRequest = (*internalListUsersRequest)(nil)
@@ -75,7 +78,37 @@ func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTu
 	return r.ContextualTuples
 }
 
-func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
+func (r *internalListUsersRequest) GetDatastoreQueryCount() uint32 {
+	if r == nil {
+		return uint32(0)
+	}
+	return r.datastoreQueryCount.Load()
+}
+
+type listUsersResponse struct {
+	Users    []*openfgav1.User
+	Metadata listUsersResponseMetadata
+}
+
+type listUsersResponseMetadata struct {
+	datastoreQueryCount uint32
+}
+
+func (r *listUsersResponse) GetUsers() []*openfgav1.User {
+	if r == nil {
+		return []*openfgav1.User{}
+	}
+	return r.Users
+}
+
+func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
+	if r == nil {
+		return listUsersResponseMetadata{}
+	}
+	return r.Metadata
+}
+
+func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32) *internalListUsersRequest {
 	return &internalListUsersRequest{
 		ListUsersRequest: &openfgav1.ListUsersRequest{
 			StoreId:              o.GetStoreId(),
@@ -85,15 +118,17 @@ func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 			UserFilters:          o.GetUserFilters(),
 			ContextualTuples:     o.GetContextualTuples(),
 		},
-		visitedUsersetsMap: make(map[string]struct{}),
-		depth:              0,
+		visitedUsersetsMap:  make(map[string]struct{}),
+		depth:               0,
+		datastoreQueryCount: datastoreQueryCount,
 	}
 }
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
 func (r *internalListUsersRequest) clone() *internalListUsersRequest {
-	v := fromListUsersRequest(r)
+	v := fromListUsersRequest(r, r.datastoreQueryCount)
 	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
 	v.depth = r.depth
+	v.datastoreQueryCount = r.datastoreQueryCount
 	return v
 }
