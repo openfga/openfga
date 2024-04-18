@@ -32,7 +32,6 @@ linters:
     - godot
     - bodyclose
     - gocritic
-    - godot
     - gocyclo
     #- gosec Too many different issues. Needs to be tackled in a separate PR.
 
@@ -42,7 +41,7 @@ linters-settings:
   staticcheck:
     checks: [ "all" ]
   gocyclo:
-    min-complexity: 58 # This is our baseline at the moment, but our goal is to take this down to 15.
+    min-complexity: 58 # This is our baseline at the moment.
   godot:
     scope: declarations
     capital: true
