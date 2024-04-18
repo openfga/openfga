@@ -109,6 +109,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut.nonBlockingSend(dut.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
-		require.False(t, req.GetRequestMetadata().HasThrottled.Load())
+		require.True(t, req.GetRequestMetadata().HasThrottled.Load())
 	})
 }
