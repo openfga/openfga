@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
@@ -343,7 +342,7 @@ func (l *listUsersQuery) expandDirect(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(typesys), // why filter invalid here?
+		validation.FilterInvalidTuples(typesys), // ignore tuples that don't conform to the model
 	)
 	defer filteredIter.Stop()
 
@@ -487,18 +486,19 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
-	var errs error
+	var errsBase error
+	var errsSub error
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			errsBase = err
 		}
 		close(baseFoundUsersCh)
 	}()
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			errsSub = err
 		}
 		close(subtractFoundUsersCh)
 	}()
@@ -526,6 +526,9 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
+	var errs error
+	errs = errors.Join(errs, errsBase)
+	errs = errors.Join(errs, errsSub)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
