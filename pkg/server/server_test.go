@@ -518,6 +518,77 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	}
 }
 
+func TestCheckObjectsThrottledTimeout(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithDispatchThrottlingCheckResolverFrequency(5*time.Millisecond),
+		WithDispatchThrottlingCheckResolverEnabled(true),
+		WithDispatchThrottlingCheckResolverThreshold(5),
+	)
+	t.Cleanup(func() {
+		s.Close()
+	})
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user, group#member]
+`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:x", "member", "group:1#member"),
+				tuple.NewTupleKey("group:x", "member", "group:2#member"),
+				tuple.NewTupleKey("group:x", "member", "group:3#member"),
+				tuple.NewTupleKey("group:x", "member", "group:4#member"),
+				tuple.NewTupleKey("group:x", "member", "group:5#member"),
+				tuple.NewTupleKey("group:x", "member", "group:6#member"),
+				tuple.NewTupleKey("group:x", "member", "group:7#member"),
+				tuple.NewTupleKey("group:x", "member", "group:8#member"),
+				tuple.NewTupleKey("group:x", "member", "group:9#member"),
+				tuple.NewTupleKey("group:x", "member", "group:10#member"),
+			},
+		},
+	})
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("group:x", "member", "user:anne"),
+	})
+	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
+}
+
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")

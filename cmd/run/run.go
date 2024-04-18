@@ -49,6 +49,7 @@ import (
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
@@ -69,6 +70,8 @@ import (
 const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
+
+	additionalUpstreamTimeout = 3 * time.Second
 )
 
 func NewRunCommand() *cobra.Command {
@@ -422,6 +425,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 	)
 
+	if config.HTTP.UpstreamTimeout > 0 {
+		timeoutMiddleware := middleware.NewTimeoutHandler(config.HTTP.UpstreamTimeout, s.Logger)
+
+		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(timeoutMiddleware.NewUnaryTimeoutInterceptor()))
+		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(timeoutMiddleware.NewStreamTimeoutInterceptor()))
+	}
+
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
 			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
@@ -528,7 +538,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
 		// Set a request timeout.
-		runtime.DefaultContextTimeout = config.HTTP.UpstreamTimeout
+		if config.HTTP.UpstreamTimeout > 0 {
+			// the runtime.DefaultContextTimeout is last resort. Ideally, timeout is handled via
+			// middleware timeout so that we can process the proper error code
+			runtime.DefaultContextTimeout = config.HTTP.UpstreamTimeout + additionalUpstreamTimeout
+		}
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -97,11 +97,15 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "DispatchThrottlingCheckResolver"))
+
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
+	span.SetAttributes(attribute.Int("num_dispatch", int(currentNumDispatch)))
 
 	if currentNumDispatch > r.config.Threshold {
-		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
-
+		req.GetRequestMetadata().HasThrottled.Store(true)
 		start := time.Now()
 		<-r.throttlingQueue
 		end := time.Now()

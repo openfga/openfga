@@ -25,7 +25,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20240318145204-66b9e5cb403c
+	github.com/openfga/api/proto v0.0.0-20240418171136-0e805606b27a
 	github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d
 	github.com/pressly/goose/v3 v3.19.2
 	github.com/prometheus/client_golang v1.19.0
