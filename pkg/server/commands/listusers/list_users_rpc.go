@@ -19,6 +19,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
@@ -365,9 +366,19 @@ func (l *listUsersQuery) expandDirect(
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
-			errs = multierror.Append(errs, err)
-			continue
+			telemetry.TraceError(span, err)
+			return err
 		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			return err
+		}
+
 		if !condEvalResult.ConditionMet {
 			continue
 		}
@@ -594,9 +605,19 @@ func (l *listUsersQuery) expandTTU(
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
-			conditionsErrs = multierror.Append(conditionsErrs, err)
-			continue
+			telemetry.TraceError(span, err)
+			return err
 		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			return err
+		}
+
 		if !condEvalResult.ConditionMet {
 			continue
 		}
