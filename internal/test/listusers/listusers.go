@@ -16,6 +16,7 @@ type Assertion struct {
 	ContextualTuples      []*openfgav1.TupleKey `json:"contextualTuples"`
 	Context               *structpb.Struct
 	Expectation           []string
+	ExpectedExcludedUsers []string
 	ErrorCode             int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the ListUsers call failed.
 }
 
@@ -29,9 +30,9 @@ func (t *TestListUsersRequest) ToString() string {
 	return fmt.Sprintf("object=%s, relation=%s, filters=%v", t.Object, t.Relation, strings.Join(t.Filters, ", "))
 }
 
-func FromProtoResponse(r *openfgav1.ListUsersResponse) []string {
+func FromUsersProto(r []*openfgav1.User) []string {
 	var users []string
-	for _, user := range r.GetUsers() {
+	for _, user := range r {
 		users = append(users, tuple.UserProtoToString(user))
 	}
 	return users

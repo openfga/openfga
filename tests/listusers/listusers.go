@@ -171,7 +171,8 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 
 						if assertion.ErrorCode == 0 {
 							require.NoError(t, err, detailedInfo)
-							require.ElementsMatch(t, assertion.Expectation, listuserstest.FromProtoResponse(resp), detailedInfo)
+							require.ElementsMatch(t, assertion.Expectation, listuserstest.FromUsersProto(resp.GetUsers()), detailedInfo)
+							require.ElementsMatch(t, assertion.ExpectedExcludedUsers, listuserstest.FromUsersProto(resp.GetExcludedUsers()), detailedInfo)
 
 							// assert 2: each user in the response of ListUsers should return check -> true
 							for _, user := range resp.GetUsers() {
