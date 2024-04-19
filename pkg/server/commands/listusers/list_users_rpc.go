@@ -366,7 +366,6 @@ func (l *listUsersQuery) expandDirect(
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
 			telemetry.TraceError(span, err)
-			_ = pool.Wait()
 			return err
 		}
 
@@ -606,7 +605,6 @@ func (l *listUsersQuery) expandTTU(
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
 			telemetry.TraceError(span, err)
-			_ = pool.Wait()
 			return err
 		}
 
