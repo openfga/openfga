@@ -1736,6 +1736,9 @@ func TestListUsersWildcards(t *testing.T) {
 }
 
 func TestListUsersEdgePruning(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := ListUsersTests{
 		{
 			name: "valid_edges",
@@ -2213,6 +2216,9 @@ func TestListUsersCycleDetection(t *testing.T) {
 }
 
 func TestListUsersDepthExceeded(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	model := `model
 	schema 1.1
 		type user
@@ -2291,6 +2297,71 @@ func TestListUsersDepthExceeded(t *testing.T) {
 	}
 
 	tests.runListUsersTestCases(t)
+}
+
+func TestListUsersStorageErrors(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	testCases := map[string]struct {
+		req *openfgav1.ListUsersRequest
+	}{
+		`union`: {
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "union",
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			},
+		},
+		`exclusion`: {
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "exclusion",
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			},
+		},
+		`intersection`: {
+			req: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "document", Id: "1"},
+				Relation:    "intersection",
+				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			},
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			t.Cleanup(func() {
+				mockController.Finish()
+			})
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+			mockDatastore.EXPECT().
+				Read(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, fmt.Errorf("storage err")).
+				Times(2) // each relation consists of two handlers
+
+			model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			
+			type document
+				relations
+					define a: [user]
+					define b: [user]
+					define union: a or b
+					define exclusion: a but not b
+					define intersection: a and b`)
+			typesys := typesystem.New(model)
+
+			l := NewListUsersQuery(mockDatastore)
+
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+			resp, err := l.ListUsers(ctx, test.req)
+			require.Nil(t, resp)
+			require.ErrorContains(t, err, "storage err")
+		})
+	}
 }
 
 func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
