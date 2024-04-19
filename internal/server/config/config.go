@@ -35,6 +35,8 @@ const (
 	DefaultDispatchThrottlingEnabled   = false
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
+
+	DefaultRequestTimeout = 3 * time.Second
 )
 
 type DatastoreMetricsConfig struct {
@@ -233,6 +235,10 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
+	// RequestTimeout configures request timeout.  If both HTTP upstream timeout and request timeout are specified,
+	// request timeout will be used
+	RequestTimeout time.Duration
+
 	Datastore          DatastoreConfig
 	GRPC               GRPCConfig
 	HTTP               HTTPConfig
@@ -333,6 +339,10 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.RequestTimeout < 0 {
+		return errors.New("request duration must be non-negative time duration")
+	}
+
 	return nil
 }
 
@@ -414,6 +424,7 @@ func DefaultConfig() *Config {
 			Frequency: DefaultDispatchThrottlingFrequency,
 			Threshold: DefaultDispatchThrottlingThreshold,
 		},
+		RequestTimeout: DefaultRequestTimeout,
 	}
 }
 

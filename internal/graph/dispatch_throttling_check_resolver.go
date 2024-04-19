@@ -105,7 +105,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	span.SetAttributes(attribute.Int("num_dispatch", int(currentNumDispatch)))
 
 	if currentNumDispatch > r.config.Threshold {
-		req.GetRequestMetadata().HasThrottled.Store(true)
+		req.GetRequestMetadata().WasThrottled.Store(true)
 		start := time.Now()
 		<-r.throttlingQueue
 		end := time.Now()

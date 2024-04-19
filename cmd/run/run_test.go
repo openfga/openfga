@@ -1111,6 +1111,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+
+	val = res.Get("properties.requestTimeout.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1313,6 +1317,50 @@ type document
 			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
 			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
+		})
+	}
+}
+
+func TestDefaultContextTimeout(t *testing.T) {
+	var testCases = map[string]struct {
+		config                 serverconfig.Config
+		expectedContextTimeout time.Duration
+	}{
+		"request_timeout_provided": {
+			config: serverconfig.Config{
+				RequestTimeout: 5 * time.Second,
+				HTTP: serverconfig.HTTPConfig{
+					Enabled:         true,
+					UpstreamTimeout: 1 * time.Second,
+				},
+			},
+			expectedContextTimeout: 5*time.Second + additionalUpstreamTimeout,
+		},
+		"only_http_config_timeout": {
+			config: serverconfig.Config{
+				HTTP: serverconfig.HTTPConfig{
+					Enabled:         true,
+					UpstreamTimeout: 1 * time.Second,
+				},
+			},
+			expectedContextTimeout: 1 * time.Second,
+		},
+		"http_not_enable": {
+			config: serverconfig.Config{
+				HTTP: serverconfig.HTTPConfig{
+					Enabled:         false,
+					UpstreamTimeout: 1 * time.Second,
+				},
+			},
+			expectedContextTimeout: 0,
+		},
+	}
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			timeout := defaultContextTimeout(&test.config)
+			require.Equal(t, test.expectedContextTimeout, timeout)
 		})
 	}
 }

@@ -51,7 +51,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
-		require.False(t, req.GetRequestMetadata().HasThrottled.Load())
+		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_be_throttled", func(t *testing.T) {
@@ -109,6 +109,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut.nonBlockingSend(dut.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
-		require.True(t, req.GetRequestMetadata().HasThrottled.Load())
+		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 }

@@ -213,6 +213,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the number of dispatches above which requests will be throttled.")
 
+	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -273,6 +275,19 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 		}
 	}
 	return uintArray
+}
+
+// If requestTimeout > 0, we should let the middleware take care of the timeout and the
+// runtime.DefaultContextTimeout is used as last resort.
+// Otherwise, use the http upstream timeout if http is enabled
+func defaultContextTimeout(config *serverconfig.Config) time.Duration {
+	if config.RequestTimeout > 0 {
+		return config.RequestTimeout + additionalUpstreamTimeout
+	}
+	if config.HTTP.Enabled && config.HTTP.UpstreamTimeout > 0 {
+		return config.HTTP.UpstreamTimeout
+	}
+	return 0
 }
 
 // Run returns an error if the server was unable to start successfully.
@@ -425,8 +440,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 	)
 
-	if config.HTTP.UpstreamTimeout > 0 {
-		timeoutMiddleware := middleware.NewTimeoutHandler(config.HTTP.UpstreamTimeout, s.Logger)
+	if config.RequestTimeout > 0 {
+		timeoutMiddleware := middleware.NewTimeoutHandler(config.RequestTimeout, s.Logger)
 
 		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(timeoutMiddleware.NewUnaryTimeoutInterceptor()))
 		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(timeoutMiddleware.NewStreamTimeoutInterceptor()))
@@ -535,15 +550,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}()
 	s.Logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
 
+	runtime.DefaultContextTimeout = defaultContextTimeout(config)
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		// Set a request timeout.
-		if config.HTTP.UpstreamTimeout > 0 {
-			// the runtime.DefaultContextTimeout is last resort. Ideally, timeout is handled via
-			// middleware timeout so that we can process the proper error code
-			runtime.DefaultContextTimeout = config.HTTP.UpstreamTimeout + additionalUpstreamTimeout
-		}
-
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
 		}

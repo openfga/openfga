@@ -57,8 +57,8 @@ type ResolveCheckRequestMetadata struct {
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
 
-	// HasThrottled indicates whether the request had been throttled
-	HasThrottled *atomic.Bool
+	// WasThrottled indicates whether the request had been throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
@@ -66,7 +66,7 @@ func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
 		Depth:               maxDepth,
 		DatastoreQueryCount: 0,
 		DispatchCounter:     new(atomic.Uint32),
-		HasThrottled:        new(atomic.Bool),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 

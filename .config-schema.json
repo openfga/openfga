@@ -453,6 +453,12 @@
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
                 }
             }
+        },
+        "requestTimeout": {
+            "description": "The timeout duration for a request.",
+            "type": "duration",
+            "default": "3s",
+            "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
         }
     },
     "definitions": {

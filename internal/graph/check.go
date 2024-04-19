@@ -47,7 +47,7 @@ func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
 			DispatchCounter:     r.GetRequestMetadata().DispatchCounter,
 			Depth:               r.GetRequestMetadata().Depth,
 			DatastoreQueryCount: r.GetRequestMetadata().DatastoreQueryCount,
-			HasThrottled:        r.GetRequestMetadata().HasThrottled,
+			WasThrottled:        r.GetRequestMetadata().WasThrottled,
 		},
 		VisitedPaths: maps.Clone(r.VisitedPaths),
 	}

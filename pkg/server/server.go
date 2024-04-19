@@ -799,7 +799,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		if isDeadlineExceeded(err) && resolveCheckRequest.GetRequestMetadata().HasThrottled.Load() {
+		if isDeadlineExceeded(err) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, serverErrors.ThrottledTimeout
 		}
 

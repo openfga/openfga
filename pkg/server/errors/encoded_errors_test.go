@@ -102,7 +102,7 @@ func TestEncodedError(t *testing.T) {
 		},
 		{
 			_name:                  "throttle_error",
-			errorCode:              int32(openfgav1.ThrottledErrorCode_throttled_timeout_error),
+			errorCode:              int32(openfgav1.ResourceExhaustedErrorCode_throttled_timeout_error),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnprocessableEntity,
 			expectedCode:           3500,

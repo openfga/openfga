@@ -25,7 +25,7 @@ func NewTimeoutHandler(timeout time.Duration, logger logger.Logger) *TimeoutHand
 	}
 }
 
-// NewUnaryTimeoutInterceptor configures the timeout expected in the http server side
+// NewUnaryTimeoutInterceptor configures the timeout expected
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
 // to return proper error code
 func (h *TimeoutHandler) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterceptor {
@@ -36,7 +36,7 @@ func (h *TimeoutHandler) NewUnaryTimeoutInterceptor() grpc.UnaryServerIntercepto
 	}
 }
 
-// NewStreamTimeoutInterceptor configures the timeout expected in the http server side
+// NewStreamTimeoutInterceptor configures the timeout expected
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
 // to return proper error code
 func (h *TimeoutHandler) NewStreamTimeoutInterceptor() grpc.StreamServerInterceptor {
