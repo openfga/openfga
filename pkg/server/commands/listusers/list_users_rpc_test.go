@@ -63,8 +63,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
 		{
-			name:                  "direct_relationship_with_userset_subjects_and_userset_filter",
-			TemporarilySkipReason: "because reflexive relationships not supported yet",
+			name: "direct_relationship_with_userset_subjects_and_userset_filter",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "group", Id: "eng"},
 				Relation: "member",
@@ -472,8 +471,7 @@ func TestListUsersUsersets(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "userset_defines_itself",
-			TemporarilySkipReason: "because reflexive relationships not supported yet",
+			name: "userset_defines_itself",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1295,8 +1293,7 @@ func TestListUsersExclusion(t *testing.T) {
 			expectedUsers: []string{"user:will"},
 		},
 		{
-			name:                  "exclusion_and_self_referential_tuples_1",
-			TemporarilySkipReason: "because reflexive relationships not supported yet",
+			name: "exclusion_and_self_referential_tuples_1",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "group", Id: "1"},
 				Relation: "member",
@@ -1313,14 +1310,14 @@ func TestListUsersExclusion(t *testing.T) {
 		  
 		  type group
 			relations
-			  define member: [user, group#member] but not other
-			  define other: [user, group#member]`,
+			  define member: [user, group#member] but not blocked
+			  define blocked: [user, group#member]`,
 
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:1", "other", "group:1#member"),
+				tuple.NewTupleKey("group:1", "blocked", "group:1#member"),
 				tuple.NewTupleKey("group:1", "member", "user:will"),
 			},
-			expectedUsers: []string{},
+			expectedUsers: []string{"user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
