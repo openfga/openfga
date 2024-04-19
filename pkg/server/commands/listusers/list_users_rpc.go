@@ -34,6 +34,7 @@ type listUsersQuery struct {
 	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
+	maxResults              uint32
 }
 
 /*
@@ -53,6 +54,12 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 	}
 }
 
+func WithListUserMaxResults(max uint32) ListUsersQueryOption {
+	return func(rq *listUsersQuery) {
+		rq.maxResults = max
+	}
+}
+
 // NewListUsersQuery is not meant to be shared.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
@@ -68,6 +75,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		},
 		resolveNodeBreadthLimit: 20,
 		resolveNodeLimit:        25,
+		maxResults:              10_000,
 	}
 
 	for _, opt := range opts {
@@ -84,7 +92,7 @@ func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
 	}
 }
 
-// ListUsers assumes that the typesystem is in the context.
+// ListUsers assumes that the typesystem is in the context and that the request is valid.
 func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
