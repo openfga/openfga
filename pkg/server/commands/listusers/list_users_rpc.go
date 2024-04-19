@@ -411,7 +411,11 @@ func (l *listUsersQuery) expandDirect(
 		return err
 	}
 
-	return errs
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
+	}
+	return nil
 }
 
 func (l *listUsersQuery) expandIntersection(
@@ -638,7 +642,11 @@ func (l *listUsersQuery) expandTTU(
 		return err
 	}
 
-	return errs
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
+	}
+	return nil
 }
 
 func enteredCycle(req *internalListUsersRequest) bool {
