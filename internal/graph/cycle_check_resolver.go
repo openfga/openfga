@@ -36,6 +36,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 		attribute.String("tuple_key", req.GetTupleKey().String()),
 		attribute.Bool("cycle_detected", false),
 	))
+	defer span.End()
 
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
