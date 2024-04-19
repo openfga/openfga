@@ -486,19 +486,18 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
-	var errBase error
-	var errSub error
+	var baseError, substractError error
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		if err != nil {
-			errBase = err
+			baseError = err
 		}
 		close(baseFoundUsersCh)
 	}()
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
 		if err != nil {
-			errSub = err
+			substractError = err
 		}
 		close(subtractFoundUsersCh)
 	}()
@@ -526,7 +525,7 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	errs := errors.Join(errBase, errSub)
+	errs := errors.Join(baseError, substractError)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
