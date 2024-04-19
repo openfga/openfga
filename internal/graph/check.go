@@ -568,10 +568,12 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ctx.Err()
 	}
 
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreID()),
+		attribute.String("resolver_type", "LocalChecker"),
+		attribute.String("tuple_key", req.GetTupleKey().String()),
+	))
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "LocalChecker"))
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	if req.GetRequestMetadata().Depth == 0 {
 		return nil, ErrResolutionDepthExceeded
