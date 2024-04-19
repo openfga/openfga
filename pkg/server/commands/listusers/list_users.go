@@ -23,6 +23,12 @@ type internalListUsersRequest struct {
 	// visitedUsersetsMap keeps track of the "path" we've made so far.
 	// It prevents stack overflows by preventing visiting the same userset twice.
 	visitedUsersetsMap map[string]struct{}
+
+	// depth is the current depths of the traversal expressed as a positive, incrementing integer.
+	// When expansion of list users recursively traverses one level, we increment by one. If this
+	// counter hits the limit, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
+	// or endless cycle of recursion.
+	depth uint32
 }
 
 var _ listUsersRequest = (*internalListUsersRequest)(nil)
@@ -90,6 +96,7 @@ func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 			Context:              o.GetContext(),
 		},
 		visitedUsersetsMap: make(map[string]struct{}),
+		depth:              0,
 	}
 }
 
@@ -97,5 +104,6 @@ func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 func (r *internalListUsersRequest) clone() *internalListUsersRequest {
 	v := fromListUsersRequest(r)
 	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
+	v.depth = r.depth
 	return v
 }

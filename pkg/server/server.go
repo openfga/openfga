@@ -35,7 +35,6 @@ import (
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -50,6 +49,7 @@ const (
 	AuthorizationModelIDHeader                              = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey                                 = "authorization_model_id"
 	ExperimentalEnableModularModels ExperimentalFeatureFlag = "enable-modular-models"
+	ExperimentalEnableListUsers     ExperimentalFeatureFlag = "enable-list-users"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -125,6 +125,7 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
+	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
@@ -174,7 +175,7 @@ func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	}
 }
 
-// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check or ListObjects call will allow.
+// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check, ListObjects or ListUsers call will allow.
 // Thinking of a request as a tree of evaluations, this option controls
 // how many levels we will evaluate before throwing an error that the authorization model is too complex.
 func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
@@ -184,7 +185,7 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 }
 
 // WithResolveNodeBreadthLimit sets a limit on the number of goroutines that can be created
-// when evaluating a subtree of a Check or ListObjects call.
+// when evaluating a subtree of a Check, ListObjects or ListUsers call.
 // Thinking of a Check request as a tree of evaluations, this option controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
@@ -336,6 +337,15 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	}
 
 	return s
+}
+
+func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
+	for _, e := range s.experimentals {
+		if e == flag {
+			return true
+		}
+	}
+	return false
 }
 
 // NewServerWithOpts returns a new server.
@@ -648,43 +658,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	return nil
 }
-
-func (s *Server) ListUsers(
-	ctx context.Context,
-	req *openfgav1.ListUsersRequest,
-) (*openfgav1.ListUsersResponse, error) {
-	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	datastore := s.datastore
-	//datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
-
-	listUsersQuery := listusers.NewListUsersQuery(datastore)
-	return listUsersQuery.ListUsers(ctx, req)
-}
-
-// func (s *Server) StreamedListUsers(
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	ctx := srv.Context()
-
-// 	typesys, err := s.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-// 	datastore := storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples())
-
-// 	listUsersQuery := listusers.NewListUsersQuery(datastore)
-// 	return listUsersQuery.StreamedListUsers(ctx, req, srv)
-// }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()
@@ -1183,6 +1156,7 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 
 	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		if errors.Is(err, typesystem.ErrModelNotFound) {
 			if modelID == "" {
 				return nil, serverErrors.LatestAuthorizationModelNotFound(storeID)
