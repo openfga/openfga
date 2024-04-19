@@ -104,7 +104,7 @@ func NewEncodedError(errorCode int32, message string) *EncodedError {
 		grpcStatusCode = codes.InvalidArgument
 	} else if errorCode >= cFirstThrottlingErrorCode && errorCode < cFirstInternalErrorCode {
 		httpStatusCode = http.StatusUnprocessableEntity
-		code = openfgav1.ResourceExhaustedErrorCode(errorCode).String()
+		code = openfgav1.UnprocessableContentErrorCode(errorCode).String()
 		grpcStatusCode = codes.ResourceExhausted
 	} else if errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
 		httpStatusCode = http.StatusInternalServerError
