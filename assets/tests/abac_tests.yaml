@@ -62,11 +62,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -154,11 +154,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -268,11 +268,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -373,11 +373,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -466,11 +466,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -568,11 +568,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -662,11 +662,11 @@ tests:
             expectation:
         listUsersAssertions:
           - request:
-              user: user:jon
+              filters:
+                - user
               relation: viewer
               object: document:1
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -775,7 +775,7 @@ tests:
                 - user
               object: document:1
               relation: viewer
-            expectation:
+            errorCode: 2000
           - request:
               filters:
                 - user
@@ -783,8 +783,7 @@ tests:
               relation: viewer
             context:
               "s": "hello"
-            expectation:
-              - user:jon
+            errorCode: 2000
           - request:
               filters:
                 - user
@@ -792,8 +791,7 @@ tests:
               relation: viewer
             context:
               "x": 10
-            expectation:
-              - user:jon
+            errorCode: 2000
           - request:
               filters:
                 - user
@@ -801,7 +799,7 @@ tests:
               relation: viewer
             context:
               "s": "not hello"
-            expectation:
+            errorCode: 2000
           - request:
               filters:
                 - user
@@ -809,7 +807,7 @@ tests:
               relation: viewer
             context:
               "x": 11
-            expectation:
+            errorCode: 2000
           - request:
               filters:
                 - folder#viewer
@@ -817,8 +815,7 @@ tests:
               relation: viewer
             context:
               "x": 10
-            expectation:
-              - folder:b#viewer
+            errorCode: 2000
           - request:
               filters:
                 - folder#viewer
@@ -826,8 +823,7 @@ tests:
               relation: viewer
             context:
               "s": "hello"
-            expectation:
-              - folder:a#viewer
+            errorCode: 2000
           - request:
               filters:
                 - folder#viewer
@@ -910,11 +906,7 @@ tests:
                 - user
               relation: viewer
               object: document:1
-          - request:
-              filters:
-                - user
-              relation: viewer
-              object: document:1
+            errorCode: 2000
           - request:
               filters:
                 - user
@@ -922,7 +914,7 @@ tests:
               object: document:1
             context:
               "y": 10
-            temporarilySkipReason: "partially applied condition param behavior still needs to be defined"
+            errorCode: 2000
           - request:
               filters:
                 - user
@@ -1254,7 +1246,6 @@ tests:
             context:
               "x": "1.79769313486231570814527423731704356798070e+309"
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user
@@ -1263,7 +1254,6 @@ tests:
             context:
               "x": 1.79769313486231570814527423731704356798070e+309
             errorCode: 2000
-            temporarilySkipReason: "because ABAC validation errors not emitted yet"
           - request:
               filters:
                 - user

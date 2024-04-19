@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -57,6 +58,9 @@ func (s *Server) ListUsers(
 		telemetry.TraceError(span, err)
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+		if errors.Is(err, condition.ErrEvaluationFailed) {
+			return nil, serverErrors.ValidationError(err)
 		}
 		return nil, serverErrors.HandleError("", err)
 	}

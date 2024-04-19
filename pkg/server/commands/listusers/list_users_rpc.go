@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
@@ -353,7 +352,7 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
-	var errs *multierror.Error
+	var errs error
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -367,6 +366,7 @@ func (l *listUsersQuery) expandDirect(
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
 			telemetry.TraceError(span, err)
+			_ = pool.Wait()
 			return err
 		}
 
@@ -376,7 +376,7 @@ func (l *listUsersQuery) expandDirect(
 				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 			)
 			telemetry.TraceError(span, err)
-			return err
+			errs = errors.Join(errs, err)
 		}
 
 		if !condEvalResult.ConditionMet {
@@ -406,13 +406,13 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	errs = multierror.Append(errs, pool.Wait())
-	if errs.ErrorOrNil() != nil {
+	err = pool.Wait()
+	if err != nil {
 		telemetry.TraceError(span, err)
-		return errs
+		return err
 	}
 
-	return nil
+	return errs
 }
 
 func (l *listUsersQuery) expandIntersection(
@@ -514,14 +514,14 @@ func (l *listUsersQuery) expandExclusion(
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 		}
 		close(baseFoundUsersCh)
 	}()
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 		}
 		close(subtractFoundUsersCh)
 	}()
@@ -592,7 +592,7 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
-	var conditionsErrs *multierror.Error
+	var errs error
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -606,6 +606,7 @@ func (l *listUsersQuery) expandTTU(
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
 			telemetry.TraceError(span, err)
+			_ = pool.Wait()
 			return err
 		}
 
@@ -615,7 +616,7 @@ func (l *listUsersQuery) expandTTU(
 				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 			)
 			telemetry.TraceError(span, err)
-			return err
+			errs = errors.Join(errs, err)
 		}
 
 		if !condEvalResult.ConditionMet {
@@ -635,15 +636,11 @@ func (l *listUsersQuery) expandTTU(
 
 	err = pool.Wait()
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return err
 	}
 
-	if conditionsErrs.ErrorOrNil() != nil {
-		telemetry.TraceError(span, conditionsErrs)
-		return conditionsErrs
-	}
-
-	return nil
+	return errs
 }
 
 func enteredCycle(req *internalListUsersRequest) bool {

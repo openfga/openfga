@@ -991,7 +991,7 @@ func TestListUsersConditions(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
 			},
-			expectedUsers: []string{"user:will"},
+			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - context is missing parameters '[param2]'",
 		},
 		{
 			name: "multiple_conditions_all_params_provided",
