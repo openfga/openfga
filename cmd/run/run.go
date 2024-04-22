@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -378,7 +379,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				recovery.UnaryPanicInterceptor(s.Logger),
+				grpc_recovery.UnaryServerInterceptor(
+					grpc_recovery.WithRecoveryHandlerContext(
+						recovery.PanicRecoveryHandler(s.Logger),
+					),
+				),
 				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
 				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
@@ -388,7 +393,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				recovery.StreamPanicInterceptor(s.Logger),
+				grpc_recovery.StreamServerInterceptor(
+					grpc_recovery.WithRecoveryHandlerContext(
+						recovery.PanicRecoveryHandler(s.Logger),
+					),
+				),
 				requestid.NewStreamingInterceptor(),
 				validator.StreamServerInterceptor(),
 				grpc_ctxtags.StreamServerInterceptor(),
@@ -576,7 +585,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
-			Handler: recovery.Panic(cors.New(cors.Options{
+			Handler: recovery.HTTPPanicRecoveryHandler(cors.New(cors.Options{
 				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 				AllowCredentials: true,
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
