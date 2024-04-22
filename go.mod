@@ -27,7 +27,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20240318145204-66b9e5cb403c
 	github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d
-	github.com/pressly/goose/v3 v3.19.2
+	github.com/pressly/goose/v3 v3.20.0
 	github.com/prometheus/client_golang v1.19.0
 	github.com/rs/cors v1.10.1
 	github.com/sourcegraph/conc v0.3.0
