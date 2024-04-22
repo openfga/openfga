@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -34,7 +33,6 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
@@ -385,10 +383,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
 				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
-				grpc_recovery.UnaryServerInterceptor(grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, p interface{}) (err error) {
-					s.Logger.Error("Recovered from panic in unary RPC", zap.Any("panic_info", p))
-					return status.Errorf(codes.Unknown, "internal error")
-				})),
 			}...,
 		),
 		grpc.ChainStreamInterceptor(
@@ -397,10 +391,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				validator.StreamServerInterceptor(),
 				grpc_ctxtags.StreamServerInterceptor(),
 				recovery.StreamPanicInterceptor(s.Logger),
-				grpc_recovery.StreamServerInterceptor(grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, p interface{}) (err error) {
-					s.Logger.Error("Recovered from panic in unary RPC", zap.Any("panic_info", p))
-					return status.Errorf(codes.Unknown, "internal error")
-				})),
+				recovery.StreamPanicInterceptor(s.Logger),
 			}...,
 		),
 	}

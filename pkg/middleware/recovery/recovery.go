@@ -3,7 +3,6 @@ package recovery
 import (
 	"context"
 	"net/http"
-	"runtime/debug"
 
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 
@@ -20,8 +19,7 @@ func Panic(next http.Handler, logger logger.Logger) http.Handler {
 		defer func() {
 			if err := recover(); err != nil {
 				logger.Error("Recovered from panic",
-					zap.Any("panic_info", err),
-					zap.ByteString("stack_trace", debug.Stack()))
+					zap.Any("panic_info", err))
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
 		}()
@@ -31,28 +29,20 @@ func Panic(next http.Handler, logger logger.Logger) http.Handler {
 
 // UnaryPanicInterceptor recovers from panics in unary handlers
 func UnaryPanicInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		grpc_recovery.StreamServerInterceptor(
-			grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, p any) (err error) {
-				logger.Error("Recovered from panic in unary RPC",
-					zap.Any("panic_info", p),
-					zap.ByteString("stack_trace", debug.Stack()))
-				return status.Errorf(codes.Unknown, http.StatusText(http.StatusInternalServerError))
-			}))
-		return handler(ctx, req)
-	}
+	return grpc_recovery.UnaryServerInterceptor(
+		grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, p any) error {
+			logger.Error("Recovered from panic in unary RPC",
+				zap.Any("panic_info", p))
+			return status.Errorf(codes.Unknown, http.StatusText(http.StatusInternalServerError))
+		}))
 }
 
 // StreamPanicInterceptor recovers from panics in stream handlers
 func StreamPanicInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
-	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		grpc_recovery.StreamServerInterceptor(
-			grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, p any) (err error) {
-				logger.Error("Recovered from panic in stream RPC",
-					zap.Any("panic_info", p),
-					zap.ByteString("stack_trace", debug.Stack()))
-				return status.Errorf(codes.Unknown, http.StatusText(http.StatusInternalServerError))
-			}))
-		return handler(srv, stream)
-	}
+	return grpc_recovery.StreamServerInterceptor(
+		grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, p any) error {
+			logger.Error("Recovered from panic in stream RPC",
+				zap.Any("panic_info", p))
+			return status.Errorf(codes.Unknown, http.StatusText(http.StatusInternalServerError))
+		}))
 }
