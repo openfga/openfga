@@ -383,6 +383,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
 				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
+				recovery.UnaryPanicInterceptor(s.Logger), // last in the chain so that other middleware function on the recovered state
 			}...,
 		),
 		grpc.ChainStreamInterceptor(
@@ -390,7 +391,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				requestid.NewStreamingInterceptor(),
 				validator.StreamServerInterceptor(),
 				grpc_ctxtags.StreamServerInterceptor(),
-				recovery.StreamPanicInterceptor(s.Logger),
 				recovery.StreamPanicInterceptor(s.Logger),
 			}...,
 		),
