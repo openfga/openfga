@@ -30,7 +30,7 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 // PanicRecoveryHandler recovers from panics for unary/stream services
 func PanicRecoveryHandler(logger logger.Logger) grpc_recovery.RecoveryHandlerFuncContext {
 	return func(ctx context.Context, p any) error {
-		logger.Error("Recovered from panic in unary RPC",
+		logger.Error("Recovered from panic in RPC",
 			zap.Any("panic_info", p))
 
 		return status.Errorf(codes.Unknown, http.StatusText(http.StatusInternalServerError))

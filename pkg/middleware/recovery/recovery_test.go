@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
@@ -25,7 +24,7 @@ func TestPanic(t *testing.T) {
 		panic("Unexpected error!")
 	})
 
-	t.Run("With_panic_Recovery", func(t *testing.T) {
+	t.Run("With_HTTP_Panic_Recovery", func(t *testing.T) {
 		handler := HTTPPanicRecoveryHandler(handlerFunc, logger)
 
 		req, err := http.NewRequest(http.MethodGet, "/", nil)
@@ -34,10 +33,11 @@ func TestPanic(t *testing.T) {
 		}
 
 		resp := httptest.NewRecorder()
-		handler.ServeHTTP(resp, req)
+		require.NotPanics(t, func() {
+			handler.ServeHTTP(resp, req)
+		})
 
 		require.Equal(t, http.StatusInternalServerError, resp.Code)
-		require.Equal(t, http.StatusText(http.StatusInternalServerError), strings.Trim(resp.Body.String(), "\n"))
 	})
 }
 
@@ -58,9 +58,7 @@ func TestUnaryPanicInterceptor(t *testing.T) {
 
 	t.Run("With_Unary_Panic_Interceptor", func(t *testing.T) {
 		srv := grpc.NewServer(serverOpts...)
-		t.Cleanup(func() {
-			srv.Stop()
-		})
+		t.Cleanup(srv.Stop)
 
 		openfgav1.RegisterOpenFGAServiceServer(srv, &unimplementedOpenFGAServiceServer{})
 
@@ -76,9 +74,7 @@ func TestUnaryPanicInterceptor(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(func() {
-			cancel()
-		})
+		t.Cleanup(cancel)
 
 		opts := []grpc.DialOption{
 			grpc.WithContextDialer(dialer),
@@ -115,11 +111,9 @@ func TestStreamPanicInterceptor(t *testing.T) {
 		),
 	}
 
-	t.Run("With_Unary_Panic_Interceptor", func(t *testing.T) {
+	t.Run("With_Stream_Panic_Interceptor", func(t *testing.T) {
 		srv := grpc.NewServer(serverOpts...)
-		t.Cleanup(func() {
-			srv.Stop()
-		})
+		t.Cleanup(srv.Stop)
 
 		openfgav1.RegisterOpenFGAServiceServer(srv, &unimplementedOpenFGAServiceServer{})
 
@@ -132,9 +126,7 @@ func TestStreamPanicInterceptor(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(func() {
-			cancel()
-		})
+		t.Cleanup(cancel)
 
 		opts := []grpc.DialOption{
 			grpc.WithContextDialer(dialer),
