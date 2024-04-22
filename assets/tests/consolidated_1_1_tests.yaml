@@ -7196,14 +7196,13 @@ tests:
               type: document
               relation: viewer
             errorCode: 2002
-  # TODO uncomment when introducing depth counters
-  #        listUsersAssertions:
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: document:1
-  #              relation: viewer
-  #            errorCode: 2002 #ErrorCode_authorization_model_resolution_too_complex
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2002
   - name: direct_relationships_with_intersection
     stages:
       - model: |
