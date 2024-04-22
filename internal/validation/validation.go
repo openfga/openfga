@@ -62,7 +62,7 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 		}
 
-		if err := ValidateCondition(typesys, tk); err != nil {
+		if err := validateCondition(typesys, tk); err != nil {
 			return err
 		}
 	}
@@ -176,8 +176,9 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
 }
 
-// ValidateCondition enforces conditions on a relationship tuple
-func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// validateCondition returns an error if the condition of the tuple is required but not present,
+// or if the tuple provides a condition but it is invalid according to the model.
+func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())
 	userType := tuple.GetType(tk.GetUser())
 	userRelation := tuple.GetRelation(tk.GetUser())
@@ -259,10 +260,7 @@ func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 	return nil
 }
 
-// FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide
-// a generic filtering mechanism when reading tuples. It is particularly useful to filter
-// out tuples that aren't valid according to the provided model, which can help filter
-// tuples that were introduced due to another authorization model.
+// FilterInvalidTuples filters out tuples that aren't valid according to the provided model.
 func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgav1.TupleKey) bool {
 		err := ValidateTuple(typesys, tupleKey)
