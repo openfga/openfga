@@ -339,6 +339,15 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.ListObjectsDispatchThrottling.Enabled {
+		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
+			return errors.New("dispatch throttling frequency must be non-negative time duration")
+		}
+		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
+			return errors.New("dispatch throttling threshold must be non-negative integer")
+		}
+	}
+
 	return nil
 }
 

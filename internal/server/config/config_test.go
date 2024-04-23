@@ -133,7 +133,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_throttling_frequency", func(t *testing.T) {
+	t.Run("non_positive_check_dispatch_throttling_frequency", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
@@ -145,9 +145,33 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_threshold", func(t *testing.T) {
+	t.Run("non_positive_check_dispatch_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 10 * time.Microsecond,
+			Threshold: 0,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_list_objects_dispatch_throttling_frequency", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 0,
+			Threshold: 30,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_list_objects_dispatch_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 10 * time.Microsecond,
 			Threshold: 0,

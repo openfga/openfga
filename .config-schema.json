@@ -431,26 +431,49 @@
                 }
             }
         },
-        "dispatchThrottling": {
+        "checkDispatchThrottling": {
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable throttling when request's number of dispatches is high",
+                    "description": "enable throttling when check request's number of dispatches is high",
                     "type": "bool",
                     "default": "false",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_ENABLED"
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
                     "description": "the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
                     "type": "duration",
                     "default": "10µs",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_FREQUENCY"
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY"
                 },
                 "threshold": {
-                    "description": "define the number of recursive operations to occur before getting throttled",
+                    "description": "define the number of recursive operations to occur before getting throttled for list objects",
                     "type": "integer",
                     "default": "100",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD"
+                }
+            }
+        },
+        "listObjectsDispatchThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when list objects request's number of dispatches is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY"
+                },
+                "threshold": {
+                    "description": "define the number of recursive operations to occur before getting throttled for list objects",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD"
                 }
             }
         }

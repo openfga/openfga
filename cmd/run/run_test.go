@@ -1100,17 +1100,29 @@ func TestDefaultConfig(t *testing.T) {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
 
-	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
 
-	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
+	val = res.Get("properties.checkDispatchThrottling.properties.frequency.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
 
-	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
+	val = res.Get("properties.checkDispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
