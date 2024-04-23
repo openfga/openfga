@@ -146,7 +146,6 @@ type Server struct {
 	listObjectsDispatchThrottlingFrequency time.Duration
 	listObjectsDispatchThrottlingThreshold uint32
 
-	checkDispatchThrottler          *throttler.DispatchThrottler
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	listObjectsDispatchThrottler *throttler.DispatchThrottler
@@ -437,14 +436,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
 		)
 
-		s.checkDispatchThrottler = throttler.NewDispatchThrottler(dispatchThrottlingConfig)
-		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(s.checkDispatchThrottler)
+		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(throttler.NewDispatchThrottler(dispatchThrottlingConfig))
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+	}
 
-		s.listObjectsDispatchThrottler = throttler.NewDispatchThrottler(dispatchThrottlingConfig)
+	if s.listObjectsDispatchThrottlingEnabled {
+		listObjectsDispatchThrottlingConfig := throttler.DispatchThrottlingConfig{
+			Frequency: s.listObjectsDispatchThrottlingFrequency,
+			Threshold: s.listObjectsDispatchThrottlingThreshold,
+		}
+
+		s.listObjectsDispatchThrottler = throttler.NewDispatchThrottler(listObjectsDispatchThrottlingConfig)
 	}
 
 	if s.checkQueryCacheEnabled {
