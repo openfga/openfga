@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/cmd"
 )
 
 func TestVerifyConfig(t *testing.T) {
@@ -155,6 +157,58 @@ func TestVerifyConfig(t *testing.T) {
 
 		err := cfg.Verify()
 		require.Error(t, err)
+	})
+
+	t.Run("unsupported_datastore_engine_specified", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = "mssql"
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("missing_engine_uri_for_postgres", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = cmd.Postgres
+		cfg.Datastore.URI = ""
+
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "engine requires URI")
+	})
+
+	t.Run("missing_engine_uri_for_mysql", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = cmd.MySQL
+		cfg.Datastore.URI = ""
+
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "engine requires URI")
+	})
+
+	t.Run("forbid_empty_engine", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = ""
+
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "invalid datastore engine")
+	})
+
+	t.Run("forbid_memory_engine_with_uri_set", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = cmd.Memory
+		cfg.Datastore.URI = "postgres://user:pass@host:port/datastore?opts"
+
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "engine does not allow URI")
+	})
+
+	t.Run("allow_empty_engine_uri_for_memory", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = cmd.Memory
+		cfg.Datastore.URI = ""
+
+		err := cfg.Verify()
+		require.NoError(t, err)
 	})
 }
 

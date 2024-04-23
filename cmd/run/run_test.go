@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/cmd"
+
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -34,7 +36,6 @@ import (
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
 
-	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -745,7 +746,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	cfg.Datastore.Engine = engine
+	var err error
+	cfg.Datastore.Engine, err = cmd.NewDatastoreEngine(engine)
+	require.NoError(t, err)
 	cfg.Datastore.URI = testDatastore.GetConnectionURI(true)
 	cfg.Datastore.Metrics.Enabled = true
 	cfg.Metrics.Enabled = true
@@ -942,7 +945,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val := res.Get("properties.datastore.properties.engine.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.Datastore.Engine)
+	require.Equal(t, val.String(), cfg.Datastore.Engine.String())
 
 	val = res.Get("properties.datastore.properties.maxCacheSize.default")
 	require.True(t, val.Exists())

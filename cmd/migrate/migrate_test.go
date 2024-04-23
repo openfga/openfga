@@ -105,3 +105,17 @@ func TestMigrateCommandConfigIsMerged(t *testing.T) {
 	cmd.SetArgs([]string{"migrate"})
 	require.NoError(t, cmd.Execute())
 }
+
+func TestDatastoreIsInValid(t *testing.T) {
+	config := `datastore:
+    engine: mssql
+    uri: postgres://postgres:password@127.0.0.1:5432/postgres
+`
+	util.PrepareTempConfigFile(t, config)
+
+	migrateCmd := NewMigrateCommand()
+	cmd := cmd.NewRootCommand()
+	cmd.AddCommand(migrateCmd)
+	cmd.SetArgs([]string{"migrate"})
+	require.ErrorContains(t, cmd.Execute(), "invalid datastore engine '(mssql)'")
+}

@@ -15,6 +15,8 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"github.com/openfga/openfga/cmd"
+
 	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -26,7 +28,7 @@ import (
 func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = "memory"
+	cfg.Datastore.Engine = cmd.Memory
 
 	StartServer(t, cfg)
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)

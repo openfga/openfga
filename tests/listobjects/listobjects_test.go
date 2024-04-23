@@ -4,7 +4,10 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+
+	"github.com/openfga/openfga/cmd"
 
 	"github.com/openfga/openfga/internal/server/config"
 
@@ -30,7 +33,9 @@ func testRunAll(t *testing.T, engine string) {
 	})
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
+	dsEngine, err := cmd.NewDatastoreEngine(engine)
+	require.NoError(t, err)
+	cfg.Datastore.Engine = dsEngine
 
 	tests.StartServer(t, cfg)
 

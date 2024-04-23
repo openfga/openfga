@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openfga/openfga/cmd"
+
 	"github.com/cenkalti/backoff/v4"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -123,7 +125,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
 
-	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
+	flags.String("datastore-engine", defaultConfig.Datastore.Engine.String(), "the datastore engine that will be used for persistence")
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
 
@@ -238,6 +240,7 @@ func ReadConfig() (*serverconfig.Config, error) {
 	return config, nil
 }
 
+// run validates the configuration and then starts the server.
 func run(_ *cobra.Command, _ []string) {
 	config, err := ReadConfig()
 	if err != nil {
@@ -272,7 +275,8 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
-// Run returns an error if the server was unable to start successfully.
+// Run assumes that the configuration is valid.
+// It returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	var tracerProviderCloser func()
@@ -332,18 +336,18 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var datastore storage.OpenFGADatastore
 	var err error
 	switch config.Datastore.Engine {
-	case "memory":
+	case cmd.Memory:
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		}
 		datastore = memory.New(opts...)
-	case "mysql":
+	case cmd.MySQL:
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("initialize mysql datastore: %w", err)
 		}
-	case "postgres":
+	case cmd.Postgres:
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("initialize postgres datastore: %w", err)

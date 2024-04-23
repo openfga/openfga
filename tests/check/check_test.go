@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/cmd"
+
 	"github.com/openfga/openfga/internal/server/config"
 
 	"github.com/openfga/openfga/pkg/testutils"
@@ -63,7 +65,7 @@ func TestCheckLogs(t *testing.T) {
 	cfg := config.MustDefaultConfig()
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
-	cfg.Datastore.Engine = "memory"
+	cfg.Datastore.Engine = cmd.Memory
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	serverCtx := &run.ServerContext{
@@ -267,7 +269,9 @@ func testRunAll(t *testing.T, engine string) {
 	})
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
+	dsEngine, err := cmd.NewDatastoreEngine(engine)
+	require.NoError(t, err)
+	cfg.Datastore.Engine = dsEngine
 
 	tests.StartServer(t, cfg)
 
@@ -325,7 +329,10 @@ type organization
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "none"
-	cfg.Datastore.Engine = engine
+
+	dsEngine, err := cmd.NewDatastoreEngine(engine)
+	require.NoError(b, err)
+	cfg.Datastore.Engine = dsEngine
 
 	tests.StartServer(b, cfg)
 

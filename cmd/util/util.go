@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/cmd"
+
 	"github.com/openfga/openfga/pkg/storage/memory"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -58,11 +60,11 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	var err error
 
 	switch engine {
-	case "memory":
+	case cmd.Memory.String():
 		ds = memory.New()
-	case "postgres":
+	case cmd.Postgres.String():
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
-	case "mysql":
+	case cmd.MySQL.String():
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
 	default:
 		t.Fatalf("unsupported datastore engine: %q", engine)

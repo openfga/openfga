@@ -8,6 +8,8 @@ import (
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/openfga/openfga/cmd"
 )
 
 const (
@@ -44,8 +46,8 @@ type DatastoreMetricsConfig struct {
 
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
-	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine   string
+	// Engine is the datastore engine to use.
+	Engine   cmd.DatastoreEngine
 	URI      string
 	Username string
 	Password string
@@ -250,6 +252,18 @@ type Config struct {
 }
 
 func (cfg *Config) Verify() error {
+	if !cfg.Datastore.Engine.IsValid() {
+		return fmt.Errorf("invalid datastore engine '(%s)'", cfg.Datastore.Engine.String())
+	}
+	if cfg.Datastore.Engine == cmd.Memory {
+		if cfg.Datastore.URI != "" {
+			return fmt.Errorf("engine does not allow URI")
+		}
+	} else {
+		if cfg.Datastore.URI == "" {
+			return fmt.Errorf("engine requires URI")
+		}
+	}
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
 		return fmt.Errorf(
 			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",

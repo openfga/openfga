@@ -36,7 +36,7 @@ func StartServer(t testing.TB, cfg *serverconfig.Config) {
 // StartServerWithContext starts a server in random ports and with a specific ServerContext and waits until it is healthy.
 // When the test ends, all resources are cleaned.
 func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) {
-	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
+	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine.String())
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())

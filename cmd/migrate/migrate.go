@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/openfga/openfga/cmd"
+
 	"github.com/openfga/openfga/assets"
 )
 
@@ -55,7 +57,10 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigration(_ *cobra.Command, _ []string) error {
-	engine := viper.GetString(datastoreEngineFlag)
+	engine, err := cmd.NewDatastoreEngine(viper.GetString(datastoreEngineFlag))
+	if err != nil {
+		return err
+	}
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
@@ -68,10 +73,10 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	var driver, migrationsPath string
 	switch engine {
-	case "memory":
+	case cmd.Memory:
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
-	case "mysql":
+	case cmd.MySQL:
 		driver = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
 
@@ -88,7 +93,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		}
 		uri = dsn.FormatDSN()
 
-	case "postgres":
+	case cmd.Postgres:
 		driver = "pgx"
 		migrationsPath = assets.PostgresMigrationDir
 
