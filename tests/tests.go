@@ -41,9 +41,9 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	httpPort, httpPortReleaser := serverconfig.TCPRandomPort()
+	httpPort, httpPortReleaser := testutils.TCPRandomPort()
 	cfg.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-	grpcPort, grpcPortReleaser := serverconfig.TCPRandomPort()
+	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
 	cfg.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
 
 	// these two functions release the ports so that the server can start listening on them

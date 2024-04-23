@@ -333,7 +333,7 @@ func (q *ListObjectsQuery) evaluate(
 						RequestMetadata:      checkRequestMetadata,
 					})
 					if err != nil {
-						if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
 							return
 						}
@@ -350,7 +350,7 @@ func (q *ListObjectsQuery) evaluate(
 				}(res)
 
 			case err := <-errChan:
-				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+				if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 					err = serverErrors.AuthorizationModelResolutionTooComplex
 				}
 

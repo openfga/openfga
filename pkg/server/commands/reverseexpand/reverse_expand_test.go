@@ -356,3 +356,91 @@ type document
 		}
 	}
 }
+
+func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	storeID := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user, group#member]`)
+
+	mockController := gomock.NewController(t)
+	t.Cleanup(func() {
+		mockController.Finish()
+	})
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	gomock.InAnyOrder([]*gomock.Call{
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:anne"}},
+		}).
+			Times(1).
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("group:fga", "member", "user:anne")},
+				}), nil
+			}),
+
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "group:fga", Relation: "member"}},
+		}).
+			Times(1).
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					// NOTE this tuple is invalid
+					{Key: tuple.NewTupleKey("group:eng#member", "member", "group:fga#member")},
+				}), nil
+			}),
+	},
+	)
+
+	ctx := context.Background()
+
+	resultChan := make(chan *ReverseExpandResult, 2)
+	errChan := make(chan error, 1)
+
+	go func() {
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typesystem.New(model))
+		err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
+			StoreID:          storeID,
+			ObjectType:       "group",
+			Relation:         "member",
+			User:             &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+			ContextualTuples: []*openfgav1.TupleKey{},
+		}, resultChan, NewResolutionMetadata())
+
+		if err != nil {
+			errChan <- err
+		}
+	}()
+
+	var results []string
+
+	for {
+		select {
+		case res, open := <-resultChan:
+			if !open {
+				require.ElementsMatch(t, []string{"group:fga"}, results)
+				return
+			}
+			results = append(results, res.Object)
+		case err := <-errChan:
+			require.FailNow(t, "unexpected error received on error channel :%v", err)
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
