@@ -28,9 +28,7 @@ func TestPanic(t *testing.T) {
 	handler := HTTPPanicRecoveryHandler(panicHandlerFunc, logger.MustNewLogger("text", "info", "unix"))
 
 	req, err := http.NewRequest(http.MethodGet, "/", nil)
-	if err != nil {
-		require.NoError(t, err)
-	}
+	require.NoError(t, err)
 
 	resp := httptest.NewRecorder()
 	require.NotPanics(t, func() {
