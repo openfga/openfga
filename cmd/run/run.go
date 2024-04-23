@@ -379,7 +379,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				grpc_recovery.UnaryServerInterceptor(
+				grpc_recovery.UnaryServerInterceptor( // panic middleware must be 1st in chain
 					grpc_recovery.WithRecoveryHandlerContext(
 						recovery.PanicRecoveryHandler(s.Logger),
 					),

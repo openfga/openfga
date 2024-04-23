@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
@@ -18,8 +19,8 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error("Recovered from panic in HTTP",
-					zap.Any("panic_info", err))
+				logger.Error("HTTPPanicRecoveryHandler has recoverede a panic",
+					zap.Error(fmt.Errorf("%v", err)))
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
 		}()
@@ -30,9 +31,9 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 // PanicRecoveryHandler recovers from panics for unary/stream services
 func PanicRecoveryHandler(logger logger.Logger) grpc_recovery.RecoveryHandlerFuncContext {
 	return func(ctx context.Context, p any) error {
-		logger.Error("Recovered from panic in RPC",
-			zap.Any("panic_info", p))
+		logger.Error("PanicRecoveryHandler has recovered a panic",
+			zap.Error(fmt.Errorf("%v", p)))
 
-		return status.Errorf(codes.Unknown, http.StatusText(http.StatusInternalServerError))
+		return status.Errorf(codes.Internal, http.StatusText(http.StatusInternalServerError))
 	}
 }
