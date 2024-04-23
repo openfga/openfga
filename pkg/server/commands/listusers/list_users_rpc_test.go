@@ -7,10 +7,11 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -1027,6 +1028,67 @@ func TestListUsersConditions(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
 			},
 			expectedUsers: []string{"user:will", "user:maria"},
+		},
+		{
+			name: "error_in_direct_eval",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type document
+				relations
+					define viewer: [user with condFloat]
+
+			condition condFloat(x: double) {
+				x > 0.0
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condFloat", nil),
+			},
+			expectedErrorMsg: "failed to evaluate relationship condition: parameter type error on condition 'condFloat' - failed to convert context parameter 'x': number cannot be represented as a float64: 1.797693135e+309",
+		},
+		{
+			name: "error_in_ttu_eval",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define viewer: [user with condFloat]
+			type document
+				relations
+					define parent: [folder with condFloat]
+					define viewer: viewer from parent
+
+			condition condFloat(x: double) {
+				x > 0.0
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "condFloat", nil),
+			},
+			expectedErrorMsg: "failed to evaluate relationship condition: parameter type error on condition 'condFloat' - failed to convert context parameter 'x': number cannot be represented as a float64: 1.797693135e+309",
 		},
 	}
 	tests.runListUsersTestCases(t)
