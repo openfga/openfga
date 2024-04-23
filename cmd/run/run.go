@@ -491,6 +491,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
 		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
 		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
+		server.WithListObjectsDispatchThrottlingEnabled(config.ListObjectsDispatchThrottling.Enabled),
+		server.WithListObjectsDispatchThrottlingFrequency(config.ListObjectsDispatchThrottling.Frequency),
+		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
 		server.WithExperimentals(experimentals...),
 	)
 

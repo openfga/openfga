@@ -36,6 +36,10 @@ const (
 	DefaultDispatchThrottlingEnabled   = false
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
+
+	DefaultListObjectsDispatchThrottlingEnabled   = false
+	DefaultListObjectsDispatchThrottlingFrequency = 10 * time.Microsecond
+	DefaultListObjectsDispatchThrottlingThreshold = 100
 )
 
 type DatastoreMetricsConfig struct {
@@ -234,17 +238,18 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore          DatastoreConfig
-	GRPC               GRPCConfig
-	HTTP               HTTPConfig
-	Authn              AuthnConfig
-	Log                LogConfig
-	Trace              TraceConfig
-	Playground         PlaygroundConfig
-	Profiler           ProfilerConfig
-	Metrics            MetricConfig
-	CheckQueryCache    CheckQueryCache
-	DispatchThrottling DispatchThrottlingConfig
+	Datastore                     DatastoreConfig
+	GRPC                          GRPCConfig
+	HTTP                          HTTPConfig
+	Authn                         AuthnConfig
+	Log                           LogConfig
+	Trace                         TraceConfig
+	Playground                    PlaygroundConfig
+	Profiler                      ProfilerConfig
+	Metrics                       MetricConfig
+	CheckQueryCache               CheckQueryCache
+	DispatchThrottling            DispatchThrottlingConfig
+	ListObjectsDispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -411,6 +416,11 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
+			Enabled:   DefaultDispatchThrottlingEnabled,
+			Frequency: DefaultDispatchThrottlingFrequency,
+			Threshold: DefaultDispatchThrottlingThreshold,
+		},
+		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:   DefaultDispatchThrottlingEnabled,
 			Frequency: DefaultDispatchThrottlingFrequency,
 			Threshold: DefaultDispatchThrottlingThreshold,

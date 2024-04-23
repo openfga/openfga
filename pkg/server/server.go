@@ -142,6 +142,10 @@ type Server struct {
 	dispatchThrottlingCheckResolverFrequency time.Duration
 	dispatchThrottlingThreshold              uint32
 
+	listObjectsDispatchThrottlingEnabled   bool
+	listObjectsDispatchThrottlingFrequency time.Duration
+	listObjectsDispatchThrottlingThreshold uint32
+
 	checkDispatchThrottler          *throttler.DispatchThrottler
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
@@ -303,7 +307,7 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
-// WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled.
+// WithDispatchThrottlingCheckResolverEnabled sets whether dispatch throttling is enabled for Check requests.
 // Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
 // threshold over requests whose dispatch count exceeds the configured threshold.
 func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -312,7 +316,8 @@ func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Op
 	}
 }
 
-// WithDispatchThrottlingCheckResolverFrequency defines how frequent dispatch throttling will be evaluated.
+// WithDispatchThrottlingCheckResolverFrequency defines how frequent dispatch throttling
+// will be evaluated for Check requests.
 // Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
 // it can be processed.
 // This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
@@ -324,7 +329,8 @@ func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenF
 	}
 }
 
-// WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
+// WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled
+// for Check requests.
 func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingThreshold = threshold
@@ -339,6 +345,36 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	}
 
 	return s
+}
+
+// WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
+func WithListObjectsDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDispatchThrottlingEnabled = enabled
+	}
+}
+
+// WithListObjectsDispatchThrottlingFrequency defines how frequent dispatch throttling
+// will be evaluated for List Objects requests.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithListObjectsDispatchThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDispatchThrottlingFrequency = frequency
+	}
+}
+
+// WithListObjectsDispatchThrottlingThreshold define the number of dispatches to be throttled
+// for List Objects requests.
+func WithListObjectsDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDispatchThrottlingThreshold = threshold
+	}
 }
 
 // NewServerWithOpts returns a new server.
@@ -370,6 +406,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultDispatchThrottlingEnabled,
 		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
 		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
+
+		listObjectsDispatchThrottlingEnabled:   serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+		listObjectsDispatchThrottlingFrequency: serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
+		listObjectsDispatchThrottlingThreshold: serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
 	}
 
 	for _, opt := range opts {
