@@ -362,7 +362,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	store := ulid.Make().String()
+	storeID := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
@@ -373,11 +373,13 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 				define member: [user, group#member]`)
 
 	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+	t.Cleanup(func() {
+		mockController.Finish()
+	})
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	gomock.InAnyOrder([]*gomock.Call{
-		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:anne"}},
@@ -389,7 +391,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 				}), nil
 			}),
 
-		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "group:fga", Relation: "member"}},
@@ -412,7 +414,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	go func() {
 		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typesystem.New(model))
 		err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
-			StoreID:          store,
+			StoreID:          storeID,
 			ObjectType:       "group",
 			Relation:         "member",
 			User:             &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
@@ -429,12 +431,11 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	for {
 		select {
 		case res, open := <-resultChan:
-			if open {
-				results = append(results, res.Object)
-			} else {
+			if !open {
 				require.ElementsMatch(t, []string{"group:fga"}, results)
 				return
 			}
+			results = append(results, res.Object)
 		case err := <-errChan:
 			require.FailNow(t, "unexpected error received on error channel :%v", err)
 			return
