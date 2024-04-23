@@ -2,6 +2,7 @@ package recovery
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -11,7 +12,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/errors"
 )
 
 // HTTPPanicRecoveryHandler recover from panic for http services
@@ -21,7 +25,27 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 			if err := recover(); err != nil {
 				logger.Error("HTTPPanicRecoveryHandler has recovered a panic",
 					zap.Error(fmt.Errorf("%v", err)))
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Header().Set("content-type", "application/json")
+				responseBody, err := json.Marshal(map[string]string{
+					"code":    openfgav1.InternalErrorCode_internal_error.String(),
+					"message": errors.InternalServerErrorMsg,
+				})
+				if err != nil {
+					logger.Error(
+						"failed to JSON marshal HTTP response body",
+						zap.Error(err),
+					)
+				}
+
+				_, err = w.Write(responseBody)
+				if err != nil {
+					logger.Error(
+						"failed to write HTTP response body",
+						zap.Error(err),
+					)
+				}
 			}
 		}()
 		next.ServeHTTP(w, r)
