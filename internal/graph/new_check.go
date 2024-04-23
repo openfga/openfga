@@ -3,6 +3,9 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/openfga/openfga/pkg/storage"
+	"strings"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -60,10 +63,9 @@ type Subject interface {
 }
 
 type DispatchCheckRequest struct {
-	objectType string
-	objectIds  []string
-	relation   string
-	subjects   []Subject
+	objectIds []string
+	relation  string
+	subjects  []Subject
 }
 
 type Result struct {
@@ -92,8 +94,13 @@ Check- doc:2#viewer@user:1
 */
 func ResolveCheck(ctx context.Context, request *DispatchCheckRequest) (*DispatchCheckResponse, error) {
 	var typeSystem *typesystem.TypeSystem
-	for _, objectId := range request.objectIds {
-		relation, err := typeSystem.GetRelation(request.objectType, request.relation)
+	groupedObjects := make(map[string][]string)
+	for _, object := range request.objectIds {
+		split := strings.Split(object, ":")
+		groupedObjects[split[0]] = append(groupedObjects[split[0]], object)
+	}
+	for objectType, object := range groupedObjects {
+		relation, err := typeSystem.GetRelation(objectType, request.relation)
 		if err != nil {
 			return nil, errors.New("object doesn't have relation")
 		}
@@ -101,7 +108,6 @@ func ResolveCheck(ctx context.Context, request *DispatchCheckRequest) (*Dispatch
 		rewriteRule := relation.GetRewrite()
 		handleRewrite(mapToRewriteRule(rewriteRule))
 	}
-
 }
 
 func handleRewrite(rewrite RewriteRule) {
@@ -109,6 +115,32 @@ func handleRewrite(rewrite RewriteRule) {
 
 	case DirectRewrite:
 
+	}
+}
+
+func handleDirectRewrite(ctx context.Context, storeID string, object []string, relation string, subject []string) (*DispatchCheckResponse, error) {
+	if len(object) <= 0 || len(subject) <= 0 {
+		return nil, errors.New("object or subject cannot be empty")
+	}
+	typesys, ok := typesystem.TypesystemFromContext(ctx) // note: use of 'parentctx' not 'ctx' - this is important
+	if !ok {
+		return nil, fmt.Errorf("typesysttem missing in context")
+	}
+	objectType := strings.Split(object[0], ":")[0]
+
+	ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+	}
+
+	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+	tuples, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+		Object:                      object[0],
+		Relation:                    relation,
+		AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+	})
+	if err != nil {
+		return nil, err
 	}
 }
 
