@@ -3037,3 +3037,38 @@ type folder
 		})
 	}
 }
+
+func BenchmarkNewAndValidate(b *testing.B) {
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define parent: [folder]
+				define owner: [group]
+				define folder_reader: [user, group#member] or folder_reader from owner or folder_reader from parent
+				define blocked: [user, user:*, group#member] or nblocked from parent
+				define unblocked: [user, group#member]
+				define nblocked: blocked but not unblocked
+				define allowed: [user, user:*, group#member] or allowed from parent
+				define super_allowed: [user, group#member] or super_allowed from parent
+				define reader: folder_reader and allowed and super_allowed
+				define can_read: reader but not nblocked
+		type group
+			relations
+				define parent: [group]
+				define allowed: [user, group#member] or allowed from parent
+				define super_allowed: [user, group#super_allowed]
+				define blocked: [user, group#member] or blocked from parent
+				define og_member: [user] or member from parent
+				define allowed_member: og_member and allowed and super_allowed
+				define member: allowed_member but not blocked
+				define folder_reader: [group#member] or folder_reader from parent`)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := NewAndValidate(context.Background(), model)
+		require.NoError(b, err)
+	}
+}
