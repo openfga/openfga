@@ -140,7 +140,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				define member: [user, group#member]
 			`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:eng#member", "member", "group:fga#member"),
+				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
 			},
 			objectType:            "group",
