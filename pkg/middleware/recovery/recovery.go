@@ -19,7 +19,7 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error("HTTPPanicRecoveryHandler has recoverede a panic",
+				logger.Error("HTTPPanicRecoveryHandler has recovered a panic",
 					zap.Error(fmt.Errorf("%v", err)))
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}

@@ -10,6 +10,7 @@ import (
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
@@ -41,6 +42,9 @@ func TestPanic(t *testing.T) {
 
 func TestUnaryPanicInterceptor(t *testing.T) {
 	listner := bufconn.Listen(1024 * 1024)
+	t.Cleanup(func() {
+		listner.Close()
+	})
 
 	serverOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
@@ -88,11 +92,9 @@ func TestUnaryPanicInterceptor(t *testing.T) {
 
 	_, err = cli.Check(ctx, &openfgav1.CheckRequest{})
 	st, ok := status.FromError(err)
-	if !ok {
-		t.Fail()
-	}
+	require.True(t, ok)
 
-	require.Equal(t, http.StatusText(http.StatusInternalServerError), st.Message())
+	require.Equal(t, codes.Internal, st.Code())
 }
 
 func TestStreamPanicInterceptor(t *testing.T) {
@@ -141,11 +143,9 @@ func TestStreamPanicInterceptor(t *testing.T) {
 
 	_, err = stream.Recv()
 	st, ok := status.FromError(err)
-	if !ok {
-		t.Fail()
-	}
+	require.True(t, ok)
 
-	require.Equal(t, http.StatusText(http.StatusInternalServerError), st.Message())
+	require.Equal(t, codes.Internal, st.Code())
 }
 
 type unimplementedOpenFGAServiceServer struct {
