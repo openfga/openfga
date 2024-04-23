@@ -33,9 +33,9 @@ const (
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
-	DefaultDispatchThrottlingEnabled   = false
-	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
-	DefaultDispatchThrottlingThreshold = 100
+	DefaultCheckDispatchThrottlingEnabled   = false
+	DefaultCheckDispatchThrottlingFrequency = 10 * time.Microsecond
+	DefaultCheckDispatchThrottlingThreshold = 100
 
 	DefaultListObjectsDispatchThrottlingEnabled   = false
 	DefaultListObjectsDispatchThrottlingFrequency = 10 * time.Microsecond
@@ -416,14 +416,14 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:   DefaultDispatchThrottlingEnabled,
-			Frequency: DefaultDispatchThrottlingFrequency,
-			Threshold: DefaultDispatchThrottlingThreshold,
+			Enabled:   DefaultCheckDispatchThrottlingEnabled,
+			Frequency: DefaultCheckDispatchThrottlingFrequency,
+			Threshold: DefaultCheckDispatchThrottlingThreshold,
 		},
 		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
-			Enabled:   DefaultDispatchThrottlingEnabled,
-			Frequency: DefaultDispatchThrottlingFrequency,
-			Threshold: DefaultDispatchThrottlingThreshold,
+			Enabled:   DefaultCheckDispatchThrottlingEnabled,
+			Frequency: DefaultCheckDispatchThrottlingFrequency,
+			Threshold: DefaultCheckDispatchThrottlingThreshold,
 		},
 	}
 }

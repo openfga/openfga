@@ -402,9 +402,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
 		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 
-		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultDispatchThrottlingEnabled,
-		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
-		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
+		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultCheckDispatchThrottlingEnabled,
+		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultCheckDispatchThrottlingFrequency,
+		dispatchThrottlingThreshold:              serverconfig.DefaultCheckDispatchThrottlingThreshold,
 
 		listObjectsDispatchThrottlingEnabled:   serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
 		listObjectsDispatchThrottlingFrequency: serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
