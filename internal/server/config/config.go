@@ -248,7 +248,7 @@ type Config struct {
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
 	CheckQueryCache               CheckQueryCache
-	DispatchThrottling            DispatchThrottlingConfig
+	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
@@ -330,11 +330,11 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if cfg.DispatchThrottling.Enabled {
-		if cfg.DispatchThrottling.Frequency <= 0 {
+	if cfg.CheckDispatchThrottling.Enabled {
+		if cfg.CheckDispatchThrottling.Frequency <= 0 {
 			return errors.New("dispatch throttling frequency must be non-negative time duration")
 		}
-		if cfg.DispatchThrottling.Threshold <= 0 {
+		if cfg.CheckDispatchThrottling.Threshold <= 0 {
 			return errors.New("dispatch throttling threshold must be non-negative integer")
 		}
 	}
@@ -415,7 +415,7 @@ func DefaultConfig() *Config {
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
-		DispatchThrottling: DispatchThrottlingConfig{
+		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:   DefaultCheckDispatchThrottlingEnabled,
 			Frequency: DefaultCheckDispatchThrottlingFrequency,
 			Threshold: DefaultCheckDispatchThrottlingThreshold,

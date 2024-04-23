@@ -135,7 +135,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("non_positive_dispatch_throttling_frequency", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 0,
 			Threshold: 30,
@@ -147,7 +147,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("non_positive_dispatch_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 10 * time.Microsecond,
 			Threshold: 0,
