@@ -350,14 +350,17 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
@@ -383,7 +386,7 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	err = pool.Wait()
+	err = errors.Join(pool.Wait(), errs)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -569,14 +572,17 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
 		}
 
 		userObject := tupleKey.GetUser()
@@ -590,7 +596,7 @@ func (l *listUsersQuery) expandTTU(
 		})
 	}
 
-	err = pool.Wait()
+	err = errors.Join(pool.Wait(), errs)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err

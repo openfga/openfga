@@ -12,6 +12,8 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/storage"
+
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 
@@ -2280,4 +2282,109 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
 		})
 	}
+}
+
+func TestListUsersReadFails_NoLeaks(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [group#member]`)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	gomock.InOrder(
+		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+			Relation: "viewer",
+			Object:   "document:1",
+		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
+				{Key: tuple.NewTupleKey("document:1", "viewer", "group:eng#member")},
+			}), nil
+		}),
+		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+			}),
+	)
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+	resp, err := NewListUsersQuery(mockDatastore).ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:     store,
+		Object:      &openfgav1.Object{Type: "document", Id: "1"},
+		Relation:    "viewer",
+		UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+	})
+
+	require.ErrorContains(t, err, "simulated errors")
+	require.Nil(t, resp)
+}
+
+func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	store := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type folder
+			relations
+				define viewer: [user]
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	gomock.InOrder(
+		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+			Object:   "document:1",
+			Relation: "parent",
+		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "parent", "folder:1")},
+				{Key: tuple.NewTupleKey("document:1", "parent", "folder:2")},
+			}), nil
+		}),
+		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+			Object:   "folder:1",
+			Relation: "viewer",
+		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+		}),
+	)
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+	resp, err := NewListUsersQuery(mockDatastore).ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:     store,
+		Object:      &openfgav1.Object{Type: "document", Id: "1"},
+		Relation:    "viewer",
+		UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+	})
+
+	require.ErrorContains(t, err, "simulated errors")
+	require.Nil(t, resp)
 }
