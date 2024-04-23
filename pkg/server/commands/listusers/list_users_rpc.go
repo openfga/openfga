@@ -353,20 +353,22 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
-			telemetry.TraceError(span, err)
-			return err
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
 		}
 
 		if len(condEvalResult.MissingParameters) > 0 {
@@ -405,12 +407,7 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
-	}
-
+	errs = errors.Join(pool.Wait(), errs)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
@@ -597,20 +594,22 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
-			telemetry.TraceError(span, err)
-			return err
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
 		}
 
 		if len(condEvalResult.MissingParameters) > 0 {
@@ -637,12 +636,7 @@ func (l *listUsersQuery) expandTTU(
 		})
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
-	}
-
+	errs = errors.Join(pool.Wait(), errs)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
