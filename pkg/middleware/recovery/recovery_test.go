@@ -19,13 +19,12 @@ import (
 )
 
 func TestPanic(t *testing.T) {
-	logger := logger.MustNewLogger("text", "info", "unix")
-	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	panicHandlerFunc := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		panic("Unexpected error!")
 	})
 
 	t.Run("With_HTTP_Panic_Recovery", func(t *testing.T) {
-		handler := HTTPPanicRecoveryHandler(handlerFunc, logger)
+		handler := HTTPPanicRecoveryHandler(panicHandlerFunc, logger.MustNewLogger("text", "info", "unix"))
 
 		req, err := http.NewRequest(http.MethodGet, "/", nil)
 		if err != nil {
@@ -151,6 +150,7 @@ type unimplementedOpenFGAServiceServer struct {
 func (unimplementedOpenFGAServiceServer) Check(context.Context, *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	panic("Unexpected error!")
 }
+
 func (unimplementedOpenFGAServiceServer) StreamedListObjects(m *openfgav1.StreamedListObjectsRequest, stream openfgav1.OpenFGAService_StreamedListObjectsServer) error {
 	_ = stream.RecvMsg(m)
 
