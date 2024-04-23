@@ -273,13 +273,14 @@ func (c *ReverseExpandQuery) execute(
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
 			}
+		}
 
-			sourceUserRel := val.ObjectRelation.GetRelation()
+		sourceUserRel := val.ObjectRelation.GetRelation()
 
-			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-					return err
-				}
+		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
+		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
+				return err
 			}
 		}
 	}

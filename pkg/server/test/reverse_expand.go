@@ -395,6 +395,10 @@ type group
 					Object:       "group:eng",
 					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
+				{
+					Object:       "group:iam",
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
+				},
 			},
 			expectedDSQueryCount: 3,
 		},
