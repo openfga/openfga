@@ -7,12 +7,10 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/types/known/structpb"
-
-	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -31,7 +29,6 @@ type ListUsersTests []struct {
 	tuples                []*openfgav1.TupleKey
 	expectedUsers         []string
 	expectedErrorMsg      string
-	context               map[string]interface{}
 }
 
 const maximumRecursiveDepth = 25
@@ -760,18 +757,18 @@ func TestListUsersConditions(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := `model
-	schema 1.1
-  
-  type user
+	model := `
+		model
+			schema 1.1
+		type user
 
-  type document
-	relations
-	  define viewer: [user with isTrue]
-  
-  condition isTrue(param: bool) {
-	param
-  }`
+		type document
+			relations
+				define viewer: [user with isTrue]
+
+		condition isTrue(param: bool) {
+			param
+		}`
 
 	tests := ListUsersTests{
 		{
@@ -784,9 +781,9 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
-			model:   model,
-			context: map[string]interface{}{"param": true},
+			model: model,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", nil),
@@ -804,9 +801,9 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": false}),
 			},
-			model:   model,
-			context: map[string]interface{}{"param": false},
+			model: model,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", nil),
@@ -825,24 +822,25 @@ func TestListUsersConditions(t *testing.T) {
 						Relation: "member",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
-			model: `model
-			schema 1.1
-		  
-		  type user
+			model: `
+			model
+				schema 1.1
 
-		  type group
-			relations
-				define member: [user]
-		
-		  type document
-			relations
-			  define viewer: [group#member with isTrue, user]
-		  
-		  condition isTrue(param: bool) {
-			param
-		  }`,
-			context: map[string]interface{}{"param": true},
+			type user
+
+			type group
+				relations
+					define member: [user]
+
+			type document
+				relations
+					define viewer: [group#member with isTrue, user]
+
+			condition isTrue(param: bool) {
+				param
+			}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:eng#member", "isTrue", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "isTrue", nil),
@@ -862,26 +860,27 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
-			model: `model
-			schema 1.1
-		  
-		  type user
+			model: `
+			model
+				schema 1.1
 
-		  type group
-			relations
-				define member: [user]
-		
-		  type document
-			relations
-			  define owner: [user]
-			  define editor: [user] or owner
-			  define viewer: [user with isTrue] or editor or owner
-		  
-		  condition isTrue(param: bool) {
-			param
-		  }`,
-			context: map[string]interface{}{"param": true},
+			type user
+
+			type group
+				relations
+					define member: [user]
+
+			type document
+				relations
+					define owner: [user]
+					define editor: [user] or owner
+					define viewer: [user with isTrue] or editor or owner
+
+			condition isTrue(param: bool) {
+				param
+			}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
@@ -899,24 +898,25 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
-			model: `model
-			schema 1.1
-		  type user
-	
-		  type folder
-			relations
-			  define viewer: [user]
-	
-		  type document
-			relations
-			  define parent: [folder with isTrue]
-			  define viewer: viewer from parent
-	
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type folder
+				relations
+					define viewer: [user]
+
+			type document
+				relations
+				define parent: [folder with isTrue]
+				define viewer: viewer from parent
+
 			condition isTrue(param: bool) {
 				param
 			}`,
-			context: map[string]interface{}{"param": true},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "isTrue", nil),
 				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
@@ -935,24 +935,25 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{}),
 			},
-			model: `model
-			schema 1.1
-		  type user
-	
-		  type document
-			relations
-			  define viewer: [user]
-	
+			model: `
+			model
+				schema 1.1
+
+			type user
+
+			type document
+				relations
+					define viewer: [user]
+
 			condition isEqualToFive(param1: int) {
 				param1 == 5
 			}
-			
+
 			condition isEqualToTen(param2: int) {
 				param2 == 10
-				
 			}`,
-			context: map[string]interface{}{},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
@@ -969,26 +970,24 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5}),
 			},
-			model: `model
-			schema 1.1
-		  type user
-	
-		  type document
-			relations
-			  define viewer: [user with isEqualToFive, user with isEqualToTen]
-	
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type document
+				relations
+					define viewer: [user with isEqualToFive, user with isEqualToTen]
+
 			condition isEqualToFive(param1: int) {
 				param1 == 5
 			}
 			
 			condition isEqualToTen(param2: int) {
 				param2 == 10
-				
 			}`,
-			context: map[string]interface{}{
-				"param1": 5,
-			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
@@ -1005,15 +1004,17 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5, "param2": 10}),
 			},
-			model: `model
-			schema 1.1
-		  type user
-	
-		  type document
-			relations
-				define viewer: [user with isEqualToFive, user with isEqualToTen]
-	
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type document
+				relations
+					define viewer: [user with isEqualToFive, user with isEqualToTen]
+
 			condition isEqualToFive(param1: int) {
 				param1 == 5
 			}
@@ -1021,10 +1022,6 @@ func TestListUsersConditions(t *testing.T) {
 			condition isEqualToTen(param2: int) {
 				param2 == 10
 			}`,
-			context: map[string]interface{}{
-				"param1": 5,
-				"param2": 10,
-			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
@@ -2396,12 +2393,6 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 
 			test.req.AuthorizationModelId = model.GetId()
 			test.req.StoreId = storeID
-
-			if test.context != nil {
-				c, err := structpb.NewStruct(test.context)
-				require.NoError(t, err)
-				test.req.Context = c
-			}
 
 			resp, err := l.ListUsers(ctx, test.req)
 
