@@ -33,18 +33,14 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 					"message": errors.InternalServerErrorMsg,
 				})
 				if err != nil {
-					logger.Error(
-						"failed to JSON marshal HTTP response body",
-						zap.Error(err),
-					)
-				}
-
-				_, err = w.Write(responseBody)
-				if err != nil {
-					logger.Error(
-						"failed to write HTTP response body",
-						zap.Error(err),
-					)
+					logger.Error("failed to JSON marshal HTTP response body", zap.Error(err))
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				} else {
+					_, err = w.Write(responseBody)
+					if err != nil {
+						logger.Error("failed to write HTTP response body", zap.Error(err))
+						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					}
 				}
 			}
 		}()
