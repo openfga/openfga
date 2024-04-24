@@ -10,25 +10,25 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
-// TimeoutHandler sets the timeout in each request
-type TimeoutHandler struct {
+// TimeoutInterceptor sets the timeout in each request
+type TimeoutInterceptor struct {
 	timeout time.Duration
 	logger  logger.Logger
 }
 
-// NewTimeoutHandler returns new TimeoutHandler that timeouts request if it
+// NewTimeoutInterceptor returns new TimeoutInterceptor that timeouts request if it
 // exceeds the timeout value
-func NewTimeoutHandler(timeout time.Duration, logger logger.Logger) *TimeoutHandler {
-	return &TimeoutHandler{
+func NewTimeoutInterceptor(timeout time.Duration, logger logger.Logger) *TimeoutInterceptor {
+	return &TimeoutInterceptor{
 		timeout: timeout,
 		logger:  logger,
 	}
 }
 
-// NewUnaryTimeoutInterceptor configures the timeout expected
+// NewUnaryTimeoutInterceptor returns an interceptor that will timeout according to the configured timeout.
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
 // to return proper error code
-func (h *TimeoutHandler) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterceptor {
+func (h *TimeoutInterceptor) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		ctx, cancel := context.WithTimeout(ctx, h.timeout)
 		defer cancel()
@@ -36,10 +36,10 @@ func (h *TimeoutHandler) NewUnaryTimeoutInterceptor() grpc.UnaryServerIntercepto
 	}
 }
 
-// NewStreamTimeoutInterceptor configures the timeout expected
+// NewStreamTimeoutInterceptor returns an interceptor that will timeout according to the configured timeout.
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
 // to return proper error code
-func (h *TimeoutHandler) NewStreamTimeoutInterceptor() grpc.StreamServerInterceptor {
+func (h *TimeoutInterceptor) NewStreamTimeoutInterceptor() grpc.StreamServerInterceptor {
 	validator := grpcvalidator.StreamServerInterceptor()
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {

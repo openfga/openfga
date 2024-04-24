@@ -712,21 +712,6 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	})
 }
 
-// isDeadlineExceeded returns whether err is DeadlineExceeded or it is an internal error and the internal error
-// is DeadlineExceeded
-func isDeadlineExceeded(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	var internalError serverErrors.InternalError
-
-	ok := errors.As(err, &internalError)
-	if ok {
-		return errors.Is(internalError.Internal(), context.DeadlineExceeded)
-	}
-	return false
-}
-
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	start := time.Now()
 
@@ -800,7 +785,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		if isDeadlineExceeded(err) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, serverErrors.ThrottledTimeout
 		}
 

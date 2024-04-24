@@ -518,21 +518,22 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	}
 }
 
-func TestCheckObjectsThrottledTimeout(t *testing.T) {
+func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
+	const dispatchFrequency = 5 * time.Millisecond
+	const dispatchThreshold = 5
+
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
-		WithDispatchThrottlingCheckResolverFrequency(5*time.Millisecond),
+		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
 		WithDispatchThrottlingCheckResolverEnabled(true),
-		WithDispatchThrottlingCheckResolverThreshold(5),
+		WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
 	)
-	t.Cleanup(func() {
-		s.Close()
-	})
+	t.Cleanup(s.Close)
 
 	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-test",
@@ -542,13 +543,13 @@ func TestCheckObjectsThrottledTimeout(t *testing.T) {
 	storeID := createStoreResp.GetId()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+		schema 1.1
 
-type user
+  type user
 
-type group
-  relations
-    define member: [user, group#member]
+  type group
+    relations
+      define member: [user, group#member]
 `)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
@@ -578,6 +579,10 @@ type group
 		},
 	})
 	require.NoError(t, err)
+
+	// we know that the above query will take 10 dispatches
+	// Since the threshold level is 5 and each dispatch will be throttled by 5ms
+	// The request will take at least 25 ms and will be timeout since timeout is 20ms.
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 

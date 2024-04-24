@@ -164,10 +164,76 @@ func TestVerifyConfig(t *testing.T) {
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
+
+	t.Run("negative_upstream_timeout", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestTimeout = 0
+		cfg.HTTP.Enabled = true
+		cfg.HTTP.UpstreamTimeout = -3 * time.Second
+		cfg.ListObjectsDeadline = -4 * time.Second
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("negative_list_objects_deadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestTimeout = 0
+		cfg.HTTP.Enabled = true
+		cfg.HTTP.UpstreamTimeout = 3 * time.Second
+		cfg.ListObjectsDeadline = -4 * time.Second
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
 	require.GreaterOrEqual(t, DefaultMaxConditionEvaluationCost, 100)
+}
+
+func TestDefaultContextTimeout(t *testing.T) {
+	var testCases = map[string]struct {
+		config                 Config
+		expectedContextTimeout time.Duration
+	}{
+		"request_timeout_provided": {
+			config: Config{
+				RequestTimeout: 5 * time.Second,
+				HTTP: HTTPConfig{
+					Enabled:         true,
+					UpstreamTimeout: 1 * time.Second,
+				},
+			},
+			expectedContextTimeout: 5*time.Second + additionalUpstreamTimeout,
+		},
+		"only_http_config_timeout": {
+			config: Config{
+				HTTP: HTTPConfig{
+					Enabled:         true,
+					UpstreamTimeout: 1 * time.Second,
+				},
+			},
+			expectedContextTimeout: 1 * time.Second,
+		},
+		"http_not_enable": {
+			config: Config{
+				HTTP: HTTPConfig{
+					Enabled:         false,
+					UpstreamTimeout: 1 * time.Second,
+				},
+			},
+			expectedContextTimeout: 0,
+		},
+	}
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			timeout := DefaultContextTimeout(&test.config)
+			require.Equal(t, test.expectedContextTimeout, timeout)
+		})
+	}
 }

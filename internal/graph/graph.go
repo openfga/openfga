@@ -57,7 +57,7 @@ type ResolveCheckRequestMetadata struct {
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
 
-	// WasThrottled indicates whether the request had been throttled
+	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
 }
 

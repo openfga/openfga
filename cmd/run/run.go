@@ -70,8 +70,6 @@ import (
 const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
-
-	additionalUpstreamTimeout = 3 * time.Second
 )
 
 func NewRunCommand() *cobra.Command {
@@ -277,19 +275,6 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
-// If requestTimeout > 0, we should let the middleware take care of the timeout and the
-// runtime.DefaultContextTimeout is used as last resort.
-// Otherwise, use the http upstream timeout if http is enabled
-func defaultContextTimeout(config *serverconfig.Config) time.Duration {
-	if config.RequestTimeout > 0 {
-		return config.RequestTimeout + additionalUpstreamTimeout
-	}
-	if config.HTTP.Enabled && config.HTTP.UpstreamTimeout > 0 {
-		return config.HTTP.UpstreamTimeout
-	}
-	return 0
-}
-
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
@@ -395,8 +380,27 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
-				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+				grpc_ctxtags.UnaryServerInterceptor(), // needed for logging
+				requestid.NewUnaryInterceptor(),       // add request_id to ctxtags
+			}...,
+		),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				requestid.NewStreamingInterceptor(),
+			}...,
+		),
+	}
+
+	if config.RequestTimeout > 0 {
+		timeoutMiddleware := middleware.NewTimeoutInterceptor(config.RequestTimeout, s.Logger)
+
+		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(timeoutMiddleware.NewUnaryTimeoutInterceptor()))
+		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(timeoutMiddleware.NewStreamTimeoutInterceptor()))
+	}
+
+	serverOpts = append(serverOpts,
+		grpc.ChainUnaryInterceptor(
+			[]grpc.UnaryServerInterceptor{
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
 				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
@@ -404,12 +408,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				requestid.NewStreamingInterceptor(),
 				validator.StreamServerInterceptor(),
 				grpc_ctxtags.StreamServerInterceptor(),
 			}...,
 		),
-	}
+	)
 
 	if config.Metrics.Enabled {
 		serverOpts = append(serverOpts,
@@ -439,13 +442,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}...,
 		),
 	)
-
-	if config.RequestTimeout > 0 {
-		timeoutMiddleware := middleware.NewTimeoutHandler(config.RequestTimeout, s.Logger)
-
-		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(timeoutMiddleware.NewUnaryTimeoutInterceptor()))
-		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(timeoutMiddleware.NewStreamTimeoutInterceptor()))
-	}
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
@@ -550,9 +546,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}()
 	s.Logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
 
-	runtime.DefaultContextTimeout = defaultContextTimeout(config)
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
+		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
+
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
 		}
