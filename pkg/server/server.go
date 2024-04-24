@@ -730,6 +730,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
+		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
