@@ -105,6 +105,11 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 				return serverErrors.ValidationError(err)
 			}
 
+			err = c.validateNotImplicit(tk)
+			if err != nil {
+				return err
+			}
+
 			contextSize := proto.Size(tk.GetCondition().GetContext())
 			if contextSize > c.conditionContextByteLimit {
 				return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
@@ -158,6 +163,20 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 
 	if len(tuples) > c.datastore.MaxTuplesPerWrite() {
 		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
+	}
+	return nil
+}
+
+// validateNotImplicit ensures the tuple to be written (not deleted) is not of the form `object:id # relation @ object:id#relation`.
+func (c *WriteCommand) validateNotImplicit(
+	tk *openfgav1.TupleKey,
+) error {
+	userObject, userRelation := tupleUtils.SplitObjectRelation(tk.GetUser())
+	if tk.GetRelation() == userRelation && tk.GetObject() == userObject {
+		return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
+			Cause:    fmt.Errorf("cannot write a tuple that is implicit"),
+			TupleKey: tk,
+		})
 	}
 	return nil
 }
