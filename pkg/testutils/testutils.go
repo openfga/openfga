@@ -84,7 +84,7 @@ func CreateRandomString(n int) string {
 	return string(b)
 }
 
-func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
+func MustNewStruct(t require.TestingT, v map[string]interface{}) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
