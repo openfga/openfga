@@ -12,7 +12,7 @@
             "program": "${workspaceFolder}/cmd/openfga/main.go",
             "args": ["run"],
             "env": {
-            },       
+            }       
         }
     ]
 }
