@@ -12,12 +12,7 @@
             "program": "${workspaceFolder}/cmd/openfga/main.go",
             "args": ["run"],
             "env": {
-                "OPENFGA_DATASTORE_ENGINE": "postgres",
-                "OPENFGA_DATASTORE_URI":  "postgres://postgres:password@localhost:5432/postgres?sslmode=disable",
-                "OPENFGA_DATASTORE_MAX_OPEN_CONNS": "100",
-                "OPENFGA_PLAYGROUND_ENABLED": "true"
-            },
-            
+            },       
         }
     ]
 }
