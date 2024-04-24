@@ -132,7 +132,6 @@ func (c *CachedCheckResolver) GetDelegate() CheckResolver {
 func (c *CachedCheckResolver) Close() {
 	if c.allocatedCache {
 		c.cache.Stop()
-		c.cache = nil
 	}
 }
 
