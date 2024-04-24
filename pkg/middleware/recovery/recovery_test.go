@@ -9,6 +9,7 @@ import (
 
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -42,6 +43,7 @@ func TestUnaryPanicInterceptor(t *testing.T) {
 	listner := bufconn.Listen(1024 * 1024)
 	t.Cleanup(func() {
 		listner.Close()
+		goleak.VerifyNone(t)
 	})
 
 	serverOpts := []grpc.ServerOption{

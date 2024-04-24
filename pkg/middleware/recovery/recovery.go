@@ -23,24 +23,22 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error("HTTPPanicRecoveryHandler has recovered a panic",
-					zap.Error(fmt.Errorf("%v", err)))
-
-				w.WriteHeader(http.StatusInternalServerError)
+				logger.Error("HTTPPanicRecoveryHandler has recovered a panic", zap.Error(fmt.Errorf("%v", err)))
 				w.Header().Set("content-type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+
 				responseBody, err := json.Marshal(map[string]string{
 					"code":    openfgav1.InternalErrorCode_internal_error.String(),
 					"message": errors.InternalServerErrorMsg,
 				})
 				if err != nil {
-					logger.Error("failed to JSON marshal HTTP response body", zap.Error(err))
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				} else {
-					_, err = w.Write(responseBody)
-					if err != nil {
-						logger.Error("failed to write HTTP response body", zap.Error(err))
-						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-					}
+					return
+				}
+
+				_, err = w.Write(responseBody)
+				if err != nil {
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 			}
 		}()
@@ -54,6 +52,6 @@ func PanicRecoveryHandler(logger logger.Logger) grpc_recovery.RecoveryHandlerFun
 		logger.Error("PanicRecoveryHandler has recovered a panic",
 			zap.Error(fmt.Errorf("%v", p)))
 
-		return status.Errorf(codes.Internal, http.StatusText(http.StatusInternalServerError))
+		return status.Errorf(codes.Internal, errors.InternalServerErrorMsg)
 	}
 }
