@@ -50,7 +50,10 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {
 			t.Parallel()
-			files := []string{"tests/consolidated_1_1_tests.yaml"}
+			files := []string{
+				"tests/consolidated_1_1_tests.yaml",
+				"tests/abac_tests.yaml",
+			}
 
 			var allTestCases []individualTest
 
@@ -161,6 +164,7 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 							Object:               convertedRequest.GetObject(),
 							Relation:             convertedRequest.GetRelation(),
 							UserFilters:          convertedRequest.GetUserFilters(),
+							Context:              assertion.Context,
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},

@@ -18,6 +18,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -363,6 +365,25 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
+		}
+
 		tupleKeyUser := tupleKey.GetUser()
 		userObject, userRelation := tuple.SplitObjectRelation(tupleKeyUser)
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
@@ -386,10 +407,10 @@ LoopOnIterator:
 		})
 	}
 
-	err = errors.Join(pool.Wait(), errs)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	errs = errors.Join(pool.Wait(), errs)
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }
@@ -585,6 +606,25 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
+		}
+
 		userObject := tupleKey.GetUser()
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
@@ -596,10 +636,10 @@ LoopOnIterator:
 		})
 	}
 
-	err = errors.Join(pool.Wait(), errs)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	errs = errors.Join(pool.Wait(), errs)
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }

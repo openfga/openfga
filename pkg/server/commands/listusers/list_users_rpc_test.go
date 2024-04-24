@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
 
@@ -759,28 +758,18 @@ func TestListUsersConditions(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := `model
-	schema 1.1
-  
-  type user
+	model := `
+		model
+			schema 1.1
+		type user
 
-  type document
-	relations
-	  define viewer: [user with isTrue]
-  
-  condition isTrue(param: string) {
-	param == "true"
-  }`
+		type document
+			relations
+				define viewer: [user with isTrue]
 
-	conditionContextWithTrueParam, err := structpb.NewStruct(map[string]interface{}{
-		"param": "true",
-	})
-	require.NoError(t, err)
-
-	conditionContextWithFalseParam, err := structpb.NewStruct(map[string]interface{}{
-		"param": "false",
-	})
-	require.NoError(t, err)
+		condition isTrue(param: bool) {
+			param
+		}`
 
 	tests := ListUsersTests{
 		{
@@ -793,18 +782,18 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
 			model: model,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", conditionContextWithTrueParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", conditionContextWithTrueParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 			},
 			expectedUsers: []string{"user:jon", "user:maria"},
 		},
 		{
-			name:                  "conditions_with_false_evaluation",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_false_evaluation",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -813,18 +802,18 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": false}),
 			},
 			model: model,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", conditionContextWithFalseParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 			},
 			expectedUsers: []string{},
 		},
 		{
-			name:                  "conditions_with_usersets",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_usersets",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -834,35 +823,36 @@ func TestListUsersConditions(t *testing.T) {
 						Relation: "member",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
-			model: `model
-			schema 1.1
-		  
-		  type user
+			model: `
+			model
+				schema 1.1
 
-		  type group
-			relations
-				define member: [user]
-		
-		  type document
-			relations
-			  define viewer: [group#member with isTrue, user]
-		  
-		  condition isTrue(param: string) {
-			param == "true"
-		  }`,
+			type user
+
+			type group
+				relations
+					define member: [user]
+
+			type document
+				relations
+					define viewer: [group#member with isTrue, user]
+
+			condition isTrue(param: bool) {
+				param
+			}`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:eng#member", "isTrue", conditionContextWithTrueParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:eng#member", "isTrue", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "isTrue", nil),
 				tuple.NewTupleKey("group:eng", "member", "user:jon"),
 				tuple.NewTupleKey("group:eng", "member", "user:maria"),
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
 			},
-			expectedUsers: []string{"group:eng#member"},
+			expectedUsers: []string{"group:eng#member", "group:fga#member"},
 		},
 		{
-			name:                  "conditions_with_computed_relationships",
-			TemporarilySkipReason: "because conditions that evaluate false don't get excluded from results",
+			name: "conditions_with_computed_relationships",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -871,32 +861,234 @@ func TestListUsersConditions(t *testing.T) {
 						Type: "user",
 					},
 				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
-			model: `model
-			schema 1.1
-		  
-		  type user
+			model: `
+			model
+				schema 1.1
 
-		  type group
-			relations
-				define member: [user]
-		
-		  type document
-			relations
-			  define owner: [user]
-			  define editor: [user] or owner
-			  define viewer: [user with isTrue] or editor or owner
-		  
-		  condition isTrue(param: string) {
-			param == "true"
-		  }`,
+			type user
+
+			type group
+				relations
+					define member: [user]
+
+			type document
+				relations
+					define owner: [user]
+					define editor: [user] or owner
+					define viewer: [user with isTrue] or editor or owner
+
+			condition isTrue(param: bool) {
+				param
+			}`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", conditionContextWithTrueParam),
-				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "isTrue", conditionContextWithFalseParam),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
 				tuple.NewTupleKey("document:1", "editor", "user:poovam"),
 			},
 			expectedUsers: []string{"user:will", "user:poovam", "user:maria"},
+		},
+		{
+			name: "conditions_with_ttu",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type folder
+				relations
+					define viewer: [user]
+
+			type document
+				relations
+				define parent: [folder with isTrue]
+				define viewer: viewer from parent
+
+			condition isTrue(param: bool) {
+				param
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "isTrue", nil),
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:y", "isTrue", nil),
+				tuple.NewTupleKey("folder:y", "viewer", "user:maria"),
+			},
+			expectedUsers: []string{"user:jon", "user:maria"},
+		},
+		{
+			name: "multiple_conditions_no_param_provided",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{}),
+			},
+			model: `
+			model
+				schema 1.1
+
+			type user
+
+			type document
+				relations
+					define viewer: [user]
+
+			condition isEqualToFive(param1: int) {
+				param1 == 5
+			}
+
+			condition isEqualToTen(param2: int) {
+				param2 == 10
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "multiple_conditions_some_params_provided",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type document
+				relations
+					define viewer: [user with isEqualToFive, user with isEqualToTen]
+
+			condition isEqualToFive(param1: int) {
+				param1 == 5
+			}
+			
+			condition isEqualToTen(param2: int) {
+				param2 == 10
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
+			},
+			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - context is missing parameters '[param2]'",
+		},
+		{
+			name: "multiple_conditions_all_params_provided",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5, "param2": 10}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type document
+				relations
+					define viewer: [user with isEqualToFive, user with isEqualToTen]
+
+			condition isEqualToFive(param1: int) {
+				param1 == 5
+			}
+			
+			condition isEqualToTen(param2: int) {
+				param2 == 10
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
+			},
+			expectedUsers: []string{"user:will", "user:maria"},
+		},
+		{
+			name: "error_in_direct_eval",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+
+			type document
+				relations
+					define viewer: [user with condFloat]
+
+			condition condFloat(x: double) {
+				x > 0.0
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condFloat", nil),
+			},
+			expectedErrorMsg: "failed to evaluate relationship condition: parameter type error on condition 'condFloat' - failed to convert context parameter 'x': number cannot be represented as a float64: 1.797693135e+309",
+		},
+		{
+			name: "error_in_ttu_eval",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.ListUsersFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define viewer: [user with condFloat]
+			type document
+				relations
+					define parent: [folder with condFloat]
+					define viewer: viewer from parent
+
+			condition condFloat(x: double) {
+				x > 0.0
+			}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "condFloat", nil),
+			},
+			expectedErrorMsg: "failed to evaluate relationship condition: parameter type error on condition 'condFloat' - failed to convert context parameter 'x': number cannot be represented as a float64: 1.797693135e+309",
 		},
 	}
 	tests.runListUsersTestCases(t)
