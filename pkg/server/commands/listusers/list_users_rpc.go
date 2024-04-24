@@ -74,7 +74,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		},
 		resolveNodeBreadthLimit: 20,
 		resolveNodeLimit:        25,
-		maxResults:              10_000,
+		maxResults:              1_000,
 	}
 
 	for _, opt := range opts {

@@ -9,12 +9,13 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 // setupListUsersBenchmark writes the model and lots of tuples
@@ -69,10 +70,14 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		UserFilters:          []*openfgav1.ListUsersFilter{{Type: "user"}},
 	}
 
-	// TODO add benchmark for when max_results = 1
-	// so that we assert that we don't waste time computing extra results in that case
-	oneResultIterations := int(math.Inf(1))
-	var allResultsIterations int
+	var oneResultIterations, allResultsIterations int
+
+	b.Run("oneResult", func(b *testing.B) {
+		oneResultIterations = int(math.Inf(1))
+		// TODO add benchmark for when max_results = 1
+		// so that we assert that we don't waste time computing extra results in that case
+		b.Skip("unimplemented")
+	})
 
 	b.Run("allResults", func(b *testing.B) {
 		b.ResetTimer()
