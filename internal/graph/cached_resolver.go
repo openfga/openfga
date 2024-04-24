@@ -83,7 +83,7 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 	}
 }
 
-// WithLogger sets the logger for the cached check resolver
+// WithLogger sets the logger for the cached check resolver.
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
@@ -94,7 +94,7 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // but before delegating the query to the delegate a cache-key lookup is made to see if the Check sub-problem
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
-// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup
+// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup.
 func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
 		maxCacheSize: defaultMaxCacheSize,
@@ -128,7 +128,7 @@ func (c *CachedCheckResolver) GetDelegate() CheckResolver {
 }
 
 // Close will deallocate resource allocated by the CachedCheckResolver
-// It will not deallocate cache if it has been passed in from WithExistingCache
+// It will not deallocate cache if it has been passed in from WithExistingCache.
 func (c *CachedCheckResolver) Close() {
 	if c.allocatedCache {
 		c.cache.Stop()
