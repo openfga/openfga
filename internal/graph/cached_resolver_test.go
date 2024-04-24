@@ -16,9 +16,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )

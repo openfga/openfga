@@ -335,7 +335,7 @@ func (q *ExpandQuery) resolveUnionUserset(
 	}, nil
 }
 
-// resolveIntersectionUserset create an intermediate Usertree node containing the intersection of its children
+// resolveIntersectionUserset create an intermediate Usertree node containing the intersection of its children.
 func (q *ExpandQuery) resolveIntersectionUserset(
 	ctx context.Context,
 	store string,
@@ -360,7 +360,7 @@ func (q *ExpandQuery) resolveIntersectionUserset(
 	}, nil
 }
 
-// resolveDifferenceUserset creates and intermediate Usertree node containing the difference of its children
+// resolveDifferenceUserset creates and intermediate Usertree node containing the difference of its children.
 func (q *ExpandQuery) resolveDifferenceUserset(
 	ctx context.Context,
 	store string,
@@ -388,7 +388,7 @@ func (q *ExpandQuery) resolveDifferenceUserset(
 	}, nil
 }
 
-// resolveUsersets creates Usertree nodes for multiple Usersets
+// resolveUsersets creates Usertree nodes for multiple Usersets.
 func (q *ExpandQuery) resolveUsersets(
 	ctx context.Context,
 	store string,
