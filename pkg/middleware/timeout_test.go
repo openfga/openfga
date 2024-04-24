@@ -14,7 +14,7 @@ import (
 )
 
 // mockServerGRPCStream mocks grpc server stream and only returns context
-// otherwise noop, and we don't care whether it is called or not
+// otherwise noop, and we don't care whether it is called or not.
 type mockServerGRPCStream struct {
 	ctx context.Context
 }

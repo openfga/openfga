@@ -41,7 +41,7 @@ func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption 
 	}
 }
 
-// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`
+// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`.
 func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
 	rq := &ReadChangesQuery{
 		backend:       backend,

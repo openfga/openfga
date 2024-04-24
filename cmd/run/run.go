@@ -275,9 +275,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
-// Run returns an error if the server was unable to start successfully.
-// If it started and terminated successfully, it returns a nil error.
-func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+func (s *ServerContext) telemetryConfig(ctx context.Context, config *serverconfig.Config) func() {
 	var tracerProviderCloser func()
 
 	if config.Trace.Enabled {
@@ -306,14 +304,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	} else {
 		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
+	return tracerProviderCloser
+}
 
-	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-
-	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
-	}
-
+func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, error) {
 	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
@@ -344,21 +338,26 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("initialize mysql datastore: %w", err)
+			return nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("initialize postgres datastore: %w", err)
+			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	default:
-		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
+		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
 	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+	return datastore, nil
+}
 
+func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.Authenticator, error) {
 	var authenticator authn.Authenticator
+	var err error
+
 	switch config.Authn.Method {
 	case "none":
 		s.Logger.Warn("authentication is disabled")
@@ -370,10 +369,35 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
 	default:
-		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
+		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to initialize authenticator: %w", err)
+		return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
+	}
+	return authenticator, nil
+}
+
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
+func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+	tracerProviderCloser := s.telemetryConfig(ctx, config)
+
+	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	}
+
+	datastore, err := s.datastoreConfig(config)
+	if err != nil {
+		return err
+	}
+
+	authenticator, err := s.authenticatorConfig(config)
+
+	if err != nil {
+		return err
 	}
 
 	serverOpts := []grpc.ServerOption{

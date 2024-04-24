@@ -261,7 +261,7 @@ func (s *MemoryBackend) ReadChanges(
 	if to != len(allChanges) {
 		continuationToken = strconv.Itoa(to)
 	}
-	continuationToken = continuationToken + fmt.Sprintf("|%s", objectType)
+	continuationToken += fmt.Sprintf("|%s", objectType)
 
 	return res, []byte(continuationToken), nil
 }
@@ -581,7 +581,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 		return models[i].GetId() > models[j].GetId()
 	})
 
-	var from int64 = 0
+	var from int64
 	continuationToken := ""
 	var err error
 
@@ -766,7 +766,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 	})
 
 	var err error
-	var from int64 = 0
+	var from int64
 	if paginationOptions.From != "" {
 		from, err = strconv.ParseInt(paginationOptions.From, 10, 32)
 		if err != nil {

@@ -28,7 +28,7 @@ const (
 	DefaultCheckQueryCacheTTL    = 10 * time.Second
 	DefaultCheckQueryCacheEnable = false
 
-	// care should be taken here - decreasing can cause API compatibility problems with Conditions
+	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
@@ -175,14 +175,14 @@ type MetricConfig struct {
 	EnableRPCHistograms bool
 }
 
-// CheckQueryCache defines configuration for caching when resolving check
+// CheckQueryCache defines configuration for caching when resolving check.
 type CheckQueryCache struct {
 	Enabled bool
 	Limit   uint32 // (in items)
 	TTL     time.Duration
 }
 
-// DispatchThrottlingConfig defines configurations for dispatch throttling
+// DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
 	Enabled   bool
 	Frequency time.Duration
@@ -359,7 +359,7 @@ func (cfg *Config) Verify() error {
 // DefaultContextTimeout returns the runtime DefaultContextTimeout.
 // If requestTimeout > 0, we should let the middleware take care of the timeout and the
 // runtime.DefaultContextTimeout is used as last resort.
-// Otherwise, use the http upstream timeout if http is enabled
+// Otherwise, use the http upstream timeout if http is enabled.
 func DefaultContextTimeout(config *Config) time.Duration {
 	if config.RequestTimeout > 0 {
 		return config.RequestTimeout + additionalUpstreamTimeout

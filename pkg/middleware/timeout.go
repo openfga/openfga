@@ -10,14 +10,14 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
-// TimeoutInterceptor sets the timeout in each request
+// TimeoutInterceptor sets the timeout in each request.
 type TimeoutInterceptor struct {
 	timeout time.Duration
 	logger  logger.Logger
 }
 
 // NewTimeoutInterceptor returns new TimeoutInterceptor that timeouts request if it
-// exceeds the timeout value
+// exceeds the timeout value.
 func NewTimeoutInterceptor(timeout time.Duration, logger logger.Logger) *TimeoutInterceptor {
 	return &TimeoutInterceptor{
 		timeout: timeout,
@@ -27,7 +27,7 @@ func NewTimeoutInterceptor(timeout time.Duration, logger logger.Logger) *Timeout
 
 // NewUnaryTimeoutInterceptor returns an interceptor that will timeout according to the configured timeout.
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
-// to return proper error code
+// to return proper error code.
 func (h *TimeoutInterceptor) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		ctx, cancel := context.WithTimeout(ctx, h.timeout)
@@ -38,7 +38,7 @@ func (h *TimeoutInterceptor) NewUnaryTimeoutInterceptor() grpc.UnaryServerInterc
 
 // NewStreamTimeoutInterceptor returns an interceptor that will timeout according to the configured timeout.
 // We need to use this middleware instead of relying on runtime.DefaultContextTimeout to allow us
-// to return proper error code
+// to return proper error code.
 func (h *TimeoutInterceptor) NewStreamTimeoutInterceptor() grpc.StreamServerInterceptor {
 	validator := grpcvalidator.StreamServerInterceptor()
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
