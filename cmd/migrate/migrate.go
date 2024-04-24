@@ -10,7 +10,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -142,24 +142,27 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		if err := goose.Up(db, migrationsPath); err != nil {
 			return fmt.Errorf("failed to run migrations: %w", err)
 		}
-	} else {
-		log.Printf("migrating to %d", targetVersion)
-		targetInt64Version := int64(targetVersion)
-		if targetInt64Version < currentVersion {
-			if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
-				return fmt.Errorf("failed to run migrations down to %v: %w", targetInt64Version, err)
-			}
-		} else if targetInt64Version > currentVersion {
-			if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
-				return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
-			}
-		} else {
-			log.Println("nothing to do")
-			return nil
+		log.Println("migration done")
+		return nil
+	}
+
+	log.Printf("migrating to %d", targetVersion)
+	targetInt64Version := int64(targetVersion)
+
+	switch {
+	case targetInt64Version < currentVersion:
+		if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
+			return fmt.Errorf("failed to run migrations down to %v: %w", targetInt64Version, err)
 		}
+	case targetInt64Version > currentVersion:
+		if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
+			return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
+		}
+	default:
+		log.Println("nothing to do")
+		return nil
 	}
 
 	log.Println("migration done")
-
 	return nil
 }

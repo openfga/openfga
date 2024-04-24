@@ -170,14 +170,14 @@ type LocalChecker struct {
 
 type LocalCheckerOption func(d *LocalChecker)
 
-// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
 	}
 }
 
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck.
 func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.maxConcurrentReads = limit
@@ -534,7 +534,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}, nil
 }
 
-// Close is a noop
+// Close is a noop.
 func (c *LocalChecker) Close() {
 }
 
@@ -586,6 +586,18 @@ func (c *LocalChecker) ResolveCheck(
 	tupleKey := req.GetTupleKey()
 	object := tupleKey.GetObject()
 	relation := tupleKey.GetRelation()
+
+	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
+
+	// Check(document:1#viewer@document:1#viewer) will always return true
+	if relation == userRelation && object == userObject {
+		return &ResolveCheckResponse{
+			Allowed: true,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+			},
+		}, nil
+	}
 
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)

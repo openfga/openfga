@@ -105,7 +105,7 @@ func TestHasEntrypoints(t *testing.T) {
 					define viewer: viewer from parent`,
 			inputType:     "document",
 			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, //TODO this should be an error
+			expectDetails: &relationDetails{false, false}, // TODO this should be an error
 		},
 		`this_has_entrypoints_to_same_type`: {
 			model: `
@@ -170,7 +170,7 @@ func TestHasEntrypoints(t *testing.T) {
 			expectDetails: &relationDetails{true, false},
 		},
 		// TODO fix
-		//`this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
+		// `this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
 		//	model: `
 		//	model
 		//		schema 1.1
@@ -180,7 +180,7 @@ func TestHasEntrypoints(t *testing.T) {
 		//	inputType:     "folder",
 		//	inputRelation: "parent",
 		//	expectError:   "undefined type 'unknown'",
-		//},
+		// },
 		`this_has_no_entrypoints_through_userset`: {
 			model: `
 			model
