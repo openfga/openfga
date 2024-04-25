@@ -2,8 +2,7 @@ project_name: openfga-nightly
 
 before:
   hooks:
-    - make install-tools
-    - go generate ./...
+    - make generate-mocks
 
 builds:
   - main: ./cmd/openfga

@@ -95,7 +95,7 @@ func (l *ZapLogger) FatalWithContext(ctx context.Context, msg string, fields ...
 	l.Logger.Fatal(msg, fields...)
 }
 
-// OptionsLogger Implements options for logger
+// OptionsLogger Implements options for logger.
 type OptionsLogger struct {
 	format          string
 	level           string

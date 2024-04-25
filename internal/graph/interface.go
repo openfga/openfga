@@ -22,6 +22,8 @@ type CheckResolver interface {
 	//
 	// Implementations must pass along the request in full, with all its fields,
 	// and it must set the response in full, including the metadata, with any updates necessary.
+	//
+	// The return values may be nil and an error, or non-nil and an error.
 	ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
 
 	// Close releases resources. It must be called after the CheckResolver is done processing all requests.
