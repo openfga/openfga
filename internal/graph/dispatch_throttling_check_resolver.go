@@ -7,13 +7,13 @@ import (
 
 type DispatchThrottlingCheckResolver struct {
 	delegate  CheckResolver
-	throttler *throttler.DispatchThrottler
+	throttler throttler.Throttler
 }
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
 func NewDispatchThrottlingCheckResolver(
-	throttler *throttler.DispatchThrottler) *DispatchThrottlingCheckResolver {
+	throttler throttler.Throttler) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		throttler: throttler,
 	}

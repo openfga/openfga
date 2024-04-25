@@ -15,15 +15,23 @@ type DispatchThrottlingConfig struct {
 	Threshold uint32
 }
 
-type Ticker interface {
+type Throttler interface {
+	Close()
+	Throttle(context.Context, uint32)
 }
 
-// DispatchThrottler will prioritize requests with fewer dispatches over
-// requests with more dispatches.
-// Initially, request's dispatches will not be throttled and will be processed
-// immediately. When the number of request dispatches is above the Threshold, the dispatches are placed
-// in the throttling queue. One item form the throttling queue will be processed ticker.
-// This allows a check / list objects request to be gradually throttled.
+type NoopThrottler struct{}
+
+var _ = (*NoopThrottler)(nil)
+
+func (r *NoopThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
+}
+
+func (r *NoopThrottler) Close() {
+}
+
+// DispatchThrottler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
+// Throttling will start to kick in when the dispatch count exceeds the configured dispatch threshold.
 type DispatchThrottler struct {
 	config          DispatchThrottlingConfig
 	ticker          *time.Ticker
@@ -32,7 +40,7 @@ type DispatchThrottler struct {
 }
 
 func NewDispatchThrottler(
-	config DispatchThrottlingConfig) *DispatchThrottler {
+	config DispatchThrottlingConfig) Throttler {
 	dispatchThrottler := &DispatchThrottler{
 		config:          config,
 		ticker:          time.NewTicker(config.Frequency),
@@ -64,11 +72,6 @@ func (r *DispatchThrottler) nonBlockingSend(signalChan chan struct{}) {
 	}
 }
 
-// ReleaseDispatch is used for releasing a dispatch from the queue.
-func (r *DispatchThrottler) ReleaseDispatch() {
-	r.nonBlockingSend(r.throttlingQueue)
-}
-
 func (r *DispatchThrottler) runTicker() {
 	for {
 		select {
@@ -87,6 +90,9 @@ func (r *DispatchThrottler) Close() {
 	r.done <- struct{}{}
 }
 
+// Throttle provides a synchronous blocking mechanism that will block if the currentNumDispatch exceeds the configured dispatch threshold.
+// It will block until a value is produced on the underlying throttling queue channel,
+// which is produced by periodically sending a value on the channel based on the configured ticker frequency.
 func (r *DispatchThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
 	if currentNumDispatch > r.config.Threshold {
 		start := time.Now()

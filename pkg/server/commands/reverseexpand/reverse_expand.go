@@ -111,7 +111,7 @@ type UserRef struct {
 
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
-	dispatchThrottler       *throttler.DispatchThrottler
+	dispatchThrottler       throttler.Throttler
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
@@ -131,7 +131,7 @@ func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
-func WithDispatchThrottler(dispatchThrottler *throttler.DispatchThrottler) ReverseExpandQueryOption {
+func WithDispatchThrottler(dispatchThrottler throttler.Throttler) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.dispatchThrottler = dispatchThrottler
 	}
@@ -150,6 +150,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		dispatchThrottler:       &throttler.NoopThrottler{},
 		candidateObjectsMap:     new(sync.Map),
 		visitedUsersetsMap:      new(sync.Map),
 	}
@@ -342,9 +343,7 @@ LoopOnEdges:
 				},
 			}
 			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			if c.dispatchThrottler != nil {
-				c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
-			}
+			c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = multierror.Append(errs, err)
@@ -550,9 +549,7 @@ LoopOnIterator:
 
 		pool.Go(func(ctx context.Context) error {
 			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			if c.dispatchThrottler != nil {
-				c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
-			}
+			c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
 			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,

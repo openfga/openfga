@@ -56,7 +56,7 @@ type ListObjectsQuery struct {
 	maxConcurrentReads      uint32
 
 	checkResolver     graph.CheckResolver
-	dispatchThrottler *throttler.DispatchThrottler
+	dispatchThrottler throttler.Throttler
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -87,7 +87,7 @@ func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	}
 }
 
-func WithDispatchThrottler(throttler *throttler.DispatchThrottler) ListObjectsQueryOption {
+func WithDispatchThrottler(throttler throttler.Throttler) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.dispatchThrottler = throttler
 	}
@@ -147,6 +147,7 @@ func NewListObjectsQuery(
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		dispatchThrottler:       &throttler.NoopThrottler{},
 		checkResolver:           checkResolver,
 	}
 

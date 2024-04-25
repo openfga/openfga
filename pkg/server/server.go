@@ -148,7 +148,7 @@ type Server struct {
 
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
-	listObjectsDispatchThrottler *throttler.DispatchThrottler
+	listObjectsDispatchThrottler throttler.Throttler
 }
 
 type OpenFGAServiceV1Option func(s *Server)
