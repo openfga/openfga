@@ -23,13 +23,12 @@ import (
 )
 
 type ListUsersTests []struct {
-	name                  string
-	TemporarilySkipReason string // Temporarily skip test until functionality is fixed
-	req                   *openfgav1.ListUsersRequest
-	model                 string
-	tuples                []*openfgav1.TupleKey
-	expectedUsers         []string
-	expectedErrorMsg      string
+	name             string
+	req              *openfgav1.ListUsersRequest
+	model            string
+	tuples           []*openfgav1.TupleKey
+	expectedUsers    []string
+	expectedErrorMsg string
 }
 
 const maximumRecursiveDepth = 25
@@ -2426,10 +2425,6 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
 		t.Run(test.name, func(t *testing.T) {
-			if test.TemporarilySkipReason != "" {
-				t.Skip()
-			}
-
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 
