@@ -18,7 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/errors"
 )
 
-// HTTPPanicRecoveryHandler recover from panic for http services
+// HTTPPanicRecoveryHandler recover from panic for http services.
 func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -46,7 +46,7 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 	})
 }
 
-// PanicRecoveryHandler recovers from panics for unary/stream services
+// PanicRecoveryHandler recovers from panics for unary/stream services.
 func PanicRecoveryHandler(logger logger.Logger) grpc_recovery.RecoveryHandlerFuncContext {
 	return func(ctx context.Context, p any) error {
 		logger.Error("PanicRecoveryHandler has recovered a panic",
