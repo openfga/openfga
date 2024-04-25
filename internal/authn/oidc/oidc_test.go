@@ -256,7 +256,7 @@ func generateJWTSignatureKeys() (*rsa.PrivateKey, *rsa.PublicKey) {
 	return privateKey, &privateKey.PublicKey
 }
 
-// fetchKeysMock returns a function that sets up a mock JWKS
+// fetchKeysMock returns a function that sets up a mock JWKS.
 func fetchKeysMock(publicKey *rsa.PublicKey, kid string) func(oidc *RemoteOidcAuthenticator) error {
 	// Create a keyfunc with the given RSA public key and RS256 algorithm
 	givenKeys := keyfunc.NewGivenRSACustomWithOptions(publicKey, keyfunc.GivenKeyOptions{

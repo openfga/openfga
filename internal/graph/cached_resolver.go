@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/build"
@@ -82,7 +83,7 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 	}
 }
 
-// WithLogger sets the logger for the cached check resolver
+// WithLogger sets the logger for the cached check resolver.
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
@@ -93,7 +94,7 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // but before delegating the query to the delegate a cache-key lookup is made to see if the Check sub-problem
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
-// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup
+// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup.
 func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
 		maxCacheSize: defaultMaxCacheSize,
@@ -127,11 +128,10 @@ func (c *CachedCheckResolver) GetDelegate() CheckResolver {
 }
 
 // Close will deallocate resource allocated by the CachedCheckResolver
-// It will not deallocate cache if it has been passed in from WithExistingCache
+// It will not deallocate cache if it has been passed in from WithExistingCache.
 func (c *CachedCheckResolver) Close() {
 	if c.allocatedCache {
 		c.cache.Stop()
-		c.cache = nil
 	}
 }
 
@@ -139,10 +139,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreID()),
+		attribute.String("resolver_type", "CachedCheckResolver"),
+		attribute.String("tuple_key", req.GetTupleKey().String()),
+		attribute.Bool("is_cached", false),
+	))
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "CachedCheckResolver"))
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	checkCacheTotalCounter.Inc()
 
@@ -161,7 +164,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 		// return a copy to avoid races across goroutines
 		return CloneResolveCheckResponse(cachedResp.Value()), nil
 	}
-	span.SetAttributes(attribute.Bool("is_cached", false))
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {

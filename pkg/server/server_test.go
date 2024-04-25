@@ -304,7 +304,6 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "user:andres"),
 			},
@@ -519,19 +518,26 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New()
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
@@ -541,7 +547,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 }
@@ -1129,6 +1135,13 @@ func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
 
 // This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1156,6 +1169,9 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	b.Cleanup(func() {
+		s.Close()
+	})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

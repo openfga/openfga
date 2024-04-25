@@ -28,7 +28,7 @@ const (
 	DefaultCheckQueryCacheTTL    = 10 * time.Second
 	DefaultCheckQueryCacheEnable = false
 
-	// care should be taken here - decreasing can cause API compatibility problems with Conditions
+	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
@@ -171,14 +171,14 @@ type MetricConfig struct {
 	EnableRPCHistograms bool
 }
 
-// CheckQueryCache defines configuration for caching when resolving check
+// CheckQueryCache defines configuration for caching when resolving check.
 type CheckQueryCache struct {
 	Enabled bool
 	Limit   uint32 // (in items)
 	TTL     time.Duration
 }
 
-// DispatchThrottlingConfig defines configurations for dispatch throttling
+// DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
 	Enabled   bool
 	Frequency time.Duration

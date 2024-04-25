@@ -156,7 +156,7 @@ func runOpenFGAContainerWithArgs(t *testing.T, commandArgs []string) OpenFGATest
 // For that, go to the github.com/openfga/openfga/tests package.
 func TestDocker(t *testing.T) {
 	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
-	//defer goleak.VerifyNone(t)
+	// defer goleak.VerifyNone(t)
 	t.Run("run_command", func(t *testing.T) {
 		tester := runOpenFGAContainerWithArgs(t, []string{"run"})
 
@@ -175,9 +175,15 @@ func TestDocker(t *testing.T) {
 		})
 
 		t.Run("http_endpoint_works", func(t *testing.T) {
-			resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", tester.GetHTTPAddress()))
+			response, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", tester.GetHTTPAddress()))
 			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			t.Cleanup(func() {
+				err := response.Body.Close()
+				require.NoError(t, err)
+			})
+
+			require.Equal(t, http.StatusOK, response.StatusCode)
 		})
 	})
 

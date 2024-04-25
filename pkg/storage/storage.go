@@ -63,7 +63,7 @@ type PaginationOptions struct {
 
 // NewPaginationOptions creates a new [PaginationOptions] instance
 // with a specified page size and continuation token. If the input page size is empty,
-// it uses DefaultPageSize
+// it uses DefaultPageSize.
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
 	if ps != 0 {

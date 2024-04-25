@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
