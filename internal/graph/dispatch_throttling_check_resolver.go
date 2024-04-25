@@ -12,7 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-// DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver
+// DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.
 type DispatchThrottlingCheckResolverConfig struct {
 	Frequency    time.Duration
 	Threshold    uint32

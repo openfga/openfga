@@ -47,14 +47,14 @@ type stage struct {
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
-// ClientInterface defines interface for running ListObjects and StreamedListObjects tests
+// ClientInterface defines interface for running ListObjects and StreamedListObjects tests.
 type ClientInterface interface {
 	check.ClientInterface
 	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
 	StreamedListObjects(ctx context.Context, in *openfgav1.StreamedListObjectsRequest, opts ...grpc.CallOption) (openfgav1.OpenFGAService_StreamedListObjectsClient, error)
 }
 
-// RunAllTests will invoke all list objects tests
+// RunAllTests will invoke all list objects tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListObjects", func(t *testing.T) {
@@ -206,7 +206,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				// assert 2: on streaming list objects endpoint
 				done := make(chan struct{})
-				var streamedObjectIds []string
+				var streamedObjectIDs []string
 
 				clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:              storeID,
@@ -227,7 +227,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					for {
 						streamingResp, streamingErr = clientStream.Recv()
 						if streamingErr == nil {
-							streamedObjectIds = append(streamedObjectIds, streamingResp.GetObject())
+							streamedObjectIDs = append(streamedObjectIDs, streamingResp.GetObject())
 						} else {
 							if errors.Is(streamingErr, io.EOF) {
 								streamingErr = nil
@@ -241,7 +241,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				if assertion.ErrorCode == 0 {
 					require.NoError(t, streamingErr, detailedInfo)
-					require.ElementsMatch(t, assertion.Expectation, streamedObjectIds, detailedInfo)
+					require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
 				} else {
 					require.Error(t, streamingErr, detailedInfo)
 					e, ok := status.FromError(streamingErr)
