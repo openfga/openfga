@@ -37,6 +37,11 @@ type listUsersQuery struct {
 	resolveNodeLimit        uint32
 }
 
+type expandResponse struct {
+	hasCycle bool
+	err      error
+}
+
 /*
  - Optimize entrypoint pruning
  - Intersection, exclusion, etc. (see: listobjects)
@@ -131,8 +136,7 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req)
-		resp := l.expand(ctx, internalRequest, foundUsersCh)
-		if resp.err != nil {
+		if resp := l.expand(ctx, internalRequest, foundUsersCh); resp.err != nil {
 			expandErrCh <- resp.err
 			return
 		}
@@ -213,11 +217,6 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 // 	return nil
 // }
-
-type expandResponse struct {
-	hasCycle bool
-	err      error
-}
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
