@@ -18,6 +18,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -35,15 +37,6 @@ type listUsersQuery struct {
 	resolveNodeLimit        uint32
 	maxResults              uint32
 }
-
-/*
- - Optimize entrypoint pruning
- - Intersection, exclusion, etc. (see: listobjects)
- - Max results
- - BCTR
- - Contextual tuples
- -
-*/
 
 type ListUsersQueryOption func(l *listUsersQuery)
 
@@ -84,7 +77,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	return l
 }
 
-// WithResolveNodeLimit see server.WithResolveNodeLimit
+// WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.resolveNodeLimit = limit
@@ -99,7 +92,7 @@ func (l *listUsersQuery) ListUsers(
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
-	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
+	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples())
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")
@@ -175,49 +168,6 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 	return len(edges) > 0, err
 }
-
-// func (l *listUsersQuery) StreamedListUsers(
-// 	ctx context.Context,
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	foundObjectsCh := make(chan *openfgav1.Object, 1)
-// 	expandErrCh := make(chan error, 1)
-
-// 	done := make(chan struct{}, 1)
-// 	go func() {
-// 		for foundObject := range foundObjectsCh {
-// 			log.Printf("foundObject '%v'\n", foundObject)
-// 			if err := srv.Send(&openfgav1.StreamedListUsersResponse{
-// 				UserObject: foundObject,
-// 			}); err != nil {
-// 				// handle error
-// 			}
-// 		}
-
-// 		done <- struct{}{}
-// 		log.Printf("ListUsers expand is done\n")
-// 	}()
-
-// 	go func() {
-// 		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
-// 			expandErrCh <- err
-// 			return
-// 		}
-
-// 		close(foundObjectsCh)
-// 		log.Printf("foundObjectsCh is closed\n")
-// 	}()
-
-// 	select {
-// 	case err := <-expandErrCh:
-// 		return err
-// 	case <-done:
-// 		break
-// 	}
-
-// 	return nil
-// }
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
@@ -358,14 +308,36 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
@@ -376,7 +348,6 @@ func (l *listUsersQuery) expandDirect(
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					// we found one, time to return it!
 					foundUsersChan <- user
 				}
 			}
@@ -391,10 +362,10 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	errs = errors.Join(pool.Wait(), errs)
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }
@@ -577,14 +548,36 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		userObject := tupleKey.GetUser()
@@ -598,10 +591,10 @@ func (l *listUsersQuery) expandTTU(
 		})
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	errs = errors.Join(pool.Wait(), errs)
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }

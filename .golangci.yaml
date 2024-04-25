@@ -28,21 +28,24 @@ linters:
     - wastedassign
     - whitespace
     - protogetter
-    # TODO enable https://github.com/openfga/openfga/issues/598
-    # - bodyclose
-    # - contextcheck
-    # - exhaustive
-    # - errorlint
-    # - gochecknoglobals
-    # - gocritic
-    # - godot
-    # - gosec
-    # - noctx
-    # - inamedparam
-    # - perfsprint
-    # - prealloc
-    # - tparallel
+    - revive
+    - godot
+    - bodyclose
+    - gocritic
+    - gocyclo
+    #- gosec Too many different issues. Needs to be tackled in a separate PR.
+
 linters-settings:
+  gofmt:
+    simplify: true
+  staticcheck:
+    checks: [ "all" ]
+  gocyclo:
+    min-complexity: 58 # This is our baseline at the moment.
+  godot:
+    scope: declarations
+    capital: true
+    period: true
   govet:
     enable-all: true
     disable:
@@ -51,10 +54,23 @@ linters-settings:
   goimports:
     local-prefixes: "github.com/openfga/openfga"
   importas:
-    # Do not allow unaliased imports of aliased packages.
-    no-unaliased: true
-    # Do not allow non-required aliases.
-    no-extra-aliases: false
+    no-unaliased: true # Do not allow unaliased imports of aliased packages.
+    no-extra-aliases: false # Do not allow non-required aliases.
     alias:
       - pkg: github.com/openfga/api/proto/openfga/v1
         alias: openfgav1
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    - path: "(.+)_test.go"
+      linters:
+        - bodyclose
+  exclude:
+    - "should have a package comment" # stylecheck | revive
+    - "exported (.+) should have comment" # revive
+    - "comment on exported (.+) should be of the form" # revive
+    - "(.+) name will be used as (.+) by other packages, and that stutters; consider calling this (.+)" # revive
+    - "Error return value of (.+) is not checked" # errcheck
+    - "unused-parameter" # revive
+    - "exported func (.+) returns unexported type (.+), which can be annoying to use" # revive

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-// DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver
+// DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.
 type DispatchThrottlingCheckResolverConfig struct {
 	Frequency time.Duration
 	Threshold uint32
@@ -99,6 +100,8 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
 	if currentNumDispatch > r.config.Threshold {
+		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
+
 		start := time.Now()
 		<-r.throttlingQueue
 		end := time.Now()

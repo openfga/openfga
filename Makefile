@@ -53,6 +53,10 @@ $(GO_BIN)/CompileDaemon:
 
 $(GO_BIN)/openfga: install
 
+generate-mocks: $(GO_BIN)/mockgen ## Generate mock stubs
+	${call print, "Generating mock stubs"}
+	@go generate ./...
+
 #-----------------------------------------------------------------------------------------------------------------------
 # Building & Installing
 #-----------------------------------------------------------------------------------------------------------------------
@@ -78,9 +82,9 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 #-----------------------------------------------------------------------------------------------------------------------
 # Tests
 #-----------------------------------------------------------------------------------------------------------------------
-.PHONY: test test-docker test-bench test-mocks
+.PHONY: test test-docker test-bench generate-mocks
 
-test: test-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
+test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
 	${call print, "Running tests"}
 	@go test -race \
 			-run "$(FILTER)" \
@@ -100,13 +104,9 @@ test-docker: ## Run tests requiring Docker
 	fi
 	@go test -v -count=1 -timeout=5m -tags=docker ./cmd/openfga/...
 
-test-bench: test-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
+test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
 	@go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
-
-test-mocks: $(GO_BIN)/mockgen ## Generate test mocks
-	${call print, "Generating test mocks"}
-	@go generate ./...
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Development

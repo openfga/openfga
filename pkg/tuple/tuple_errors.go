@@ -6,7 +6,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
-// InvalidConditionalTupleError is returned if the tuple's condition is invalid
+// InvalidConditionalTupleError is returned if the tuple's condition is invalid.
 type InvalidConditionalTupleError struct {
 	Cause    error
 	TupleKey TupleWithCondition
@@ -21,7 +21,7 @@ func (i *InvalidConditionalTupleError) Is(target error) bool {
 	return ok
 }
 
-// InvalidTupleError is returned if the tuple is invalid
+// InvalidTupleError is returned if the tuple is invalid.
 type InvalidTupleError struct {
 	Cause    error
 	TupleKey TupleWithoutCondition

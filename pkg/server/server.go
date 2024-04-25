@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -22,8 +21,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/gateway"
-
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
@@ -31,6 +28,7 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -46,10 +44,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader                              = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey                                 = "authorization_model_id"
-	ExperimentalEnableModularModels ExperimentalFeatureFlag = "enable-modular-models"
-	ExperimentalEnableListUsers     ExperimentalFeatureFlag = "enable-list-users"
+	AuthorizationModelIDHeader                          = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalEnableListUsers ExperimentalFeatureFlag = "enable-list-users"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -79,7 +76,7 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
-	//request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms
+	// Request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms.
 	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
 
 	requestDurationByQueryAndDispatchHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -190,7 +187,7 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
 // is deeply nested), or if you have lots of users for (object, relation) pairs,
-// you should set this option to be a low number (e.g. 1000)
+// you should set this option to be a low number (e.g. 1000).
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
@@ -199,7 +196,7 @@ func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 
 // WithChangelogHorizonOffset sets an offset (in minutes) from the current time.
 // Changes that occur after this offset will not be included in the response of ReadChanges API.
-// If your datastore is eventually consistent or if you have a database with replication delay, we recommend setting this (e.g. 1 minute)
+// If your datastore is eventually consistent or if you have a database with replication delay, we recommend setting this (e.g. 1 minute).
 func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
@@ -225,7 +222,7 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 // WithMaxConcurrentReadsForListObjects sets a limit on the number of datastore reads that can be in flight for a given ListObjects call.
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
-// E.g. if Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
+// E.g. If Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
@@ -238,7 +235,7 @@ func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 // WithMaxConcurrentReadsForCheck sets a limit on the number of datastore reads that can be in flight for a given Check call.
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
-// E.g. if Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
+// E.g. If Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
@@ -256,7 +253,7 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 
 // WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
 // This cache is shared for all requests.
-// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL
+// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL.
 func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheEnabled = enabled
@@ -279,7 +276,7 @@ func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
@@ -287,7 +284,7 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
-// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
@@ -329,7 +326,7 @@ func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServi
 	}
 }
 
-// MustNewServerWithOpts see NewServerWithOpts
+// MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -730,6 +727,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
+		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -787,7 +785,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
 
@@ -910,12 +908,9 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	enableModularModels := slices.Contains(s.experimentals, ExperimentalEnableModularModels)
-
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
-		commands.WithEnableModularModels(enableModularModels),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {

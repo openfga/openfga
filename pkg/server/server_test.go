@@ -304,7 +304,6 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "user:andres"),
 			},
@@ -314,7 +313,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(3)
 
 	var resp1 *openfgav1.CheckResponse
 	var err1 error
@@ -340,13 +339,30 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		})
 	}()
 
+	var resp3 *openfgav1.CheckResponse
+	var err3 error
+	go func() {
+		defer wg.Done()
+
+		resp3, err3 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:andres"),
+		})
+	}()
+
 	wg.Wait()
 
 	require.NoError(t, err1)
+	require.NotNil(t, resp1)
 	require.False(t, resp1.GetAllowed())
 
 	require.NoError(t, err2)
-	require.False(t, resp2.GetAllowed())
+	require.NotNil(t, resp2)
+
+	require.NoError(t, err3)
+	require.NotNil(t, resp3)
+	require.True(t, resp3.GetAllowed())
 }
 
 func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
@@ -405,7 +421,9 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 		AuthorizationModelId: modelID,
 		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "can_view", "user:jon"),
 	})
+
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 	require.False(t, resp.GetAllowed())
 }
 
@@ -500,19 +518,26 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New()
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
@@ -522,7 +547,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 }
@@ -690,7 +715,7 @@ type document
 				Type: "document",
 				Id:   "1",
 			},
-			UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 		})
 		require.NoError(t, err)
 
@@ -1152,6 +1177,13 @@ func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
 
 // This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1179,6 +1211,9 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	b.Cleanup(func() {
+		s.Close()
+	})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1606,7 +1641,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 }
 
-func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T) {
+func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -1618,31 +1653,9 @@ func TestWriteAuthorizationModelWithExperimentalEnableModularModels(t *testing.T
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	t.Run("rejects_request_with_schema_version_1.2", func(t *testing.T) {
+	t.Run("accepts_request_with_schema_version_1.2", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
-		)
-		defer s.Close()
-
-		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
-
-		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: typesystem.SchemaVersion1_2,
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-				},
-			},
-		})
-
-		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "modular models (schema version 1.2) are not supported"))
-	})
-
-	t.Run("accepts_request_with_schema_version_1.2_if_experimental_flag_enabled", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithExperimentals(ExperimentalEnableModularModels),
 		)
 		defer s.Close()
 
