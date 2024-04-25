@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -46,10 +45,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader                              = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey                                 = "authorization_model_id"
-	ExperimentalEnableModularModels ExperimentalFeatureFlag = "enable-modular-models"
-	ExperimentalEnableListUsers     ExperimentalFeatureFlag = "enable-list-users"
+	AuthorizationModelIDHeader                          = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalEnableListUsers ExperimentalFeatureFlag = "enable-list-users"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -730,6 +728,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
+		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -787,7 +786,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
 
@@ -910,12 +909,9 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	enableModularModels := slices.Contains(s.experimentals, ExperimentalEnableModularModels)
-
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
-		commands.WithEnableModularModels(enableModularModels),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
@@ -19,6 +18,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -343,7 +344,7 @@ func (l *listUsersQuery) expandDirect(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(typesys), // why filter invalid here?
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 
@@ -351,14 +352,36 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		tupleKeyUser := tupleKey.GetUser()
@@ -384,10 +407,10 @@ func (l *listUsersQuery) expandDirect(
 		})
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	errs = errors.Join(pool.Wait(), errs)
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }
@@ -487,18 +510,18 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
-	var errs error
+	var baseError, substractError error
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			baseError = err
 		}
 		close(baseFoundUsersCh)
 	}()
 	go func() {
 		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			substractError = err
 		}
 		close(subtractFoundUsersCh)
 	}()
@@ -526,6 +549,7 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
+	errs := errors.Join(baseError, substractError)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
@@ -569,14 +593,36 @@ func (l *listUsersQuery) expandTTU(
 	pool.WithCancelOnError()
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
+	var errs error
+
+LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				errs = errors.Join(errs, err)
 			}
 
-			return err
+			break LoopOnIterator
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			break LoopOnIterator
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
 		}
 
 		userObject := tupleKey.GetUser()
@@ -590,10 +636,10 @@ func (l *listUsersQuery) expandTTU(
 		})
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	errs = errors.Join(pool.Wait(), errs)
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 	return nil
 }

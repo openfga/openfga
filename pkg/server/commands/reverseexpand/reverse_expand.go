@@ -267,27 +267,20 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserObj = val.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 
-		sourceUserRel := val.ObjectRelation.GetRelation()
-
-		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-				return err
-			}
-		}
-
 		if req.edge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
 			}
+		}
 
-			sourceUserRel := val.ObjectRelation.GetRelation()
+		sourceUserRel := val.ObjectRelation.GetRelation()
 
-			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-					return err
-				}
+		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
+		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
+				return err
 			}
 		}
 	}
@@ -482,9 +475,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	// filter out invalid tuples yielded by the database iterator
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		func(tupleKey *openfgav1.TupleKey) bool {
-			return validation.ValidateCondition(c.typesystem, tupleKey) == nil
-		},
+		validation.FilterInvalidTuples(c.typesystem),
 	)
 	defer filteredIter.Stop()
 

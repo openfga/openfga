@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/build"
@@ -39,33 +40,11 @@ var (
 	})
 )
 
-// CachedResolveCheckResponse is very similar to ResolveCheckResponse except we
-// do not store the ResolutionData. This is due to the fact that the resolution metadata
-// will be incorrect as data is served from cache instead of actual database read.
-type CachedResolveCheckResponse struct {
-	Allowed bool
-}
-
-func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveCheckResponse {
-	return &ResolveCheckResponse{
-		Allowed: c.Allowed,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 0,
-		},
-	}
-}
-
-func newCachedResolveCheckResponse(r *ResolveCheckResponse) *CachedResolveCheckResponse {
-	return &CachedResolveCheckResponse{
-		Allowed: r.Allowed,
-	}
-}
-
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        *ccache.Cache[*CachedResolveCheckResponse]
+	cache        *ccache.Cache[*ResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
@@ -98,7 +77,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 // WithExistingCache sets the cache to the specified cache.
 // Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
 // to check whether the original cache should be stopped.
-func WithExistingCache(cache *ccache.Cache[*CachedResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
@@ -131,7 +110,7 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 	if checker.cache == nil {
 		checker.allocatedCache = true
 		checker.cache = ccache.New(
-			ccache.Configure[*CachedResolveCheckResponse]().MaxSize(checker.maxCacheSize),
+			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
 		)
 	}
 
@@ -161,10 +140,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreID()),
+		attribute.String("resolver_type", "CachedCheckResolver"),
+		attribute.String("tuple_key", req.GetTupleKey().String()),
+		attribute.Bool("is_cached", false),
+	))
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "CachedCheckResolver"))
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	checkCacheTotalCounter.Inc()
 
@@ -179,9 +161,10 @@ func (c *CachedCheckResolver) ResolveCheck(
 	if cachedResp != nil && !cachedResp.Expired() {
 		checkCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("is_cached", true))
-		return cachedResp.Value().convertToResolveCheckResponse(), nil
+
+		// return a copy to avoid races across goroutines
+		return CloneResolveCheckResponse(cachedResp.Value()), nil
 	}
-	span.SetAttributes(attribute.Bool("is_cached", false))
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
@@ -189,7 +172,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
+	// the cached subproblem's resolution metadata doesn't necessarily reflect
+	// the actual number of database reads for the inflight request, so set it
+	// to 0 so it doesn't bias the resolution metadata negatively
+	clonedResp := CloneResolveCheckResponse(resp)
+	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
+
+	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)
 	return resp, nil
 }
 
