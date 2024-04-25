@@ -319,7 +319,7 @@ func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenF
 }
 
 // WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
-// In addition, it will update dispatchThrottlingMaxThreshold if required
+// In addition, it will update dispatchThrottlingMaxThreshold if required.
 func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingThreshold = threshold
@@ -328,7 +328,7 @@ func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServi
 }
 
 // WithDispatchThrottlingCheckResolverMaxThreshold define the maximum threshold values allowed
-// It will ensure dispatchThrottlingMaxThreshold will never be smaller than threshold
+// It will ensure dispatchThrottlingMaxThreshold will never be smaller than threshold.
 func WithDispatchThrottlingCheckResolverMaxThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.dispatchThrottlingMaxThreshold = max(threshold, s.dispatchThrottlingThreshold)
