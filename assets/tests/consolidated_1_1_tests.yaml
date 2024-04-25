@@ -2782,7 +2782,6 @@ tests:
               object: group:1
               relation: member
             expectation:
-              - user:will # TODO fix me!
           - request:
               filters:
                 - group#member

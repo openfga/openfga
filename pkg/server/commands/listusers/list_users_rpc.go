@@ -131,8 +131,9 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req)
-		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
-			expandErrCh <- err
+		resp := l.expand(ctx, internalRequest, foundUsersCh)
+		if resp.err != nil {
+			expandErrCh <- resp.err
 			return
 		}
 	}()
@@ -213,22 +214,31 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 // 	return nil
 // }
 
+type expandResponse struct {
+	hasCycle bool
+	err      error
+}
+
 func (l *listUsersQuery) expand(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
-) error {
+) expandResponse {
 	ctx, span := tracer.Start(ctx, "expand")
 	defer span.End()
 	span.SetAttributes(attribute.Int("depth", int(req.depth)))
 	if req.depth >= l.resolveNodeLimit {
-		return graph.ErrResolutionDepthExceeded
+		return expandResponse{
+			err: graph.ErrResolutionDepthExceeded,
+		}
 	}
 	req.depth++
 
 	if enteredCycle(req) {
 		span.SetAttributes(attribute.Bool("cycle_detected", true))
-		return nil
+		return expandResponse{
+			hasCycle: true,
+		}
 	}
 
 	reqObjectType := req.GetObject().GetType()
@@ -251,7 +261,9 @@ func (l *listUsersQuery) expand(
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		return err
+		return expandResponse{
+			err: err,
+		}
 	}
 
 	targetObjectType := req.GetObject().GetType()
@@ -259,16 +271,17 @@ func (l *listUsersQuery) expand(
 
 	relation, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
-		return err
+		return expandResponse{
+			err: err,
+		}
 	}
 
 	relationRewrite := relation.GetRewrite()
-	err = l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	resp := l.expandRewrite(ctx, req, relationRewrite, foundUsersChan)
+	if resp.err != nil {
+		telemetry.TraceError(span, resp.err)
 	}
-	return nil
+	return resp
 }
 
 func (l *listUsersQuery) expandRewrite(
@@ -276,26 +289,25 @@ func (l *listUsersQuery) expandRewrite(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset,
 	foundUsersChan chan<- *openfgav1.User,
-) error {
+) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandRewrite")
 	defer span.End()
 
-	var err error
+	var resp expandResponse
 	switch rewrite := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		err = l.expandDirect(ctx, req, foundUsersChan)
+		resp = l.expandDirect(ctx, req, foundUsersChan)
 	case *openfgav1.Userset_ComputedUserset:
 		rewrittenReq := req.clone()
 		rewrittenReq.Relation = rewrite.ComputedUserset.GetRelation()
-		err = l.expand(ctx, rewrittenReq, foundUsersChan)
+		resp = l.expand(ctx, rewrittenReq, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
-		err = l.expandTTU(ctx, req, rewrite, foundUsersChan)
+		resp = l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
-		err = l.expandIntersection(ctx, req, rewrite, foundUsersChan)
+		resp = l.expandIntersection(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Difference:
-		err = l.expandExclusion(ctx, req, rewrite, foundUsersChan)
+		resp = l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
-
 		pool := pool.New().WithContext(ctx)
 		pool.WithCancelOnError()
 		pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
@@ -304,32 +316,34 @@ func (l *listUsersQuery) expandRewrite(
 		for _, childRewrite := range children {
 			childRewriteCopy := childRewrite
 			pool.Go(func(ctx context.Context) error {
-				return l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
+				resp := l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
+				return resp.err
 			})
 		}
 
-		err = pool.Wait()
+		resp.err = pool.Wait()
 	default:
 		panic("unexpected userset rewrite encountered")
 	}
 
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return err
+	if resp.err != nil {
+		telemetry.TraceError(span, resp.err)
 	}
-	return nil
+	return resp
 }
 
 func (l *listUsersQuery) expandDirect(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- *openfgav1.User,
-) error {
+) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		return err
+		return expandResponse{
+			err: err,
+		}
 	}
 
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
@@ -338,7 +352,9 @@ func (l *listUsersQuery) expandDirect(
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return err
+		return expandResponse{
+			err: err,
+		}
 	}
 	defer iter.Stop()
 
@@ -353,7 +369,7 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	var errs error
-
+	var hasCycle bool
 LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
@@ -376,8 +392,10 @@ LoopOnIterator:
 				tupleKey.GetCondition().GetName(),
 				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 			)
-			telemetry.TraceError(span, err)
-			errs = errors.Join(errs, err)
+			if err != nil {
+				telemetry.TraceError(span, err)
+				errs = errors.Join(errs, err)
+			}
 		}
 
 		if !condEvalResult.ConditionMet {
@@ -403,16 +421,22 @@ LoopOnIterator:
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = userRelation
-			return l.expand(ctx, rewrittenReq, foundUsersChan)
+			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
+			if resp.hasCycle {
+				hasCycle = true
+			}
+			return resp.err
 		})
 	}
 
-	errs = errors.Join(pool.Wait(), errs)
+	errs = errors.Join(errs, pool.Wait())
 	if errs != nil {
 		telemetry.TraceError(span, errs)
-		return errs
 	}
-	return nil
+	return expandResponse{
+		err:      errs,
+		hasCycle: hasCycle,
+	}
 }
 
 func (l *listUsersQuery) expandIntersection(
@@ -420,7 +444,7 @@ func (l *listUsersQuery) expandIntersection(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Intersection,
 	foundUsersChan chan<- *openfgav1.User,
-) error {
+) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandIntersection")
 	defer span.End()
 	pool := pool.New().WithContext(ctx)
@@ -434,7 +458,8 @@ func (l *listUsersQuery) expandIntersection(
 		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
 		pool.Go(func(ctx context.Context) error {
-			return l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			return resp.err
 		})
 	}
 
@@ -496,7 +521,9 @@ func (l *listUsersQuery) expandIntersection(
 		}
 	}
 
-	return <-errChan
+	return expandResponse{
+		err: <-errChan,
+	}
 }
 
 func (l *listUsersQuery) expandExclusion(
@@ -504,25 +531,23 @@ func (l *listUsersQuery) expandExclusion(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Difference,
 	foundUsersChan chan<- *openfgav1.User,
-) error {
+) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandExclusion")
 	defer span.End()
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
 	var baseError, substractError error
+	var subtractHasCycle bool
 	go func() {
-		err := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
-		if err != nil {
-			baseError = err
-		}
+		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		baseError = resp.err
 		close(baseFoundUsersCh)
 	}()
 	go func() {
-		err := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
-		if err != nil {
-			substractError = err
-		}
+		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		substractError = resp.err
+		subtractHasCycle = resp.hasCycle
 		close(subtractFoundUsersCh)
 	}()
 
@@ -535,6 +560,12 @@ func (l *listUsersQuery) expandExclusion(
 	for fu := range subtractFoundUsersCh {
 		key := tuple.UserProtoToString(fu)
 		subtractFoundUsersMap[key] = struct{}{}
+	}
+
+	if subtractHasCycle {
+		return expandResponse{
+			err: nil,
+		}
 	}
 
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
@@ -552,9 +583,10 @@ func (l *listUsersQuery) expandExclusion(
 	errs := errors.Join(baseError, substractError)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
-		return errs
 	}
-	return nil
+	return expandResponse{
+		err: errs,
+	}
 }
 
 func (l *listUsersQuery) expandTTU(
@@ -562,7 +594,7 @@ func (l *listUsersQuery) expandTTU(
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
 	foundUsersChan chan<- *openfgav1.User,
-) error {
+) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandTTU")
 	defer span.End()
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
@@ -570,7 +602,9 @@ func (l *listUsersQuery) expandTTU(
 
 	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		return err
+		return expandResponse{
+			err: err,
+		}
 	}
 
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
@@ -579,7 +613,9 @@ func (l *listUsersQuery) expandTTU(
 	})
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return err
+		return expandResponse{
+			err: err,
+		}
 	}
 	defer iter.Stop()
 
@@ -617,8 +653,10 @@ LoopOnIterator:
 				tupleKey.GetCondition().GetName(),
 				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 			)
-			telemetry.TraceError(span, err)
-			errs = errors.Join(errs, err)
+			if err != nil {
+				telemetry.TraceError(span, err)
+				errs = errors.Join(errs, err)
+			}
 		}
 
 		if !condEvalResult.ConditionMet {
@@ -632,16 +670,18 @@ LoopOnIterator:
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = computedRelation
-			return l.expand(ctx, rewrittenReq, foundUsersChan)
+			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
+			return resp.err
 		})
 	}
 
 	errs = errors.Join(pool.Wait(), errs)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
-		return errs
 	}
-	return nil
+	return expandResponse{
+		err: errs,
+	}
 }
 
 func enteredCycle(req *internalListUsersRequest) bool {

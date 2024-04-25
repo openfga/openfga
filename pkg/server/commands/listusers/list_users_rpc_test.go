@@ -1513,7 +1513,7 @@ func TestListUsersExclusion(t *testing.T) {
 				tuple.NewTupleKey("group:1", "blocked", "group:1#member"),
 				tuple.NewTupleKey("group:1", "member", "user:will"),
 			},
-			expectedUsers: []string{"user:will"},
+			expectedUsers: []string{},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2243,7 +2243,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 		visitedUsersets[visitedUsersetKey] = struct{}{}
 
 		go func() {
-			err := l.expand(ctx, &internalListUsersRequest{
+			resp := l.expand(ctx, &internalListUsersRequest{
 				ListUsersRequest: &openfgav1.ListUsersRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
@@ -2258,8 +2258,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 				},
 				visitedUsersetsMap: visitedUsersets,
 			}, channelWithResults)
-			if err != nil {
-				channelWithError <- err
+			if resp.err != nil {
+				channelWithError <- resp.err
 				return
 			}
 			channelDone <- struct{}{}
