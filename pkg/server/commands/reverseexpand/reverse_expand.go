@@ -111,11 +111,14 @@ type UserRef struct {
 
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
-	dispatchThrottler       throttler.Throttler
 	datastore               storage.RelationshipTupleReader
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
+
+	dispatchThrottler   throttler.Throttler
+	throttlingEnabled   bool
+	throttlingThreshold uint32
 
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
@@ -137,6 +140,18 @@ func WithDispatchThrottler(dispatchThrottler throttler.Throttler) ReverseExpandQ
 	}
 }
 
+func WithDispatchThrottlingEnabled(enabled bool) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.throttlingEnabled = enabled
+	}
+}
+
+func WithDispatchThrottlingThreshold(threshold uint32) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.throttlingThreshold = threshold
+	}
+}
+
 func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeBreadthLimit = limit
@@ -150,6 +165,8 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		throttlingEnabled:       serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
 		dispatchThrottler:       &throttler.NoopThrottler{},
 		candidateObjectsMap:     new(sync.Map),
 		visitedUsersetsMap:      new(sync.Map),
@@ -336,7 +353,9 @@ LoopOnEdges:
 				},
 			}
 			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
+			if c.throttlingEnabled && c.throttlingThreshold > currentNumDispatch {
+				c.dispatchThrottler.Throttle(ctx)
+			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = multierror.Append(errs, err)
@@ -540,7 +559,9 @@ LoopOnIterator:
 
 		pool.Go(func(ctx context.Context) error {
 			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			c.dispatchThrottler.Throttle(ctx, currentNumDispatch)
+			if c.throttlingEnabled && c.throttlingThreshold > currentNumDispatch {
+				c.dispatchThrottler.Throttle(ctx)
+			}
 			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,

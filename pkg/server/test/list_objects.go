@@ -500,6 +500,9 @@ condition condition1(x: int) {
 					graph.WithMaxCacheSize(100),
 					graph.WithCacheTTL(10 * time.Second),
 				},
+				false,
+				nil,
+				0,
 			)
 			t.Cleanup(closer)
 

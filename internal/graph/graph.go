@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler"
 	"strings"
 	"sync/atomic"
 
@@ -427,6 +428,9 @@ func NewLayeredCheckResolver(
 	localResolverOpts []LocalCheckerOption,
 	cacheEnabled bool,
 	cachedResolverOpts []CachedCheckResolverOpt,
+	throttlingEnabled bool,
+	throttler throttler.Throttler,
+	throttlingThreshold uint32,
 ) (CheckResolver, CheckResolverCloser) {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 	localCheckResolver := NewLocalChecker(localResolverOpts...)
@@ -442,11 +446,22 @@ func NewLayeredCheckResolver(
 
 	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
+	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
+	if throttlingEnabled {
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(throttlingThreshold, throttler)
+		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+	}
+
 	return cycleDetectionCheckResolver, func() {
 		localCheckResolver.Close()
 
 		if cachedCheckResolver != nil {
 			cachedCheckResolver.Close()
+		}
+
+		if dispatchThrottlingCheckResolver != nil {
+			dispatchThrottlingCheckResolver.Close()
 		}
 
 		cycleDetectionCheckResolver.Close()

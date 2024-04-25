@@ -12,22 +12,16 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-// DispatchThrottlingConfig encapsulates configuration for dispatch throttling check resolver.
-type DispatchThrottlingConfig struct {
-	Frequency time.Duration
-	Threshold uint32
-}
-
 type Throttler interface {
 	Close()
-	Throttle(context.Context, uint32)
+	Throttle(context.Context)
 }
 
 type NoopThrottler struct{}
 
 var _ Throttler = (*NoopThrottler)(nil)
 
-func (r *NoopThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
+func (r *NoopThrottler) Throttle(ctx context.Context) {
 }
 
 func (r *NoopThrottler) Close() {
@@ -36,7 +30,6 @@ func (r *NoopThrottler) Close() {
 // DispatchThrottler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
 // Throttling will start to kick in when the dispatch count exceeds the configured dispatch threshold.
 type DispatchThrottler struct {
-	config          DispatchThrottlingConfig
 	ticker          *time.Ticker
 	throttlingQueue chan struct{}
 	done            chan struct{}
@@ -44,10 +37,9 @@ type DispatchThrottler struct {
 
 // NewDispatchThrottler constructs a DispatchThrottler which can be used to control the rate of dispatched sub problems in FGA queries.
 func NewDispatchThrottler(
-	config DispatchThrottlingConfig) Throttler {
+	frequency time.Duration) Throttler {
 	dispatchThrottler := &DispatchThrottler{
-		config:          config,
-		ticker:          time.NewTicker(config.Frequency),
+		ticker:          time.NewTicker(frequency),
 		throttlingQueue: make(chan struct{}),
 		done:            make(chan struct{}),
 	}
@@ -97,19 +89,17 @@ func (r *DispatchThrottler) Close() {
 // Throttle provides a synchronous blocking mechanism that will block if the currentNumDispatch exceeds the configured dispatch threshold.
 // It will block until a value is produced on the underlying throttling queue channel,
 // which is produced by periodically sending a value on the channel based on the configured ticker frequency.
-func (r *DispatchThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
-	if currentNumDispatch > r.config.Threshold {
-		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
+func (r *DispatchThrottler) Throttle(ctx context.Context) {
+	grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
 
-		start := time.Now()
-		<-r.throttlingQueue
-		end := time.Now()
-		timeWaiting := end.Sub(start).Milliseconds()
+	start := time.Now()
+	<-r.throttlingQueue
+	end := time.Now()
+	timeWaiting := end.Sub(start).Milliseconds()
 
-		rpcInfo := telemetry.RPCInfoFromContext(ctx)
-		dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
-			rpcInfo.Service,
-			rpcInfo.Method,
-		).Observe(float64(timeWaiting))
-	}
+	rpcInfo := telemetry.RPCInfoFromContext(ctx)
+	dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
+		rpcInfo.Service,
+		rpcInfo.Method,
+	).Observe(float64(timeWaiting))
 }

@@ -7,13 +7,14 @@ import (
 
 type DispatchThrottlingCheckResolver struct {
 	delegate  CheckResolver
+	threshold uint32
 	throttler throttler.Throttler
 }
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
 func NewDispatchThrottlingCheckResolver(
-	throttler throttler.Throttler) *DispatchThrottlingCheckResolver {
+	threshold uint32, throttler throttler.Throttler) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		throttler: throttler,
 	}
@@ -37,6 +38,8 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
-	r.throttler.Throttle(ctx, currentNumDispatch)
+	if currentNumDispatch > r.threshold {
+		r.throttler.Throttle(ctx)
+	}
 	return r.delegate.ResolveCheck(ctx, req)
 }

@@ -56,8 +56,11 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	checkResolver     graph.CheckResolver
-	dispatchThrottler throttler.Throttler
+	dispatchThrottler   throttler.Throttler
+	throttlingEnabled   bool
+	throttlingThreshold uint32
+
+	checkResolver graph.CheckResolver
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -91,6 +94,18 @@ func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 func WithDispatchThrottler(throttler throttler.Throttler) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.dispatchThrottler = throttler
+	}
+}
+
+func WithDispatchThrottlingEnabled(enabled bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.throttlingEnabled = enabled
+	}
+}
+
+func WithDispatchThrottlingThreshold(threshold uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.listObjectsMaxResults = threshold
 	}
 }
 
@@ -148,6 +163,8 @@ func NewListObjectsQuery(
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		throttlingEnabled:       serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
 		dispatchThrottler:       &throttler.NoopThrottler{},
 		checkResolver:           checkResolver,
 	}
@@ -268,6 +285,8 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithDispatchThrottler(q.dispatchThrottler),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+			reverseexpand.WithDispatchThrottlingEnabled(q.throttlingEnabled),
+			reverseexpand.WithDispatchThrottlingThreshold(q.throttlingThreshold),
 			reverseexpand.WithLogger(q.logger),
 		)
 

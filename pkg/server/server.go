@@ -424,17 +424,14 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.dispatchThrottlingCheckResolverEnabled {
-		dispatchThrottlingConfig := throttler.DispatchThrottlingConfig{
-			Frequency: s.dispatchThrottlingCheckResolverFrequency,
-			Threshold: s.dispatchThrottlingThreshold,
-		}
-
-		s.logger.Info("Enabling dispatch throttling",
+		s.logger.Info("Enabling Check dispatch throttling",
 			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
 			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
 		)
 
-		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(throttler.NewDispatchThrottler(dispatchThrottlingConfig))
+		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
+			s.dispatchThrottlingThreshold,
+			throttler.NewDispatchThrottler(s.dispatchThrottlingCheckResolverFrequency))
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
@@ -442,12 +439,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	if s.listObjectsDispatchThrottlingEnabled {
-		listObjectsDispatchThrottlingConfig := throttler.DispatchThrottlingConfig{
-			Frequency: s.listObjectsDispatchThrottlingFrequency,
-			Threshold: s.listObjectsDispatchThrottlingThreshold,
-		}
+		s.logger.Info("Enabling ListObjects dispatch throttling",
+			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
+			zap.Uint32("Threshold", s.listObjectsDispatchThrottlingThreshold),
+		)
 
-		s.listObjectsDispatchThrottler = throttler.NewDispatchThrottler(listObjectsDispatchThrottlingConfig)
+		s.listObjectsDispatchThrottler = throttler.NewDispatchThrottler(s.listObjectsDispatchThrottlingFrequency)
 	}
 
 	if s.checkQueryCacheEnabled {
@@ -543,6 +540,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithDispatchThrottler(s.listObjectsDispatchThrottler),
+		commands.WithDispatchThrottlingEnabled(s.listObjectsDispatchThrottlingEnabled),
+		commands.WithDispatchThrottlingThreshold(s.listObjectsDispatchThrottlingThreshold),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
@@ -645,6 +644,8 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithDispatchThrottler(s.listObjectsDispatchThrottler),
+		commands.WithDispatchThrottlingEnabled(s.listObjectsDispatchThrottlingEnabled),
+		commands.WithDispatchThrottlingThreshold(s.listObjectsDispatchThrottlingThreshold),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
