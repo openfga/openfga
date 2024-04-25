@@ -199,7 +199,7 @@ type document
 			},
 		},
 		{
-			_name: "http_check_error",
+			_name: "http_list_users_error",
 			httpReqBody: bytes.NewBufferString(`{
 				"authorization_model_id": "` + authorizationModelID + `",
 				"relation":"viewer",
