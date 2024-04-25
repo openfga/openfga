@@ -2,15 +2,17 @@ package throttler
 
 import (
 	"context"
+	"time"
+
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"time"
+
+	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-// DispatchThrottlingConfig encapsulates configuration for dispatch throttling check resolver
+// DispatchThrottlingConfig encapsulates configuration for dispatch throttling check resolver.
 type DispatchThrottlingConfig struct {
 	Frequency time.Duration
 	Threshold uint32

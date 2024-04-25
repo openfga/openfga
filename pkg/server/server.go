@@ -5,11 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/throttler"
 	"net/http"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/openfga/openfga/internal/throttler"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
