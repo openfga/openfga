@@ -117,8 +117,11 @@ type Server struct {
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
+	listUsersDeadline                time.Duration
+	listUsersMaxResults              uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
@@ -220,6 +223,23 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithListUsersDeadline affect the ListUsers API and Streamed ListUsers API only.
+// It sets the maximum amount of time that the server will spend gathering results.
+func WithListUsersDeadline(deadline time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDeadline = deadline
+	}
+}
+
+// WithListUsersMaxResults affects the ListUsers API only.
+// It sets the maximum number of results that this API will return.
+// If it's zero, all results will be attempted to be returned.
+func WithListUsersMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersMaxResults = limit
+	}
+}
+
 // WithMaxConcurrentReadsForListObjects sets a limit on the number of datastore reads that can be in flight for a given ListObjects call.
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
@@ -243,6 +263,19 @@ func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForCheck = max
+	}
+}
+
+// WithMaxConcurrentReadsForListUsers sets a limit on the number of datastore reads that can be in flight for a given ListUsers call.
+// This number should be set depending on the RPS expected for all query APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. if Datastore.MaxOpenConns = 100 and assuming that each ListUsers call takes 1 second and no traffic to other query APIs:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+func WithMaxConcurrentReadsForListUsers(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForListUsers = max
 	}
 }
 
@@ -358,8 +391,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
+		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 

@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -35,6 +38,9 @@ type listUsersQuery struct {
 	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
+	maxResults              uint32
+	maxConcurrentReads      uint32
+	deadline                time.Duration
 }
 
 /*
@@ -49,8 +55,43 @@ type listUsersQuery struct {
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
-	return func(rq *listUsersQuery) {
-		rq.logger = l
+	return func(d *listUsersQuery) {
+		d.logger = l
+	}
+}
+
+// WithListUserMaxResults see server.WithListUsersMaxResults
+func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.maxResults = max
+	}
+}
+
+// WithListUsersDeadline see server.WithListUsersDeadline
+func WithListUsersDeadline(t time.Duration) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.deadline = t
+	}
+}
+
+// WithResolveNodeLimit see server.WithResolveNodeLimit
+func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.resolveNodeLimit = limit
+	}
+}
+
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
+func WithResolveNodeBreadthLimit(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.resolveNodeBreadthLimit = limit
+	}
+}
+
+// WithListUsersMaxConcurrentReads see server.WithMaxConcurrentReadsForListUsers
+func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.maxConcurrentReads = limit
 	}
 }
 
@@ -67,8 +108,11 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 
 			return typesys, nil
 		},
-		resolveNodeBreadthLimit: 20,
-		resolveNodeLimit:        25,
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		deadline:                serverconfig.DefaultListObjectsDeadline,
+		maxResults:              serverconfig.DefaultListObjectsMaxResults,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
 	}
 
 	for _, opt := range opts {
@@ -76,13 +120,6 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	}
 
 	return l
-}
-
-// WithResolveNodeLimit see server.WithResolveNodeLimit
-func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
-		d.resolveNodeLimit = limit
-	}
 }
 
 // ListUsers assumes that the typesystem is in the context.
@@ -93,8 +130,18 @@ func (l *listUsersQuery) ListUsers(
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
-	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	cancellableCtx, cancelContextIfMaxResultsMet := context.WithCancel(ctx)
+	defer cancelContextIfMaxResultsMet()
+	if l.deadline != 0 {
+		var cancelContextIfDeadlineHit context.CancelFunc
+		cancellableCtx, cancelContextIfDeadlineHit = context.WithTimeout(cancellableCtx, l.deadline)
+		defer cancelContextIfDeadlineHit()
+	}
+	l.ds = storagewrappers.NewCombinedTupleReader(
+		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
+		req.GetContextualTuples().GetTupleKeys(),
+	)
+	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
@@ -123,6 +170,12 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		for foundObject := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundObject)] = struct{}{}
+			if l.maxResults > 0 {
+				if uint32(len(foundUsersUnique)) >= l.maxResults {
+					span.SetAttributes(attribute.Bool("max_results_found", true))
+					break
+				}
+			}
 		}
 
 		done <- struct{}{}
@@ -131,7 +184,7 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req)
-		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
+		if err := l.expand(cancellableCtx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
 		}
@@ -142,6 +195,7 @@ func (l *listUsersQuery) ListUsers(
 		telemetry.TraceError(span, err)
 		return nil, err
 	case <-done:
+		cancelContextIfMaxResultsMet()
 		break
 	}
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
