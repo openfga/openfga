@@ -48,7 +48,7 @@ func TestListUsersValidation(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "folder", // invalid type
 					},
@@ -62,7 +62,7 @@ func TestListUsersValidation(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "user",
 						Relation: "editor", // invalid relation
@@ -80,7 +80,7 @@ func TestListUsersValidation(t *testing.T) {
 					Id:   "1",
 				},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -94,7 +94,7 @@ func TestListUsersValidation(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "owner", // invalid relation
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -108,11 +108,9 @@ func TestListUsersValidation(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("invalid_object_type:1", "viewer", "user:will"),
-					},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("invalid_object_type:1", "viewer", "user:will"),
 				},
 			},
 			model:             model,
@@ -123,11 +121,9 @@ func TestListUsersValidation(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("document:1", "viewer", "invalid_user_type:will"),
-					},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "invalid_user_type:will"),
 				},
 			},
 			model:             model,
@@ -138,11 +134,9 @@ func TestListUsersValidation(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("document:1", "invalid_relation", "user:will"),
-					},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "invalid_relation", "user:will"),
 				},
 			},
 			model:             model,
@@ -302,7 +296,7 @@ type document
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			})
 
 			require.Nil(t, res)

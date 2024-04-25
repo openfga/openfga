@@ -165,9 +165,7 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 							Relation:             convertedRequest.GetRelation(),
 							UserFilters:          convertedRequest.GetUserFilters(),
 							Context:              assertion.Context,
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								TupleKeys: ctxTuples,
-							},
+							ContextualTuples:     ctxTuples,
 						})
 						if assertion.ErrorCode != 0 && len(assertion.Expectation) > 0 {
 							t.Errorf("cannot have a test with the expectation of both an error code and a result")

@@ -93,7 +93,7 @@ func (l *listUsersQuery) ListUsers(
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
-	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
+	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples())
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")

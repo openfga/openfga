@@ -67,7 +67,7 @@ func (s *Server) ListUsers(
 	return resp, err
 }
 
-func userFiltersToString(filter []*openfgav1.ListUsersFilter) string {
+func userFiltersToString(filter []*openfgav1.UserTypeFilter) string {
 	var s strings.Builder
 	for _, f := range filter {
 		s.WriteString(f.GetType())

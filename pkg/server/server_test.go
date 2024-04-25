@@ -715,7 +715,7 @@ type document
 				Type: "document",
 				Id:   "1",
 			},
-			UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 		})
 		require.NoError(t, err)
 
