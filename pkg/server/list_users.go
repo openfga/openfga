@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -21,7 +22,7 @@ import (
 )
 
 // ListUsers returns all subjects (users) of a specified terminal type
-// that are relate via specific relation to a specific object
+// that are relate via specific relation to a specific object.
 func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
@@ -58,12 +59,17 @@ func (s *Server) ListUsers(
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
+		if errors.Is(err, condition.ErrEvaluationFailed) {
+			return nil, serverErrors.ValidationError(err)
+		}
 		return nil, serverErrors.HandleError("", err)
 	}
-	return resp, err
+	return &openfgav1.ListUsersResponse{
+		Users: resp.GetUsers(),
+	}, err
 }
 
-func userFiltersToString(filter []*openfgav1.ListUsersFilter) string {
+func userFiltersToString(filter []*openfgav1.UserTypeFilter) string {
 	var s strings.Builder
 	for _, f := range filter {
 		s.WriteString(f.GetType())

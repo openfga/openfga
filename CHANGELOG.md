@@ -8,6 +8,44 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.3] - 2024-04-16
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.2...v1.5.3)
+
+### Added
+
+* Apply tags to requests that have been intentionally throttled (https://github.com/openfga/openfga/pull/1531). This will add a new log field titled "throttled" to such requests.
+
+### Fixed
+
+* Panic that occurred on Check API with some authorization models and tuples (https://github.com/openfga/openfga/pull/1517)
+
+### Changed
+
+* [Modular Models (Schema 1.2)](https://openfga.dev/docs/modeling/modular-models) support is enabled by default and the experimental flag for it has been dropped (https://github.com/openfga/openfga/pull/1520)
+* Bumped to Go 1.21.9 (https://github.com/openfga/openfga/pull/1523)
+
+### Security
+
+* Patch [CVE-2024-31452](https://github.com/openfga/openfga/security/advisories/GHSA-8cph-m685-6v6r) - a critical issue where Check and ListObjects APIs returns incorrect results for some models and tuples. See the CVE report for more details.
+
+## [1.5.2] - 2024-04-03
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.1...v1.5.2)
+
+### Fixed
+
+* Fix the count of datastore reads in the Check API ([#1452](https://github.com/openfga/openfga/pull/1452))
+* Fix the correct default used for dispatch throttling ([#1479](https://github.com/openfga/openfga/pull/1479))
+
+### Security
+
+* Bumped up the `grpc-health-probe` dependency in the published Docker image to the latest release which fixes some vulnerabilities ([#1507](https://github.com/openfga/openfga/pull/1507))
+
+### Contributions
+
+* Add homebrew release job by @chenrui333 ([#780](https://github.com/openfga/openfga/pull/780))
+
 ## [1.5.1] - 2024-03-19
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.0...v1.5.1)
@@ -37,7 +75,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
 
-### Added 
+### Added
 
 - Override option for timestamp in JSON logs ([#1330](https://github.com/openfga/openfga/pull/1330)) - thank you, @raj-saxena!
 - OpenTelemetry tracing and attributes to check algorithm ([#1331](https://github.com/openfga/openfga/pull/1331), [#1388](https://github.com/openfga/openfga/pull/1388))
@@ -972,7 +1010,9 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
+[1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2
 [1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
 [1.5.0]: https://github.com/openfga/openfga/releases/tag/v1.5.0
 [1.4.3]: https://github.com/openfga/openfga/releases/tag/v1.4.3

@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,13 +11,13 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -414,6 +415,66 @@ func TestResolveCheckFromCache(t *testing.T) {
 	}
 }
 
+func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockCheckResolver := NewMockCheckResolver(ctrl)
+
+	dut := NewCachedCheckResolver(WithCacheTTL(10 * time.Second))
+	t.Cleanup(dut.Close)
+
+	dut.SetDelegate(mockCheckResolver)
+
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(&ResolveCheckResponse{
+			Allowed: true,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 1,
+				CycleDetected:       false,
+			},
+		}, nil)
+
+	_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+
+	// run multiple times to increase probability of ensuring we detect the race
+	for i := 0; i < 100; i++ {
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		var resp1, resp2 *ResolveCheckResponse
+		var err1, err2 error
+		go func() {
+			defer wg.Done()
+			resp1, err1 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+			resp1.GetResolutionMetadata().DatastoreQueryCount = 0
+		}()
+
+		var datastoreQueryCount uint32
+		go func() {
+			defer wg.Done()
+			resp2, err2 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+			datastoreQueryCount = resp2.GetResolutionMetadata().DatastoreQueryCount
+		}()
+
+		wg.Wait()
+
+		require.NoError(t, err1)
+		require.NoError(t, err2)
+		require.NotNil(t, resp1)
+		require.NotNil(t, resp2)
+		require.Equal(t, uint32(0), datastoreQueryCount)
+		require.False(t, resp1.GetCycleDetected())
+		require.False(t, resp2.GetCycleDetected())
+	}
+}
+
 func TestResolveCheckExpired(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -451,6 +512,39 @@ func TestResolveCheckExpired(t *testing.T) {
 	actualResult, err = dut.ResolveCheck(ctx, req)
 	require.Equal(t, result.Allowed, actualResult.Allowed)
 	require.NoError(t, err)
+}
+
+func TestCachedCheckResolver_CycleDetected(t *testing.T) {
+	cachedCheckResolver := NewCachedCheckResolver()
+	defer cachedCheckResolver.Close()
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	mockCheckResolver := NewMockCheckResolver(mockCtrl)
+	cachedCheckResolver.SetDelegate(mockCheckResolver)
+
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(&ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 1,
+				CycleDetected:       true,
+			},
+		}, nil)
+
+	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
+	require.True(t, resp.GetResolutionMetadata().CycleDetected)
+
+	resp, err = cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
+	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 }
 
 func TestCachedCheckDatastoreQueryCount(t *testing.T) {
@@ -500,7 +594,7 @@ type document
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	checkCache := ccache.New(
-		ccache.Configure[*CachedResolveCheckResponse]().MaxSize(100),
+		ccache.Configure[*ResolveCheckResponse]().MaxSize(100),
 	)
 	defer checkCache.Stop()
 
@@ -559,6 +653,32 @@ type document
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
+}
+
+func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
+	cachedCheckResolver := NewCachedCheckResolver(WithExistingCache(nil)) // create cache inside
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	mockCheckResolver := NewMockCheckResolver(mockCtrl)
+	cachedCheckResolver.SetDelegate(mockCheckResolver)
+
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(&ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 1,
+				CycleDetected:       true,
+			},
+		}, nil)
+
+	cachedCheckResolver.Close()
+	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {

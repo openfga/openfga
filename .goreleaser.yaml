@@ -2,8 +2,7 @@ project_name: openfga
 
 before:
   hooks:
-    - make install-tools
-    - go generate ./...
+    - make generate-mocks
 
 builds:
   -

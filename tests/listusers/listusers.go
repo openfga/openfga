@@ -45,12 +45,15 @@ type ClientInterface interface {
 	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
 }
 
-// RunAllTests will invoke all list users tests
+// RunAllTests will invoke all list users tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {
 			t.Parallel()
-			files := []string{"tests/consolidated_1_1_tests.yaml"}
+			files := []string{
+				"tests/consolidated_1_1_tests.yaml",
+				"tests/abac_tests.yaml",
+			}
 
 			var allTestCases []individualTest
 
@@ -144,9 +147,6 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 
 				for assertionNumber, assertion := range stage.ListUsersAssertions {
 					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
-						if assertion.TemporarilySkipReason != "" {
-							t.Skip() //REMOVE before merging list-users branch into main
-						}
 						detailedInfo := fmt.Sprintf("ListUsers request: %v. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request.ToString(), stage.Model, stage.Tuples, assertion.ContextualTuples)
 						ctxTuples := assertion.ContextualTuples
 						if contextTupleTest {
@@ -161,9 +161,8 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 							Object:               convertedRequest.GetObject(),
 							Relation:             convertedRequest.GetRelation(),
 							UserFilters:          convertedRequest.GetUserFilters(),
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								TupleKeys: ctxTuples,
-							},
+							Context:              assertion.Context,
+							ContextualTuples:     ctxTuples,
 						})
 						if assertion.ErrorCode != 0 && len(assertion.Expectation) > 0 {
 							t.Errorf("cannot have a test with the expectation of both an error code and a result")

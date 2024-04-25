@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -29,10 +30,13 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreID()),
+		attribute.String("resolver_type", "CycleDetectionCheckResolver"),
+		attribute.String("tuple_key", req.GetTupleKey().String()),
+		attribute.Bool("cycle_detected", false),
+	))
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "CycleDetectionCheckResolver"))
-	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
@@ -41,9 +45,14 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	}
 
 	_, cycleDetected := req.VisitedPaths[key]
-	span.SetAttributes(attribute.Bool("cycle_detected", cycleDetected))
 	if cycleDetected {
-		return nil, ErrCycleDetected
+		span.SetAttributes(attribute.Bool("cycle_detected", true))
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				CycleDetected: true,
+			},
+		}, nil
 	}
 
 	req.VisitedPaths[key] = struct{}{}

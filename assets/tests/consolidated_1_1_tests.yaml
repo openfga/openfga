@@ -2757,7 +2757,7 @@ tests:
               object: group:1
               relation: member
               user: user:will
-            expectation: true
+            expectation: false
           - tuple:
               object: group:1
               relation: blocked
@@ -2769,7 +2769,6 @@ tests:
               type: group
               relation: member
             expectation:
-              - group:1
           - request:
               user: group:1#member
               type: group
@@ -2783,14 +2782,14 @@ tests:
               object: group:1
               relation: member
             expectation:
-              - user:will
+              - user:will # TODO fix me!
           - request:
               filters:
-                - user
+                - group#member
               object: group:1
-              relation: member
+              relation: blocked
             expectation:
-              - user:will
+              - group:1#member
   - name: userset_as_user
     stages:
       - model: |
@@ -7196,14 +7195,13 @@ tests:
               type: document
               relation: viewer
             errorCode: 2002
-  # TODO uncomment when introducing depth counters
-  #        listUsersAssertions:
-  #          - request:
-  #              filters:
-  #                - user
-  #              object: document:1
-  #              relation: viewer
-  #            errorCode: 2002 #ErrorCode_authorization_model_resolution_too_complex
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2002
   - name: direct_relationships_with_intersection
     stages:
       - model: |
@@ -7263,6 +7261,355 @@ tests:
               - group:eng#member
               - group:fga#member
               - group:fga-backend#member
+  - name: cycle_or_cycle_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define editor: [user, document#viewer]
+              define viewer: [document#editor] or editor
+        tuples:
+          - user: document:1#viewer
+            relation: editor
+            object: document:1
+          - user: document:1#editor
+            relation: viewer
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: immediate_cycle_through_computed_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define editor: [user, document#viewer]
+              define viewer: editor
+        tuples:
+          - user: document:1#viewer
+            relation: editor
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: immediate_cycle_through_computed_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define editor: [user, document#viewer]
+              define viewer: editor
+        tuples:
+          - user: document:1#viewer
+            relation: editor
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: true_butnot_cycle_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type document
+            relations
+              define restricted: [user, document#viewer]
+              define viewer: [user] but not restricted
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+          - user: document:1#viewer
+            relation: restricted
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: cycle_and_cycle_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type document
+            relations
+              define editor: [user, document#viewer]
+              define viewer: [user, document#editor] and editor
+        tuples:
+          - user: document:1#editor
+            relation: viewer
+            object: document:1
+          - user: document:1#viewer
+            relation: editor
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: cycle_and_true_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type document
+            relations
+              define allowed: [user]
+              define viewer: [user, document#viewer] and allowed
+        tuples:
+          - user: user:jon
+            relation: allowed
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: immediate_cycle_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type document
+            relations
+              define viewer: [user, document#viewer]
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: cycle_butnot_false_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type document
+            relations
+              define restricted: [user]
+              define viewer: [user, document#viewer] but not restricted
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: false_butnot_cycle_return_false
+    stages:
+      - model: |
+          model
+            schema 1.1
+
+          type user
+
+          type document
+            relations
+              define restricted: [user, document#viewer]
+              define viewer: [user] but not restricted
+        tuples:
+          - user: document:1#viewer
+            relation: restricted
+            object: document:1
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+  - name: err_and_err_return_err
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type resource
+            relations
+              define a1: a2
+              define a2: a3
+              define a3: a4
+              define a4: a5
+              define a5: a6
+              define a6: a7
+              define a7: a8
+              define a8: a9
+              define a9: a10
+              define a10: a11
+              define a11: a12
+              define a12: a13
+              define a13: a14
+              define a14: a15
+              define a15: a16
+              define a16: a17
+              define a17: a18
+              define a18: a19
+              define a19: a20
+              define a20: a21
+              define a21: a22
+              define a22: a23
+              define a23: a24
+              define a24: a25
+              define a25: a26
+              define a26: [user]
+              define can_view: a1 and a1
+        tuples:
+          - object: resource:abc
+            relation: a26
+            user: user:maria
+        checkAssertions:
+          - tuple:
+              object: resource:abc
+              relation: can_view
+              user: user:maria
+            errorCode: 2002
+        listObjectsAssertions:
+          - request:
+              type: resource
+              relation: can_view
+              user: user:maria
+            errorCode: 2002
+  - name: err_and_true_return_err
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type resource
+            relations
+              define a1: a2
+              define a2: a3
+              define a3: a4
+              define a4: a5
+              define a5: a6
+              define a6: a7
+              define a7: a8
+              define a8: a9
+              define a9: a10
+              define a10: a11
+              define a11: a12
+              define a12: a13
+              define a13: a14
+              define a14: a15
+              define a15: a16
+              define a16: a17
+              define a17: a18
+              define a18: a19
+              define a19: a20
+              define a20: a21
+              define a21: a22
+              define a22: a23
+              define a23: a24
+              define a24: a25
+              define a25: a26
+              define a26: [user]
+              define can_view: a1 and a26
+        tuples:
+          - object: resource:abc
+            relation: a26
+            user: user:maria
+        checkAssertions:
+          - tuple:
+              object: resource:abc
+              relation: can_view
+              user: user:maria
+            errorCode: 2002
+        listObjectsAssertions:
+          - request:
+              type: resource
+              relation: can_view
+              user: user:maria
+            errorCode: 2002
   - name: userset_defines_itself_1
     stages:
       - model: |
@@ -7302,9 +7649,7 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type document
             relations
               define viewer: editor or writer
@@ -7369,9 +7714,7 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type document
             relations
               define writer: [user]
@@ -7434,13 +7777,10 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type folder
             relations
               define viewer: [user]
-
           type document
             relations
               define parent: [folder]
@@ -7491,9 +7831,7 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type document
             relations
               define allowed: [user]
@@ -7543,9 +7881,7 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type document
             relations
               define restricted: [user]
@@ -7607,9 +7943,7 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type group
             relations
               define member: [user, group#member] but not blocked
@@ -7646,9 +7980,7 @@ tests:
       - model: |
           model
             schema 1.1
-
           type user
-
           type document
             relations
               define writer: [user]
@@ -7682,7 +8014,6 @@ tests:
           type group
             relations
               define member: [user]
-
           type document
             relations
               define blocked: [user]
