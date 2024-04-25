@@ -2,6 +2,7 @@ package throttler
 
 import (
 	"context"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
@@ -95,6 +96,8 @@ func (r *DispatchThrottler) Close() {
 // which is produced by periodically sending a value on the channel based on the configured ticker frequency.
 func (r *DispatchThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
 	if currentNumDispatch > r.config.Threshold {
+		grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
+
 		start := time.Now()
 		<-r.throttlingQueue
 		end := time.Now()
