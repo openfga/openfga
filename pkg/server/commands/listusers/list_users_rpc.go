@@ -37,15 +37,6 @@ type listUsersQuery struct {
 	resolveNodeLimit        uint32
 }
 
-/*
- - Optimize entrypoint pruning
- - Intersection, exclusion, etc. (see: listobjects)
- - Max results
- - BCTR
- - Contextual tuples
- -
-*/
-
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
@@ -169,49 +160,6 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 	return len(edges) > 0, err
 }
-
-// func (l *listUsersQuery) StreamedListUsers(
-// 	ctx context.Context,
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	foundObjectsCh := make(chan *openfgav1.Object, 1)
-// 	expandErrCh := make(chan error, 1)
-
-// 	done := make(chan struct{}, 1)
-// 	go func() {
-// 		for foundObject := range foundObjectsCh {
-// 			log.Printf("foundObject '%v'\n", foundObject)
-// 			if err := srv.Send(&openfgav1.StreamedListUsersResponse{
-// 				UserObject: foundObject,
-// 			}); err != nil {
-// 				// handle error
-// 			}
-// 		}
-
-// 		done <- struct{}{}
-// 		log.Printf("ListUsers expand is done\n")
-// 	}()
-
-// 	go func() {
-// 		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
-// 			expandErrCh <- err
-// 			return
-// 		}
-
-// 		close(foundObjectsCh)
-// 		log.Printf("foundObjectsCh is closed\n")
-// 	}()
-
-// 	select {
-// 	case err := <-expandErrCh:
-// 		return err
-// 	case <-done:
-// 		break
-// 	}
-
-// 	return nil
-// }
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
@@ -392,7 +340,6 @@ LoopOnIterator:
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					// we found one, time to return it!
 					foundUsersChan <- user
 				}
 			}
