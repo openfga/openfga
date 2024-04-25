@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -43,25 +42,16 @@ func TestNewUnaryTimeoutInterceptor(t *testing.T) {
 	}
 
 	handler := func(ctx context.Context, req any) (any, error) {
-		goFuncInit := make(chan struct{})
-		goFuncDone := make(chan struct{})
-		go func() {
-			goFuncInit <- struct{}{}
-			time.Sleep(20 * time.Millisecond)
-			goFuncDone <- struct{}{}
-		}()
-
-		<-goFuncInit
 		select {
-		case <-ctx.Done():
+		case <-time.After(20 * time.Millisecond):
 			return nil, nil
-		case <-goFuncDone:
-			return nil, fmt.Errorf("should have timeout")
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
 	interceptor := timeoutInterceptor.NewUnaryTimeoutInterceptor()
 	_, err := interceptor(context.Background(), nil, nil, handler)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestNewStreamTimeoutInterceptor(t *testing.T) {
@@ -72,23 +62,14 @@ func TestNewStreamTimeoutInterceptor(t *testing.T) {
 
 	handler := func(srv any, stream grpc.ServerStream) error {
 		ctx := stream.Context()
-		goFuncInit := make(chan struct{})
-		goFuncDone := make(chan struct{})
-		go func() {
-			goFuncInit <- struct{}{}
-			time.Sleep(20 * time.Millisecond)
-			goFuncDone <- struct{}{}
-		}()
-
-		<-goFuncInit
 		select {
-		case <-ctx.Done():
+		case <-time.After(20 * time.Millisecond):
 			return nil
-		case <-goFuncDone:
-			return fmt.Errorf("should have timeout")
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 	interceptor := timeoutInterceptor.NewStreamTimeoutInterceptor()
 	err := interceptor(nil, mockServerGRPCStream{ctx: context.Background()}, nil, handler)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
