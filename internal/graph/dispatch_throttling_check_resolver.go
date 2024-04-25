@@ -16,6 +16,7 @@ var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 func NewDispatchThrottlingCheckResolver(
 	threshold uint32, throttler throttler.Throttler) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
+		threshold: threshold,
 		throttler: throttler,
 	}
 	dispatchThrottlingCheckResolver.delegate = dispatchThrottlingCheckResolver
