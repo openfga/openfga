@@ -69,7 +69,7 @@ var (
 	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            datastoreQueryCountHistogramName,
-		Help:                            "The number of database queries required to resolve a query (e.g. Check or ListObjects).",
+		Help:                            "The number of database queries required to resolve a query (e.g. Check, ListObjects or ListUsers).",
 		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,

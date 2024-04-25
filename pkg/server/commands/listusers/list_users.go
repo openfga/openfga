@@ -93,7 +93,7 @@ type listUsersResponse struct {
 }
 
 type listUsersResponseMetadata struct {
-	datastoreQueryCount uint32
+	DatastoreQueryCount uint32
 }
 
 func (r *listUsersResponse) GetUsers() []*openfgav1.User {

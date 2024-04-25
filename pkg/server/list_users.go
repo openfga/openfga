@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -64,9 +65,19 @@ func (s *Server) ListUsers(
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
+
+	datastoreQueryCount := float64(resp.Metadata.DatastoreQueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		s.serviceName,
+		"list-users",
+	).Observe(datastoreQueryCount)
+
 	return &openfgav1.ListUsersResponse{
 		Users: resp.GetUsers(),
-	}, err
+	}, nil
 }
 
 func userFiltersToString(filter []*openfgav1.UserTypeFilter) string {

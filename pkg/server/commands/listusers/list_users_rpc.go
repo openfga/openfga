@@ -103,7 +103,7 @@ func (l *listUsersQuery) ListUsers(
 			return &listUsersResponse{
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
-					datastoreQueryCount: 0,
+					DatastoreQueryCount: 0,
 				},
 			}, nil
 		}
@@ -137,12 +137,7 @@ func (l *listUsersQuery) ListUsers(
 	select {
 	case err := <-expandErrCh:
 		telemetry.TraceError(span, err)
-		return &listUsersResponse{
-			Users: []*openfgav1.User{},
-			Metadata: listUsersResponseMetadata{
-				datastoreQueryCount: datastoreQueryCount.Load(),
-			},
-		}, err
+		return nil, err
 	case <-done:
 		break
 	}
@@ -155,7 +150,7 @@ func (l *listUsersQuery) ListUsers(
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			datastoreQueryCount: datastoreQueryCount.Load(),
+			DatastoreQueryCount: datastoreQueryCount.Load(),
 		},
 	}, nil
 }
