@@ -42,6 +42,7 @@ type DispatchThrottler struct {
 	done            chan struct{}
 }
 
+// NewDispatchThrottler constructs a DispatchThrottler which can be used to control the rate of dispatched sub problems in FGA queries.
 func NewDispatchThrottler(
 	config DispatchThrottlingConfig) Throttler {
 	dispatchThrottler := &DispatchThrottler{
