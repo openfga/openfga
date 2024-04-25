@@ -186,6 +186,15 @@ func TestVerifyConfig(t *testing.T) {
 		err := cfg.Verify()
 		require.Error(t, err)
 	})
+
+	t.Run("list_objects_deadline_request_timeout", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestTimeout = 1 * time.Second
+		cfg.ListObjectsDeadline = 4 * time.Second
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {

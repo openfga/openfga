@@ -266,6 +266,14 @@ func (cfg *Config) Verify() error {
 		)
 	}
 
+	if cfg.RequestTimeout > 0 && cfg.ListObjectsDeadline > cfg.RequestTimeout {
+		return fmt.Errorf(
+			"config 'requestTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			cfg.RequestTimeout,
+			cfg.ListObjectsDeadline,
+		)
+	}
+
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
 		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
 	}
