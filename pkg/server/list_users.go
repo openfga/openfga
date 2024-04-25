@@ -22,7 +22,7 @@ import (
 )
 
 // ListUsers returns all subjects (users) of a specified terminal type
-// that are relate via specific relation to a specific object
+// that are relate via specific relation to a specific object.
 func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,

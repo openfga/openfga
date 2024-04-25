@@ -78,7 +78,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	return l
 }
 
-// WithResolveNodeLimit see server.WithResolveNodeLimit
+// WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.resolveNodeLimit = limit

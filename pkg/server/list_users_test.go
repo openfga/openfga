@@ -50,7 +50,7 @@ func TestListUsersValidation(t *testing.T) {
 				Relation: "viewer",
 				UserFilters: []*openfgav1.ListUsersFilter{
 					{
-						Type: "folder", //invalid type
+						Type: "folder", // invalid type
 					},
 				},
 			},
@@ -65,7 +65,7 @@ func TestListUsersValidation(t *testing.T) {
 				UserFilters: []*openfgav1.ListUsersFilter{
 					{
 						Type:     "user",
-						Relation: "editor", //invalid relation
+						Relation: "editor", // invalid relation
 					},
 				},
 			},

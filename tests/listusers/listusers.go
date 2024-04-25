@@ -45,7 +45,7 @@ type ClientInterface interface {
 	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
 }
 
-// RunAllTests will invoke all list users tests
+// RunAllTests will invoke all list users tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {
@@ -148,7 +148,7 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 				for assertionNumber, assertion := range stage.ListUsersAssertions {
 					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
 						if assertion.TemporarilySkipReason != "" {
-							t.Skip() //REMOVE before merging list-users branch into main
+							t.Skip() // REMOVE before merging list-users branch into main
 						}
 						detailedInfo := fmt.Sprintf("ListUsers request: %v. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request.ToString(), stage.Model, stage.Tuples, assertion.ContextualTuples)
 						ctxTuples := assertion.ContextualTuples
