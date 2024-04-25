@@ -25,7 +25,7 @@ type Throttler interface {
 
 type NoopThrottler struct{}
 
-var _ = (*NoopThrottler)(nil)
+var _ Throttler = (*NoopThrottler)(nil)
 
 func (r *NoopThrottler) Throttle(ctx context.Context, currentNumDispatch uint32) {
 }
