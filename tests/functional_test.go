@@ -91,7 +91,7 @@ condition conds(s: string) {
 	require.Nil(t, checkResp)
 }
 
-// TODO make a unit test from this
+// TODO make a unit test from this.
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
@@ -312,7 +312,7 @@ type document
 
 func TestFunctionalGRPC(t *testing.T) {
 	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
-	//defer goleak.VerifyNone(t)
+	// defer goleak.VerifyNone(t)
 	client := newOpenFGAServerAndClient(t)
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, client) })
@@ -1207,7 +1207,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
-// TODO move to consolidated_1_1_tests.yaml
+// TODO move to consolidated_1_1_tests.yaml.
 func TestExpandWorkflows(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)
 

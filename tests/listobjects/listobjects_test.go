@@ -7,7 +7,6 @@ import (
 	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/internal/server/config"
-
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/tests"
 )

@@ -9,7 +9,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// errorTupleIterator is a mock iterator that returns error when calling next on the second Next call
+// errorTupleIterator is a mock iterator that returns error when calling next on the second Next call.
 type errorTupleIterator struct {
 	items          []*openfgav1.Tuple
 	originalLength int
@@ -40,7 +40,7 @@ func (s *errorTupleIterator) Stop() {}
 var _ storage.TupleIterator = (*errorTupleIterator)(nil)
 
 // NewErrorTupleIterator mocks case where Next will return error after the first Next()
-// This TupleIterator is designed to be used in tests
+// This TupleIterator is designed to be used in tests.
 func NewErrorTupleIterator(tuples []*openfgav1.Tuple) storage.TupleIterator {
 	iter := &errorTupleIterator{
 		items:          tuples,

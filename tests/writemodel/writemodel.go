@@ -27,9 +27,9 @@ var testCases = map[string]struct {
 	//		define member: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	// implemented in Fails_If_Using_This_As_Type_Name
-	//"case2": {
+	// "case2": {
 	//	model: `
 	//	type user
 	//	type this
@@ -37,9 +37,9 @@ var testCases = map[string]struct {
 	//		define member: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	// implemented in Fails_If_Using_Self_As_Relation_Name
-	//"case3": {
+	// "case3": {
 	//	model: `
 	//	type user
 	//	type group
@@ -47,9 +47,9 @@ var testCases = map[string]struct {
 	//		define self: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	// implemented in Fails_If_Using_This_As_Relation_Name
-	//"case4": {
+	// "case4": {
 	//	model: `
 	//	type user
 	//	type group
@@ -57,7 +57,7 @@ var testCases = map[string]struct {
 	//		define this: [user]
 	//	`,
 	//	code: 2056,
-	//},
+	// },
 	"case6": {
 		model: `model
 	schema 1.1
@@ -248,8 +248,8 @@ type group
 	//	"case25": {
 	//		model: `model
 	//	schema 1.1
-	//type user
-	//type org
+	// type user
+	// type org
 	//  relations
 	//	define member`,
 	//		code: 2056,
@@ -346,13 +346,13 @@ type team
 	},
 }
 
-// ClientInterface defines interface for running WriteAuthorizationModel tests
+// ClientInterface defines interface for running WriteAuthorizationModel tests.
 type ClientInterface interface {
 	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)
 	WriteAuthorizationModel(ctx context.Context, in *openfgav1.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgav1.WriteAuthorizationModelResponse, error)
 }
 
-// RunAllTests will run all write model tests
+// RunAllTests will run all write model tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("WriteTest", func(t *testing.T) {

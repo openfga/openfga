@@ -301,8 +301,13 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	response, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// wait for trace exporting
 	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
@@ -359,8 +364,13 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
-	_, err = retryClient.Do(req)
+	response, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute create authorization model request")
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)

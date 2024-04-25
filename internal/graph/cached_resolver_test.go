@@ -16,9 +16,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -654,6 +653,32 @@ type document
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
+}
+
+func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
+	cachedCheckResolver := NewCachedCheckResolver(WithExistingCache(nil)) // create cache inside
+
+	mockCtrl := gomock.NewController(t)
+	t.Cleanup(mockCtrl.Finish)
+
+	mockCheckResolver := NewMockCheckResolver(mockCtrl)
+	cachedCheckResolver.SetDelegate(mockCheckResolver)
+
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(&ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 1,
+				CycleDetected:       true,
+			},
+		}, nil)
+
+	cachedCheckResolver.Close()
+	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {

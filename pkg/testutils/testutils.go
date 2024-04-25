@@ -87,7 +87,7 @@ func CreateRandomString(n int) string {
 	return string(b)
 }
 
-func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
+func MustNewStruct(t require.TestingT, v map[string]interface{}) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
@@ -208,6 +208,12 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	if httpHealthCheck {
 		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
 		require.NoError(t, err, "http endpoint not healthy")
+
+		t.Cleanup(func() {
+			err := resp.Body.Close()
+			require.NoError(t, err)
+		})
+
 		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 	}
 }
