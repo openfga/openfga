@@ -350,15 +350,15 @@ func (cfg *Config) Verify() error {
 	}
 
 	if cfg.RequestTimeout < 0 {
-		return errors.New("request duration must be non-negative time duration")
+		return errors.New("requestTimeout must be a non-negative time duration")
 	}
 
 	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
-		return errors.New("http upstream timeout must be non-negative time duration")
+return errors.New("http.upstreamTimeout must be a non-negative time duration")
 	}
 
 	if cfg.ListObjectsDeadline < 0 {
-		return errors.New("list objects deadline must be non-negative time duration")
+		return errors.New("listObjectsDeadline must be non-negative time duration")
 	}
 
 	return nil
