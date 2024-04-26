@@ -181,8 +181,7 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 	if userRel == "" && userObjID == "*" {
 		return &openfgav1.User{User: &openfgav1.User_Wildcard{
 			Wildcard: &openfgav1.TypedWildcard{
-				Type:     userObjType,
-				Wildcard: &openfgav1.Wildcard{},
+				Type: userObjType,
 			},
 		}}
 	}

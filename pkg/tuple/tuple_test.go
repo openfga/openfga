@@ -397,8 +397,7 @@ func TestFromUserProto(t *testing.T) {
 			input: &openfgav1.User{
 				User: &openfgav1.User_Wildcard{
 					Wildcard: &openfgav1.TypedWildcard{
-						Type:     "user",
-						Wildcard: &openfgav1.Wildcard{},
+						Type: "user",
 					},
 				},
 			},
@@ -450,8 +449,7 @@ func TestToUserProto(t *testing.T) {
 			expected: &openfgav1.User{
 				User: &openfgav1.User_Wildcard{
 					Wildcard: &openfgav1.TypedWildcard{
-						Type:     "user",
-						Wildcard: &openfgav1.Wildcard{},
+						Type: "user",
 					},
 				},
 			},
