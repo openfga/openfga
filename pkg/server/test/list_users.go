@@ -55,8 +55,8 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				Relation:    "can_view",
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
-			inputConfigMaxResults: 100 * 50, // TODO change to 1
-			expectedResults:       100 * 50, // TODO change to 1
+			inputConfigMaxResults: 1,
+			expectedResults:       1,
 		},
 		`all_results_without_conditions`: {
 			inputModel: `model
@@ -195,8 +195,5 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			}
 		})
 	}
-	b.Log(oneResultIterations)
-	b.Log(allResultsIterations)
-	// TODO uncomment
-	//require.Greater(b, oneResultIterations, allResultsIterations)
+	require.Greater(b, oneResultIterations, allResultsIterations)
 }
