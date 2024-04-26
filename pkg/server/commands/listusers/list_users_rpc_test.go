@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -2828,6 +2829,354 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 					require.Equal(t, resp.GetMetadata().DatastoreQueryCount, test.dbReads)
 				})
 			}
+		})
+	}
+}
+
+
+func TestListUsersConfig_MaxResults(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testCases := map[string]struct {
+		inputTuples           []*openfgav1.TupleKey
+		inputModel            string
+		inputRequest          *openfgav1.ListUsersRequest
+		inputConfigMaxResults uint32
+		allResults            []*openfgav1.User // all the results. the server may return less
+		expectMinResults      uint32
+	}{
+		`max_results_infinite`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+				tuple.NewTupleKey("repo:target", "admin", "user:2"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("repo:target", "admin", "user:3"),
+				},
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigMaxResults: 0,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "2"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "3"}}},
+			},
+			expectMinResults: 3,
+		},
+		`max_results_less_than_actual_results`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+				tuple.NewTupleKey("repo:target", "admin", "user:2"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("repo:target", "admin", "user:3"),
+				},
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigMaxResults: 2,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "2"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "3"}}},
+			},
+			expectMinResults: 2,
+		},
+		`max_results_more_than_actual_results`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigMaxResults: 2,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinResults: 1,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
+
+			storeID := ulid.Make().String()
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			require.NoError(t, err)
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			// assertions
+			test.inputRequest.StoreId = storeID
+			res, err := NewListUsersQuery(ds,
+				WithListUsersMaxResults(test.inputConfigMaxResults),
+				WithListUsersDeadline(10*time.Second),
+			).ListUsers(ctx, test.inputRequest)
+
+			require.NotNil(t, res)
+			require.NoError(t, err)
+			if test.inputConfigMaxResults != 0 { // don't get all results
+				require.LessOrEqual(t, len(res.GetUsers()), int(test.inputConfigMaxResults))
+			}
+			require.GreaterOrEqual(t, len(res.GetUsers()), int(test.expectMinResults))
+			require.Subset(t, test.allResults, res.GetUsers())
+		})
+	}
+}
+
+func TestListUsersConfig_Deadline(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testCases := map[string]struct {
+		inputTuples         []*openfgav1.TupleKey
+		inputModel          string
+		inputRequest        *openfgav1.ListUsersRequest
+		inputConfigDeadline time.Duration     // request can only take this time
+		inputReadDelay      time.Duration     // to be able to hit the deadline at a predictable time
+		allResults          []*openfgav1.User // all the results. the server may return less
+		expectMinResults    uint32
+		expectError         string
+	}{
+		`deadline_very_small_returns_nothing`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigDeadline: 1 * time.Millisecond,
+			inputReadDelay:      50 * time.Millisecond,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectError: "context deadline exceeded",
+		},
+		`deadline_very_high_returns_everything`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigDeadline: 1 * time.Second,
+			inputReadDelay:      0 * time.Second,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinResults: 1,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
+
+			storeID := ulid.Make().String()
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			require.NoError(t, err)
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			// assertions
+			t.Run("regular_endpoint", func(t *testing.T) {
+				test.inputRequest.StoreId = storeID
+				res, err := NewListUsersQuery(
+					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					WithListUsersDeadline(test.inputConfigDeadline),
+				).ListUsers(ctx, test.inputRequest)
+
+				if test.expectError != "" {
+					require.ErrorContains(t, err, test.expectError)
+				} else {
+					require.NoError(t, err)
+					require.GreaterOrEqual(t, len(res.GetUsers()), int(test.expectMinResults))
+					require.Subset(t, test.allResults, res.GetUsers())
+				}
+			})
+		})
+	}
+}
+
+func TestListUsersConfig_MaxConcurrency(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testCases := map[string]struct {
+		inputTuples                   []*openfgav1.TupleKey
+		inputModel                    string
+		inputRequest                  *openfgav1.ListUsersRequest
+		inputConfigMaxConcurrentReads uint32
+		inputReadDelay                time.Duration     // to be able to hit the deadline at a predictable time
+		allResults                    []*openfgav1.User // all the results. the server may return less
+		expectMinResults              uint32
+		expectMinExecutionTime        time.Duration
+	}{
+		`max_concurrent_reads_does_not_delay_response_if_only_contextual_tuples_are_in_place`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("repo:target", "admin", "user:1"),
+				},
+			},
+			inputConfigMaxConcurrentReads: 1,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinResults:       1,
+			expectMinExecutionTime: 0 * time.Millisecond,
+		},
+		`max_concurrent_reads_delays_response`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define admin: [user]
+				type repo
+					relations
+						define parent: [folder]
+						define admin: [user] or admin from parent`, // two parallel reads will have to be made
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputReadDelay:                1 * time.Second,
+			inputConfigMaxConcurrentReads: 1,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinExecutionTime: 2 * time.Second,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
+
+			storeID := ulid.Make().String()
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			require.NoError(t, err)
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			// assertions
+			t.Run("regular_endpoint", func(t *testing.T) {
+				test.inputRequest.StoreId = storeID
+				start := time.Now()
+				res, err := NewListUsersQuery(
+					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					WithListUsersMaxConcurrentReads(test.inputConfigMaxConcurrentReads),
+				).ListUsers(ctx, test.inputRequest)
+
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, len(res.GetUsers()), int(test.expectMinResults))
+				require.Subset(t, test.allResults, res.GetUsers())
+				require.GreaterOrEqual(t, time.Since(start), test.expectMinExecutionTime)
+			})
+>>>>>>> 4954cd6c780fba9efe2cc30509e8fdd9e8745208
 		})
 	}
 }

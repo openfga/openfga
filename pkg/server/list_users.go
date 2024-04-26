@@ -52,7 +52,14 @@ func (s *Server) ListUsers(
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	listUsersQuery := listusers.NewListUsersQuery(s.datastore, listusers.WithResolveNodeLimit(s.resolveNodeLimit), listusers.WithListUsersQueryLogger(s.logger))
+	listUsersQuery := listusers.NewListUsersQuery(s.datastore,
+		listusers.WithResolveNodeLimit(s.resolveNodeLimit),
+		listusers.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		listusers.WithListUsersQueryLogger(s.logger),
+		listusers.WithListUsersMaxResults(s.listUsersMaxResults),
+		listusers.WithListUsersDeadline(s.listUsersDeadline),
+		listusers.WithListUsersMaxConcurrentReads(s.maxConcurrentReadsForListUsers),
+	)
 
 	resp, err := listUsersQuery.ListUsers(ctx, req)
 	if err != nil {
