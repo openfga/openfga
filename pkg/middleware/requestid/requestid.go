@@ -3,8 +3,9 @@ package requestid
 import (
 	"context"
 
-	"github.com/google/uuid"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
+	"github.com/oklog/ulid/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -13,12 +14,23 @@ import (
 
 const (
 	requestIDCtxKey   = "request-id-context-key"
+	requestIDKey 			= "request_id"
 	requestIDTraceKey = "request_id"
 
 	// RequestIDHeader defines the HTTP header that is set in each HTTP response
 	// for a given request. The value of the header is unique per request.
 	RequestIDHeader = "X-Request-Id"
 )
+
+// InitID returns the ID to be used to identify the request.
+// If trace is enabled, returns trace ID; otherwise returns a new ULID.
+func InitID(ctx context.Context) string {
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if spanCtx.TraceID().IsValid() {
+		return spanCtx.TraceID().String()
+	} 
+	return ulid.Make().String()
+}
 
 // FromContext extracts the request-id from the context, if it exists.
 func FromContext(ctx context.Context) (string, bool) {
@@ -45,14 +57,14 @@ func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 
 func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
-		id, _ := uuid.NewRandom()
-		requestID := id.String()
+		requestID := InitID(ctx)
 
 		ctx = metadata.AppendToOutgoingContext(ctx, requestIDCtxKey, requestID)
 
-		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
-
+		grpc_ctxtags.Extract(ctx).Set(requestIDKey, requestID)	// CtxTags used by other middlewares
 		_ = grpc.SetHeader(ctx, metadata.Pairs(RequestIDHeader, requestID))
+
+		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
 
 		return interceptors.NoopReporter{}, ctx
 	}
