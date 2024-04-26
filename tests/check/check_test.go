@@ -21,13 +21,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/server/config"
-
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -289,6 +287,13 @@ func BenchmarkCheckMySQL(b *testing.B) {
 }
 
 func benchmarkAll(b *testing.B, engine string) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
 	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
 	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })

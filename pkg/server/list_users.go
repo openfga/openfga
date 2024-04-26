@@ -22,7 +22,7 @@ import (
 )
 
 // ListUsers returns all subjects (users) of a specified terminal type
-// that are relate via specific relation to a specific object
+// that are relate via specific relation to a specific object.
 func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
@@ -74,7 +74,7 @@ func (s *Server) ListUsers(
 	return resp, err
 }
 
-func userFiltersToString(filter []*openfgav1.ListUsersFilter) string {
+func userFiltersToString(filter []*openfgav1.UserTypeFilter) string {
 	var s strings.Builder
 	for _, f := range filter {
 		s.WriteString(f.GetType())

@@ -23,24 +23,24 @@ type ErrorResponse struct {
 	codeInt int32
 }
 
-// EncodedError allows customized error with code in string and specified http status field
+// EncodedError allows customized error with code in string and specified http status field.
 type EncodedError struct {
 	HTTPStatusCode int
 	GRPCStatusCode codes.Code
 	ActualError    ErrorResponse
 }
 
-// Error returns the encoded message
+// Error returns the encoded message.
 func (e *EncodedError) Error() string {
 	return e.ActualError.Message
 }
 
-// CodeValue returns the encoded code in integer
+// CodeValue returns the encoded code in integer.
 func (e *EncodedError) CodeValue() int32 {
 	return e.ActualError.codeInt
 }
 
-// HTTPStatus returns the HTTP Status code
+// HTTPStatus returns the HTTP Status code.
 func (e *EncodedError) HTTPStatus() int {
 	return e.HTTPStatusCode
 }
@@ -49,7 +49,7 @@ func (e *EncodedError) GRPCStatus() *status.Status {
 	return status.New(e.GRPCStatusCode, e.Error())
 }
 
-// Code returns the encoded code in string
+// Code returns the encoded code in string.
 func (e *EncodedError) Code() string {
 	return e.ActualError.Code
 }
@@ -93,23 +93,26 @@ func NewEncodedError(errorCode int32, message string) *EncodedError {
 	var httpStatusCode int
 	var grpcStatusCode codes.Code
 	var code string
-	if errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode {
+
+	switch {
+	case errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode:
 		httpStatusCode = http.StatusUnauthorized
 		code = openfgav1.AuthErrorCode(errorCode).String()
 		grpcStatusCode = codes.Unauthenticated
-	} else if errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode {
+	case errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode:
 		httpStatusCode = http.StatusBadRequest
 		code = openfgav1.ErrorCode(errorCode).String()
 		grpcStatusCode = codes.InvalidArgument
-	} else if errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
+	case errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode:
 		httpStatusCode = http.StatusInternalServerError
 		code = openfgav1.InternalErrorCode(errorCode).String()
 		grpcStatusCode = codes.Internal
-	} else {
+	default:
 		httpStatusCode = http.StatusNotFound
 		code = openfgav1.NotFoundErrorCode(errorCode).String()
 		grpcStatusCode = codes.NotFound
 	}
+
 	return &EncodedError{
 		HTTPStatusCode: httpStatusCode,
 		GRPCStatusCode: grpcStatusCode,
@@ -121,7 +124,7 @@ func NewEncodedError(errorCode int32, message string) *EncodedError {
 	}
 }
 
-// IsValidEncodedError returns whether the error code is a valid encoded error
+// IsValidEncodedError returns whether the error code is a valid encoded error.
 func IsValidEncodedError(errorCode int32) bool {
 	return errorCode >= cFirstAuthenticationErrorCode
 }

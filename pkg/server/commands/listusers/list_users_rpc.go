@@ -43,15 +43,6 @@ type listUsersQuery struct {
 	deadline                time.Duration
 }
 
-/*
- - Optimize entrypoint pruning
- - Intersection, exclusion, etc. (see: listobjects)
- - Max results
- - BCTR
- - Contextual tuples
- -
-*/
-
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
@@ -60,35 +51,35 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 	}
 }
 
-// WithListUserMaxResults see server.WithListUsersMaxResults
+// WithListUserMaxResults see server.WithListUsersMaxResults.
 func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.maxResults = max
 	}
 }
 
-// WithListUsersDeadline see server.WithListUsersDeadline
+// WithListUsersDeadline see server.WithListUsersDeadline.
 func WithListUsersDeadline(t time.Duration) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.deadline = t
 	}
 }
 
-// WithResolveNodeLimit see server.WithResolveNodeLimit
+// WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
-// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.resolveNodeBreadthLimit = limit
 	}
 }
 
-// WithListUsersMaxConcurrentReads see server.WithMaxConcurrentReadsForListUsers
+// WithListUsersMaxConcurrentReads see server.WithMaxConcurrentReadsForListUsers.
 func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.maxConcurrentReads = limit
@@ -139,7 +130,7 @@ func (l *listUsersQuery) ListUsers(
 	}
 	l.ds = storagewrappers.NewCombinedTupleReader(
 		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
-		req.GetContextualTuples().GetTupleKeys(),
+		req.GetContextualTuples(),
 	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
@@ -223,49 +214,6 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 	return len(edges) > 0, err
 }
-
-// func (l *listUsersQuery) StreamedListUsers(
-// 	ctx context.Context,
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	foundObjectsCh := make(chan *openfgav1.Object, 1)
-// 	expandErrCh := make(chan error, 1)
-
-// 	done := make(chan struct{}, 1)
-// 	go func() {
-// 		for foundObject := range foundObjectsCh {
-// 			log.Printf("foundObject '%v'\n", foundObject)
-// 			if err := srv.Send(&openfgav1.StreamedListUsersResponse{
-// 				UserObject: foundObject,
-// 			}); err != nil {
-// 				// handle error
-// 			}
-// 		}
-
-// 		done <- struct{}{}
-// 		log.Printf("ListUsers expand is done\n")
-// 	}()
-
-// 	go func() {
-// 		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
-// 			expandErrCh <- err
-// 			return
-// 		}
-
-// 		close(foundObjectsCh)
-// 		log.Printf("foundObjectsCh is closed\n")
-// 	}()
-
-// 	select {
-// 	case err := <-expandErrCh:
-// 		return err
-// 	case <-done:
-// 		break
-// 	}
-
-// 	return nil
-// }
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
@@ -446,7 +394,6 @@ LoopOnIterator:
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					// we found one, time to return it!
 					foundUsersChan <- user
 				}
 			}

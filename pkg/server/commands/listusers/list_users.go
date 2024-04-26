@@ -12,8 +12,8 @@ type listUsersRequest interface {
 	GetAuthorizationModelId() string
 	GetObject() *openfgav1.Object
 	GetRelation() string
-	GetUserFilters() []*openfgav1.ListUsersFilter
-	GetContextualTuples() *openfgav1.ContextualTupleKeys
+	GetUserFilters() []*openfgav1.UserTypeFilter
+	GetContextualTuples() []*openfgav1.TupleKey
 	GetContext() *structpb.Struct
 }
 
@@ -33,7 +33,7 @@ type internalListUsersRequest struct {
 
 var _ listUsersRequest = (*internalListUsersRequest)(nil)
 
-//nolint:stylecheck // it should be GetStoreID, but we want to satisfy the interface listUsersRequest
+// nolint // it should be GetStoreID, but we want to satisfy the interface listUsersRequest
 func (r *internalListUsersRequest) GetStoreId() string {
 	if r == nil {
 		return ""
@@ -41,7 +41,7 @@ func (r *internalListUsersRequest) GetStoreId() string {
 	return r.StoreId
 }
 
-//nolint:stylecheck // it should be GetAuthorizationModelID, but we want to satisfy the interface listUsersRequest
+// nolint // it should be GetAuthorizationModelID, but we want to satisfy the interface listUsersRequest
 func (r *internalListUsersRequest) GetAuthorizationModelId() string {
 	if r == nil {
 		return ""
@@ -63,14 +63,14 @@ func (r *internalListUsersRequest) GetRelation() string {
 	return r.Relation
 }
 
-func (r *internalListUsersRequest) GetUserFilters() []*openfgav1.ListUsersFilter {
+func (r *internalListUsersRequest) GetUserFilters() []*openfgav1.UserTypeFilter {
 	if r == nil {
 		return nil
 	}
 	return r.UserFilters
 }
 
-func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTupleKeys {
+func (r *internalListUsersRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	if r == nil {
 		return nil
 	}

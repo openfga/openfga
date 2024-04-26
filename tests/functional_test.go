@@ -91,7 +91,7 @@ condition conds(s: string) {
 	require.Nil(t, checkResp)
 }
 
-// TODO make a unit test from this
+// TODO make a unit test from this.
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
@@ -312,7 +312,7 @@ type document
 
 func TestFunctionalGRPC(t *testing.T) {
 	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
-	//defer goleak.VerifyNone(t)
+	// defer goleak.VerifyNone(t)
 	client := newOpenFGAServerAndClient(t)
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, client) })
@@ -1005,7 +1005,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}, {Type: "employee"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}, {Type: "employee"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1019,7 +1019,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{},
+				UserFilters: []*openfgav1.UserTypeFilter{},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1032,7 +1032,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 				Object: &openfgav1.Object{
 					Id: "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1045,7 +1045,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 				Object: &openfgav1.Object{
 					Type: "user",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1064,7 +1064,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1078,7 +1078,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1092,7 +1092,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1106,7 +1106,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1120,7 +1120,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1134,7 +1134,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1148,7 +1148,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1158,7 +1158,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String(),
 				Relation:             "viewer",
-				UserFilters:          []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1169,7 +1169,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 				AuthorizationModelId: ulid.Make().String(),
 				Relation:             "viewer",
 				Object:               &openfgav1.Object{},
-				UserFilters:          []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1182,7 +1182,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1207,7 +1207,7 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
-// TODO move to consolidated_1_1_tests.yaml
+// TODO move to consolidated_1_1_tests.yaml.
 func TestExpandWorkflows(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)
 
