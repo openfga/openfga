@@ -1028,6 +1028,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
@@ -1055,6 +1059,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.listUsersDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
+
+	val = res.Get("properties.listUsersMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersMaxResults)
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())

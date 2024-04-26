@@ -30,6 +30,12 @@
             "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_OBJECTS"
         },
+        "maxConcurrentReadsForListUsers": {
+            "description": "The maximum allowed number of concurrent reads in a single ListUsers query (default is MaxUint32).",
+            "type": "integer",
+            "default": 4294967295,
+            "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_USERS"
+        },
         "changelogHorizonOffset": {
             "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
             "type": "integer",
@@ -61,6 +67,20 @@
             "minimum": 0,
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
+        },
+        "listUsersDeadline": {
+            "description": "The timeout deadline for serving ListUsers requests. If 0s, there is no deadline",
+            "type": "string",
+            "format": "duration",
+            "default": "3s",
+            "x-env-variable": "OPENFGA_LIST_USERS_DEADLINE"
+        },
+        "listUsersMaxResults": {
+            "description": "The maximum results to return in ListUsers API response. If 0, all results can be returned",
+            "type": "integer",
+            "minimum": 0,
+            "default": 1000,
+            "x-env-variable": "OPENFGA_LIST_USERS_MAX_RESULTS"
         },
         "requestDurationDatastoreQueryCountBuckets": {
             "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",

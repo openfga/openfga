@@ -182,7 +182,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				bm.inputRequest.StoreId = storeID
 				ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
 				resp, err := listusers.NewListUsersQuery(ds,
-					listusers.WithListUserMaxResults(bm.inputConfigMaxResults)).
+					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults)).
 					ListUsers(ctx, bm.inputRequest)
 				require.NoError(b, err)
 				require.NotNil(b, resp)
