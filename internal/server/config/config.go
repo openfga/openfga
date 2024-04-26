@@ -333,7 +333,7 @@ func (cfg *Config) Verify() error {
 			return errors.New("dispatch throttling threshold must be non-negative integer")
 		}
 		if cfg.DispatchThrottling.MaxThreshold != 0 && cfg.DispatchThrottling.Threshold > cfg.DispatchThrottling.MaxThreshold {
-			return errors.New("dispatch throttling threshold must be less than or equal to max threshold")
+return errors.New("'dispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold'")
 		}
 	}
 

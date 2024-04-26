@@ -157,7 +157,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("threshold_larger_than_max_threshold", func(t *testing.T) {
+	t.Run("dispatch_throttling_threshold_larger_than_max_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.DispatchThrottling = DispatchThrottlingConfig{
 			Enabled:      true,
