@@ -207,7 +207,7 @@ func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	}
 }
 
-// WithListObjectsDeadline affect the ListObjects API and Streamed ListObjects API only.
+// WithListObjectsDeadline affect the ListObjects API only.
 // It sets the maximum amount of time that the server will spend gathering results.
 func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -223,7 +223,7 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
-// WithListUsersDeadline affect the ListUsers API and Streamed ListUsers API only.
+// WithListUsersDeadline affect the ListUsers API only.
 // It sets the maximum amount of time that the server will spend gathering results.
 func WithListUsersDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {

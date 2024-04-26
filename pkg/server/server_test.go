@@ -1490,6 +1490,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	cfg := serverconfig.DefaultConfig()
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListUsers)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
@@ -1497,6 +1498,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
+	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListUsers)
 }
 
 func TestDelegateCheckResolver(t *testing.T) {
