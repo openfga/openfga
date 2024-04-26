@@ -2801,8 +2801,6 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		},
 	}
 
-	l := NewListUsersQuery(ds)
-
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 100; i++ {
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
@@ -2819,6 +2817,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 						),
 					)
 
+					l := NewListUsersQuery(ds)
 					resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
 						Relation:         test.relation,
 						Object:           &test.object,

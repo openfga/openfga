@@ -127,7 +127,6 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
-		internalRequest.datastoreQueryCount = &datastoreQueryCount
 		if err := l.expand(ctx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
