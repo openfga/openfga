@@ -16,6 +16,23 @@ func TestVerifyConfig(t *testing.T) {
 		err := cfg.Verify()
 		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
 	})
+	t.Run("UpstreamTimeout_cannot_be_less_than_ListUsersDeadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDeadline = 2 * time.Second
+		cfg.ListUsersDeadline = 5 * time.Minute
+		cfg.HTTP.UpstreamTimeout = 2 * time.Second
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listUsersDeadline' config (5m0s)")
+	})
+
+	t.Run("maxConcurrentReadsForListUsers_not_zero", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConcurrentReadsForListUsers = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'maxConcurrentReadsForListUsers' cannot be 0")
+	})
 
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
