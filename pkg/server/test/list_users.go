@@ -150,37 +150,36 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 	}
 
 	for name, bm := range benchmarkScenarios {
-		b.Run(name, func(b *testing.B) {
-			ctx := context.Background()
-			storeID := ulid.Make().String()
+		ctx := context.Background()
+		storeID := ulid.Make().String()
 
-			// arrange: write model
-			model := testutils.MustTransformDSLToProtoWithID(bm.inputModel)
-			typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
-			require.NoError(b, err)
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
-			require.NoError(b, err)
+		// arrange: write model
+		model := testutils.MustTransformDSLToProtoWithID(bm.inputModel)
+		typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
+		require.NoError(b, err)
+		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+		require.NoError(b, err)
 
-			// arrange: write tuples
-			tuples := bm.tupleGenerator()
-			for i := 0; i < len(tuples); {
-				var tuplesToWrite []*openfgav1.TupleKey
-				for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
-					if i == len(tuples) {
-						break
-					}
-					tuplesToWrite = append(tuplesToWrite, tuples[i])
-					i++
+		// arrange: write tuples
+		tuples := bm.tupleGenerator()
+		for i := 0; i < len(tuples); {
+			var tuplesToWrite []*openfgav1.TupleKey
+			for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
+				if i == len(tuples) {
+					break
 				}
-				err = ds.Write(context.Background(), storeID, nil, tuplesToWrite)
-				require.NoError(b, err)
+				tuplesToWrite = append(tuplesToWrite, tuples[i])
+				i++
 			}
+			err = ds.Write(context.Background(), storeID, nil, tuplesToWrite)
+			require.NoError(b, err)
+		}
 
-			b.ResetTimer()
+		bm.inputRequest.StoreId = storeID
+		ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
 
+		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				bm.inputRequest.StoreId = storeID
-				ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
 				resp, err := listusers.NewListUsersQuery(ds,
 					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults)).
 					ListUsers(ctx, bm.inputRequest)
