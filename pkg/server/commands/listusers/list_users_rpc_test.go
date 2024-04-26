@@ -2833,7 +2833,6 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	}
 }
 
-
 func TestListUsersConfig_MaxResults(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -3176,7 +3175,6 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 				require.Subset(t, test.allResults, res.GetUsers())
 				require.GreaterOrEqual(t, time.Since(start), test.expectMinExecutionTime)
 			})
->>>>>>> 4954cd6c780fba9efe2cc30509e8fdd9e8745208
 		})
 	}
 }
