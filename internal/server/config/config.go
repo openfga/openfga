@@ -32,9 +32,10 @@ const (
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
-	DefaultDispatchThrottlingEnabled   = false
-	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
-	DefaultDispatchThrottlingThreshold = 100
+	DefaultDispatchThrottlingEnabled          = false
+	DefaultDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultDispatchThrottlingDefaultThreshold = 100
+	DefaultDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 )
 
 type DatastoreMetricsConfig struct {
@@ -327,13 +328,13 @@ func (cfg *Config) Verify() error {
 
 	if cfg.DispatchThrottling.Enabled {
 		if cfg.DispatchThrottling.Frequency <= 0 {
-			return errors.New("dispatch throttling frequency must be non-negative time duration")
+			return errors.New("dispatchThrottling.frequency must be non-negative time duration")
 		}
 		if cfg.DispatchThrottling.Threshold <= 0 {
-			return errors.New("dispatch throttling threshold must be non-negative integer")
+			return errors.New("dispatchThrottling.threshold must be non-negative integer")
 		}
 		if cfg.DispatchThrottling.MaxThreshold != 0 && cfg.DispatchThrottling.Threshold > cfg.DispatchThrottling.MaxThreshold {
-return errors.New("'dispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold'")
+			return errors.New("'dispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold'")
 		}
 	}
 
@@ -416,8 +417,8 @@ func DefaultConfig() *Config {
 		DispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultDispatchThrottlingEnabled,
 			Frequency:    DefaultDispatchThrottlingFrequency,
-			Threshold:    DefaultDispatchThrottlingThreshold,
-			MaxThreshold: 0,
+			Threshold:    DefaultDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultDispatchThrottlingMaxThreshold,
 		},
 	}
 }

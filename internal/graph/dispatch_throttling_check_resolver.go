@@ -14,15 +14,15 @@ import (
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.
 type DispatchThrottlingCheckResolverConfig struct {
-	Frequency    time.Duration
-	Threshold    uint32
-	MaxThreshold uint32
+	Frequency        time.Duration
+	DefaultThreshold uint32
+	MaxThreshold     uint32
 }
 
 // DispatchThrottlingCheckResolver will prioritize requests with fewer dispatches over
 // requests with more dispatches.
 // Initially, request's dispatches will not be throttled and will be processed
-// immediately. When the number of request dispatches is above the Threshold, the dispatches are placed
+// immediately. When the number of request dispatches is above the DefaultThreshold, the dispatches are placed
 // in the throttling queue. One item form the throttling queue will be processed ticker.
 // This allows a check / list objects request to be gradually throttled.
 type DispatchThrottlingCheckResolver struct {
@@ -100,14 +100,11 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 ) (*ResolveCheckResponse, error) {
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
-	threshold := r.config.Threshold
+	threshold := r.config.DefaultThreshold
 
-	thresholdInContext := ctx.Value(telemetry.DispatchThrottlingThreshold)
-	if thresholdInContext != nil {
-		thresholdInInt, ok := thresholdInContext.(uint32)
-		if ok {
-			threshold = min(thresholdInInt, r.config.MaxThreshold)
-		}
+	thresholdInInt := telemetry.DispatchThrottlingThresholdFromContext(ctx)
+	if thresholdInInt > 0 {
+		threshold = min(thresholdInInt, r.config.MaxThreshold)
 	}
 
 	if currentNumDispatch > threshold {

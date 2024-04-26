@@ -373,7 +373,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultDispatchThrottlingEnabled,
 		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultDispatchThrottlingFrequency,
-		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingThreshold,
+		dispatchThrottlingThreshold:              serverconfig.DefaultDispatchThrottlingDefaultThreshold,
 	}
 
 	for _, opt := range opts {
@@ -392,14 +392,14 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.dispatchThrottlingCheckResolverEnabled {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
-			Frequency:    s.dispatchThrottlingCheckResolverFrequency,
-			Threshold:    s.dispatchThrottlingThreshold,
-			MaxThreshold: s.dispatchThrottlingMaxThreshold,
+			Frequency:        s.dispatchThrottlingCheckResolverFrequency,
+			DefaultThreshold: s.dispatchThrottlingThreshold,
+			MaxThreshold:     s.dispatchThrottlingMaxThreshold,
 		}
 
 		s.logger.Info("Enabling dispatch throttling",
 			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
-			zap.Uint32("Threshold", s.dispatchThrottlingThreshold),
+			zap.Uint32("DefaultThreshold", s.dispatchThrottlingThreshold),
 			zap.Uint32("MaxThreshold", s.dispatchThrottlingMaxThreshold),
 		)
 
