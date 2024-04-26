@@ -354,7 +354,7 @@ func (cfg *Config) Verify() error {
 	}
 
 	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
-return errors.New("http.upstreamTimeout must be a non-negative time duration")
+		return errors.New("http.upstreamTimeout must be a non-negative time duration")
 	}
 
 	if cfg.ListObjectsDeadline < 0 {
