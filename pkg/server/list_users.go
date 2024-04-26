@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,7 +23,7 @@ import (
 )
 
 // ListUsers returns all subjects (users) of a specified terminal type
-// that are relate via specific relation to a specific object
+// that are relate via specific relation to a specific object.
 func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
@@ -51,7 +52,14 @@ func (s *Server) ListUsers(
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	listUsersQuery := listusers.NewListUsersQuery(s.datastore, listusers.WithResolveNodeLimit(s.resolveNodeLimit), listusers.WithListUsersQueryLogger(s.logger))
+	listUsersQuery := listusers.NewListUsersQuery(s.datastore,
+		listusers.WithResolveNodeLimit(s.resolveNodeLimit),
+		listusers.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		listusers.WithListUsersQueryLogger(s.logger),
+		listusers.WithListUsersMaxResults(s.listUsersMaxResults),
+		listusers.WithListUsersDeadline(s.listUsersDeadline),
+		listusers.WithListUsersMaxConcurrentReads(s.maxConcurrentReadsForListUsers),
+	)
 
 	resp, err := listUsersQuery.ListUsers(ctx, req)
 	if err != nil {
@@ -64,10 +72,22 @@ func (s *Server) ListUsers(
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
-	return resp, err
+
+	datastoreQueryCount := float64(resp.Metadata.DatastoreQueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		s.serviceName,
+		"list-users",
+	).Observe(datastoreQueryCount)
+
+	return &openfgav1.ListUsersResponse{
+		Users: resp.GetUsers(),
+	}, nil
 }
 
-func userFiltersToString(filter []*openfgav1.ListUsersFilter) string {
+func userFiltersToString(filter []*openfgav1.UserTypeFilter) string {
 	var s strings.Builder
 	for _, f := range filter {
 		s.WriteString(f.GetType())

@@ -12,7 +12,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -59,15 +59,16 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 			username = parsed.User.Username()
 		}
 
-		if cfg.Password != "" {
+		switch {
+		case cfg.Password != "":
 			parsed.User = url.UserPassword(username, cfg.Password)
-		} else if parsed.User != nil {
+		case parsed.User != nil:
 			if password, ok := parsed.User.Password(); ok {
 				parsed.User = url.UserPassword(username, password)
 			} else {
 				parsed.User = url.User(username)
 			}
-		} else {
+		default:
 			parsed.User = url.User(username)
 		}
 

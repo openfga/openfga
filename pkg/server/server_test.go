@@ -518,19 +518,26 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New()
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
@@ -540,7 +547,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 }
@@ -708,7 +715,7 @@ type document
 				Type: "document",
 				Id:   "1",
 			},
-			UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 		})
 		require.NoError(t, err)
 
@@ -1170,6 +1177,13 @@ func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
 
 // This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1197,6 +1211,9 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	b.Cleanup(func() {
+		s.Close()
+	})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1490,6 +1507,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	cfg := serverconfig.DefaultConfig()
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListUsers)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
@@ -1497,6 +1515,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
+	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListUsers)
 }
 
 func TestDelegateCheckResolver(t *testing.T) {

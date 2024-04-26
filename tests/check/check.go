@@ -44,13 +44,13 @@ type stage struct {
 	CheckAssertions []*checktest.Assertion `json:"checkAssertions"`
 }
 
-// ClientInterface defines client interface for running check tests
+// ClientInterface defines client interface for running check tests.
 type ClientInterface interface {
 	tests.TestClientBootstrapper
 	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
 }
 
-// RunAllTests will run all check tests
+// RunAllTests will run all check tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("Check", func(t *testing.T) {

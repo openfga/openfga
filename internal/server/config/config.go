@@ -22,13 +22,16 @@ const (
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
+	DefaultListUsersDeadline                = 3 * time.Second
+	DefaultListUsersMaxResults              = 1000
+	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 	DefaultCheckQueryCacheLimit  = 10000
 	DefaultCheckQueryCacheTTL    = 10 * time.Second
 	DefaultCheckQueryCacheEnable = false
 
-	// care should be taken here - decreasing can cause API compatibility problems with Conditions
+	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
@@ -171,14 +174,14 @@ type MetricConfig struct {
 	EnableRPCHistograms bool
 }
 
-// CheckQueryCache defines configuration for caching when resolving check
+// CheckQueryCache defines configuration for caching when resolving check.
 type CheckQueryCache struct {
 	Enabled bool
 	Limit   uint32 // (in items)
 	TTL     time.Duration
 }
 
-// DispatchThrottlingConfig defines configurations for dispatch throttling
+// DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
 	Enabled   bool
 	Frequency time.Duration
@@ -199,6 +202,16 @@ type Config struct {
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
+	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
+	// before the server will respond. This is to protect the server from misuse of the
+	// ListUsers endpoints. It cannot be larger than HTTPConfig.UpstreamTimeout.
+	ListUsersDeadline time.Duration
+
+	// ListUsersMaxResults defines the maximum number of results to accumulate
+	// before the non-streaming ListUsers API will respond to the client.
+	// This is to protect the server from misuse of the ListUsers endpoints.
+	ListUsersMaxResults uint32
+
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
 
@@ -217,6 +230,10 @@ type Config struct {
 	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in
 	// Check queries
 	MaxConcurrentReadsForCheck uint32
+
+	// MaxConcurrentReadsForListUsers defines the maximum number of concurrent database reads
+	// allowed in ListUsers queries
+	MaxConcurrentReadsForListUsers uint32
 
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur
 	// after this offset will not be included in the response of ReadChanges.
@@ -256,6 +273,17 @@ func (cfg *Config) Verify() error {
 			cfg.HTTP.UpstreamTimeout,
 			cfg.ListObjectsDeadline,
 		)
+	}
+	if cfg.ListUsersDeadline > cfg.HTTP.UpstreamTimeout {
+		return fmt.Errorf(
+			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listUsersDeadline' config (%s)",
+			cfg.HTTP.UpstreamTimeout,
+			cfg.ListUsersDeadline,
+		)
+	}
+
+	if cfg.MaxConcurrentReadsForListUsers == 0 {
+		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
@@ -344,12 +372,15 @@ func DefaultConfig() *Config {
 		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
+		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		ListUsersMaxResults:                       DefaultListUsersMaxResults,
+		ListUsersDeadline:                         DefaultListUsersDeadline,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{

@@ -21,8 +21,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/gateway"
-
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
@@ -30,6 +28,7 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -70,14 +69,14 @@ var (
 	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            datastoreQueryCountHistogramName,
-		Help:                            "The number of database queries required to resolve a query (e.g. Check or ListObjects).",
+		Help:                            "The number of database queries required to resolve a query (e.g. Check, ListObjects or ListUsers).",
 		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
-	//request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms
+	// Request_duration_by_query_count_ms is deprecated and will be removed soon in favour of request_duration_ms.
 	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
 
 	requestDurationByQueryAndDispatchHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -117,8 +116,11 @@ type Server struct {
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
+	listUsersDeadline                time.Duration
+	listUsersMaxResults              uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
@@ -188,7 +190,7 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
 // is deeply nested), or if you have lots of users for (object, relation) pairs,
-// you should set this option to be a low number (e.g. 1000)
+// you should set this option to be a low number (e.g. 1000).
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
@@ -197,14 +199,14 @@ func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 
 // WithChangelogHorizonOffset sets an offset (in minutes) from the current time.
 // Changes that occur after this offset will not be included in the response of ReadChanges API.
-// If your datastore is eventually consistent or if you have a database with replication delay, we recommend setting this (e.g. 1 minute)
+// If your datastore is eventually consistent or if you have a database with replication delay, we recommend setting this (e.g. 1 minute).
 func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
 	}
 }
 
-// WithListObjectsDeadline affect the ListObjects API and Streamed ListObjects API only.
+// WithListObjectsDeadline affect the ListObjects API only.
 // It sets the maximum amount of time that the server will spend gathering results.
 func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -220,10 +222,27 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithListUsersDeadline affect the ListUsers API only.
+// It sets the maximum amount of time that the server will spend gathering results.
+func WithListUsersDeadline(deadline time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDeadline = deadline
+	}
+}
+
+// WithListUsersMaxResults affects the ListUsers API only.
+// It sets the maximum number of results that this API will return.
+// If it's zero, all results will be attempted to be returned.
+func WithListUsersMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersMaxResults = limit
+	}
+}
+
 // WithMaxConcurrentReadsForListObjects sets a limit on the number of datastore reads that can be in flight for a given ListObjects call.
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
-// E.g. if Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
+// E.g. If Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
@@ -236,13 +255,26 @@ func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 // WithMaxConcurrentReadsForCheck sets a limit on the number of datastore reads that can be in flight for a given Check call.
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
-// E.g. if Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
+// E.g. If Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
 func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForCheck = max
+	}
+}
+
+// WithMaxConcurrentReadsForListUsers sets a limit on the number of datastore reads that can be in flight for a given ListUsers call.
+// This number should be set depending on the RPS expected for all query APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. If Datastore.MaxOpenConns = 100 and assuming that each ListUsers call takes 1 second and no traffic to other query APIs:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+func WithMaxConcurrentReadsForListUsers(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForListUsers = max
 	}
 }
 
@@ -254,7 +286,7 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 
 // WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
 // This cache is shared for all requests.
-// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL
+// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL.
 func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheEnabled = enabled
@@ -277,7 +309,7 @@ func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
@@ -285,7 +317,7 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
-// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram
+// WithRequestDurationByDispatchCountHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByDispatchCountHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
@@ -327,7 +359,7 @@ func WithDispatchThrottlingCheckResolverThreshold(threshold uint32) OpenFGAServi
 	}
 }
 
-// MustNewServerWithOpts see NewServerWithOpts
+// MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -358,8 +390,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
+		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 

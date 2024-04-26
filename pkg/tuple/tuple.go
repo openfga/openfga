@@ -181,8 +181,7 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 	if userRel == "" && userObjID == "*" {
 		return &openfgav1.User{User: &openfgav1.User_Wildcard{
 			Wildcard: &openfgav1.TypedWildcard{
-				Type:     userObjType,
-				Wildcard: &openfgav1.Wildcard{},
+				Type: userObjType,
 			},
 		}}
 	}
@@ -216,7 +215,7 @@ func BuildObject(objectType, objectID string) string {
 	return fmt.Sprintf("%s:%s", objectType, objectID)
 }
 
-// GetObjectRelationAsString returns a string like "object#relation". If there is no relation it returns "object"
+// GetObjectRelationAsString returns a string like "object#relation". If there is no relation it returns "object".
 func GetObjectRelationAsString(objectRelation *openfgav1.ObjectRelation) string {
 	if objectRelation.GetRelation() != "" {
 		return fmt.Sprintf("%s#%s", objectRelation.GetObject(), objectRelation.GetRelation())
@@ -271,13 +270,13 @@ func GetUserTypeFromUser(user string) UserType {
 }
 
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
-// (i.e. no forbidden characters)
+// (i.e. no forbidden characters).
 func TupleKeyToString(tk TupleWithoutCondition) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
 }
 
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
-// (i.e. no forbidden characters)
+// (i.e. no forbidden characters).
 func TupleKeyWithConditionToString(tk TupleWithCondition) string {
 	return fmt.Sprintf("%s#%s@%s (condition %s)", tk.GetObject(), tk.GetRelation(), tk.GetUser(), tk.GetCondition())
 }
@@ -304,7 +303,7 @@ func IsValidUser(user string) bool {
 	return false
 }
 
-// IsWildcard returns true if the string 's' could be interpreted as a typed or untyped wildcard (e.g. '*' or 'type:*')
+// IsWildcard returns true if the string 's' could be interpreted as a typed or untyped wildcard (e.g. '*' or 'type:*').
 func IsWildcard(s string) bool {
 	return s == Wildcard || IsTypedWildcard(s)
 }
@@ -322,7 +321,7 @@ func IsTypedWildcard(s string) bool {
 	return false
 }
 
-// TypedPublicWildcard returns the string tuple representation for a given object type (ex: "user:*")
+// TypedPublicWildcard returns the string tuple representation for a given object type (ex: "user:*").
 func TypedPublicWildcard(objectType string) string {
 	return BuildObject(objectType, Wildcard)
 }

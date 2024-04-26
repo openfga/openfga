@@ -91,14 +91,14 @@ func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
 	}
 }
 
-// WithResolveNodeLimit see server.WithResolveNodeLimit
+// WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
-// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeBreadthLimit = limit
@@ -111,7 +111,7 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects.
 func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.maxConcurrentReads = limit
@@ -441,7 +441,7 @@ func (q *ListObjectsQuery) Execute(
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
-// until q.listObjectsDeadline is hit
+// until q.listObjectsDeadline is hit.
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result

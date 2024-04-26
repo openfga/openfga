@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -35,27 +38,55 @@ type listUsersQuery struct {
 	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
+	maxResults              uint32
+	maxConcurrentReads      uint32
+	deadline                time.Duration
 }
-
 type expandResponse struct {
 	hasCycle bool
 	err      error
 }
 
-/*
- - Optimize entrypoint pruning
- - Intersection, exclusion, etc. (see: listobjects)
- - Max results
- - BCTR
- - Contextual tuples
- -
-*/
-
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
-	return func(rq *listUsersQuery) {
-		rq.logger = l
+	return func(d *listUsersQuery) {
+		d.logger = l
+	}
+}
+
+// WithListUserMaxResults see server.WithListUsersMaxResults.
+func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.maxResults = max
+	}
+}
+
+// WithListUsersDeadline see server.WithListUsersDeadline.
+func WithListUsersDeadline(t time.Duration) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.deadline = t
+	}
+}
+
+// WithResolveNodeLimit see server.WithResolveNodeLimit.
+func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.resolveNodeLimit = limit
+	}
+}
+
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
+func WithResolveNodeBreadthLimit(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.resolveNodeBreadthLimit = limit
+	}
+}
+
+// WithListUsersMaxConcurrentReads see server.WithMaxConcurrentReadsForListUsers.
+func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.maxConcurrentReads = limit
 	}
 }
 
@@ -72,8 +103,11 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 
 			return typesys, nil
 		},
-		resolveNodeBreadthLimit: 20,
-		resolveNodeLimit:        25,
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		deadline:                serverconfig.DefaultListObjectsDeadline,
+		maxResults:              serverconfig.DefaultListObjectsMaxResults,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
 	}
 
 	for _, opt := range opts {
@@ -83,23 +117,26 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	return l
 }
 
-// WithResolveNodeLimit see server.WithResolveNodeLimit
-func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
-		d.resolveNodeLimit = limit
-	}
-}
-
 // ListUsers assumes that the typesystem is in the context.
 func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
-) (*openfgav1.ListUsersResponse, error) {
+) (*listUsersResponse, error) {
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
-	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	cancellableCtx, cancelContextIfMaxResultsMet := context.WithCancel(ctx)
+	defer cancelContextIfMaxResultsMet()
+	if l.deadline != 0 {
+		var cancelContextIfDeadlineHit context.CancelFunc
+		cancellableCtx, cancelContextIfDeadlineHit = context.WithTimeout(cancellableCtx, l.deadline)
+		defer cancelContextIfDeadlineHit()
+	}
+	l.ds = storagewrappers.NewCombinedTupleReader(
+		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
+		req.GetContextualTuples(),
+	)
+	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
@@ -114,11 +151,16 @@ func (l *listUsersQuery) ListUsers(
 		}
 		if !hasPossibleEdges {
 			span.SetAttributes(attribute.Bool("no_possible_edges", true))
-			return &openfgav1.ListUsersResponse{
+			return &listUsersResponse{
 				Users: []*openfgav1.User{},
+				Metadata: listUsersResponseMetadata{
+					DatastoreQueryCount: 0,
+				},
 			}, nil
 		}
 	}
+
+	datastoreQueryCount := atomic.Uint32{}
 
 	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
@@ -128,6 +170,12 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		for foundObject := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundObject)] = struct{}{}
+			if l.maxResults > 0 {
+				if uint32(len(foundUsersUnique)) >= l.maxResults {
+					span.SetAttributes(attribute.Bool("max_results_found", true))
+					break
+				}
+			}
 		}
 
 		done <- struct{}{}
@@ -135,7 +183,7 @@ func (l *listUsersQuery) ListUsers(
 
 	go func() {
 		defer close(foundUsersCh)
-		internalRequest := fromListUsersRequest(req)
+		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
 		if resp := l.expand(ctx, internalRequest, foundUsersCh); resp.err != nil {
 			expandErrCh <- resp.err
 			return
@@ -147,6 +195,7 @@ func (l *listUsersQuery) ListUsers(
 		telemetry.TraceError(span, err)
 		return nil, err
 	case <-done:
+		cancelContextIfMaxResultsMet()
 		break
 	}
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
@@ -154,8 +203,12 @@ func (l *listUsersQuery) ListUsers(
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
-	return &openfgav1.ListUsersResponse{
+
+	return &listUsersResponse{
 		Users: foundUsers,
+		Metadata: listUsersResponseMetadata{
+			DatastoreQueryCount: datastoreQueryCount.Load(),
+		},
 	}, nil
 }
 
@@ -174,49 +227,6 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 	return len(edges) > 0, err
 }
-
-// func (l *listUsersQuery) StreamedListUsers(
-// 	ctx context.Context,
-// 	req *openfgav1.StreamedListUsersRequest,
-// 	srv openfgav1.OpenFGAService_StreamedListUsersServer,
-// ) error {
-// 	foundObjectsCh := make(chan *openfgav1.Object, 1)
-// 	expandErrCh := make(chan error, 1)
-
-// 	done := make(chan struct{}, 1)
-// 	go func() {
-// 		for foundObject := range foundObjectsCh {
-// 			log.Printf("foundObject '%v'\n", foundObject)
-// 			if err := srv.Send(&openfgav1.StreamedListUsersResponse{
-// 				UserObject: foundObject,
-// 			}); err != nil {
-// 				// handle error
-// 			}
-// 		}
-
-// 		done <- struct{}{}
-// 		log.Printf("ListUsers expand is done\n")
-// 	}()
-
-// 	go func() {
-// 		if err := l.expand(ctx, req, foundObjectsCh); err != nil {
-// 			expandErrCh <- err
-// 			return
-// 		}
-
-// 		close(foundObjectsCh)
-// 		log.Printf("foundObjectsCh is closed\n")
-// 	}()
-
-// 	select {
-// 	case err := <-expandErrCh:
-// 		return err
-// 	case <-done:
-// 		break
-// 	}
-
-// 	return nil
-// }
 
 func (l *listUsersQuery) expand(
 	ctx context.Context,
@@ -356,6 +366,7 @@ func (l *listUsersQuery) expandDirect(
 		}
 	}
 	defer iter.Stop()
+	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
@@ -409,7 +420,6 @@ LoopOnIterator:
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					// we found one, time to return it!
 					foundUsersChan <- user
 				}
 			}
@@ -617,6 +627,7 @@ func (l *listUsersQuery) expandTTU(
 		}
 	}
 	defer iter.Stop()
+	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),

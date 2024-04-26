@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -17,19 +19,19 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type ListUsersTests []struct {
-	name                  string
-	TemporarilySkipReason string // Temporarily skip test until functionality is fixed
-	req                   *openfgav1.ListUsersRequest
-	model                 string
-	tuples                []*openfgav1.TupleKey
-	expectedUsers         []string
-	expectedErrorMsg      string
+	name             string
+	req              *openfgav1.ListUsersRequest
+	model            string
+	tuples           []*openfgav1.TupleKey
+	expectedUsers    []string
+	expectedErrorMsg string
 }
 
 const maximumRecursiveDepth = 25
@@ -51,7 +53,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -70,7 +72,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "group", Id: "eng"},
 				Relation: "member",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "group",
 						Relation: "member",
@@ -94,7 +96,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -109,7 +111,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -127,15 +129,13 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			name: "direct_relationship_contextual_tuples",
 			req: &openfgav1.ListUsersRequest{
 				Object: &openfgav1.Object{Type: "document", Id: "1"},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("document:1", "viewer", "user:will"),
-						tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-						tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-					},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:will"),
+					tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+					tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -159,7 +159,7 @@ func TestListUsersComputedRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -184,7 +184,7 @@ func TestListUsersComputedRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -210,17 +210,15 @@ func TestListUsersComputedRelationship(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
 				},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("document:1", "owner", "user:will"),
-						tuple.NewTupleKey("document:1", "owner", "user:maria"),
-						tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-					},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "owner", "user:will"),
+					tuple.NewTupleKey("document:1", "owner", "user:maria"),
+					tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				},
 			},
 			model: `model
@@ -257,7 +255,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -277,7 +275,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "group",
 						Relation: "member",
@@ -298,7 +296,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "group",
 						Relation: "", // Would return results if "member"
@@ -319,7 +317,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "group",
 						Relation: "member",
@@ -350,7 +348,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -380,7 +378,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "group",
 						Relation: "member",
@@ -409,16 +407,14 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
 				},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:marketing", "member", "user:jon"),
-						tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-					},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("group:marketing", "member", "user:jon"),
+					tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				},
 			},
 			model: model,
@@ -433,14 +429,12 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
 				},
-				ContextualTuples: &openfgav1.ContextualTupleKeys{
-					TupleKeys: []*openfgav1.TupleKey{},
-				},
+				ContextualTuples: []*openfgav1.TupleKey{},
 			},
 			model: model,
 			tuples: []*openfgav1.TupleKey{
@@ -457,7 +451,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "document",
 					},
@@ -478,7 +472,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "document",
 						Relation: "viewer",
@@ -500,7 +494,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "repo", Id: "fga"},
 				Relation: "reader",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "org",
 						Relation: "member",
@@ -532,7 +526,7 @@ func TestListUsersUsersets(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "repo", Id: "fga"},
 				Relation: "reader",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "org",
 						Relation: "member",
@@ -586,7 +580,7 @@ func TestListUsersTTU(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -606,7 +600,7 @@ func TestListUsersTTU(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "folder",
 					},
@@ -624,7 +618,7 @@ func TestListUsersTTU(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -663,7 +657,7 @@ func TestListUsersTTU(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "folder", Id: "c"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -701,7 +695,7 @@ func TestListUsersCycles(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -723,7 +717,7 @@ func TestListUsersCycles(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "transition", Id: "1"},
 				Relation: "can_view_3",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -777,7 +771,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -797,7 +791,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -817,7 +811,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type:     "group",
 						Relation: "member",
@@ -856,7 +850,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -894,7 +888,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -931,7 +925,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -966,7 +960,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1000,7 +994,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1034,7 +1028,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1063,7 +1057,7 @@ func TestListUsersConditions(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1104,7 +1098,7 @@ func TestListUsersIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1133,7 +1127,7 @@ func TestListUsersIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1171,7 +1165,7 @@ func TestListUsersIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1207,7 +1201,7 @@ func TestListUsersIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1249,7 +1243,7 @@ func TestListUsersUnion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1278,7 +1272,7 @@ func TestListUsersUnion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1311,7 +1305,7 @@ func TestListUsersUnion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1351,7 +1345,7 @@ func TestListUsersExclusion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1378,7 +1372,7 @@ func TestListUsersExclusion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1413,7 +1407,7 @@ func TestListUsersExclusion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1450,7 +1444,7 @@ func TestListUsersExclusion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1493,7 +1487,7 @@ func TestListUsersExclusion(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "group", Id: "1"},
 				Relation: "member",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1540,7 +1534,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1558,7 +1552,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1577,7 +1571,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1597,7 +1591,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1615,7 +1609,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1634,7 +1628,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1664,7 +1658,7 @@ func TestListUsersWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1687,7 +1681,7 @@ func TestListUsersWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1711,7 +1705,7 @@ func TestListUsersWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1736,7 +1730,7 @@ func TestListUsersWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1762,7 +1756,7 @@ func TestListUsersWildcards(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1806,7 +1800,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1829,7 +1823,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1855,7 +1849,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "folder",
 					},
@@ -1882,7 +1876,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1909,7 +1903,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "INVALID_RELATION",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1942,7 +1936,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -1969,7 +1963,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "is_public",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2000,7 +1994,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2026,7 +2020,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2054,7 +2048,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2083,7 +2077,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2109,7 +2103,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2141,7 +2135,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2169,7 +2163,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "can_view",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2252,7 +2246,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 						Id:   visitedUserset.GetId(),
 					},
 					Relation: visitedUserset.GetRelation(),
-					UserFilters: []*openfgav1.ListUsersFilter{{
+					UserFilters: []*openfgav1.UserTypeFilter{{
 						Type: "user",
 					}},
 				},
@@ -2327,7 +2321,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 					Id:   "1", // Exceeded because we expand up until folder:1, beyond 25 allowable levels
 				},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2345,7 +2339,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 					Id:   "2", // Does not exceed limit because we expand up until folder:2, up to the allowable 25 levels
 				},
 				Relation: "viewer",
-				UserFilters: []*openfgav1.ListUsersFilter{
+				UserFilters: []*openfgav1.UserTypeFilter{
 					{
 						Type: "user",
 					},
@@ -2371,21 +2365,21 @@ func TestListUsersStorageErrors(t *testing.T) {
 			req: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "union",
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 		},
 		`exclusion`: {
 			req: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "exclusion",
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 		},
 		`intersection`: {
 			req: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "document", Id: "1"},
 				Relation:    "intersection",
-				UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 		},
 	}
@@ -2434,10 +2428,6 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
 		t.Run(test.name, func(t *testing.T) {
-			if test.TemporarilySkipReason != "" {
-				t.Skip()
-			}
-
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 
@@ -2520,7 +2510,7 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 		StoreId:     store,
 		Object:      &openfgav1.Object{Type: "document", Id: "1"},
 		Relation:    "viewer",
-		UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+		UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 	})
 
 	require.ErrorContains(t, err, "simulated errors")
@@ -2574,9 +2564,617 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		StoreId:     store,
 		Object:      &openfgav1.Object{Type: "document", Id: "1"},
 		Relation:    "viewer",
-		UserFilters: []*openfgav1.ListUsersFilter{{Type: "user"}},
+		UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 	})
 
 	require.ErrorContains(t, err, "simulated errors")
 	require.Nil(t, resp)
+}
+
+func TestCheckDatastoreQueryCount(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	defer ds.Close()
+
+	storeID := ulid.Make().String()
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:x", "a", "user:jon"),
+		tuple.NewTupleKey("document:x", "a", "user:maria"),
+		tuple.NewTupleKey("document:x", "b", "user:maria"),
+		tuple.NewTupleKey("document:x", "parent", "org:fga"),
+		tuple.NewTupleKey("org:fga", "member", "user:maria"),
+		tuple.NewTupleKey("company:fga", "member", "user:maria"),
+		tuple.NewTupleKey("document:x", "userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
+		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
+	})
+	require.NoError(t, err)
+
+	model := parser.MustTransformDSLToProto(`model
+		schema 1.1
+	type user
+	
+	type company
+	  relations
+		define member: [user]
+	
+	type org
+	  relations
+		define member: [user]
+	
+	type document
+	  relations
+		define wildcard: [user:*]
+		define userset: [org#member]
+		define multiple_userset: [org#member, company#member]
+		define a: [user]
+		define b: [user]
+		define union: a or b
+		define union_rewrite: union
+		define intersection: a and b
+		define difference: a but not b
+		define ttu: member from parent
+		define union_and_ttu: union and ttu
+		define union_or_ttu: union or ttu or union_rewrite
+		define intersection_of_ttus: union_or_ttu and union_and_ttu
+		define parent: [org]
+	`)
+
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+
+	tests := []struct {
+		name             string
+		relation         string
+		object           openfgav1.Object
+		userFilters      []*openfgav1.UserTypeFilter
+		contextualTuples []*openfgav1.TupleKey
+		dbReads          uint32
+	}{
+		{
+			name:        "no_direct_access",
+			relation:    "a",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "direct_access",
+			relation:    "a",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:             "direct_access_thanks_to_contextual_tuple",
+			relation:         "a",
+			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
+			object:           openfgav1.Object{Type: "document", Id: "1"},
+			userFilters:      []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:          1,
+		},
+		{
+			name:        "union",
+			relation:    "union",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "union_no_access",
+			relation:    "union",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "intersection",
+			relation:    "intersection",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "intersection_no_access",
+			relation:    "intersection",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "difference",
+			relation:    "difference",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "difference_no_access",
+			relation:    "difference",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "ttu",
+			relation:    "ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "ttu_no_access",
+			relation:    "ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "userset_no_access_1",
+			relation:    "userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "userset_no_access_2",
+			relation:    "userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "userset_access",
+			relation:    "userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "multiple_userset_no_access",
+			relation:    "multiple_userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     3,
+		},
+		{
+			name:        "multiple_userset_access",
+			relation:    "multiple_userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "wildcard_no_access",
+			relation:    "wildcard",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "wildcard_access",
+			relation:    "wildcard",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+
+		{
+			name:        "union_and_ttu",
+			relation:    "union_and_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     5,
+		},
+		{
+			name:        "union_and_ttu_no_access",
+			relation:    "union_and_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     4,
+		},
+		{
+			name:        "union_or_ttu",
+			relation:    "union_or_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     3,
+		},
+		{
+			name:        "union_or_ttu_no_access",
+			relation:    "union_or_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     6,
+		},
+		{
+			name:        "intersection_of_ttus",
+			relation:    "intersection_of_ttus",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     8,
+		},
+	}
+
+	// run the test many times to exercise all the possible DBReads
+	for i := 1; i < 100; i++ {
+		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
+			t.Parallel()
+			for _, test := range tests {
+				t.Run(test.name, func(t *testing.T) {
+					t.Parallel()
+
+					ctx := storage.ContextWithRelationshipTupleReader(
+						ctx,
+						storagewrappers.NewCombinedTupleReader(
+							ds,
+							test.contextualTuples,
+						),
+					)
+
+					l := NewListUsersQuery(ds)
+					resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
+						Relation:         test.relation,
+						Object:           &test.object,
+						UserFilters:      test.userFilters,
+						ContextualTuples: test.contextualTuples,
+					})
+					require.NoError(t, err)
+					require.Equal(t, resp.GetMetadata().DatastoreQueryCount, test.dbReads)
+				})
+			}
+		})
+	}
+}
+
+func TestListUsersConfig_MaxResults(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testCases := map[string]struct {
+		inputTuples           []*openfgav1.TupleKey
+		inputModel            string
+		inputRequest          *openfgav1.ListUsersRequest
+		inputConfigMaxResults uint32
+		allResults            []*openfgav1.User // all the results. the server may return less
+		expectMinResults      uint32
+	}{
+		`max_results_infinite`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+				tuple.NewTupleKey("repo:target", "admin", "user:2"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("repo:target", "admin", "user:3"),
+				},
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigMaxResults: 0,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "2"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "3"}}},
+			},
+			expectMinResults: 3,
+		},
+		`max_results_less_than_actual_results`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+				tuple.NewTupleKey("repo:target", "admin", "user:2"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("repo:target", "admin", "user:3"),
+				},
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigMaxResults: 2,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "2"}}},
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "3"}}},
+			},
+			expectMinResults: 2,
+		},
+		`max_results_more_than_actual_results`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigMaxResults: 2,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinResults: 1,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
+
+			storeID := ulid.Make().String()
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			require.NoError(t, err)
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			// assertions
+			test.inputRequest.StoreId = storeID
+			res, err := NewListUsersQuery(ds,
+				WithListUsersMaxResults(test.inputConfigMaxResults),
+				WithListUsersDeadline(10*time.Second),
+			).ListUsers(ctx, test.inputRequest)
+
+			require.NotNil(t, res)
+			require.NoError(t, err)
+			if test.inputConfigMaxResults != 0 { // don't get all results
+				require.LessOrEqual(t, len(res.GetUsers()), int(test.inputConfigMaxResults))
+			}
+			require.GreaterOrEqual(t, len(res.GetUsers()), int(test.expectMinResults))
+			require.Subset(t, test.allResults, res.GetUsers())
+		})
+	}
+}
+
+func TestListUsersConfig_Deadline(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testCases := map[string]struct {
+		inputTuples         []*openfgav1.TupleKey
+		inputModel          string
+		inputRequest        *openfgav1.ListUsersRequest
+		inputConfigDeadline time.Duration     // request can only take this time
+		inputReadDelay      time.Duration     // to be able to hit the deadline at a predictable time
+		allResults          []*openfgav1.User // all the results. the server may return less
+		expectMinResults    uint32
+		expectError         string
+	}{
+		`deadline_very_small_returns_nothing`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigDeadline: 1 * time.Millisecond,
+			inputReadDelay:      50 * time.Millisecond,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectError: "context deadline exceeded",
+		},
+		`deadline_very_high_returns_everything`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigDeadline: 1 * time.Second,
+			inputReadDelay:      0 * time.Second,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinResults: 1,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
+
+			storeID := ulid.Make().String()
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			require.NoError(t, err)
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			// assertions
+			t.Run("regular_endpoint", func(t *testing.T) {
+				test.inputRequest.StoreId = storeID
+				res, err := NewListUsersQuery(
+					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					WithListUsersDeadline(test.inputConfigDeadline),
+				).ListUsers(ctx, test.inputRequest)
+
+				if test.expectError != "" {
+					require.ErrorContains(t, err, test.expectError)
+				} else {
+					require.NoError(t, err)
+					require.GreaterOrEqual(t, len(res.GetUsers()), int(test.expectMinResults))
+					require.Subset(t, test.allResults, res.GetUsers())
+				}
+			})
+		})
+	}
+}
+
+func TestListUsersConfig_MaxConcurrency(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testCases := map[string]struct {
+		inputTuples                   []*openfgav1.TupleKey
+		inputModel                    string
+		inputRequest                  *openfgav1.ListUsersRequest
+		inputConfigMaxConcurrentReads uint32
+		inputReadDelay                time.Duration     // to be able to hit the deadline at a predictable time
+		allResults                    []*openfgav1.User // all the results. the server may return less
+		expectMinResults              uint32
+		expectMinExecutionTime        time.Duration
+	}{
+		`max_concurrent_reads_does_not_delay_response_if_only_contextual_tuples_are_in_place`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`,
+			inputTuples: []*openfgav1.TupleKey{},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("repo:target", "admin", "user:1"),
+				},
+			},
+			inputConfigMaxConcurrentReads: 1,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinResults:       1,
+			expectMinExecutionTime: 0 * time.Millisecond,
+		},
+		`max_concurrent_reads_delays_response`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define admin: [user]
+				type repo
+					relations
+						define parent: [folder]
+						define admin: [user] or admin from parent`, // two parallel reads will have to be made
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputReadDelay:                1 * time.Second,
+			inputConfigMaxConcurrentReads: 1,
+			allResults: []*openfgav1.User{
+				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
+			},
+			expectMinExecutionTime: 2 * time.Second,
+		},
+	}
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// arrange: write model
+			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
+
+			storeID := ulid.Make().String()
+
+			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			require.NoError(t, err)
+
+			// arrange: write tuples
+			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
+			require.NoError(t, err)
+
+			typesys, err := typesystem.NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+			// assertions
+			t.Run("regular_endpoint", func(t *testing.T) {
+				test.inputRequest.StoreId = storeID
+				start := time.Now()
+				res, err := NewListUsersQuery(
+					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					WithListUsersMaxConcurrentReads(test.inputConfigMaxConcurrentReads),
+				).ListUsers(ctx, test.inputRequest)
+
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, len(res.GetUsers()), int(test.expectMinResults))
+				require.Subset(t, test.allResults, res.GetUsers())
+				require.GreaterOrEqual(t, time.Since(start), test.expectMinExecutionTime)
+			})
+		})
+	}
 }

@@ -301,8 +301,13 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	response, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// wait for trace exporting
 	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
@@ -359,8 +364,13 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
-	_, err = retryClient.Do(req)
+	response, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute create authorization model request")
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)
@@ -1018,6 +1028,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
@@ -1045,6 +1059,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.listUsersDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
+
+	val = res.Get("properties.listUsersMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersMaxResults)
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())

@@ -2,6 +2,7 @@ package listusers
 
 import (
 	"maps"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -12,8 +13,8 @@ type listUsersRequest interface {
 	GetAuthorizationModelId() string
 	GetObject() *openfgav1.Object
 	GetRelation() string
-	GetUserFilters() []*openfgav1.ListUsersFilter
-	GetContextualTuples() *openfgav1.ContextualTupleKeys
+	GetUserFilters() []*openfgav1.UserTypeFilter
+	GetContextualTuples() []*openfgav1.TupleKey
 	GetContext() *structpb.Struct
 }
 
@@ -29,11 +30,13 @@ type internalListUsersRequest struct {
 	// counter hits the limit, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
 	// or endless cycle of recursion.
 	depth uint32
+
+	datastoreQueryCount *atomic.Uint32
 }
 
 var _ listUsersRequest = (*internalListUsersRequest)(nil)
 
-//nolint:stylecheck // it should be GetStoreID, but we want to satisfy the interface listUsersRequest
+// nolint // it should be GetStoreID, but we want to satisfy the interface listUsersRequest
 func (r *internalListUsersRequest) GetStoreId() string {
 	if r == nil {
 		return ""
@@ -41,7 +44,7 @@ func (r *internalListUsersRequest) GetStoreId() string {
 	return r.StoreId
 }
 
-//nolint:stylecheck // it should be GetAuthorizationModelID, but we want to satisfy the interface listUsersRequest
+// nolint // it should be GetAuthorizationModelID, but we want to satisfy the interface listUsersRequest
 func (r *internalListUsersRequest) GetAuthorizationModelId() string {
 	if r == nil {
 		return ""
@@ -63,18 +66,48 @@ func (r *internalListUsersRequest) GetRelation() string {
 	return r.Relation
 }
 
-func (r *internalListUsersRequest) GetUserFilters() []*openfgav1.ListUsersFilter {
+func (r *internalListUsersRequest) GetUserFilters() []*openfgav1.UserTypeFilter {
 	if r == nil {
 		return nil
 	}
 	return r.UserFilters
 }
 
-func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTupleKeys {
+func (r *internalListUsersRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	if r == nil {
 		return nil
 	}
 	return r.ContextualTuples
+}
+
+func (r *internalListUsersRequest) GetDatastoreQueryCount() uint32 {
+	if r == nil {
+		return uint32(0)
+	}
+	return r.datastoreQueryCount.Load()
+}
+
+type listUsersResponse struct {
+	Users    []*openfgav1.User
+	Metadata listUsersResponseMetadata
+}
+
+type listUsersResponseMetadata struct {
+	DatastoreQueryCount uint32
+}
+
+func (r *listUsersResponse) GetUsers() []*openfgav1.User {
+	if r == nil {
+		return []*openfgav1.User{}
+	}
+	return r.Users
+}
+
+func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
+	if r == nil {
+		return listUsersResponseMetadata{}
+	}
+	return r.Metadata
 }
 
 func (r *internalListUsersRequest) GetContext() *structpb.Struct {
@@ -84,7 +117,7 @@ func (r *internalListUsersRequest) GetContext() *structpb.Struct {
 	return r.Context
 }
 
-func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
+func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32) *internalListUsersRequest {
 	return &internalListUsersRequest{
 		ListUsersRequest: &openfgav1.ListUsersRequest{
 			StoreId:              o.GetStoreId(),
@@ -95,15 +128,17 @@ func fromListUsersRequest(o listUsersRequest) *internalListUsersRequest {
 			ContextualTuples:     o.GetContextualTuples(),
 			Context:              o.GetContext(),
 		},
-		visitedUsersetsMap: make(map[string]struct{}),
-		depth:              0,
+		visitedUsersetsMap:  make(map[string]struct{}),
+		depth:               0,
+		datastoreQueryCount: datastoreQueryCount,
 	}
 }
 
 // clone creates a copy of the request. Note that some fields are not deep-cloned.
 func (r *internalListUsersRequest) clone() *internalListUsersRequest {
-	v := fromListUsersRequest(r)
+	v := fromListUsersRequest(r, r.datastoreQueryCount)
 	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
 	v.depth = r.depth
+	v.datastoreQueryCount = r.datastoreQueryCount
 	return v
 }
