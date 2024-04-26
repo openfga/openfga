@@ -8,6 +8,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -18,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -2567,6 +2569,268 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 
 	require.ErrorContains(t, err, "simulated errors")
 	require.Nil(t, resp)
+}
+
+func TestCheckDatastoreQueryCount(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	defer ds.Close()
+
+	storeID := ulid.Make().String()
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:x", "a", "user:jon"),
+		tuple.NewTupleKey("document:x", "a", "user:maria"),
+		tuple.NewTupleKey("document:x", "b", "user:maria"),
+		tuple.NewTupleKey("document:x", "parent", "org:fga"),
+		tuple.NewTupleKey("org:fga", "member", "user:maria"),
+		tuple.NewTupleKey("company:fga", "member", "user:maria"),
+		tuple.NewTupleKey("document:x", "userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
+		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
+	})
+	require.NoError(t, err)
+
+	model := parser.MustTransformDSLToProto(`model
+		schema 1.1
+	type user
+	
+	type company
+	  relations
+		define member: [user]
+	
+	type org
+	  relations
+		define member: [user]
+	
+	type document
+	  relations
+		define wildcard: [user:*]
+		define userset: [org#member]
+		define multiple_userset: [org#member, company#member]
+		define a: [user]
+		define b: [user]
+		define union: a or b
+		define union_rewrite: union
+		define intersection: a and b
+		define difference: a but not b
+		define ttu: member from parent
+		define union_and_ttu: union and ttu
+		define union_or_ttu: union or ttu or union_rewrite
+		define intersection_of_ttus: union_or_ttu and union_and_ttu
+		define parent: [org]
+	`)
+
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+
+	tests := []struct {
+		name             string
+		relation         string
+		object           openfgav1.Object
+		userFilters      []*openfgav1.UserTypeFilter
+		contextualTuples []*openfgav1.TupleKey
+		dbReads          uint32
+	}{
+		{
+			name:        "no_direct_access",
+			relation:    "a",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "direct_access",
+			relation:    "a",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:             "direct_access_thanks_to_contextual_tuple",
+			relation:         "a",
+			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
+			object:           openfgav1.Object{Type: "document", Id: "1"},
+			userFilters:      []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:          1,
+		},
+		{
+			name:        "union",
+			relation:    "union",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "union_no_access",
+			relation:    "union",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "intersection",
+			relation:    "intersection",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "intersection_no_access",
+			relation:    "intersection",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "difference",
+			relation:    "difference",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "difference_no_access",
+			relation:    "difference",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "ttu",
+			relation:    "ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "ttu_no_access",
+			relation:    "ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "userset_no_access_1",
+			relation:    "userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "userset_no_access_2",
+			relation:    "userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "userset_access",
+			relation:    "userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "multiple_userset_no_access",
+			relation:    "multiple_userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     3,
+		},
+		{
+			name:        "multiple_userset_access",
+			relation:    "multiple_userset",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     2,
+		},
+		{
+			name:        "wildcard_no_access",
+			relation:    "wildcard",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+		{
+			name:        "wildcard_access",
+			relation:    "wildcard",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     1,
+		},
+
+		{
+			name:        "union_and_ttu",
+			relation:    "union_and_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     5,
+		},
+		{
+			name:        "union_and_ttu_no_access",
+			relation:    "union_and_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     4,
+		},
+		{
+			name:        "union_or_ttu",
+			relation:    "union_or_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     3,
+		},
+		{
+			name:        "union_or_ttu_no_access",
+			relation:    "union_or_ttu",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     6,
+		},
+		{
+			name:        "intersection_of_ttus",
+			relation:    "intersection_of_ttus",
+			object:      openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     8,
+		},
+	}
+
+	// run the test many times to exercise all the possible DBReads
+	for i := 1; i < 100; i++ {
+		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
+			t.Parallel()
+			for _, test := range tests {
+				t.Run(test.name, func(t *testing.T) {
+					t.Parallel()
+
+					ctx := storage.ContextWithRelationshipTupleReader(
+						ctx,
+						storagewrappers.NewCombinedTupleReader(
+							ds,
+							test.contextualTuples,
+						),
+					)
+
+					l := NewListUsersQuery(ds)
+					resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
+						Relation:         test.relation,
+						Object:           &test.object,
+						UserFilters:      test.userFilters,
+						ContextualTuples: test.contextualTuples,
+					})
+					require.NoError(t, err)
+					require.Equal(t, resp.GetMetadata().DatastoreQueryCount, test.dbReads)
+				})
+			}
+		})
+	}
 }
 
 func TestListUsersConfig_MaxResults(t *testing.T) {

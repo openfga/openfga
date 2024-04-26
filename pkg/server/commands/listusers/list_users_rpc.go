@@ -117,7 +117,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
-) (*openfgav1.ListUsersResponse, error) {
+) (*listUsersResponse, error) {
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
@@ -147,11 +147,16 @@ func (l *listUsersQuery) ListUsers(
 		}
 		if !hasPossibleEdges {
 			span.SetAttributes(attribute.Bool("no_possible_edges", true))
-			return &openfgav1.ListUsersResponse{
+			return &listUsersResponse{
 				Users: []*openfgav1.User{},
+				Metadata: listUsersResponseMetadata{
+					DatastoreQueryCount: 0,
+				},
 			}, nil
 		}
 	}
+
+	datastoreQueryCount := atomic.Uint32{}
 
 	foundUsersCh := make(chan *openfgav1.User, 1)
 	expandErrCh := make(chan error, 1)
@@ -174,7 +179,7 @@ func (l *listUsersQuery) ListUsers(
 
 	go func() {
 		defer close(foundUsersCh)
-		internalRequest := fromListUsersRequest(req)
+		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
 		if err := l.expand(cancellableCtx, internalRequest, foundUsersCh); err != nil {
 			expandErrCh <- err
 			return
@@ -194,8 +199,12 @@ func (l *listUsersQuery) ListUsers(
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
-	return &openfgav1.ListUsersResponse{
+
+	return &listUsersResponse{
 		Users: foundUsers,
+		Metadata: listUsersResponseMetadata{
+			DatastoreQueryCount: datastoreQueryCount.Load(),
+		},
 	}, nil
 }
 
@@ -343,6 +352,7 @@ func (l *listUsersQuery) expandDirect(
 		return err
 	}
 	defer iter.Stop()
+	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
@@ -583,6 +593,7 @@ func (l *listUsersQuery) expandTTU(
 		return err
 	}
 	defer iter.Stop()
+	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
