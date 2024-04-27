@@ -51,7 +51,7 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 	}
 }
 
-// WithListUserMaxResults see server.WithListUsersMaxResults.
+// WithListUsersMaxResults see server.WithListUsersMaxResults.
 func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.maxResults = max
@@ -158,7 +158,7 @@ func (l *listUsersQuery) ListUsers(
 
 	datastoreQueryCount := atomic.Uint32{}
 
-	foundUsersCh := make(chan *openfgav1.User, 1)
+	foundUsersCh := l.buildResultsChannel()
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
@@ -248,7 +248,7 @@ func (l *listUsersQuery) expand(
 
 	for _, userFilter := range req.GetUserFilters() {
 		if reqObjectType == userFilter.GetType() && reqRelation == userFilter.GetRelation() {
-			foundUsersChan <- &openfgav1.User{
+			user := &openfgav1.User{
 				User: &openfgav1.User_Userset{
 					Userset: &openfgav1.UsersetUser{
 						Type:     reqObjectType,
@@ -257,6 +257,7 @@ func (l *listUsersQuery) expand(
 					},
 				},
 			}
+			l.trySendResult(ctx, user, foundUsersChan)
 		}
 	}
 
@@ -404,7 +405,7 @@ LoopOnIterator:
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					foundUsersChan <- user
+					l.trySendResult(ctx, user, foundUsersChan)
 				}
 			}
 			continue
@@ -503,7 +504,7 @@ func (l *listUsersQuery) expandIntersection(
 		// If this summed value equals the number of operands, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
 		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
-			foundUsersChan <- tuple.StringToUserProto(key)
+			l.trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
 		}
 	}
 
@@ -556,7 +557,7 @@ func (l *listUsersQuery) expandExclusion(
 			// but then they are further compared to the subtracted users map.
 			// If users exist in both maps, they are excluded. Only users that exist
 			// solely in the base map will be returned.
-			foundUsersChan <- tuple.StringToUserProto(key)
+			l.trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
 		}
 	}
 
@@ -663,4 +664,22 @@ func enteredCycle(req *internalListUsersRequest) bool {
 	}
 	req.visitedUsersetsMap[key] = struct{}{}
 	return false
+}
+
+func (l *listUsersQuery) buildResultsChannel() chan *openfgav1.User {
+	foundUsersCh := make(chan *openfgav1.User, 1)
+	maxResults := l.maxResults
+	if maxResults > 0 {
+		foundUsersCh = make(chan *openfgav1.User, maxResults)
+	}
+	return foundUsersCh
+}
+
+func (l *listUsersQuery) trySendResult(ctx context.Context, user *openfgav1.User, foundUsersCh chan<- *openfgav1.User) {
+	select {
+	case <-ctx.Done():
+		return
+	case foundUsersCh <- user:
+		return
+	}
 }

@@ -87,6 +87,13 @@ func (r *internalListUsersRequest) GetDatastoreQueryCount() uint32 {
 	return r.datastoreQueryCount.Load()
 }
 
+func (r *internalListUsersRequest) GetContext() *structpb.Struct {
+	if r == nil {
+		return nil
+	}
+	return r.Context
+}
+
 type listUsersResponse struct {
 	Users    []*openfgav1.User
 	Metadata listUsersResponseMetadata
@@ -110,14 +117,10 @@ func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
 	return r.Metadata
 }
 
-func (r *internalListUsersRequest) GetContext() *structpb.Struct {
-	if r == nil {
-		return nil
-	}
-	return r.Context
-}
-
 func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32) *internalListUsersRequest {
+	if datastoreQueryCount == nil {
+		datastoreQueryCount = new(atomic.Uint32)
+	}
 	return &internalListUsersRequest{
 		ListUsersRequest: &openfgav1.ListUsersRequest{
 			StoreId:              o.GetStoreId(),
@@ -139,6 +142,5 @@ func (r *internalListUsersRequest) clone() *internalListUsersRequest {
 	v := fromListUsersRequest(r, r.datastoreQueryCount)
 	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
 	v.depth = r.depth
-	v.datastoreQueryCount = r.datastoreQueryCount
 	return v
 }
