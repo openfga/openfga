@@ -9,13 +9,13 @@ import (
 	"math"
 	"testing"
 
-	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/yaml"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
@@ -125,18 +125,12 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					t.Skipf("cannot send more than 20 contextual tuples in one request")
 				}
 				// arrange: write model
-				var typedefs []*openfgav1.TypeDefinition
-				model, err := parser.TransformDSLToProto(stage.Model)
-				if err != nil {
-					typedefs = oldparser.MustParse(stage.Model)
-				} else {
-					typedefs = model.GetTypeDefinitions()
-				}
+				model := testutils.MustTransformDSLToProtoWithID(stage.Model)
 
 				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
 					SchemaVersion:   schemaVersion,
-					TypeDefinitions: typedefs,
+					TypeDefinitions: model.GetTypeDefinitions(),
 					Conditions:      model.GetConditions(),
 				})
 				require.NoError(t, err)
