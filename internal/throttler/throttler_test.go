@@ -32,7 +32,7 @@ func TestDispatchThrottler(t *testing.T) {
 		go func() {
 			goFuncInitiated.Done()
 			ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
-			mockThrottlerTest(testThrottler, ctx, &i)
+			mockThrottlerTest(ctx, testThrottler, &i)
 			goFuncDone.Done()
 		}()
 
