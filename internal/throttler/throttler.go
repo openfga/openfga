@@ -1,4 +1,5 @@
 //go:generate mockgen -source throttler.go -destination ../mocks/mock_throttler.go -package mocks
+
 package throttler
 
 import (
