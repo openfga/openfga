@@ -26,7 +26,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
 
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
 		// this is to simulate how many times request has been dispatched
