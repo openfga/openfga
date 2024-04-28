@@ -5,9 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/throttler"
 	"strings"
 	"sync/atomic"
+
+	"github.com/openfga/openfga/internal/throttler"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 

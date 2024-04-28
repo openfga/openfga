@@ -2,12 +2,14 @@ package throttler
 
 import (
 	"context"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/stretchr/testify/require"
 	"sync"
 	"testing"
 	"time"
+
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func mockThrottlerTest(throttler Throttler, ctx context.Context, r *int) {

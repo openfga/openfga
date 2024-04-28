@@ -2,11 +2,13 @@ package graph
 
 import (
 	"context"
-	mocks "github.com/openfga/openfga/internal/mocks"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"testing"
+
+	mocks "github.com/openfga/openfga/internal/mocks"
 )
 
 func TestDispatchThrottlingCheckResolver(t *testing.T) {

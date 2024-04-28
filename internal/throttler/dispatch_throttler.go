@@ -41,7 +41,7 @@ func NewDispatchThrottler(frequency time.Duration) Throttler {
 	return newDispatchThrottler(frequency)
 }
 
-// Returns a DispatchThrottler instead of Throttler for testing purpose to be used internally
+// Returns a DispatchThrottler instead of Throttler for testing purpose to be used internally.
 func newDispatchThrottler(frequency time.Duration) *DispatchThrottler {
 	dispatchThrottler := &DispatchThrottler{
 		ticker:          time.NewTicker(frequency),
