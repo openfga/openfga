@@ -216,6 +216,12 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-dispatch-throttling-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "define the number of dispatches above which list objects requests will be throttled.")
 
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, "DEPRECATED: Use check-dispatch-throttling-enabled instead.enable throttling for check requests when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, "DEPRECATED: Use check-dispatch-throttling-frequency instead. defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch check requests are dispatched.")
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, "DEPRECATED: Use check-dispatch-throttling-threshold instead. define the number of dispatches above which check requests will be throttled.")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
