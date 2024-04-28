@@ -2,7 +2,7 @@ package graph
 
 import (
 	"context"
-	mockstorage "github.com/openfga/openfga/internal/mocks"
+	mocks "github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -17,7 +17,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockThrottler := mockstorage.NewMockThrottler(ctrl)
+		mockThrottler := mocks.NewMockThrottler(ctrl)
 
 		dut := NewDispatchThrottlingCheckResolver(200, mockThrottler)
 
@@ -43,7 +43,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockThrottler := mockstorage.NewMockThrottler(ctrl)
+		mockThrottler := mocks.NewMockThrottler(ctrl)
 
 		dut := NewDispatchThrottlingCheckResolver(200, mockThrottler)
 
