@@ -12,7 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-func mockThrottlerTest(throttler Throttler, ctx context.Context, r *int) {
+func mockThrottlerTest(ctx context.Context, throttler Throttler, r *int) {
 	throttler.Throttle(ctx)
 	*r++
 }
