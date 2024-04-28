@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -51,6 +52,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
+	"github.com/openfga/openfga/pkg/middleware/recovery"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -389,6 +391,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
+				grpc_recovery.UnaryServerInterceptor( // panic middleware must be 1st in chain
+					grpc_recovery.WithRecoveryHandlerContext(
+						recovery.PanicRecoveryHandler(s.Logger),
+					),
+				),
 				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
 				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
@@ -398,6 +405,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
+				grpc_recovery.StreamServerInterceptor(
+					grpc_recovery.WithRecoveryHandlerContext(
+						recovery.PanicRecoveryHandler(s.Logger),
+					),
+				),
 				requestid.NewStreamingInterceptor(),
 				validator.StreamServerInterceptor(),
 				grpc_ctxtags.StreamServerInterceptor(),
@@ -588,13 +600,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
-			Handler: cors.New(cors.Options{
+			Handler: recovery.HTTPPanicRecoveryHandler(cors.New(cors.Options{
 				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 				AllowCredentials: true,
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux),
+			}).Handler(mux), s.Logger),
 		}
 
 		go func() {
