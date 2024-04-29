@@ -101,9 +101,9 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		},
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
-		deadline:                serverconfig.DefaultListObjectsDeadline,
-		maxResults:              serverconfig.DefaultListObjectsMaxResults,
-		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		deadline:                serverconfig.DefaultListUsersDeadline,
+		maxResults:              serverconfig.DefaultListUsersMaxResults,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 	}
 
 	for _, opt := range opts {
@@ -667,7 +667,7 @@ func enteredCycle(req *internalListUsersRequest) bool {
 }
 
 func (l *listUsersQuery) buildResultsChannel() chan *openfgav1.User {
-	foundUsersCh := make(chan *openfgav1.User, 1)
+	foundUsersCh := make(chan *openfgav1.User, serverconfig.DefaultListUsersMaxResults)
 	maxResults := l.maxResults
 	if maxResults > 0 {
 		foundUsersCh = make(chan *openfgav1.User, maxResults)
