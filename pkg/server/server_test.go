@@ -1612,8 +1612,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
 		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		// max threshold should be set to threshold if it is not set
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingMaxThreshold)
+		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1646,8 +1645,42 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
 		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		// max threshold should be set to threshold if it is smaller than the threshold value
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingMaxThreshold)
+		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("dispatch_throttling_check_resolver_enabled_non_zero_max_threshold", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		const dispatchThreshold = 50
+		const maxDispatchThreshold = 60
+
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
+			WithDispatchThrottlingCheckResolverMaxThreshold(maxDispatchThreshold),
+		)
+		t.Cleanup(s.Close)
+
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, maxDispatchThreshold, s.dispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
