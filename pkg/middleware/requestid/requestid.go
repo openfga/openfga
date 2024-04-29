@@ -45,6 +45,7 @@ func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 
 func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
+		// TODO use ulid library?
 		id, _ := uuid.NewRandom()
 		requestID := id.String()
 
