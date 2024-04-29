@@ -7,13 +7,13 @@ import (
 	"math"
 	"testing"
 
-	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/yaml"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
@@ -55,20 +55,9 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("Check", func(t *testing.T) {
 			t.Parallel()
-			testCheck(t, client)
+			runTests(t, testParams{typesystem.SchemaVersion1_1, client})
 		})
 	})
-}
-
-func testCheck(t *testing.T, client ClientInterface) {
-	t.Run("Schema1_1", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_1CheckTests(t, client)
-	})
-}
-
-func runSchema1_1CheckTests(t *testing.T, client ClientInterface) {
-	runTests(t, testParams{typesystem.SchemaVersion1_1, client})
 }
 
 func runTests(t *testing.T, params testParams) {
@@ -126,86 +115,84 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 		storeID := resp.GetId()
 
-		for _, stage := range test.Stages {
-			if contextTupleTest && len(stage.Tuples) > 20 {
-				// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
-				t.Skipf("cannot send more than 20 contextual tuples in one request")
-			}
-			// arrange: write model
-			var typedefs []*openfgav1.TypeDefinition
-			model, err := parser.TransformDSLToProto(stage.Model)
-			if err != nil {
-				typedefs = oldparser.MustParse(stage.Model)
-			} else {
-				typedefs = model.GetTypeDefinitions()
-			}
-
-			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-				StoreId:         storeID,
-				SchemaVersion:   schemaVersion,
-				TypeDefinitions: typedefs,
-				Conditions:      model.GetConditions(),
-			})
-			require.NoError(t, err)
-
-			tuples := stage.Tuples
-			tuplesLength := len(tuples)
-			// arrange: write tuples
-			if tuplesLength > 0 && !contextTupleTest {
-				for i := 0; i < tuplesLength; i += writeMaxChunkSize {
-					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-					writeChunk := (tuples)[i:end]
-					_, err = client.Write(ctx, &openfgav1.WriteRequest{
-						StoreId:              storeID,
-						AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-						Writes: &openfgav1.WriteRequestWrites{
-							TupleKeys: writeChunk,
-						},
-					})
-					require.NoError(t, err)
+		for stageNumber, stage := range test.Stages {
+			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
+				if contextTupleTest && len(stage.Tuples) > 20 {
+					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
+					t.Skipf("cannot send more than 20 contextual tuples in one request")
 				}
-			}
+				// arrange: write model
+				model := testutils.MustTransformDSLToProtoWithID(stage.Model)
 
-			if len(stage.CheckAssertions) == 0 {
-				t.Skipf("no check assertions defined")
-			}
-			for _, assertion := range stage.CheckAssertions {
-				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
+				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   schemaVersion,
+					TypeDefinitions: model.GetTypeDefinitions(),
+					Conditions:      model.GetConditions(),
+				})
+				require.NoError(t, err)
 
-				ctxTuples := assertion.ContextualTuples
-				if contextTupleTest {
-					ctxTuples = append(ctxTuples, stage.Tuples...)
-				}
-
-				var tupleKey *openfgav1.CheckRequestTupleKey
-				if assertion.Tuple != nil {
-					tupleKey = &openfgav1.CheckRequestTupleKey{
-						User:     assertion.Tuple.GetUser(),
-						Relation: assertion.Tuple.GetRelation(),
-						Object:   assertion.Tuple.GetObject(),
+				tuples := stage.Tuples
+				tuplesLength := len(tuples)
+				// arrange: write tuples
+				if tuplesLength > 0 && !contextTupleTest {
+					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+						writeChunk := (tuples)[i:end]
+						_, err = client.Write(ctx, &openfgav1.WriteRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+							Writes: &openfgav1.WriteRequestWrites{
+								TupleKeys: writeChunk,
+							},
+						})
+						require.NoError(t, err)
 					}
 				}
-				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-					StoreId:              storeID,
-					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-					TupleKey:             tupleKey,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: ctxTuples,
-					},
-					Context: assertion.Context,
-					Trace:   true,
-				})
 
-				if assertion.ErrorCode == 0 {
-					require.NoError(t, err, detailedInfo)
-					require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
-				} else {
-					require.Error(t, err, detailedInfo)
-					e, ok := status.FromError(err)
-					require.True(t, ok, detailedInfo)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+				if len(stage.CheckAssertions) == 0 {
+					t.Skipf("no check assertions defined")
 				}
-			}
+				for assertionNumber, assertion := range stage.CheckAssertions {
+					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
+						detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
+
+						ctxTuples := assertion.ContextualTuples
+						if contextTupleTest {
+							ctxTuples = append(ctxTuples, stage.Tuples...)
+						}
+
+						var tupleKey *openfgav1.CheckRequestTupleKey
+						if assertion.Tuple != nil {
+							tupleKey = &openfgav1.CheckRequestTupleKey{
+								User:     assertion.Tuple.GetUser(),
+								Relation: assertion.Tuple.GetRelation(),
+								Object:   assertion.Tuple.GetObject(),
+							}
+						}
+						resp, err := client.Check(ctx, &openfgav1.CheckRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+							TupleKey:             tupleKey,
+							ContextualTuples: &openfgav1.ContextualTupleKeys{
+								TupleKeys: ctxTuples,
+							},
+							Context: assertion.Context,
+							Trace:   true,
+						})
+
+						if assertion.ErrorCode == 0 {
+							require.NoError(t, err, detailedInfo)
+							require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
+						} else {
+							require.Error(t, err, detailedInfo)
+							e, ok := status.FromError(err)
+							require.True(t, ok, detailedInfo)
+							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+						}
+					})
+				}
+			})
 		}
 	})
 }

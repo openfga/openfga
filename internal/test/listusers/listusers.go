@@ -11,12 +11,11 @@ import (
 )
 
 type Assertion struct {
-	Request               *TestListUsersRequest
-	TemporarilySkipReason string                // Temporarily skip test until functionality is fixed
-	ContextualTuples      []*openfgav1.TupleKey `json:"contextualTuples"`
-	Context               *structpb.Struct
-	Expectation           []string
-	ErrorCode             int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the ListUsers call failed.
+	Request          *TestListUsersRequest
+	ContextualTuples []*openfgav1.TupleKey `json:"contextualTuples"`
+	Context          *structpb.Struct
+	Expectation      []string
+	ErrorCode        int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the ListUsers call failed.
 }
 
 type TestListUsersRequest struct {
