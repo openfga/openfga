@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -171,8 +170,6 @@ func TestListUsersValidation(t *testing.T) {
 			_, err = s.ListUsers(ctx, test.req)
 			e, ok := status.FromError(err)
 			require.True(t, ok)
-
-			fmt.Println("Actual", e.Code().String(), "Expected", test.expectedErrorCode.String())
 			require.Equal(t, test.expectedErrorCode, e.Code())
 		})
 	}
