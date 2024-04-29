@@ -770,6 +770,7 @@ type repo
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(s.Close)
 
@@ -802,6 +803,18 @@ type repo
 		Relation:             "r1",
 		User:                 "user:anne",
 	}, NewMockStreamServer())
+	require.Error(t, err)
+	e, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
+
+	_, err = s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Relation:             tk.GetRelation(),
+		Object:               &openfgav1.Object{Type: "repo", Id: "openfga"},
+		UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
+	})
 	require.Error(t, err)
 	e, ok = status.FromError(err)
 	require.True(t, ok)
