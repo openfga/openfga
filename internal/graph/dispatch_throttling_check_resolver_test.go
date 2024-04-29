@@ -117,7 +117,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(203)
 		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 10,
+			DatastoreQueryCount: 202,
 		}}
 
 		// Here, we count how many times the resolve check is dispatched by the DUT
@@ -133,7 +133,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
-		require.False(t, grpc_ctxtags.Extract(ctx).Has(telemetry.Throttled))
+		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_be_throttled", func(t *testing.T) {
