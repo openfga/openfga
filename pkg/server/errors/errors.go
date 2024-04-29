@@ -26,6 +26,7 @@ var (
 	MismatchObjectType                     = status.Error(codes.Code(openfgav1.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
 	RequestCancelled                       = status.Error(codes.Code(openfgav1.InternalErrorCode_cancelled), "Request Cancelled")
 	RequestDeadlineExceeded                = status.Error(codes.Code(openfgav1.InternalErrorCode_deadline_exceeded), "Request Deadline Exceeded")
+	ThrottledTimeout                       = status.Error(codes.Code(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error), "timeout due to throttling on complex request")
 )
 
 type InternalError struct {

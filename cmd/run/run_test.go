@@ -1120,6 +1120,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+
+	val = res.Get("properties.requestTimeout.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {

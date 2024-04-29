@@ -737,14 +737,16 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
 
-	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	resolveCheckRequest := graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
 		RequestMetadata:      checkRequestMetadata,
-	})
+	}
+
+	resp, err := s.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
@@ -753,6 +755,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		if errors.Is(err, condition.ErrEvaluationFailed) {
 			return nil, serverErrors.ValidationError(err)
+		}
+
+		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+			return nil, serverErrors.ThrottledTimeout
 		}
 
 		return nil, serverErrors.HandleError("", err)
