@@ -177,6 +177,20 @@ func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
 	})
 }
 
+func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(100),
+			WithDispatchThrottlingCheckResolverMaxThreshold(80),
+		)
+	})
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1597,7 +1611,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingThreshold)
+		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
 		// max threshold should be set to threshold if it is not set
 		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
@@ -1631,7 +1645,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingThreshold)
+		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
 		// max threshold should be set to threshold if it is smaller than the threshold value
 		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
@@ -1690,8 +1704,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, 50, s.dispatchThrottlingThreshold)
-		// update the max threshold if it is set and higher than the threshold value
+		require.EqualValues(t, 50, s.dispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.dispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)

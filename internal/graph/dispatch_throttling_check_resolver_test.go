@@ -57,6 +57,45 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
+	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
+			// We set timer ticker to 1 hour to avoid it interfering with test
+			Frequency:        1 * time.Hour,
+			DefaultThreshold: 200,
+			MaxThreshold:     0,
+		}
+		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
+		defer dut.Close()
+
+		initialMockResolver := NewMockCheckResolver(ctrl)
+		dut.SetDelegate(initialMockResolver)
+
+		// this is to simulate how many times request has been dispatched
+		// Since this is a small value, we will not expect throttling
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req.GetRequestMetadata().DispatchCounter.Store(190)
+		response := &ResolveCheckResponse{Allowed: true, ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: 10,
+		}}
+
+		// Here, we count how many times the resolve check is dispatched by the DUT
+		resolveCheckDispatchedCounter := 0
+		initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).DoAndReturn(func(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			resolveCheckDispatchedCounter++
+			return response, nil
+		}).Times(1)
+
+		ctx := context.Background()
+
+		_, err := dut.ResolveCheck(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, 1, resolveCheckDispatchedCounter)
+		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
+	})
+
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -164,7 +203,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			// We set timer ticker to 1 hour to avoid it interfering with test
 			Frequency:        1 * time.Hour,
 			DefaultThreshold: 200,
-			MaxThreshold:     200,
+			MaxThreshold:     0,
 		}
 		dut := NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverConfig)
 		defer dut.Close()

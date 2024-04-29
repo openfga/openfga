@@ -107,9 +107,15 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 
 	threshold := r.config.DefaultThreshold
 
-	thresholdInInt := telemetry.DispatchThrottlingThresholdFromContext(ctx)
-	if thresholdInInt > 0 {
-		threshold = min(thresholdInInt, r.config.MaxThreshold)
+	maxThreshold := r.config.MaxThreshold
+	if maxThreshold == 0 {
+		maxThreshold = r.config.DefaultThreshold
+	}
+
+	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
+
+	if thresholdInCtx > 0 {
+		threshold = min(thresholdInCtx, maxThreshold)
 	}
 
 	if currentNumDispatch > threshold {
