@@ -1044,6 +1044,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	model := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
+type user_unreachable
 
 type company
   relations
@@ -1084,6 +1085,13 @@ type document
 		minDBReads       uint32 // expected lowest value for number returned in the metadata
 		maxDBReads       uint32 // expected highest value for number returned in the metadata. Actual db reads may be higher
 	}{
+		{
+			name:       "disconnected_types",
+			check:      tuple.NewTupleKey("document:x", "ttu", "user_unreachable:maria"),
+			allowed:    false,
+			minDBReads: 0, // we don't even make the TTU read
+			maxDBReads: 0,
+		},
 		{
 			name:       "no_direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:unknown"),

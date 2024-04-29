@@ -589,6 +589,7 @@ func (c *LocalChecker) ResolveCheck(
 	relation := tupleKey.GetRelation()
 
 	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
+	userType, _ := tuple.SplitObject(req.GetTupleKey().GetUser())
 
 	// Check(document:1#viewer@document:1#viewer) will always return true
 	if relation == userRelation && object == userObject {
@@ -606,6 +607,19 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
+	areTypesConnected, err := c.areTypesConnected(typesys, req.GetTupleKey().GetUser(), userType, userRelation, objectType, relation)
+	if err != nil {
+		return nil, err
+	}
+	if !areTypesConnected {
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+			},
+		}, nil
+	}
+
 	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -613,6 +627,28 @@ func (c *LocalChecker) ResolveCheck(
 	}
 
 	return resp, nil
+}
+
+// areTypesConnected returns true if it is possible to reach objectType#relation starting from userType[#userRelation].
+func (c *LocalChecker) areTypesConnected(typesys *typesystem.TypeSystem, user, userType, userRelation, objectType, relation string) (bool, error) {
+	g := New(typesys)
+	var sourceRel *openfgav1.RelationReference
+	switch userRelation {
+	case "":
+		if tuple.IsTypedWildcard(user) {
+			sourceRel = typesystem.WildcardRelationReference(userType)
+		} else {
+			sourceRel = typesystem.DirectRelationReference(userType, "")
+		}
+	default:
+		sourceRel = typesystem.DirectRelationReference(userType, userRelation)
+	}
+
+	edges, err := g.GetRelationshipEdges(typesystem.DirectRelationReference(objectType, relation), sourceRel)
+	if err != nil {
+		return false, err
+	}
+	return len(edges) > 0, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
