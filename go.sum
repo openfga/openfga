@@ -40,8 +40,6 @@ github.com/containerd/log v0.1.0/go.mod h1:VRRf09a7mHDIRezVKTRCrOq78v577GXq3bSa3
 github.com/cpuguy83/dockercfg v0.3.1 h1:/FpZ+JaygUR/lZP2NlFI2DVfrOEMAIKP5wWEJdoYe9E=
 github.com/cpuguy83/dockercfg v0.3.1/go.mod h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=
 github.com/cpuguy83/go-md2man/v2 v2.0.3/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
-github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1 h1:dfepk6+cW9yQFmG/cy/TUoS99lDeKdG0N4JvSvcomtI=
-github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1/go.mod h1:GG/ijmrM59umGaKjAao5bcx5XeK2WAvwM+21j0Ep/wY=
 github.com/creack/pty v1.1.18 h1:n56/Zwd5o6whRC5PMGretI4IdRLlmBXYNjScPaBgsbY=
 github.com/creack/pty v1.1.18/go.mod h1:MOBLtS5ELjhRRrroQr9kyvTxUAFNvYEK993ew/Vr4O4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -194,8 +192,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQb2IpWsCzug=
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
-github.com/openfga/api/proto v0.0.0-20240318145204-66b9e5cb403c h1:2UmuAlvXoZGQRuZ4gzl0CQGLB+rSke2uo+OXlw9/1t8=
-github.com/openfga/api/proto v0.0.0-20240318145204-66b9e5cb403c/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
+github.com/openfga/api/proto v0.0.0-20240424225623-9213edae55c1 h1:6C1JpTToDUTlCj0Uqj4wc5Zo6ApPhMQEveJj1/DxvLw=
+github.com/openfga/api/proto v0.0.0-20240424225623-9213edae55c1/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
 github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d h1:n44DfITs+CLCYJIgsryJkG2ElwOZJ3huekPZKydPi7U=
 github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d/go.mod h1:wkI4GcY3yNNuFMU2ncHPWqBaF7XylQTkJYfBi2pIpK8=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=

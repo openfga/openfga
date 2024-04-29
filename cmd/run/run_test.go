@@ -886,7 +886,6 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	expectedMetrics := []string{
 		"openfga_datastore_query_count",
-		"openfga_request_duration_by_query_count_ms",
 		"openfga_request_duration_ms",
 		"grpc_server_handling_seconds",
 		"openfga_datastore_bounded_read_delay_ms",
@@ -1125,6 +1124,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.dispatchThrottling.properties.maxThreshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.requestTimeout.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
