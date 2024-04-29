@@ -547,10 +547,11 @@ func (l *listUsersQuery) expandExclusion(
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
 	var baseError, substractError error
-	var subtractHasCycle bool
+	var baseHasCycle, subtractHasCycle bool
 	go func() {
 		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		baseError = resp.err
+		baseHasCycle = resp.hasCycle
 		close(baseFoundUsersCh)
 	}()
 	go func() {
@@ -571,7 +572,7 @@ func (l *listUsersQuery) expandExclusion(
 		subtractFoundUsersMap[key] = struct{}{}
 	}
 
-	if subtractHasCycle {
+	if baseHasCycle || subtractHasCycle {
 		return expandResponse{
 			err: nil,
 		}

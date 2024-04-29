@@ -1509,6 +1509,64 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			expectedUsers: []string{},
 		},
+		{
+			name: "exclusion_with_chained_negation",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "2"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			  schema 1.1
+
+			type user
+
+			type document
+			  relations
+			    define unblocked: [user]
+				define blocked: [user, document#viewer] but not unblocked
+				define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:2", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "non_stratifiable_exclusion_containing_cycle_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "document",
+						Relation: "blocked",
+					},
+				},
+			},
+			model: `model
+				schema 1.1
+		
+			type user
+		
+			type document
+				relations
+				define blocked: [user, document#viewer]
+				define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+			},
+			expectedUsers: []string{},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
