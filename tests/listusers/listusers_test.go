@@ -43,7 +43,6 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
-	run.NewRunCommand()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.Experimentals = []string{"enable-list-users"}

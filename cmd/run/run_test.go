@@ -1244,7 +1244,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 func TestHTTPHeaders(t *testing.T) {
 	t.Parallel()
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	cfg.Experimentals = []string{"enable-list-users"}
+	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
