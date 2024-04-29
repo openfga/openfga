@@ -38,6 +38,10 @@ const (
 	DefaultDispatchThrottlingEnabled   = false
 	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
 	DefaultDispatchThrottlingThreshold = 100
+
+	DefaultRequestTimeout = 3 * time.Second
+
+	additionalUpstreamTimeout = 3 * time.Second
 )
 
 type DatastoreMetricsConfig struct {
@@ -250,6 +254,10 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
+	// RequestTimeout configures request timeout.  If both HTTP upstream timeout and request timeout are specified,
+	// request timeout will be prioritized
+	RequestTimeout time.Duration
+
 	Datastore          DatastoreConfig
 	GRPC               GRPCConfig
 	HTTP               HTTPConfig
@@ -284,6 +292,14 @@ func (cfg *Config) Verify() error {
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
+	}
+
+	if cfg.RequestTimeout > 0 && cfg.ListObjectsDeadline > cfg.RequestTimeout {
+		return fmt.Errorf(
+			"config 'requestTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			cfg.RequestTimeout,
+			cfg.ListObjectsDeadline,
+		)
 	}
 
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
@@ -361,7 +377,33 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.RequestTimeout < 0 {
+		return errors.New("requestTimeout must be a non-negative time duration")
+	}
+
+	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
+		return errors.New("http.upstreamTimeout must be a non-negative time duration")
+	}
+
+	if cfg.ListObjectsDeadline < 0 {
+		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
 	return nil
+}
+
+// DefaultContextTimeout returns the runtime DefaultContextTimeout.
+// If requestTimeout > 0, we should let the middleware take care of the timeout and the
+// runtime.DefaultContextTimeout is used as last resort.
+// Otherwise, use the http upstream timeout if http is enabled.
+func DefaultContextTimeout(config *Config) time.Duration {
+	if config.RequestTimeout > 0 {
+		return config.RequestTimeout + additionalUpstreamTimeout
+	}
+	if config.HTTP.Enabled && config.HTTP.UpstreamTimeout > 0 {
+		return config.HTTP.UpstreamTimeout
+	}
+	return 0
 }
 
 // DefaultConfig is the OpenFGA server default configurations.
@@ -445,6 +487,7 @@ func DefaultConfig() *Config {
 			Frequency: DefaultDispatchThrottlingFrequency,
 			Threshold: DefaultDispatchThrottlingThreshold,
 		},
+		RequestTimeout: DefaultRequestTimeout,
 	}
 }
 

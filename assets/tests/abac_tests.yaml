@@ -900,6 +900,46 @@ tests:
             context:
               "y": 10
             errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2000 # missing params
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+              "y": 5
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              "x": 101
+              "y": 51
+            expectation:
+# TODO inconsistent with Check, which throws error. See https://github.com/openfga/openfga/issues/1567
+#          - request:
+#              user: user:jon
+#              type: document
+#              relation: viewer
+#            context:
+#              "x": 10
+#            expectation:
+#              - document:1
+#          - request:
+#              user: user:jon
+#              type: document
+#              relation: viewer
+#            context:
+#              "y": 10
+#            expectation:
+#              - document:1
         listUsersAssertions:
           - request:
               filters:

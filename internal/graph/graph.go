@@ -56,6 +56,9 @@ type ResolveCheckRequestMetadata struct {
 	// The contents of this counter will be written by concurrent goroutines.
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
@@ -63,6 +66,7 @@ func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
 		Depth:               maxDepth,
 		DatastoreQueryCount: 0,
 		DispatchCounter:     new(atomic.Uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 

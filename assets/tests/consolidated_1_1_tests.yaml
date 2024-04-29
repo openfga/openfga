@@ -1221,14 +1221,16 @@ tests:
   - name: union_and_intersection
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer or (editor and owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer or (editor and owner)
         tuples:
           - object: document:1
             relation: writer
@@ -1319,14 +1321,16 @@ tests:
   - name: union_and_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user]  as self
-              define editor: [user]  as self
-              define owner: [user]  as self
-              define viewer as writer or (editor but not owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer or (editor but not owner)
         tuples:
           - object: document:1
             relation: writer
@@ -1511,14 +1515,16 @@ tests:
   - name: intersection_and_union
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer and (editor or owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer and (editor or owner)
         tuples:
           - object: document:1
             relation: writer
@@ -1776,14 +1782,16 @@ tests:
   - name: intersection_and_exclusion
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer and (editor but not owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer and (editor but not owner)
         tuples:
           - object: document:1
             relation: writer
@@ -2144,14 +2152,16 @@ tests:
   - name: exclusion_and_union_in_base
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as (writer or editor) but not owner
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: (writer or editor) but not owner
         tuples:
           - object: document:1
             relation: writer
@@ -2266,14 +2276,16 @@ tests:
   - name: exclusion_and_union_in_subtract
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer but not (editor or owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer but not (editor or owner)
         tuples:
           - object: document:1
             relation: writer
@@ -2346,14 +2358,16 @@ tests:
   - name: exclusion_and_intersection_in_base
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as (writer and editor) but not owner
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: (writer and editor) but not owner
         tuples:
           - object: document:1
             relation: writer
@@ -2467,14 +2481,16 @@ tests:
   - name: exclusion_and_intersection_in_subtract
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer but not (editor and owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer but not (editor and owner)
         tuples:
           - object: document:1
             relation: writer
@@ -2570,14 +2586,16 @@ tests:
   - name: exclusion_and_exclusion_in_base
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as (writer but not editor) but not owner
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: (writer but not editor) but not owner
         tuples:
           - object: document:1
             relation: writer
@@ -2650,14 +2668,16 @@ tests:
   - name: exclusion_and_exclusion_in_subtract
     stages:
       - model: |
+          model
+            schema 1.1
           type user
 
           type document
             relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer but not (editor but not owner)
+              define writer: [user]
+              define editor: [user]
+              define owner: [user]
+              define viewer: writer but not (editor but not owner)
         tuples:
           - object: document:1
             relation: writer

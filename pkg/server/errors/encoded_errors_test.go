@@ -101,6 +101,14 @@ func TestEncodedError(t *testing.T) {
 			expectedCodeString:     "validation_error",
 		},
 		{
+			_name:                  "throttle_error",
+			errorCode:              int32(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error),
+			message:                "error message",
+			expectedHTTPStatusCode: http.StatusUnprocessableEntity,
+			expectedCode:           3500,
+			expectedCodeString:     "throttled_timeout_error",
+		},
+		{
 			_name:                  "internal_error",
 			errorCode:              int32(openfgav1.InternalErrorCode_internal_error),
 			message:                "error message",
