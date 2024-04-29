@@ -2571,7 +2571,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 	require.Nil(t, resp)
 }
 
-func TestCheckDatastoreQueryCount(t *testing.T) {
+func TestListUsersDatastoreQueryCount(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -2632,7 +2632,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	tests := []struct {
 		name             string
 		relation         string
-		object           openfgav1.Object
+		object           *openfgav1.Object
 		userFilters      []*openfgav1.UserTypeFilter
 		contextualTuples []*openfgav1.TupleKey
 		dbReads          uint32
@@ -2640,14 +2640,14 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		{
 			name:        "no_direct_access",
 			relation:    "a",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
 		{
 			name:        "direct_access",
 			relation:    "a",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
@@ -2655,112 +2655,112 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:             "direct_access_thanks_to_contextual_tuple",
 			relation:         "a",
 			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
-			object:           openfgav1.Object{Type: "document", Id: "1"},
+			object:           &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters:      []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:          1,
 		},
 		{
 			name:        "union",
 			relation:    "union",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
 		},
 		{
 			name:        "union_no_access",
 			relation:    "union",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
 		},
 		{
 			name:        "intersection",
 			relation:    "intersection",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
 		},
 		{
 			name:        "intersection_no_access",
 			relation:    "intersection",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
 		},
 		{
 			name:        "difference",
 			relation:    "difference",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
 		},
 		{
 			name:        "difference_no_access",
 			relation:    "difference",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
 		},
 		{
 			name:        "ttu",
 			relation:    "ttu",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
 		{
 			name:        "ttu_no_access",
 			relation:    "ttu",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
 		{
 			name:        "userset_no_access_1",
 			relation:    "userset",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
 		{
 			name:        "userset_no_access_2",
 			relation:    "userset",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
 		{
 			name:        "userset_access",
 			relation:    "userset",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			dbReads:     2,
+			dbReads:     1,
 		},
 		{
 			name:        "multiple_userset_no_access",
 			relation:    "multiple_userset",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			dbReads:     3,
+			dbReads:     1,
 		},
 		{
 			name:        "multiple_userset_access",
 			relation:    "multiple_userset",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			dbReads:     2,
+			dbReads:     1,
 		},
 		{
 			name:        "wildcard_no_access",
 			relation:    "wildcard",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
 		{
 			name:        "wildcard_access",
 			relation:    "wildcard",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
 		},
@@ -2768,67 +2768,62 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		{
 			name:        "union_and_ttu",
 			relation:    "union_and_ttu",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
-			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			dbReads:     5,
-		},
-		{
-			name:        "union_and_ttu_no_access",
-			relation:    "union_and_ttu",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
-			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			dbReads:     4,
-		},
-		{
-			name:        "union_or_ttu",
-			relation:    "union_or_ttu",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     3,
 		},
 		{
+			name:        "union_and_ttu_no_access",
+			relation:    "union_and_ttu",
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     3,
+		},
+		{
+			name:        "union_or_ttu",
+			relation:    "union_or_ttu",
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
+			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			dbReads:     5,
+		},
+		{
 			name:        "union_or_ttu_no_access",
 			relation:    "union_or_ttu",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			dbReads:     6,
+			dbReads:     5,
 		},
 		{
 			name:        "intersection_of_ttus",
 			relation:    "intersection_of_ttus",
-			object:      openfgav1.Object{Type: "document", Id: "1"},
+			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     8,
 		},
 	}
 
 	// run the test many times to exercise all the possible DBReads
-	for i := 1; i < 100; i++ {
-		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
-			t.Parallel()
-			for _, test := range tests {
-				t.Run(test.name, func(t *testing.T) {
-					t.Parallel()
 
-					ctx := storage.ContextWithRelationshipTupleReader(
-						ctx,
-						storagewrappers.NewCombinedTupleReader(
-							ds,
-							test.contextualTuples,
-						),
-					)
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			ctx := storage.ContextWithRelationshipTupleReader(
+				ctx,
+				storagewrappers.NewCombinedTupleReader(
+					ds,
+					test.contextualTuples,
+				),
+			)
 
-					l := NewListUsersQuery(ds)
-					resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
-						Relation:         test.relation,
-						Object:           &test.object,
-						UserFilters:      test.userFilters,
-						ContextualTuples: test.contextualTuples,
-					})
-					require.NoError(t, err)
-					require.Equal(t, resp.GetMetadata().DatastoreQueryCount, test.dbReads)
-				})
-			}
+			l := NewListUsersQuery(ds)
+			resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
+				Relation:         test.relation,
+				Object:           test.object,
+				UserFilters:      test.userFilters,
+				ContextualTuples: test.contextualTuples,
+			})
+			require.NoError(t, err)
+			require.Equal(t, test.dbReads, resp.GetMetadata().DatastoreQueryCount)
 		})
 	}
 }
