@@ -713,6 +713,56 @@ func TestListUsersCycles(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
+			name: "cycle_and_union",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+			type document
+				relations
+					define viewer1: [user, document#viewer1]
+					define viewer2: [user, document#viewer2]
+					define can_view: viewer1 or viewer2`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "document:1#viewer1"),
+				tuple.NewTupleKey("document:1", "viewer2", "document:1#viewer2"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "cycle_and_intersection",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+			type document
+				relations
+					define viewer1: [user, document#viewer1]
+					define viewer2: [user, document#viewer2]
+					define can_view: viewer1 and viewer2`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "document:1#viewer1"),
+				tuple.NewTupleKey("document:1", "viewer2", "document:1#viewer2"),
+			},
+			expectedUsers: []string{},
+		},
+		{
 			name: "cycle_when_model_has_two_parallel_edges",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "transition", Id: "1"},
@@ -1565,7 +1615,7 @@ func TestListUsersExclusion(t *testing.T) {
 				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
 				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
 			},
-			expectedUsers: []string{},
+			expectedUsers: []string{"document:2#blocked"},
 		},
 	}
 	tests.runListUsersTestCases(t)

@@ -380,7 +380,7 @@ func (l *listUsersQuery) expandDirect(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	var errs error
-	var hasCycle bool
+	var hasCycle atomic.Bool
 LoopOnIterator:
 	for {
 		tupleKey, err := filteredIter.Next(ctx)
@@ -433,7 +433,7 @@ LoopOnIterator:
 			rewrittenReq.Relation = userRelation
 			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
 			if resp.hasCycle {
-				hasCycle = true
+				hasCycle.Store(true)
 			}
 			return resp.err
 		})
@@ -445,7 +445,7 @@ LoopOnIterator:
 	}
 	return expandResponse{
 		err:      errs,
-		hasCycle: hasCycle,
+		hasCycle: hasCycle.Load(),
 	}
 }
 
@@ -547,14 +547,15 @@ func (l *listUsersQuery) expandExclusion(
 	baseFoundUsersCh := make(chan *openfgav1.User, 1)
 	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
 
-	var baseError, substractError error
-	var baseHasCycle, subtractHasCycle bool
+	var baseError error
 	go func() {
 		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
 		baseError = resp.err
-		baseHasCycle = resp.hasCycle
 		close(baseFoundUsersCh)
 	}()
+
+	var substractError error
+	var subtractHasCycle bool
 	go func() {
 		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
 		substractError = resp.err
@@ -573,7 +574,12 @@ func (l *listUsersQuery) expandExclusion(
 		subtractFoundUsersMap[key] = struct{}{}
 	}
 
-	if baseHasCycle || subtractHasCycle {
+	if subtractHasCycle {
+		// Because exclusion contains the only bespoke treatment of
+		// cycle, everywhere else we consider it a falsey outcome.
+		// Once we make a determination within the exclusion handler, we're
+		// able to properly handle the case and do not need to propagate
+		// the existence of a cycle to an upstream handler.
 		return expandResponse{
 			err: nil,
 		}
