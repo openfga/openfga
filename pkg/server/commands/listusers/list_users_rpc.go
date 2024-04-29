@@ -257,7 +257,7 @@ func (l *listUsersQuery) expand(
 					},
 				},
 			}
-			l.trySendResult(ctx, user, foundUsersChan)
+			trySendResult(ctx, user, foundUsersChan)
 		}
 	}
 
@@ -405,7 +405,7 @@ LoopOnIterator:
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					l.trySendResult(ctx, user, foundUsersChan)
+					trySendResult(ctx, user, foundUsersChan)
 				}
 			}
 			continue
@@ -504,7 +504,7 @@ func (l *listUsersQuery) expandIntersection(
 		// If this summed value equals the number of operands, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
 		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
-			l.trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
+			trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
 		}
 	}
 
@@ -557,7 +557,7 @@ func (l *listUsersQuery) expandExclusion(
 			// but then they are further compared to the subtracted users map.
 			// If users exist in both maps, they are excluded. Only users that exist
 			// solely in the base map will be returned.
-			l.trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
+			trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
 		}
 	}
 
@@ -675,7 +675,7 @@ func (l *listUsersQuery) buildResultsChannel() chan *openfgav1.User {
 	return foundUsersCh
 }
 
-func (l *listUsersQuery) trySendResult(ctx context.Context, user *openfgav1.User, foundUsersCh chan<- *openfgav1.User) {
+func trySendResult(ctx context.Context, user *openfgav1.User, foundUsersCh chan<- *openfgav1.User) {
 	select {
 	case <-ctx.Done():
 		return
