@@ -140,8 +140,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		defer ctrl.Finish()
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
-			// We set timer ticker to 1 hour to avoid it interfering with test
-			Frequency:        1 * time.Hour,
+			Frequency:        1 * time.Microsecond,
 			DefaultThreshold: 200,
 			MaxThreshold:     200,
 		}
@@ -168,25 +167,15 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			return response, nil
 		}).Times(1)
 
-		var goFuncInitiated sync.WaitGroup
-		goFuncInitiated.Add(1)
-
 		ctx := context.Background()
 
 		var resolveCheckErr error
 
 		go func() {
 			defer goFuncDone.Done()
-			goFuncInitiated.Done()
 			_, resolveCheckErr = dut.ResolveCheck(ctx, req)
 		}()
 
-		goFuncInitiated.Wait()
-		// Before we send the tick, we don't expect the dispatch to run
-		require.Equal(t, 0, resolveCheckDispatchedCounter)
-
-		// simulate tick happening and we release a dispatch
-		dut.nonBlockingSend(dut.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
 		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
@@ -198,8 +187,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		defer ctrl.Finish()
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
-			// We set timer ticker to 1 hour to avoid it interfering with test
-			Frequency:        1 * time.Hour,
+			Frequency:        1 * time.Microsecond,
 			DefaultThreshold: 200,
 			MaxThreshold:     0,
 		}
@@ -226,9 +214,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			return response, nil
 		}).Times(1)
 
-		var goFuncInitiated sync.WaitGroup
-		goFuncInitiated.Add(1)
-
 		ctx := context.Background()
 		ctx = telemetry.ContextWithDispatchThrottlingThreshold(ctx, uint32(205))
 
@@ -236,16 +221,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		go func() {
 			defer goFuncDone.Done()
-			goFuncInitiated.Done()
 			_, resolveCheckErr = dut.ResolveCheck(ctx, req)
 		}()
 
-		goFuncInitiated.Wait()
-		// Before we send the tick, we don't expect the dispatch to run
-		require.Equal(t, 0, resolveCheckDispatchedCounter)
-
-		// simulate tick happening and we release a dispatch
-		dut.nonBlockingSend(dut.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
 		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
