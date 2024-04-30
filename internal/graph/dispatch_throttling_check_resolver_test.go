@@ -183,7 +183,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		goFuncInitiated.Wait()
 		// Before we send the tick, we don't expect the dispatch to run
-		time.Sleep(1 * time.Millisecond)
 		require.Equal(t, 0, resolveCheckDispatchedCounter)
 
 		// simulate tick happening and we release a dispatch
@@ -243,7 +242,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		goFuncInitiated.Wait()
 		// Before we send the tick, we don't expect the dispatch to run
-		time.Sleep(1 * time.Millisecond)
 		require.Equal(t, 0, resolveCheckDispatchedCounter)
 
 		// simulate tick happening and we release a dispatch
