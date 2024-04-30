@@ -312,38 +312,77 @@ func TestListUsers_Deadline(t *testing.T) {
 
 	ctx := context.Background()
 
-	ds := memory.New()
-	t.Cleanup(ds.Close)
-
-	model := `
-	model
-	  schema 1.1
-    type user
-
-	type group
-	  relations
-	    define member: [user]
-
-    type document
-	  relations
-	    define viewer: [user, group#member]`
-
-	tuples := []string{
-		"document:1#viewer@user:jon",
-		"document:1#viewer@group:fga#member",
-		"group:fga#member@user:maria",
-	}
-
-	storeID, modelID := test.BootstrapFGAStore(t, ds, model, tuples)
-
 	t.Run("return_no_error_and_partial_results_at_deadline", func(t *testing.T) {
-		ds := mocks.NewMockSlowDataStorage(ds, 20*time.Millisecond)
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		model := `
+		model
+		schema 1.1
+		type user
+
+		type group
+		relations
+			define member: [user]
+
+		type document
+		relations
+			define viewer: [user, group#member]`
+
+		tuples := []string{
+			"document:1#viewer@user:jon",
+			"document:1#viewer@group:fga#member",
+			"group:fga#member@user:maria",
+		}
+
+		storeID, modelID := test.BootstrapFGAStore(t, ds, model, tuples)
+
+		ds = mocks.NewMockSlowDataStorage(ds, 20*time.Millisecond)
 		t.Cleanup(ds.Close)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(30*time.Millisecond), // 30ms is enough for first read, but not others
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
+	})
+
+	t.Run("internal_error_without_meeting_deadline", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		t.Cleanup(mockController.Finish)
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		storeID := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+			Return(
+				testutils.MustTransformDSLToProtoWithID(``),
+				nil,
+			)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithExperimentals(ExperimentalEnableListUsers),
+			WithListUsersDeadline(1*time.Minute),
 		)
 		t.Cleanup(s.Close)
 

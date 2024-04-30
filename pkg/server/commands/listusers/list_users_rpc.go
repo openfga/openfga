@@ -183,12 +183,14 @@ func (l *listUsersQuery) ListUsers(
 		expandErrCh <- err
 	}()
 
-	err := <-expandErrCh
-	if err != nil {
-		if !errors.Is(err, context.DeadlineExceeded) {
+	select {
+	case err := <-expandErrCh:
+		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err
 		}
+	case <-cancellableCtx.Done():
+		break
 	}
 
 	<-done
