@@ -713,6 +713,56 @@ func TestListUsersCycles(t *testing.T) {
 			expectedUsers: []string{},
 		},
 		{
+			name: "cycle_and_union",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+			type document
+				relations
+					define viewer1: [user, document#viewer1]
+					define viewer2: [user, document#viewer2]
+					define can_view: viewer1 or viewer2`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "document:1#viewer1"),
+				tuple.NewTupleKey("document:1", "viewer2", "document:1#viewer2"),
+			},
+			expectedUsers: []string{},
+		},
+		{
+			name: "cycle_and_intersection",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+			type user
+			type document
+				relations
+					define viewer1: [user, document#viewer1]
+					define viewer2: [user, document#viewer2]
+					define can_view: viewer1 and viewer2`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "document:1#viewer1"),
+				tuple.NewTupleKey("document:1", "viewer2", "document:1#viewer2"),
+			},
+			expectedUsers: []string{},
+		},
+		{
 			name: "cycle_when_model_has_two_parallel_edges",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "transition", Id: "1"},
@@ -1507,7 +1557,65 @@ func TestListUsersExclusion(t *testing.T) {
 				tuple.NewTupleKey("group:1", "blocked", "group:1#member"),
 				tuple.NewTupleKey("group:1", "member", "user:will"),
 			},
-			expectedUsers: []string{"user:will"},
+			expectedUsers: []string{},
+		},
+		{
+			name: "exclusion_with_chained_negation",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "2"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			  schema 1.1
+
+			type user
+
+			type document
+			  relations
+			    define unblocked: [user]
+				define blocked: [user, document#viewer] but not unblocked
+				define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:2", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "non_stratifiable_exclusion_containing_cycle_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "document",
+						Relation: "blocked",
+					},
+				},
+			},
+			model: `model
+				schema 1.1
+		
+			type user
+		
+			type document
+				relations
+				define blocked: [user, document#viewer]
+				define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+			},
+			expectedUsers: []string{"document:2#blocked"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2237,7 +2345,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 		visitedUsersets[visitedUsersetKey] = struct{}{}
 
 		go func() {
-			err := l.expand(ctx, &internalListUsersRequest{
+			resp := l.expand(ctx, &internalListUsersRequest{
 				ListUsersRequest: &openfgav1.ListUsersRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
@@ -2252,8 +2360,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 				},
 				visitedUsersetsMap: visitedUsersets,
 			}, channelWithResults)
-			if err != nil {
-				channelWithError <- err
+			if resp.err != nil {
+				channelWithError <- resp.err
 				return
 			}
 			channelDone <- struct{}{}
