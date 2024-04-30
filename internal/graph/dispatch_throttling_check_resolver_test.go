@@ -177,7 +177,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		go func() {
 			defer goFuncDone.Done()
 			goFuncInitiated.Done()
-			ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
 			_, err := dut.ResolveCheck(ctx, req)
 			//nolint:testifylint
 			require.NoError(t, err)
