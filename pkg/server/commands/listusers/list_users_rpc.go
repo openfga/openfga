@@ -69,7 +69,7 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
-	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples().GetTupleKeys())
+	l.ds = storagewrappers.NewCombinedTupleReader(l.ds, req.GetContextualTuples())
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")
@@ -128,9 +128,9 @@ func (l *listUsersQuery) ListUsers(
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
 
-	excludedUsers := make([]*openfgav1.User, 0, len(excludedUsersUnique))
+	excludedUsers := make([]*openfgav1.ObjectOrUserset, 0, len(excludedUsersUnique))
 	for e := range excludedUsersUnique {
-		excludedUsers = append(excludedUsers, tuple.StringToUserProto(e))
+		excludedUsers = append(excludedUsers, tuple.StringToObjectOrUserset(e))
 	}
 
 	return &openfgav1.ListUsersResponse{

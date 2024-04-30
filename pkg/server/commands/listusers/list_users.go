@@ -11,8 +11,8 @@ type listUsersRequest interface {
 	GetAuthorizationModelId() string
 	GetObject() *openfgav1.Object
 	GetRelation() string
-	GetUserFilters() []*openfgav1.ListUsersFilter
-	GetContextualTuples() *openfgav1.ContextualTupleKeys
+	GetUserFilters() []*openfgav1.UserTypeFilter
+	GetContextualTuples() []*openfgav1.TupleKey
 }
 
 type internalListUsersRequest struct {
@@ -55,14 +55,14 @@ func (r *internalListUsersRequest) GetRelation() string {
 	return r.Relation
 }
 
-func (r *internalListUsersRequest) GetUserFilters() []*openfgav1.ListUsersFilter {
+func (r *internalListUsersRequest) GetUserFilters() []*openfgav1.UserTypeFilter {
 	if r == nil {
 		return nil
 	}
 	return r.UserFilters
 }
 
-func (r *internalListUsersRequest) GetContextualTuples() *openfgav1.ContextualTupleKeys {
+func (r *internalListUsersRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	if r == nil {
 		return nil
 	}

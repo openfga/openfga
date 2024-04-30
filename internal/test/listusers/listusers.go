@@ -38,8 +38,16 @@ func FromUsersProto(r []*openfgav1.User) []string {
 	return users
 }
 
+func FromObjectOrUsersetProto(r []*openfgav1.ObjectOrUserset) []string {
+	var users []string
+	for _, user := range r {
+		users = append(users, tuple.FromObjectOrUsersetProto(user))
+	}
+	return users
+}
+
 func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
-	var protoFilters []*openfgav1.ListUsersFilter
+	var protoFilters []*openfgav1.UserTypeFilter
 
 	for _, filterString := range t.Filters {
 		protoFilters = append(protoFilters, toProtoFilter(filterString))
@@ -56,10 +64,10 @@ func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
 	}
 }
 
-func toProtoFilter(user string) *openfgav1.ListUsersFilter {
+func toProtoFilter(user string) *openfgav1.UserTypeFilter {
 	userObjType, userRel := tuple.SplitObjectRelation(user)
 
-	sourceUserRef := openfgav1.ListUsersFilter{
+	sourceUserRef := openfgav1.UserTypeFilter{
 		Type: userObjType,
 	}
 

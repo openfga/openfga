@@ -24,7 +24,7 @@ func ValidateListUsersRequest(req *openfgav1.ListUsersRequest, typesys *typesyst
 }
 
 func validateContextualTuples(request *openfgav1.ListUsersRequest, typeSystem *typesystem.TypeSystem) error {
-	for _, contextualTuple := range request.GetContextualTuples().GetTupleKeys() {
+	for _, contextualTuple := range request.GetContextualTuples() {
 		if err := validation.ValidateTuple(typeSystem, contextualTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
@@ -43,7 +43,7 @@ func validateUsersFilters(request *openfgav1.ListUsersRequest, typeSystem *types
 	return nil
 }
 
-func validateUserFilter(typeSystem *typesystem.TypeSystem, usersFilter *openfgav1.ListUsersFilter) error {
+func validateUserFilter(typeSystem *typesystem.TypeSystem, usersFilter *openfgav1.UserTypeFilter) error {
 	filterObjectType := usersFilter.GetType()
 
 	if _, typeExists := typeSystem.GetTypeDefinition(filterObjectType); !typeExists {
@@ -53,7 +53,7 @@ func validateUserFilter(typeSystem *typesystem.TypeSystem, usersFilter *openfgav
 	return validateUserFilterRelation(typeSystem, usersFilter, filterObjectType)
 }
 
-func validateUserFilterRelation(typeSystem *typesystem.TypeSystem, usersFilter *openfgav1.ListUsersFilter, filterObjectType string) error {
+func validateUserFilterRelation(typeSystem *typesystem.TypeSystem, usersFilter *openfgav1.UserTypeFilter, filterObjectType string) error {
 	filterObjectRelation := usersFilter.GetRelation()
 	if filterObjectRelation == "" {
 		return nil
