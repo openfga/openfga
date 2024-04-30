@@ -2177,7 +2177,7 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:*"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
 			},
-			expectedUsers: []string{}, // TODO: this should return `user:jon` because unblocked
+			expectedUsers: []string{"user:jon"},
 		},
 		{
 			name: "chained_negation_10",
@@ -2187,7 +2187,7 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
 			},
-			expectedUsers:         []string{"user:*"}, // TODO: this should return `user:jon` because unblocked
+			expectedUsers:         []string{"user:*", "user:jon"},
 			expectedExcludedUsers: []string{"user:maria"},
 		},
 		{
