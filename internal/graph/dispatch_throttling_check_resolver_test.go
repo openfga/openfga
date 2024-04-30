@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -174,12 +173,12 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		ctx := context.Background()
 
+		var resolveCheckErr error
+
 		go func() {
 			defer goFuncDone.Done()
 			goFuncInitiated.Done()
-			_, err := dut.ResolveCheck(ctx, req)
-			//nolint:testifylint
-			require.NoError(t, err)
+			_, resolveCheckErr = dut.ResolveCheck(ctx, req)
 		}()
 
 		goFuncInitiated.Wait()
@@ -192,6 +191,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
 		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.NoError(t, resolveCheckErr)
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -233,13 +233,12 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx := context.Background()
 		ctx = telemetry.ContextWithDispatchThrottlingThreshold(ctx, uint32(205))
 
+		var resolveCheckErr error
+
 		go func() {
 			defer goFuncDone.Done()
 			goFuncInitiated.Done()
-			ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
-			_, err := dut.ResolveCheck(ctx, req)
-			//nolint:testifylint
-			require.NoError(t, err)
+			_, resolveCheckErr = dut.ResolveCheck(ctx, req)
 		}()
 
 		goFuncInitiated.Wait()
@@ -252,5 +251,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		goFuncDone.Wait()
 		require.Equal(t, 1, resolveCheckDispatchedCounter)
 		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
+		require.NoError(t, resolveCheckErr)
 	})
 }
