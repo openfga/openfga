@@ -27,8 +27,8 @@ type listUsersQuery struct {
 }
 
 type foundUser struct {
-	user       *openfgav1.User
-	exceptions []*openfgav1.User
+	user          *openfgav1.User
+	excludedUsers []*openfgav1.User
 }
 
 /*
@@ -94,13 +94,13 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
-	exceptionsUnique := make(map[tuple.UserString]struct{}, 1000)
+	excludedUsersUnique := make(map[tuple.UserString]struct{}, 1000)
 	done := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundObject.user)] = struct{}{}
-			for _, exception := range foundObject.exceptions {
-				exceptionsUnique[tuple.UserProtoToString(exception)] = struct{}{}
+			for _, e := range foundObject.excludedUsers {
+				excludedUsersUnique[tuple.UserProtoToString(e)] = struct{}{}
 			}
 		}
 
@@ -122,17 +122,20 @@ func (l *listUsersQuery) ListUsers(
 	case <-done:
 		break
 	}
+
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
 	for foundUser := range foundUsersUnique {
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
 	}
-	exceptions := make([]*openfgav1.User, 0, len(exceptionsUnique))
-	for foundException := range exceptionsUnique {
-		exceptions = append(exceptions, tuple.StringToUserProto(foundException))
+
+	excludedUsers := make([]*openfgav1.User, 0, len(excludedUsersUnique))
+	for e := range excludedUsersUnique {
+		excludedUsers = append(excludedUsers, tuple.StringToUserProto(e))
 	}
+
 	return &openfgav1.ListUsersResponse{
 		Users:         foundUsers,
-		ExcludedUsers: exceptions,
+		ExcludedUsers: excludedUsers,
 	}, nil
 }
 
@@ -464,7 +467,7 @@ func (l *listUsersQuery) expandExclusion(
 	subtractFoundUsersMap := make(map[string]struct{}, len(baseFoundUsersMap))
 	negatedSubtractionMap := make(map[string]struct{})
 	for fu := range subtractFoundUsersCh {
-		for _, s := range fu.exceptions {
+		for _, s := range fu.excludedUsers {
 			negatedSubtractionMap[tuple.UserProtoToString(s)] = struct{}{}
 		}
 		key := tuple.UserProtoToString(fu.user)
@@ -480,14 +483,14 @@ func (l *listUsersQuery) expandExclusion(
 		// In cases where there is a public-typed wildcard (ex: user:*) returned
 		// as the base case of a negation operator ("but not") and there are subjects
 		// that are negated, it is not correct to purely return the public typed
-		// wildcard. We also need to keep track of the exceptions to this wildcard.
+		// wildcard. We also need to keep track of the excluded users of this wildcard.
 		subtractedUsers := make([]*openfgav1.User, 0, len(subtractFoundUsersMap))
 		for key := range subtractFoundUsersMap {
 			subtractedUsers = append(subtractedUsers, tuple.StringToUserProto(key))
 		}
 		foundUsersChan <- foundUser{
-			user:       tuple.StringToUserProto(wildcardKey),
-			exceptions: subtractedUsers,
+			user:          tuple.StringToUserProto(wildcardKey),
+			excludedUsers: subtractedUsers,
 		}
 	}
 

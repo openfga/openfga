@@ -27,7 +27,7 @@ type ListUsersTests []struct {
 	model                 string
 	tuples                []*openfgav1.TupleKey
 	expectedUsers         []string
-	butNot                []string
+	expectedExcludedUsers []string
 	expectedErrorMsg      string
 }
 
@@ -1412,8 +1412,8 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 			},
-			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria"},
+			expectedUsers:         []string{"user:*"},
+			expectedExcludedUsers: []string{"user:maria"},
 		},
 		{
 			name: "exclusion_and_wildcards_5",
@@ -1461,8 +1461,8 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
 				tuple.NewTupleKey("document:1", "blocked", "user:will"),
 			},
-			expectedUsers: []string{"user:*", "user:maria"},
-			butNot:        []string{"user:jon", "user:will"},
+			expectedUsers:         []string{"user:*", "user:maria"},
+			expectedExcludedUsers: []string{"user:jon", "user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2177,7 +2177,7 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:*"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
 			},
-			expectedUsers: []string{},
+			expectedUsers: []string{}, // TODO: this should return `user:jon` because unblocked
 		},
 		{
 			name: "chained_negation_10",
@@ -2187,8 +2187,8 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
 			},
-			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria"},
+			expectedUsers:         []string{"user:*"}, // TODO: this should return `user:jon` because unblocked
+			expectedExcludedUsers: []string{"user:maria"},
 		},
 		{
 			name: "chained_negation_11",
@@ -2285,7 +2285,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			for i, u := range exceptUsers {
 				actualCompare[i] = tuple.UserProtoToString(u)
 			}
-			require.ElementsMatch(t, actualCompare, test.butNot)
+			require.ElementsMatch(t, actualCompare, test.expectedExcludedUsers)
 		})
 	}
 }
