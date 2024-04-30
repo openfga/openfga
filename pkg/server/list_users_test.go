@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -13,10 +14,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/mocks"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -299,5 +302,65 @@ type document
 			require.Nil(t, res)
 			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 		})
+	})
+}
+
+func TestListUsers_Deadline(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	model := `
+	model
+	  schema 1.1
+    type user
+
+	type group
+	  relations
+	    define member: [user]
+
+    type document
+	  relations
+	    define viewer: [user, group#member]`
+
+	tuples := []string{
+		"document:1#viewer@user:jon",
+		"document:1#viewer@group:fga#member",
+		"group:fga#member@user:maria",
+	}
+
+	storeID, modelID := test.BootstrapFGAStore(t, ds, model, tuples)
+
+	t.Run("return_no_error_and_partial_results_at_deadline", func(t *testing.T) {
+		ds := mocks.NewMockSlowDataStorage(ds, 20*time.Millisecond)
+		t.Cleanup(ds.Close)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalEnableListUsers),
+			WithListUsersDeadline(30*time.Millisecond), // 30ms is enough for first read, but not others
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
 	})
 }

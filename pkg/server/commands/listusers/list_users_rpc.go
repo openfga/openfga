@@ -121,12 +121,11 @@ func (l *listUsersQuery) ListUsers(
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
-	cancellableCtx, cancelContextIfMaxResultsMet := context.WithCancel(ctx)
-	defer cancelContextIfMaxResultsMet()
+	cancellableCtx, cancelCtx := context.WithCancel(ctx)
+	defer cancelCtx()
 	if l.deadline != 0 {
-		var cancelContextIfDeadlineHit context.CancelFunc
-		cancellableCtx, cancelContextIfDeadlineHit = context.WithTimeout(cancellableCtx, l.deadline)
-		defer cancelContextIfDeadlineHit()
+		cancellableCtx, cancelCtx = context.WithTimeout(cancellableCtx, l.deadline)
+		defer cancelCtx()
 	}
 	l.ds = storagewrappers.NewCombinedTupleReader(
 		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
@@ -178,22 +177,23 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
-		if err := l.expand(cancellableCtx, internalRequest, foundUsersCh); err != nil {
-			expandErrCh <- err
-			return
-		}
+		err := l.expand(cancellableCtx, internalRequest, foundUsersCh)
+		close(foundUsersCh)
+		expandErrCh <- err
 	}()
 
-	select {
-	case err := <-expandErrCh:
-		telemetry.TraceError(span, err)
-		return nil, err
-	case <-done:
-		cancelContextIfMaxResultsMet()
-		break
+	err := <-expandErrCh
+	if err != nil {
+		if !errors.Is(err, context.DeadlineExceeded) {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
 	}
+
+	<-done
+	cancelCtx()
+
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
 	for foundUser := range foundUsersUnique {
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))

@@ -64,13 +64,15 @@ func (s *Server) ListUsers(
 	resp, err := listUsersQuery.ListUsers(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+
+		switch {
+		case errors.Is(err, graph.ErrResolutionDepthExceeded):
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
-		}
-		if errors.Is(err, condition.ErrEvaluationFailed) {
+		case errors.Is(err, condition.ErrEvaluationFailed):
 			return nil, serverErrors.ValidationError(err)
+		default:
+			return nil, serverErrors.HandleError("", err)
 		}
-		return nil, serverErrors.HandleError("", err)
 	}
 
 	datastoreQueryCount := float64(resp.Metadata.DatastoreQueryCount)
