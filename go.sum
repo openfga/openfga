@@ -223,16 +223,6 @@ github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQ
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
 github.com/opencontainers/runc v1.1.10 h1:EaL5WeO9lv9wmS6SASjszOeQdSctvpbu0DdBQBizE40=
 github.com/opencontainers/runc v1.1.10/go.mod h1:+/R6+KmDlh+hOO8NkjmgkG9Qzvypzk0yXxAPYYR65+M=
-github.com/openfga/api/proto v0.0.0-20240311181114-cf9358a7af6a h1:zUwhiKPPfBYD/+WJh6zISyg2xIcIABxPEwm00Z4sAvA=
-github.com/openfga/api/proto v0.0.0-20240311181114-cf9358a7af6a/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
-github.com/openfga/api/proto v0.0.0-20240404221943-0e55f1b57ad1 h1:5DXJZyioiPlanlZFFkNXmI5WDzAgWFaBTRzTmlyJWuA=
-github.com/openfga/api/proto v0.0.0-20240404221943-0e55f1b57ad1/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
-github.com/openfga/api/proto v0.0.0-20240416201214-8805ee83c35f h1:OBoy344sc34w1kDxASHpJzN0F4OT8xCwyyUKNPIDAmI=
-github.com/openfga/api/proto v0.0.0-20240416201214-8805ee83c35f/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
-github.com/openfga/api/proto v0.0.0-20240416210204-99798530a2c6 h1:tLfOwwTmoqEgW+fBniq70SKpsu2Eca3vYsrBSELIg7Q=
-github.com/openfga/api/proto v0.0.0-20240416210204-99798530a2c6/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
-github.com/openfga/api/proto v0.0.0-20240417173524-4e370fb99336 h1:CqhqYVzZ6ydbSpFuyCZbo9LTnFe7n/OH2my3wWVgk6E=
-github.com/openfga/api/proto v0.0.0-20240417173524-4e370fb99336/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
 github.com/openfga/api/proto v0.0.0-20240430144343-c22a4584cbb8 h1:ybt/OPVPqPam7adq1gpzvm+UnGv7Zj9xqB5pXkxNdCM=
 github.com/openfga/api/proto v0.0.0-20240430144343-c22a4584cbb8/go.mod h1:5LtWOArDX4FlbcfDvBoJAzDEYJKLz/OEUoi+0S2tyM8=
 github.com/openfga/language/pkg/go v0.0.0-20240131004817-1e763f816993 h1:rgtfC6/vyeeEKcQP7RNI5JaOeebXf8sP8gsm3k1wdAk=
