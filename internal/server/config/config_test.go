@@ -183,7 +183,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("dispatch_throttling_threshold_larger_than_max_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:      true,
 			Frequency:    10 * time.Microsecond,
 			Threshold:    30,
