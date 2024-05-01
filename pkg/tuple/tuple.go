@@ -281,3 +281,64 @@ func IsTypedWildcard(s string) bool {
 func TypedPublicWildcard(objectType string) string {
 	return BuildObject(objectType, Wildcard)
 }
+
+// MustParseTupleString attempts to parse a relationship tuple specified
+// in string notation and return the protobuf TupleKey for it. If parsing
+// of the string fails this  function will panic. It is meant for testing
+// purposes.
+//
+// Given string 'document:1#viewer@user:jon', return the protobuf TupleKey
+// for it.
+func MustParseTupleString(s string) *openfgav1.TupleKey {
+	t, err := ParseTupleString(s)
+	if err != nil {
+		panic(err)
+	}
+
+	return t
+}
+
+func MustParseTupleStrings(tupleStrs ...string) []*openfgav1.TupleKey {
+	tuples := make([]*openfgav1.TupleKey, 0, len(tupleStrs))
+	for _, tupleStr := range tupleStrs {
+		tuples = append(tuples, MustParseTupleString(tupleStr))
+	}
+
+	return tuples
+}
+
+// ParseTupleString attempts to parse a relationship tuple specified
+// in string notation and return the protobuf TupleKey for it. If parsing
+// of the string fails this  function returns an err.
+//
+// Given string 'document:1#viewer@user:jon', return the protobuf TupleKey
+// for it or an error.
+func ParseTupleString(s string) (*openfgav1.TupleKey, error) {
+	object, rhs, found := strings.Cut(s, "#")
+	if !found {
+		return nil, fmt.Errorf("expected at least one '#' separating the object and relation")
+	}
+
+	if !IsValidObject(object) {
+		return nil, fmt.Errorf("invalid tuple 'object' field format")
+	}
+
+	relation, user, found := strings.Cut(rhs, "@")
+	if !found {
+		return nil, fmt.Errorf("expected at least one '@' separating the relation and user")
+	}
+
+	if !IsValidRelation(relation) {
+		return nil, fmt.Errorf("invalid tuple 'relation' field format")
+	}
+
+	if !IsValidUser(user) {
+		return nil, fmt.Errorf("invalid tuple 'user' field format")
+	}
+
+	return &openfgav1.TupleKey{
+		Object:   object,
+		Relation: relation,
+		User:     user,
+	}, nil
+}
