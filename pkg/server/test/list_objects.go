@@ -502,7 +502,7 @@ condition condition1(x: int) {
 				},
 				false,
 				nil,
-				0,
+				nil,
 			)
 			t.Cleanup(closer)
 
