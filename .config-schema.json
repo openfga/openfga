@@ -456,7 +456,7 @@
                     "description": "DEPRECATED: Use checkDispatchThrottling.maxThreshold instead. define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the 'dispatchThrottling.threshold' value as maximum",
                     "type": "integer",
                     "default": "0",
-                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD"
                 }
             }
         },
