@@ -45,6 +45,7 @@ func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 
 func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
+		// TODO use ulid library?
 		requestID := InitID(ctx)
 
 		grpc_ctxtags.Extract(ctx).Set(requestIDKey, requestID) // CtxTags used by other middlewares

@@ -13,6 +13,7 @@ import (
 const (
 	cFirstAuthenticationErrorCode  int32 = 1000
 	cFirstValidationErrorCode      int32 = 2000
+	cFirstThrottlingErrorCode      int32 = 3500
 	cFirstInternalErrorCode        int32 = 4000
 	cFirstUnknownEndpointErrorCode int32 = 5000
 )
@@ -99,10 +100,14 @@ func NewEncodedError(errorCode int32, message string) *EncodedError {
 		httpStatusCode = http.StatusUnauthorized
 		code = openfgav1.AuthErrorCode(errorCode).String()
 		grpcStatusCode = codes.Unauthenticated
-	case errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode:
+	case errorCode >= cFirstValidationErrorCode && errorCode < cFirstThrottlingErrorCode:
 		httpStatusCode = http.StatusBadRequest
 		code = openfgav1.ErrorCode(errorCode).String()
 		grpcStatusCode = codes.InvalidArgument
+	case errorCode >= cFirstThrottlingErrorCode && errorCode < cFirstInternalErrorCode:
+		httpStatusCode = http.StatusUnprocessableEntity
+		code = openfgav1.UnprocessableContentErrorCode(errorCode).String()
+		grpcStatusCode = codes.ResourceExhausted
 	case errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode:
 		httpStatusCode = http.StatusInternalServerError
 		code = openfgav1.InternalErrorCode(errorCode).String()
