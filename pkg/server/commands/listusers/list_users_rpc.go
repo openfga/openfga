@@ -161,7 +161,7 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
-	done := make(chan struct{}, 1)
+	maxResultsMet := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundObject)] = struct{}{}
@@ -173,7 +173,7 @@ func (l *listUsersQuery) ListUsers(
 			}
 		}
 
-		done <- struct{}{}
+		maxResultsMet <- struct{}{}
 	}()
 
 	go func() {
@@ -190,12 +190,14 @@ func (l *listUsersQuery) ListUsers(
 	case err := <-expandErrCh:
 		telemetry.TraceError(span, err)
 		return nil, err
-
+	case <-maxResultsMet:
+		break
 	case <-cancellableCtx.Done():
+		// to avoid a race on the 'foundUsersUnique' map below, wait for the range over the channel to close
+		<-maxResultsMet
 		break
 	}
 
-	<-done
 	cancelCtx()
 
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
