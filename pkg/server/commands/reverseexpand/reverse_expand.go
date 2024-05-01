@@ -340,10 +340,7 @@ LoopOnEdges:
 		}
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		errs = errors.Join(errs, err)
-	}
+	errs = errors.Join(errs, pool.Wait())
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 		return errs
