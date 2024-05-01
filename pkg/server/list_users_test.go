@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/internal/mocks"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -337,7 +336,7 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, tuples)
 
-		ds = mocks.NewMockSlowDataStorage(ds, 20*time.Millisecond)
+		ds = mockstorage.NewMockSlowDataStorage(ds, 20*time.Millisecond)
 		t.Cleanup(ds.Close)
 
 		s := MustNewServerWithOpts(
@@ -368,7 +367,7 @@ func TestListUsers_Deadline(t *testing.T) {
 		mockController := gomock.NewController(t)
 		t.Cleanup(mockController.Finish)
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 		storeID := ulid.Make().String()
 		modelID := ulid.Make().String()
@@ -423,7 +422,7 @@ func TestListUsers_Deadline(t *testing.T) {
 		mockController := gomock.NewController(t)
 		t.Cleanup(mockController.Finish)
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 		storeID := ulid.Make().String()
 		modelID := ulid.Make().String()
@@ -472,6 +471,6 @@ func TestListUsers_Deadline(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Len(t, resp.GetUsers(), 0)
+		require.Empty(t, resp.GetUsers())
 	})
 }
