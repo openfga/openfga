@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -729,7 +728,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			var errs *multierror.Error
+			var errs error
 			var handlers []CheckHandlerFunc
 			for {
 				t, err := filteredIter.Next(ctx)
@@ -743,12 +742,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 				if err != nil {
-					errs = multierror.Append(errs, err)
+					errs = errors.Join(errs, err)
 					continue
 				}
 
 				if len(condEvalResult.MissingParameters) > 0 {
-					errs = multierror.Append(errs, condition.NewEvaluationError(
+					errs = errors.Join(errs, condition.NewEvaluationError(
 						t.GetCondition().GetName(),
 						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
 							tuple.TupleKeyToString(t),
@@ -784,7 +783,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 			}
 
-			if len(handlers) == 0 && errs.ErrorOrNil() != nil {
+			if len(handlers) == 0 && errs != nil {
 				telemetry.TraceError(span, errs)
 				return nil, errs
 			}
@@ -792,7 +791,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			resp, err := union(ctx, c.concurrencyLimit, handlers...)
 			if err != nil {
 				telemetry.TraceError(span, err)
-				return nil, multierror.Append(errs, err)
+				return nil, errors.Join(errs, err)
 			}
 
 			return resp, nil
@@ -899,7 +898,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		var errs *multierror.Error
+		var errs error
 		var handlers []CheckHandlerFunc
 		for {
 			t, err := filteredIter.Next(ctx)
@@ -913,13 +912,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 			if err != nil {
-				errs = multierror.Append(errs, err)
+				errs = errors.Join(errs, err)
 
 				continue
 			}
 
 			if len(condEvalResult.MissingParameters) > 0 {
-				errs = multierror.Append(errs, condition.NewEvaluationError(
+				errs = errors.Join(errs, condition.NewEvaluationError(
 					t.GetCondition().GetName(),
 					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
 						tuple.TupleKeyToString(t),
@@ -951,7 +950,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
 		}
 
-		if len(handlers) == 0 && errs.ErrorOrNil() != nil {
+		if len(handlers) == 0 && errs != nil {
 			telemetry.TraceError(span, errs)
 			return nil, errs
 		}
@@ -959,7 +958,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
 		if err != nil {
 			telemetry.TraceError(span, err)
-			return nil, multierror.Append(errs, err)
+			return nil, errors.Join(errs, err)
 		}
 
 		// if we had 3 dispatched requests, and the final result is "allowed = false",
