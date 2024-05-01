@@ -468,3 +468,80 @@ func TestTypedPublicWildcard(t *testing.T) {
 	require.Equal(t, "group:*", TypedPublicWildcard("group"))
 	require.Equal(t, ":*", TypedPublicWildcard("")) // Does not panic
 }
+
+func TestParseTupleString(t *testing.T) {
+	tests := []struct {
+		name        string
+		str         string
+		tuple       *openfgav1.TupleKey
+		expectedErr bool
+	}{
+		{
+			name:  "well_formed_user_object",
+			str:   "document:1#viewer@user:jon",
+			tuple: NewTupleKey("document:1", "viewer", "user:jon"),
+		},
+		{
+			name:  "well_formed_user_userset",
+			str:   "document:1#viewer@group:eng#member",
+			tuple: NewTupleKey("document:1", "viewer", "group:eng#member"),
+		},
+		{
+			name:  "well_formed_user_wildcard",
+			str:   "document:1#viewer@user:*",
+			tuple: NewTupleKey("document:1", "viewer", "user:*"),
+		},
+		{
+			name:        "missing_user_field",
+			str:         "document:1#viewer",
+			expectedErr: true,
+		},
+		{
+			name:        "missing_relation_separator",
+			str:         "document:1viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "missing_object_id",
+			str:         "document#viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_object_type",
+			str:         "docu#ment:1#viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_object_id",
+			str:         "document:#1#viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_relation",
+			str:         "document:1#vie:wer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_user_type",
+			str:         "document:1#viewer@use#r:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_user_userset",
+			str:         "document:1#viewer@group:e:eng#member",
+			expectedErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tuple, err := ParseTupleString(test.str)
+			require.Equal(t, test.expectedErr, err != nil)
+
+			if !test.expectedErr {
+				require.NotNil(t, tuple)
+				require.Equal(t, test.tuple, tuple)
+			}
+		})
+	}
+}
