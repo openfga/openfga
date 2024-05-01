@@ -35,9 +35,10 @@ const (
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
-	DefaultDispatchThrottlingEnabled   = false
-	DefaultDispatchThrottlingFrequency = 10 * time.Microsecond
-	DefaultDispatchThrottlingThreshold = 100
+	DefaultDispatchThrottlingEnabled          = false
+	DefaultDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultDispatchThrottlingDefaultThreshold = 100
+	DefaultDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout = 3 * time.Second
 
@@ -187,9 +188,10 @@ type CheckQueryCache struct {
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
-	Enabled   bool
-	Frequency time.Duration
-	Threshold uint32
+	Enabled      bool
+	Frequency    time.Duration
+	Threshold    uint32
+	MaxThreshold uint32
 }
 
 type Config struct {
@@ -370,10 +372,13 @@ func (cfg *Config) Verify() error {
 
 	if cfg.DispatchThrottling.Enabled {
 		if cfg.DispatchThrottling.Frequency <= 0 {
-			return errors.New("dispatch throttling frequency must be non-negative time duration")
+			return errors.New("dispatchThrottling.frequency must be non-negative time duration")
 		}
 		if cfg.DispatchThrottling.Threshold <= 0 {
-			return errors.New("dispatch throttling threshold must be non-negative integer")
+			return errors.New("dispatchThrottling.threshold must be non-negative integer")
+		}
+		if cfg.DispatchThrottling.MaxThreshold != 0 && cfg.DispatchThrottling.Threshold > cfg.DispatchThrottling.MaxThreshold {
+			return errors.New("'dispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold'")
 		}
 	}
 
@@ -483,9 +488,10 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:   DefaultDispatchThrottlingEnabled,
-			Frequency: DefaultDispatchThrottlingFrequency,
-			Threshold: DefaultDispatchThrottlingThreshold,
+			Enabled:      DefaultDispatchThrottlingEnabled,
+			Frequency:    DefaultDispatchThrottlingFrequency,
+			Threshold:    DefaultDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultDispatchThrottlingMaxThreshold,
 		},
 		RequestTimeout: DefaultRequestTimeout,
 	}
