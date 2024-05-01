@@ -373,11 +373,25 @@ func TestListUsers_Deadline(t *testing.T) {
 		storeID := ulid.Make().String()
 		modelID := ulid.Make().String()
 
-		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 			Return(
-				testutils.MustTransformDSLToProtoWithID(``),
+				testutils.MustTransformDSLToProtoWithID(`
+				model
+				  schema 1.1
+				type user
+
+				type document
+				  relations
+				    define viewer: [user]`),
 				nil,
-			)
+			).
+			Times(1)
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, gomock.Any()).
+			Return(nil, context.DeadlineExceeded).
+			Times(1)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
@@ -398,8 +412,66 @@ func TestListUsers_Deadline(t *testing.T) {
 				{Type: "user"},
 			},
 		})
+		require.Nil(t, resp)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgav1.InternalErrorCode_internal_error), st.Code())
+	})
+
+	t.Run("internal_storage_error_after_deadline", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		t.Cleanup(mockController.Finish)
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		storeID := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+			Return(
+				testutils.MustTransformDSLToProtoWithID(`
+				model
+				  schema 1.1
+				type user
+
+				type document
+				  relations
+				    define viewer: [user]`),
+				nil,
+			).
+			Times(1)
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+				time.Sleep(10 * time.Millisecond)
+				return nil, context.Canceled
+			}).
+			Times(1)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithExperimentals(ExperimentalEnableListUsers),
+			WithListUsersDeadline(5*time.Millisecond),
+		)
+		t.Cleanup(s.Close)
+
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Len(t, resp.GetUsers(), 1)
+		require.Len(t, resp.GetUsers(), 0)
 	})
 }

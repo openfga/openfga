@@ -180,15 +180,17 @@ func (l *listUsersQuery) ListUsers(
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
 		err := l.expand(cancellableCtx, internalRequest, foundUsersCh)
 		close(foundUsersCh)
-		expandErrCh <- err
+
+		if err != nil {
+			expandErrCh <- err
+		}
 	}()
 
 	select {
 	case err := <-expandErrCh:
-		if err != nil {
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
+		telemetry.TraceError(span, err)
+		return nil, err
+
 	case <-cancellableCtx.Done():
 		break
 	}

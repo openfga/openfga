@@ -57,8 +57,9 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
 }
 
-// BootstrapFGAStore is a utility which can used to quickly bootstrap an OpenFGADatastore
-// with an FGA model and relationship tuples. It returns the (store_id, model_id), respectively.
+// BootstrapFGAStore is a utility to write an FGA model and relationship tuples to a datastore.
+// It doesn't validate the model. It validates the format of the tuples, but not the types within them.
+// It returns the (store_id, model_id), respectively.
 func BootstrapFGAStore(
 	t require.TestingT,
 	ds storage.OpenFGADatastore,
@@ -75,11 +76,7 @@ func BootstrapFGAStore(
 
 	batchSize := ds.MaxTuplesPerWrite()
 	for batch := 0; batch < len(tuples); batch += batchSize {
-		batchEnd := batch + batchSize
-
-		if batchEnd > len(tuples) {
-			batchEnd = len(tuples)
-		}
+		batchEnd := min(batch+batchSize, len(tuples))
 
 		err := ds.Write(context.Background(), storeID, nil, tuples[batch:batchEnd])
 		require.NoError(t, err)
