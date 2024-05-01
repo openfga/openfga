@@ -509,6 +509,12 @@
                     "type": "integer",
                     "default": "100",
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum dispatch threshold beyond above which requests will be throttled for a list objects request. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD"
                 }
             }
         },

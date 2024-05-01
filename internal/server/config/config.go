@@ -38,9 +38,10 @@ const (
 	DefaultCheckDispatchThrottlingDefaultThreshold = 100
 	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
-	DefaultListObjectsDispatchThrottlingEnabled   = false
-	DefaultListObjectsDispatchThrottlingFrequency = 10 * time.Microsecond
-	DefaultListObjectsDispatchThrottlingThreshold = 100
+	DefaultListObjectsDispatchThrottlingEnabled          = false
+	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
+	DefaultListObjectsDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout = 3 * time.Second
 

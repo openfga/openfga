@@ -116,9 +116,10 @@ type ReverseExpandQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
-	dispatchThrottler   throttler.Throttler
-	throttlingEnabled   bool
-	throttlingThreshold uint32
+	dispatchThrottler      throttler.Throttler
+	throttlingEnabled      bool
+	throttlingThreshold    uint32
+	maxThrottlingThreshold uint32
 
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
@@ -152,6 +153,12 @@ func WithDispatchThrottlingThreshold(threshold uint32) ReverseExpandQueryOption 
 	}
 }
 
+func WithMaxDispatchThrottlingThreshold(threshold uint32) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.maxThrottlingThreshold = threshold
+	}
+}
+
 func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeBreadthLimit = limit
@@ -166,7 +173,8 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		throttlingEnabled:       serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
+		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+		maxThrottlingThreshold:  serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
 		dispatchThrottler:       &throttler.NoopThrottler{},
 		candidateObjectsMap:     new(sync.Map),
 		visitedUsersetsMap:      new(sync.Map),
@@ -196,12 +204,16 @@ type ResolutionMetadata struct {
 
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCount *uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
 		DispatchCount:       new(uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 
@@ -352,9 +364,9 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			if c.throttlingEnabled && c.throttlingThreshold > currentNumDispatch {
-				c.dispatchThrottler.Throttle(ctx)
+			_ = atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			if c.throttlingEnabled {
+				c.throttle(ctx, resolutionMetadata)
 			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
@@ -558,9 +570,9 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			currentNumDispatch := atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			if c.throttlingEnabled && c.throttlingThreshold > currentNumDispatch {
-				c.dispatchThrottler.Throttle(ctx)
+			_ = atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			if c.throttlingEnabled {
+				c.throttle(ctx, resolutionMetadata)
 			}
 			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
@@ -615,4 +627,31 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 	}
 
 	return nil
+}
+
+func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionMetadata) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	defer span.End()
+	span.SetAttributes(attribute.String("resolver_type", "DispatchThrottlingCheckResolver"))
+
+	currentNumDispatch := *metadata.DispatchCount
+	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
+
+	threshold := c.throttlingThreshold
+
+	maxThreshold := c.maxThrottlingThreshold
+	if maxThreshold == 0 {
+		maxThreshold = c.maxThrottlingThreshold
+	}
+
+	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
+
+	if thresholdInCtx > 0 {
+		threshold = min(thresholdInCtx, maxThreshold)
+	}
+
+	if currentNumDispatch > threshold {
+		metadata.WasThrottled.Store(true)
+		c.dispatchThrottler.Throttle(ctx)
+	}
 }

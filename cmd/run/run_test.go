@@ -1149,6 +1149,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
 
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
+
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())

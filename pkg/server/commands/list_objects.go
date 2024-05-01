@@ -56,9 +56,10 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	dispatchThrottler   throttler.Throttler
-	throttlingEnabled   bool
-	throttlingThreshold uint32
+	dispatchThrottler      throttler.Throttler
+	throttlingEnabled      bool
+	throttlingThreshold    uint32
+	maxThrottlingThreshold uint32
 
 	checkResolver graph.CheckResolver
 }
@@ -69,12 +70,16 @@ type ListObjectsResolutionMetadata struct {
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCount *uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ListObjectsResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
 		DispatchCount:       new(uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 
@@ -105,7 +110,13 @@ func WithDispatchThrottlingEnabled(enabled bool) ListObjectsQueryOption {
 
 func WithDispatchThrottlingThreshold(threshold uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.listObjectsMaxResults = threshold
+		d.throttlingThreshold = threshold
+	}
+}
+
+func WithMaxDispatchThrottlingThreshold(threshold uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.maxThrottlingThreshold = threshold
 	}
 }
 
@@ -164,7 +175,8 @@ func NewListObjectsQuery(
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		throttlingEnabled:       serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
+		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+		maxThrottlingThreshold:  serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
 		dispatchThrottler:       &throttler.NoopThrottler{},
 		checkResolver:           checkResolver,
 	}
@@ -287,6 +299,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithDispatchThrottlingEnabled(q.throttlingEnabled),
 			reverseexpand.WithDispatchThrottlingThreshold(q.throttlingThreshold),
+			reverseexpand.WithMaxDispatchThrottlingThreshold(q.maxThrottlingThreshold),
 			reverseexpand.WithLogger(q.logger),
 		)
 

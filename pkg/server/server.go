@@ -123,14 +123,15 @@ type Server struct {
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
 
-	dispatchThrottlingCheckResolverEnabled   bool
-	dispatchThrottlingCheckResolverFrequency time.Duration
-	dispatchThrottlingDefaultThreshold       uint32
-	dispatchThrottlingMaxThreshold           uint32
+	checkDispatchThrottlingEnabled          bool
+	checkDispatchThrottlingFrequency        time.Duration
+	checkDispatchThrottlingDefaultThreshold uint32
+	checkDispatchThrottlingMaxThreshold     uint32
 
-	listObjectsDispatchThrottlingEnabled   bool
-	listObjectsDispatchThrottlingFrequency time.Duration
-	listObjectsDispatchThrottlingThreshold uint32
+	listObjectsDispatchThrottlingEnabled      bool
+	listObjectsDispatchThrottlingFrequency    time.Duration
+	listObjectsDispatchDefaultThreshold       uint32
+	listObjectsDispatchThrottlingMaxThreshold uint32
 
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
@@ -297,7 +298,7 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 // threshold over requests whose dispatch count exceeds the configured threshold.
 func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dispatchThrottlingCheckResolverEnabled = enabled
+		s.checkDispatchThrottlingEnabled = enabled
 	}
 }
 
@@ -310,23 +311,23 @@ func WithDispatchThrottlingCheckResolverEnabled(enabled bool) OpenFGAServiceV1Op
 // which diminishes the value of the throttling.
 func WithDispatchThrottlingCheckResolverFrequency(frequency time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dispatchThrottlingCheckResolverFrequency = frequency
+		s.checkDispatchThrottlingFrequency = frequency
 	}
 }
 
 // WithDispatchThrottlingCheckResolverThreshold define the number of dispatches to be throttled.
-// In addition, it will update dispatchThrottlingMaxThreshold if required.
+// In addition, it will update checkDispatchThrottlingMaxThreshold if required.
 func WithDispatchThrottlingCheckResolverThreshold(defaultThreshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dispatchThrottlingDefaultThreshold = defaultThreshold
+		s.checkDispatchThrottlingDefaultThreshold = defaultThreshold
 	}
 }
 
 // WithDispatchThrottlingCheckResolverMaxThreshold define the maximum threshold values allowed
-// It will ensure dispatchThrottlingMaxThreshold will never be smaller than threshold.
+// It will ensure checkDispatchThrottlingMaxThreshold will never be smaller than threshold.
 func WithDispatchThrottlingCheckResolverMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.dispatchThrottlingMaxThreshold = maxThreshold
+		s.checkDispatchThrottlingMaxThreshold = maxThreshold
 	}
 }
 
@@ -366,7 +367,15 @@ func WithListObjectsDispatchThrottlingFrequency(frequency time.Duration) OpenFGA
 // for List Objects requests.
 func WithListObjectsDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.listObjectsDispatchThrottlingThreshold = threshold
+		s.listObjectsDispatchDefaultThreshold = threshold
+	}
+}
+
+// WithListObjectsDispatchThrottlingMaxThreshold define the maximum threshold values allowed
+// It will ensure listObjectsDispatchThrottlingMaxThreshold will never be smaller than threshold.
+func WithListObjectsDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDispatchThrottlingMaxThreshold = maxThreshold
 	}
 }
 
@@ -396,13 +405,14 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
 		serviceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 
-		dispatchThrottlingCheckResolverEnabled:   serverconfig.DefaultCheckDispatchThrottlingEnabled,
-		dispatchThrottlingCheckResolverFrequency: serverconfig.DefaultCheckDispatchThrottlingFrequency,
-		dispatchThrottlingDefaultThreshold:       serverconfig.DefaultCheckDispatchThrottlingDefaultThreshold,
+		checkDispatchThrottlingEnabled:          serverconfig.DefaultCheckDispatchThrottlingEnabled,
+		checkDispatchThrottlingFrequency:        serverconfig.DefaultCheckDispatchThrottlingFrequency,
+		checkDispatchThrottlingDefaultThreshold: serverconfig.DefaultCheckDispatchThrottlingDefaultThreshold,
 
-		listObjectsDispatchThrottlingEnabled:   serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-		listObjectsDispatchThrottlingFrequency: serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
-		listObjectsDispatchThrottlingThreshold: serverconfig.DefaultListObjectsDispatchThrottlingThreshold,
+		listObjectsDispatchThrottlingEnabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+		listObjectsDispatchThrottlingFrequency:    serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
+		listObjectsDispatchDefaultThreshold:       serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+		listObjectsDispatchThrottlingMaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
 	}
 
 	for _, opt := range opts {
@@ -419,25 +429,25 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	cycleDetectionCheckResolver.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
-	if s.dispatchThrottlingCheckResolverEnabled {
+	if s.checkDispatchThrottlingEnabled {
 		s.logger.Info("Enabling Check dispatch throttling",
-			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
-			zap.Uint32("DefaultThreshold", s.dispatchThrottlingDefaultThreshold),
-			zap.Uint32("MaxThreshold", s.dispatchThrottlingMaxThreshold),
+			zap.Duration("Frequency", s.checkDispatchThrottlingFrequency),
+			zap.Uint32("DefaultThreshold", s.checkDispatchThrottlingDefaultThreshold),
+			zap.Uint32("MaxThreshold", s.checkDispatchThrottlingMaxThreshold),
 		)
 
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
-			DefaultThreshold: s.dispatchThrottlingDefaultThreshold,
-			MaxThreshold:     s.dispatchThrottlingMaxThreshold,
+			DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
+			MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
 		}
 
-		if s.dispatchThrottlingMaxThreshold != 0 && s.dispatchThrottlingDefaultThreshold > s.dispatchThrottlingMaxThreshold {
+		if s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
 			return nil, fmt.Errorf("default dispatch throttling threshold must be equal or smaller than max dispatch threshold")
 		}
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
 			&dispatchThrottlingConfig,
-			throttler.NewDispatchThrottler(s.dispatchThrottlingCheckResolverFrequency))
+			throttler.NewDispatchThrottler(s.checkDispatchThrottlingFrequency))
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
@@ -447,7 +457,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.logger.Info("Enabling ListObjects dispatch throttling",
 			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
-			zap.Uint32("Threshold", s.listObjectsDispatchThrottlingThreshold),
+			zap.Uint32("DefaultThreshold", s.listObjectsDispatchDefaultThreshold),
+			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
 		)
 
 		s.listObjectsDispatchThrottler = throttler.NewDispatchThrottler(s.listObjectsDispatchThrottlingFrequency)
@@ -547,7 +558,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithDispatchThrottler(s.listObjectsDispatchThrottler),
 		commands.WithDispatchThrottlingEnabled(s.listObjectsDispatchThrottlingEnabled),
-		commands.WithDispatchThrottlingThreshold(s.listObjectsDispatchThrottlingThreshold),
+		commands.WithDispatchThrottlingThreshold(s.listObjectsDispatchDefaultThreshold),
+		commands.WithMaxDispatchThrottlingThreshold(s.listObjectsDispatchThrottlingMaxThreshold),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
@@ -574,6 +586,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			return nil, serverErrors.ValidationError(err)
 		}
 
+		if errors.Is(err, context.DeadlineExceeded) && result.ResolutionMetadata.WasThrottled.Load() {
+			return nil, serverErrors.ThrottledTimeout
+		}
 		return nil, err
 	}
 	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
@@ -644,7 +659,8 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithDispatchThrottler(s.listObjectsDispatchThrottler),
 		commands.WithDispatchThrottlingEnabled(s.listObjectsDispatchThrottlingEnabled),
-		commands.WithDispatchThrottlingThreshold(s.listObjectsDispatchThrottlingThreshold),
+		commands.WithDispatchThrottlingThreshold(s.listObjectsDispatchDefaultThreshold),
+		commands.WithMaxDispatchThrottlingThreshold(s.listObjectsDispatchThrottlingMaxThreshold),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
