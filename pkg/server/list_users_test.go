@@ -316,7 +316,7 @@ func TestListUsers_Deadline(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 
-		model := `
+		modelStr := `
 		model
 		schema 1.1
 		type user
@@ -335,7 +335,7 @@ func TestListUsers_Deadline(t *testing.T) {
 			"group:fga#member@user:maria",
 		}
 
-		storeID, modelID := test.BootstrapFGAStore(t, ds, model, tuples)
+		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, tuples)
 
 		ds = mocks.NewMockSlowDataStorage(ds, 20*time.Millisecond)
 		t.Cleanup(ds.Close)
@@ -349,7 +349,7 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: modelID,
+			AuthorizationModelId: model.GetId(),
 			Object: &openfgav1.Object{
 				Type: "document",
 				Id:   "1",

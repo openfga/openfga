@@ -487,6 +487,11 @@ func TestParseTupleString(t *testing.T) {
 			tuple: NewTupleKey("document:1", "viewer", "group:eng#member"),
 		},
 		{
+			name:  "well_formed_user_wildcard",
+			str:   "document:1#viewer@user:*",
+			tuple: NewTupleKey("document:1", "viewer", "user:*"),
+		},
+		{
 			name:        "missing_user_field",
 			str:         "document:1#viewer",
 			expectedErr: true,

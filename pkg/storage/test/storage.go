@@ -59,13 +59,13 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 
 // BootstrapFGAStore is a utility to write an FGA model and relationship tuples to a datastore.
 // It doesn't validate the model. It validates the format of the tuples, but not the types within them.
-// It returns the (store_id, model_id), respectively.
+// It returns the store_id and FGA AuthorizationModel, respectively.
 func BootstrapFGAStore(
 	t require.TestingT,
 	ds storage.OpenFGADatastore,
 	model string,
 	tupleStrs []string,
-) (string, string) {
+) (string, *openfgav1.AuthorizationModel) {
 	storeID := ulid.Make().String()
 
 	fgaModel := testutils.MustTransformDSLToProtoWithID(model)
@@ -82,5 +82,5 @@ func BootstrapFGAStore(
 		require.NoError(t, err)
 	}
 
-	return storeID, fgaModel.GetId()
+	return storeID, fgaModel
 }
