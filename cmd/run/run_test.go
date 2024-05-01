@@ -886,7 +886,6 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	expectedMetrics := []string{
 		"openfga_datastore_query_count",
-		"openfga_request_duration_by_query_count_ms",
 		"openfga_request_duration_ms",
 		"grpc_server_handling_seconds",
 		"openfga_datastore_bounded_read_delay_ms",
@@ -1134,6 +1133,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
 
+	val = res.Get("properties.checkDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.MaxThreshold)
+
 	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
@@ -1145,6 +1148,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
+
+	val = res.Get("properties.requestTimeout.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1229,6 +1236,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1243,6 +1251,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
 		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
+		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 
 		return nil
 	}
