@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/testing/testpb"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -18,15 +20,17 @@ type pingService struct {
 }
 
 func (s *pingService) Ping(ctx context.Context, req *testpb.PingRequest) (*testpb.PingResponse, error) {
-	_, ok := FromContext(ctx)
-	require.True(s.T, ok)
+	id, found := grpc_ctxtags.Extract(ctx).Values()[requestIDKey]
+	require.True(s.T, found)
+	require.NotEmpty(s.T, id)
 
 	return s.TestServiceServer.Ping(ctx, req)
 }
 
 func (s *pingService) PingStream(ss testpb.TestService_PingStreamServer) error {
-	_, ok := FromContext(ss.Context())
-	require.True(s.T, ok)
+	id, found := grpc_ctxtags.Extract(ss.Context()).Values()[requestIDKey]
+	require.True(s.T, found)
+	require.NotEmpty(s.T, id)
 
 	return s.TestServiceServer.PingStream(ss)
 }
@@ -36,8 +40,14 @@ func TestRequestIDTestSuite(t *testing.T) {
 		InterceptorTestSuite: &testpb.InterceptorTestSuite{
 			TestService: &pingService{&testpb.TestPingService{}, t},
 			ServerOpts: []grpc.ServerOption{
-				grpc.UnaryInterceptor(NewUnaryInterceptor()),
-				grpc.StreamInterceptor(NewStreamingInterceptor()),
+				grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
+					grpc_ctxtags.UnaryServerInterceptor(),
+					NewUnaryInterceptor(),
+				)),
+				grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
+					grpc_ctxtags.StreamServerInterceptor(),
+					NewStreamingInterceptor(),
+				)),
 			},
 		},
 	}

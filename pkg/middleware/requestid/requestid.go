@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	requestIDCtxKey   = "request-id-context-key"
-	requestIDKey 			= "request_id"
+	requestIDKey      = "request_id"
 	requestIDTraceKey = "request_id"
 
 	// RequestIDHeader defines the HTTP header that is set in each HTTP response
@@ -28,19 +27,8 @@ func InitID(ctx context.Context) string {
 	spanCtx := trace.SpanContextFromContext(ctx)
 	if spanCtx.TraceID().IsValid() {
 		return spanCtx.TraceID().String()
-	} 
-	return ulid.Make().String()
-}
-
-// FromContext extracts the request-id from the context, if it exists.
-func FromContext(ctx context.Context) (string, bool) {
-	if md, ok := metadata.FromOutgoingContext(ctx); ok {
-		if vals := md.Get(requestIDCtxKey); len(vals) > 0 {
-			return vals[0], true
-		}
 	}
-
-	return "", false
+	return ulid.Make().String()
 }
 
 // NewUnaryInterceptor creates a grpc.UnaryServerInterceptor which must
@@ -59,9 +47,8 @@ func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		requestID := InitID(ctx)
 
-		ctx = metadata.AppendToOutgoingContext(ctx, requestIDCtxKey, requestID)
+		grpc_ctxtags.Extract(ctx).Set(requestIDKey, requestID) // CtxTags used by other middlewares
 
-		grpc_ctxtags.Extract(ctx).Set(requestIDKey, requestID)	// CtxTags used by other middlewares
 		_ = grpc.SetHeader(ctx, metadata.Pairs(RequestIDHeader, requestID))
 
 		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
