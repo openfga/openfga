@@ -125,12 +125,11 @@ func (l *listUsersQuery) ListUsers(
 	ctx, span := tracer.Start(ctx, "ListUsers")
 	defer span.End()
 
-	cancellableCtx, cancelContextIfMaxResultsMet := context.WithCancel(ctx)
-	defer cancelContextIfMaxResultsMet()
+	cancellableCtx, cancelCtx := context.WithCancel(ctx)
+	defer cancelCtx()
 	if l.deadline != 0 {
-		var cancelContextIfDeadlineHit context.CancelFunc
-		cancellableCtx, cancelContextIfDeadlineHit = context.WithTimeout(cancellableCtx, l.deadline)
-		defer cancelContextIfDeadlineHit()
+		cancellableCtx, cancelCtx = context.WithTimeout(cancellableCtx, l.deadline)
+		defer cancelCtx()
 	}
 	l.ds = storagewrappers.NewCombinedTupleReader(
 		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
@@ -166,7 +165,7 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
-	done := make(chan struct{}, 1)
+	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
 		for foundObject := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundObject)] = struct{}{}
@@ -178,15 +177,16 @@ func (l *listUsersQuery) ListUsers(
 			}
 		}
 
-		done <- struct{}{}
+		doneWithFoundUsersCh <- struct{}{}
 	}()
 
 	go func() {
-		defer close(foundUsersCh)
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
-		if resp := l.expand(cancellableCtx, internalRequest, foundUsersCh); resp.err != nil {
+		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
+		close(foundUsersCh)
+
+		if resp.err != nil {
 			expandErrCh <- resp.err
-			return
 		}
 	}()
 
@@ -194,10 +194,16 @@ func (l *listUsersQuery) ListUsers(
 	case err := <-expandErrCh:
 		telemetry.TraceError(span, err)
 		return nil, err
-	case <-done:
-		cancelContextIfMaxResultsMet()
+	case <-doneWithFoundUsersCh:
+		break
+	case <-cancellableCtx.Done():
+		// to avoid a race on the 'foundUsersUnique' map below, wait for the range over the channel to close
+		<-doneWithFoundUsersCh
 		break
 	}
+
+	cancelCtx()
+
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
 	for foundUser := range foundUsersUnique {
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
