@@ -11,19 +11,21 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 5 * time.Minute
+		cfg.RequestTimeout = 0
 		cfg.HTTP.UpstreamTimeout = 2 * time.Second
 
 		err := cfg.Verify()
-		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+		require.EqualError(t, err, "configured request timeout (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
 	})
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListUsersDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 2 * time.Second
 		cfg.ListUsersDeadline = 5 * time.Minute
+		cfg.RequestTimeout = 0
 		cfg.HTTP.UpstreamTimeout = 2 * time.Second
 
 		err := cfg.Verify()
-		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listUsersDeadline' config (5m0s)")
+		require.EqualError(t, err, "configured request timeout (2s) cannot be lower than 'listUsersDeadline' config (5m0s)")
 	})
 
 	t.Run("maxConcurrentReadsForListUsers_not_zero", func(t *testing.T) {
@@ -218,7 +220,7 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("list_objects_deadline_request_timeout", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.RequestTimeout = 1 * time.Second
+		cfg.RequestTimeout = 500 * time.Millisecond
 		cfg.ListObjectsDeadline = 4 * time.Second
 
 		err := cfg.Verify()

@@ -277,31 +277,25 @@ type Config struct {
 }
 
 func (cfg *Config) Verify() error {
-	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
+	configuredTimeout := DefaultContextTimeout(cfg)
+
+	if cfg.ListObjectsDeadline > configuredTimeout {
 		return fmt.Errorf(
-			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
-			cfg.HTTP.UpstreamTimeout,
+			"configured request timeout (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			configuredTimeout,
 			cfg.ListObjectsDeadline,
 		)
 	}
-	if cfg.ListUsersDeadline > cfg.HTTP.UpstreamTimeout {
+	if cfg.ListUsersDeadline > configuredTimeout {
 		return fmt.Errorf(
-			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listUsersDeadline' config (%s)",
-			cfg.HTTP.UpstreamTimeout,
+			"configured request timeout (%s) cannot be lower than 'listUsersDeadline' config (%s)",
+			configuredTimeout,
 			cfg.ListUsersDeadline,
 		)
 	}
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
-	}
-
-	if cfg.RequestTimeout > 0 && cfg.ListObjectsDeadline > cfg.RequestTimeout {
-		return fmt.Errorf(
-			"config 'requestTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
-			cfg.RequestTimeout,
-			cfg.ListObjectsDeadline,
-		)
 	}
 
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
