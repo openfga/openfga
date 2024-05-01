@@ -589,7 +589,6 @@ func (c *LocalChecker) ResolveCheck(
 	relation := tupleKey.GetRelation()
 
 	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
-	userType, _ := tuple.SplitObject(req.GetTupleKey().GetUser())
 
 	// Check(document:1#viewer@document:1#viewer) will always return true
 	if relation == userRelation && object == userObject {
@@ -607,7 +606,7 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	areTypesConnected, err := c.areTypesConnected(typesys, req.GetTupleKey().GetUser(), userType, userRelation, objectType, relation)
+	areTypesConnected, err := c.areTypesConnected(typesys, req.GetTupleKey())
 	if err != nil {
 		return nil, err
 	}
@@ -630,25 +629,24 @@ func (c *LocalChecker) ResolveCheck(
 }
 
 // areTypesConnected returns true if it is possible to reach objectType#relation starting from userType[#userRelation].
-func (c *LocalChecker) areTypesConnected(typesys *typesystem.TypeSystem, user, userType, userRelation, objectType, relation string) (bool, error) {
-	g := New(typesys)
-	var sourceRel *openfgav1.RelationReference
+func (c *LocalChecker) areTypesConnected(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) (bool, error) {
+	_, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+	userType, _ := tuple.SplitObject(tk.GetUser())
+	objectType, _ := tuple.SplitObject(tk.GetObject())
+
+	source := userType
 	switch userRelation {
 	case "":
-		if tuple.IsTypedWildcard(user) {
-			sourceRel = typesystem.WildcardRelationReference(userType)
-		} else {
-			sourceRel = typesystem.DirectRelationReference(userType, "")
+		if tuple.IsTypedWildcard(tk.GetUser()) {
+			source = fmt.Sprintf("%s:*", userType)
 		}
 	default:
-		sourceRel = typesystem.DirectRelationReference(userType, userRelation)
+		source = fmt.Sprintf("%s#%s", userType, userRelation)
 	}
 
-	edges, err := g.GetRelationshipEdges(typesystem.DirectRelationReference(objectType, relation), sourceRel)
-	if err != nil {
-		return false, err
-	}
-	return len(edges) > 0, nil
+	target := fmt.Sprintf("%s#%s", objectType, tk.GetRelation())
+
+	return typesys.GetGraph().AreConnected(source, target)
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
