@@ -447,7 +447,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
 			&dispatchThrottlingConfig,
-			throttler.NewDispatchThrottler(s.checkDispatchThrottlingFrequency))
+			throttler.NewThrottler(s.checkDispatchThrottlingFrequency))
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
@@ -461,7 +461,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
 		)
 
-		s.listObjectsDispatchThrottler = throttler.NewDispatchThrottler(s.listObjectsDispatchThrottlingFrequency)
+		s.listObjectsDispatchThrottler = throttler.NewThrottler(s.listObjectsDispatchThrottlingFrequency)
 	}
 
 	if s.checkQueryCacheEnabled {

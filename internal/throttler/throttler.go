@@ -37,13 +37,13 @@ type throttler struct {
 	done            chan struct{}
 }
 
-// NewDispatchThrottler constructs a throttler which can be used to control the rate of dispatched sub problems in FGA queries.
-func NewDispatchThrottler(frequency time.Duration) Throttler {
-	return newDispatchThrottler(frequency)
+// NewThrottler constructs a throttler which can be used to control the rate of dispatched sub problems in FGA queries.
+func NewThrottler(frequency time.Duration) Throttler {
+	return newThrottler(frequency)
 }
 
 // Returns a throttler instead of Throttler for testing purpose to be used internally.
-func newDispatchThrottler(frequency time.Duration) *throttler {
+func newThrottler(frequency time.Duration) *throttler {
 	dispatchThrottler := &throttler{
 		ticker:          time.NewTicker(frequency),
 		throttlingQueue: make(chan struct{}),

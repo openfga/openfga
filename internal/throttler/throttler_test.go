@@ -19,7 +19,7 @@ func mockThrottlerTest(ctx context.Context, throttler Throttler, r *int) {
 
 func TestDispatchThrottler(t *testing.T) {
 	t.Run("throttler_will_release_only_when_ticked", func(t *testing.T) {
-		testThrottler := newDispatchThrottler(1 * time.Hour)
+		testThrottler := newThrottler(1 * time.Hour)
 
 		i := 0
 		var goFuncDone sync.WaitGroup
