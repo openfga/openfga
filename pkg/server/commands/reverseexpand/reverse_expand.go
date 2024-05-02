@@ -10,7 +10,6 @@ import (
 
 	"github.com/openfga/openfga/internal/throttler"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
@@ -336,7 +335,8 @@ func (c *ReverseExpandQuery) execute(
 	pool.WithCancelOnError()
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
-	var errs *multierror.Error
+
+	var errs error
 
 LoopOnEdges:
 	for _, edge := range edges {
@@ -370,7 +370,7 @@ LoopOnEdges:
 			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
-				errs = multierror.Append(errs, err)
+				errs = errors.Join(errs, err)
 				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
@@ -382,13 +382,10 @@ LoopOnEdges:
 		}
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		errs = multierror.Append(errs, err)
-	}
-	if errs.ErrorOrNil() != nil {
-		telemetry.TraceError(span, errs.ErrorOrNil())
-		return errs.ErrorOrNil()
+	errs = errors.Join(errs, pool.Wait())
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 
 	return nil
@@ -525,7 +522,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
-	var errs *multierror.Error
+	var errs error
 
 LoopOnIterator:
 	for {
@@ -534,19 +531,19 @@ LoopOnIterator:
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			break LoopOnIterator
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			continue
 		}
 
 		if !condEvalResult.ConditionMet {
 			if len(condEvalResult.MissingParameters) > 0 {
-				errs = multierror.Append(errs, condition.NewEvaluationError(
+				errs = errors.Join(errs, condition.NewEvaluationError(
 					tk.GetCondition().GetName(),
 					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
 						tuple.TupleKeyToString(tk),
@@ -592,9 +589,9 @@ LoopOnIterator:
 		})
 	}
 
-	errs = multierror.Append(errs, pool.Wait())
-	if errs.ErrorOrNil() != nil {
-		telemetry.TraceError(span, errs.ErrorOrNil())
+	errs = errors.Join(errs, pool.Wait())
+	if errs != nil {
+		telemetry.TraceError(span, errs)
 		return errs
 	}
 

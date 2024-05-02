@@ -11,7 +11,6 @@ import (
 
 	"github.com/openfga/openfga/internal/throttler"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -449,7 +448,7 @@ func (q *ListObjectsQuery) Execute(
 
 	objects := make([]string, 0)
 
-	var errs *multierror.Error
+	var errs error
 
 	for result := range resultsChan {
 		if result.Err != nil {
@@ -458,7 +457,7 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-				errs = multierror.Append(errs, result.Err)
+				errs = errors.Join(errs, result.Err)
 				continue
 			}
 
@@ -472,7 +471,7 @@ func (q *ListObjectsQuery) Execute(
 		objects = append(objects, result.ObjectID)
 	}
 
-	if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
+	if len(objects) < int(maxResults) && errs != nil {
 		return nil, errs
 	}
 
