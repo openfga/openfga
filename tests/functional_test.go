@@ -31,7 +31,7 @@ func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
 	StartServer(t, cfg)
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 	return client
@@ -345,7 +345,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 
