@@ -4,6 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -33,15 +37,18 @@ func TestNewListObjectsQuery(t *testing.T) {
 func TestListObjectsDispatchCount(t *testing.T) {
 	ds := memory.New()
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctrl := gomock.NewController(t)
+	mockThrottler := mocks.NewMockThrottler(ctrl)
 
 	tests := []struct {
-		name                  string
-		model                 string
-		tuples                []*openfgav1.TupleKey
-		objectType            string
-		relation              string
-		user                  string
-		expectedDispatchCount uint32
+		name                    string
+		model                   string
+		tuples                  []*openfgav1.TupleKey
+		objectType              string
+		relation                string
+		user                    string
+		expectedDispatchCount   uint32
+		expectedThrottlingValue int
 	}{
 		{
 			name: "test_direct_relation",
@@ -59,10 +66,11 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
 			},
-			objectType:            "folder",
-			relation:              "viewer",
-			user:                  "user:jon",
-			expectedDispatchCount: 3,
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    "user:jon",
+			expectedDispatchCount:   3,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "test_union_relation",
@@ -81,10 +89,11 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
 			},
-			objectType:            "folder",
-			relation:              "viewer",
-			user:                  "user:jon",
-			expectedDispatchCount: 4,
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    "user:jon",
+			expectedDispatchCount:   4,
+			expectedThrottlingValue: 1,
 		},
 		{
 			name: "test_intersection_relation",
@@ -103,10 +112,11 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
 			},
-			objectType:            "folder",
-			relation:              "can_delete",
-			user:                  "user:jon",
-			expectedDispatchCount: 2,
+			objectType:              "folder",
+			relation:                "can_delete",
+			user:                    "user:jon",
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "no_tuples",
@@ -120,11 +130,12 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define can_delete: [user] and editor 
 			`,
-			tuples:                []*openfgav1.TupleKey{},
-			objectType:            "folder",
-			relation:              "can_delete",
-			user:                  "user:jon",
-			expectedDispatchCount: 0,
+			tuples:                  []*openfgav1.TupleKey{},
+			objectType:              "folder",
+			relation:                "can_delete",
+			user:                    "user:jon",
+			expectedDispatchCount:   0,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "direct_userset_dispatch",
@@ -141,10 +152,11 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
 			},
-			objectType:            "group",
-			relation:              "member",
-			user:                  "user:jon",
-			expectedDispatchCount: 2,
+			objectType:              "group",
+			relation:                "member",
+			user:                    "user:jon",
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "computed_userset_dispatch",
@@ -161,10 +173,11 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "editor", "user:jon"),
 			},
-			objectType:            "document",
-			relation:              "viewer",
-			user:                  "user:jon",
-			expectedDispatchCount: 2,
+			objectType:              "document",
+			relation:                "viewer",
+			user:                    "user:jon",
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
 		},
 	}
 	for _, test := range tests {
@@ -190,7 +203,12 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
+				WithDispatchThrottler(mockThrottler),
+				WithDispatchThrottlingEnabled(true),
+				WithDispatchThrottlingThreshold(3),
+				WithMaxDispatchThrottlingThreshold(0),
 			)
+			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
@@ -202,6 +220,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, test.expectedDispatchCount, *resp.ResolutionMetadata.DispatchCount)
+			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.WasThrottled.Load())
 		})
 	}
 }
