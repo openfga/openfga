@@ -443,3 +443,109 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 		}
 	}
 }
+
+func TestReverseExpandThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+  schema 1.1
+type user
+type document
+  relations
+	define viewer: [user]`)
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		ctx := context.Background()
+		reverseExpandQuery := NewReverseExpandQuery(
+			mockDatastore,
+			typesystem.New(model),
+			WithDispatchThrottler(mockThrottler),
+			WithDispatchThrottlingThreshold(200),
+			WithMaxDispatchThrottlingThreshold(200),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+		dispatchCountValue := uint32(190)
+		metadata := NewResolutionMetadata()
+		metadata.DispatchCount = &dispatchCountValue
+
+		reverseExpandQuery.throttle(ctx, metadata)
+	})
+
+	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		ctx := context.Background()
+		reverseExpandQuery := NewReverseExpandQuery(
+			mockDatastore,
+			typesystem.New(model),
+			WithDispatchThrottler(mockThrottler),
+			WithDispatchThrottlingThreshold(200),
+			WithMaxDispatchThrottlingThreshold(200),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(201)
+		metadata := NewResolutionMetadata()
+		metadata.DispatchCount = &dispatchCountValue
+
+		reverseExpandQuery.throttle(ctx, metadata)
+	})
+
+	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		ctx := context.Background()
+		reverseExpandQuery := NewReverseExpandQuery(
+			mockDatastore,
+			typesystem.New(model),
+			WithDispatchThrottler(mockThrottler),
+			WithDispatchThrottlingThreshold(200),
+			WithMaxDispatchThrottlingThreshold(0),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+		dispatchCountValue := uint32(190)
+		metadata := NewResolutionMetadata()
+		metadata.DispatchCount = &dispatchCountValue
+
+		reverseExpandQuery.throttle(ctx, metadata)
+	})
+
+	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		ctx := context.Background()
+		reverseExpandQuery := NewReverseExpandQuery(
+			mockDatastore,
+			typesystem.New(model),
+			WithDispatchThrottler(mockThrottler),
+			WithDispatchThrottlingThreshold(200),
+			WithMaxDispatchThrottlingThreshold(210),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+		dispatchCountValue := uint32(190)
+		metadata := NewResolutionMetadata()
+		metadata.DispatchCount = &dispatchCountValue
+
+		reverseExpandQuery.throttle(ctx, metadata)
+	})
+
+	t.Run("should_respect_max_threshold", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		ctx := context.Background()
+		reverseExpandQuery := NewReverseExpandQuery(
+			mockDatastore,
+			typesystem.New(model),
+			WithDispatchThrottler(mockThrottler),
+			WithDispatchThrottlingThreshold(200),
+			WithMaxDispatchThrottlingThreshold(0),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+		dispatchCountValue := uint32(190)
+		metadata := NewResolutionMetadata()
+		metadata.DispatchCount = &dispatchCountValue
+
+		reverseExpandQuery.throttle(ctx, metadata)
+	})
+}
