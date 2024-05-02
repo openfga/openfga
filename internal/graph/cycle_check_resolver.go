@@ -30,13 +30,8 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreID()),
-		attribute.String("resolver_type", "CycleDetectionCheckResolver"),
-		attribute.String("tuple_key", req.GetTupleKey().String()),
-		attribute.Bool("cycle_detected", false),
-	))
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Bool("cycle_detected", false))
 
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
