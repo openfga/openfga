@@ -227,7 +227,9 @@ func NewRunCommand() *cobra.Command {
     
     Enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.`)
 
-	flags.Duration("dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, "DEPRECATED: Use check-dispatch-throttling-frequency instead. defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch check requests are dispatched.")
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead. 
+    
+    Defines how frequent Check dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch Check requests are dispatched.`)
 
 	flags.Uint32("dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, "DEPRECATED: Use check-dispatch-throttling-threshold instead. define the default threshold on number of dispatches above which requests will be throttled.")
 
