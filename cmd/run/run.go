@@ -223,7 +223,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
 
-	flags.Bool("dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, "DEPRECATED: Use check-dispatch-throttling-enabled instead.enable throttling for check requests when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
+    
+    Enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.`)
 
 	flags.Duration("dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, "DEPRECATED: Use check-dispatch-throttling-frequency instead. defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch check requests are dispatched.")
 
