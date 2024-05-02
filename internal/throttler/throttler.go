@@ -29,22 +29,22 @@ func (r *NoopThrottler) Throttle(ctx context.Context) {
 func (r *NoopThrottler) Close() {
 }
 
-// DispatchThrottler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
+// throttler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
 // Throttling will start to kick in when the dispatch count exceeds the configured dispatch threshold.
-type DispatchThrottler struct {
+type throttler struct {
 	ticker          *time.Ticker
 	throttlingQueue chan struct{}
 	done            chan struct{}
 }
 
-// NewDispatchThrottler constructs a DispatchThrottler which can be used to control the rate of dispatched sub problems in FGA queries.
+// NewDispatchThrottler constructs a throttler which can be used to control the rate of dispatched sub problems in FGA queries.
 func NewDispatchThrottler(frequency time.Duration) Throttler {
 	return newDispatchThrottler(frequency)
 }
 
-// Returns a DispatchThrottler instead of Throttler for testing purpose to be used internally.
-func newDispatchThrottler(frequency time.Duration) *DispatchThrottler {
-	dispatchThrottler := &DispatchThrottler{
+// Returns a throttler instead of Throttler for testing purpose to be used internally.
+func newDispatchThrottler(frequency time.Duration) *throttler {
+	dispatchThrottler := &throttler{
 		ticker:          time.NewTicker(frequency),
 		throttlingQueue: make(chan struct{}),
 		done:            make(chan struct{}),
@@ -65,7 +65,7 @@ var (
 	}, []string{"grpc_service", "grpc_method"})
 )
 
-func (r *DispatchThrottler) nonBlockingSend(signalChan chan struct{}) {
+func (r *throttler) nonBlockingSend(signalChan chan struct{}) {
 	select {
 	case signalChan <- struct{}{}:
 		// message sent
@@ -74,7 +74,7 @@ func (r *DispatchThrottler) nonBlockingSend(signalChan chan struct{}) {
 	}
 }
 
-func (r *DispatchThrottler) runTicker() {
+func (r *throttler) runTicker() {
 	for {
 		select {
 		case <-r.done:
@@ -88,14 +88,14 @@ func (r *DispatchThrottler) runTicker() {
 	}
 }
 
-func (r *DispatchThrottler) Close() {
+func (r *throttler) Close() {
 	r.done <- struct{}{}
 }
 
 // Throttle provides a synchronous blocking mechanism that will block if the currentNumDispatch exceeds the configured dispatch threshold.
 // It will block until a value is produced on the underlying throttling queue channel,
 // which is produced by periodically sending a value on the channel based on the configured ticker frequency.
-func (r *DispatchThrottler) Throttle(ctx context.Context) {
+func (r *throttler) Throttle(ctx context.Context) {
 	grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
 
 	start := time.Now()
