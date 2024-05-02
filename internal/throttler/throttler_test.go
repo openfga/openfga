@@ -6,10 +6,7 @@ import (
 	"testing"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/stretchr/testify/require"
-
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func mockThrottlerTest(ctx context.Context, throttler Throttler, r *int) {
@@ -31,7 +28,6 @@ func TestDispatchThrottler(t *testing.T) {
 
 		go func() {
 			goFuncInitiated.Done()
-			ctx = grpc_ctxtags.SetInContext(ctx, grpc_ctxtags.NewTags())
 			mockThrottlerTest(ctx, testThrottler, &i)
 			goFuncDone.Done()
 		}()
@@ -42,6 +38,5 @@ func TestDispatchThrottler(t *testing.T) {
 		testThrottler.nonBlockingSend(testThrottler.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, i)
-		require.True(t, grpc_ctxtags.Extract(ctx).Has(telemetry.Throttled))
 	})
 }

@@ -6,7 +6,6 @@ import (
 	"context"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -96,8 +95,6 @@ func (r *throttler) Close() {
 // It will block until a value is produced on the underlying throttling queue channel,
 // which is produced by periodically sending a value on the channel based on the configured ticker frequency.
 func (r *throttler) Throttle(ctx context.Context) {
-	grpc_ctxtags.Extract(ctx).Set(telemetry.Throttled, true)
-
 	start := time.Now()
 	<-r.throttlingQueue
 	end := time.Now()
