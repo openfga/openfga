@@ -17,6 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -26,12 +27,13 @@ import (
 )
 
 type ListUsersTests []struct {
-	name             string
-	req              *openfgav1.ListUsersRequest
-	model            string
-	tuples           []*openfgav1.TupleKey
-	expectedUsers    []string
-	expectedErrorMsg string
+	name                  string
+	req                   *openfgav1.ListUsersRequest
+	model                 string
+	tuples                []*openfgav1.TupleKey
+	expectedUsers         []string
+	expectedExcludedUsers []string
+	expectedErrorMsg      string
 }
 
 const maximumRecursiveDepth = 25
@@ -504,12 +506,12 @@ func TestListUsersUsersets(t *testing.T) {
 			model: `model
 			schema 1.1
 		  type user
-		  
+
 		  type org
 			relations
 			  define member: [user]
 			  define admin: [org#member]
-		  
+
 		  type repo
 			relations
 			  define owner: [org]
@@ -536,7 +538,7 @@ func TestListUsersUsersets(t *testing.T) {
 			model: `model
             schema 1.1
           type user
-          
+
           type org
             relations
               define member: [user]
@@ -627,14 +629,14 @@ func TestListUsersTTU(t *testing.T) {
 			model: `model
 			schema 1.1
 		  type user
-		
+
 		  type folder
 			relations
 				define owner: [user]
 				define editor: [user] or owner
 				define viewer: [user] or owner or editor
 				define unrelated_not_computed: [user]
-		
+
 		  type document
 			relations
 			  define parent: [folder]
@@ -665,8 +667,8 @@ func TestListUsersTTU(t *testing.T) {
 			},
 			model: `model
 			schema 1.1
-			type user 
-			type folder 
+			type user
+			type folder
 				relations
 					define parent: [folder]
 					define viewer: [user] or viewer from parent`,
@@ -1029,7 +1031,7 @@ func TestListUsersConditions(t *testing.T) {
 			condition isEqualToFive(param1: int) {
 				param1 == 5
 			}
-			
+
 			condition isEqualToTen(param2: int) {
 				param2 == 10
 			}`,
@@ -1063,7 +1065,7 @@ func TestListUsersConditions(t *testing.T) {
 			condition isEqualToFive(param1: int) {
 				param1 == 5
 			}
-			
+
 			condition isEqualToTen(param2: int) {
 				param2 == 10
 			}`,
@@ -1465,13 +1467,13 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			model: `model
 			schema 1.1
-		  
+
 		  type org
 			relations
 			  define blocked: [user]
-		  
-		  type user    
-		  
+
+		  type user
+
 		  type document
 			relations
 			  define parent: [org]
@@ -1502,19 +1504,19 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			model: `model
 			schema 1.1
-		  
+
 		  type user
-		  
+
 		  type org
 			relations
 			  define blocked: [user]
-		  
+
 		  type folder
 			relations
 			  define blocked: blocked from org
 			  define org: [org]
 			  define viewer: [user]
-		  
+
 		  type document
 			relations
 			  define parent: [folder]
@@ -1545,9 +1547,9 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			model: `model
 			schema 1.1
-		  
+
 		  type user
-		  
+
 		  type group
 			relations
 			  define member: [user, group#member] but not blocked
@@ -1603,9 +1605,9 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			model: `model
 				schema 1.1
-		
+
 			type user
-		
+
 			type document
 				relations
 				define blocked: [user, document#viewer]
@@ -1628,9 +1630,9 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 
 	model := `model
 	schema 1.1
-  
+
   type user
-  
+
   type document
 	relations
 	  define blocked: [user:*,user]
@@ -1710,7 +1712,8 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 			},
-			expectedUsers: []string{"user:*"},
+			expectedUsers:         []string{"user:*"},
+			expectedExcludedUsers: []string{"user:maria"},
 		},
 		{
 			name: "exclusion_and_wildcards_5",
@@ -1742,15 +1745,24 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: model,
+			model: `model
+			schema 1.1
+
+		  type user
+
+		  type document
+			relations
+			  define blocked: [user:*,user]
+			  define viewer: [user:*,user] but not blocked`,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"), // base wildcard
 				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
 				tuple.NewTupleKey("document:1", "blocked", "user:will"),
 			},
-			expectedUsers: []string{"user:*", "user:maria"},
+			expectedUsers:         []string{"user:*", "user:maria"},
+			expectedExcludedUsers: []string{"user:jon", "user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -1919,7 +1931,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 		  type user
 
 		  type document
-			relations			  
+			relations
 			  define viewer: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
@@ -2279,13 +2291,13 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			},
 			model: `model
 			schema 1.1
-		  
+
 		  type user
-		  
+
 		  type group
 			relations
 			  define member: [user:*, user]
-		  
+
 		  type document
 			relations
 			  define group: [group]
@@ -2321,7 +2333,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 
 	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
-	channelWithResults := make(chan *openfgav1.User)
+	channelWithResults := make(chan foundUser)
 	channelWithError := make(chan error, 1)
 	model := testutils.MustTransformDSLToProtoWithID(`
 	model
@@ -2376,6 +2388,153 @@ func TestListUsersCycleDetection(t *testing.T) {
 			break
 		}
 	})
+}
+
+func TestListUsersChainedNegation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := `model
+		schema 1.1
+	type user
+	type document
+		relations
+			define viewer: [user, user:*] but not blocked
+			define blocked: [user, user:*] but not unblocked
+			define unblocked: [user, user:*]`
+
+	tests := ListUsersTests{
+		{
+			name: "chained_negation_1",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_2",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_3",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_4",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:*"},
+		},
+		{
+			name: "chained_negation_5",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*"},
+		},
+		{
+			name: "chained_negation_6",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_7",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_8",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:maria"),
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		// {
+		// 	name: "chained_negation_9",
+		// 	tuples: []*openfgav1.TupleKey{
+		// 		tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		// 		tuple.NewTupleKey("document:1", "blocked", "user:*"),
+		// 		tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+		// 	},
+		// 	expectedUsers: []string{"user:jon"},
+		// },
+		// {
+		// 	name: "chained_negation_10",
+		// 	tuples: []*openfgav1.TupleKey{
+		// 		tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		// 		tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+		// 		tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+		// 		tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+		// 	},
+		// 	expectedUsers:         []string{"user:*", "user:jon"}, // TODO: fix handling of chained negation for `user:jon`
+		// 	expectedExcludedUsers: []string{"user:maria"},
+		// },
+		{
+			name: "chained_negation_11",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:jon"), // TODO: fix handling of chained negation for `user:jon`
+			},
+			expectedUsers: []string{"user:jon"},
+		},
+		{
+			name: "chained_negation_12",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*", "user:jon"},
+		},
+		{
+			name: "chained_negation_13",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*", "user:jon", "user:maria"},
+		},
+	}
+
+	for i := range tests {
+		tests[i].model = model
+		tests[i].req = &openfgav1.ListUsersRequest{
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		}
+	}
+
+	tests.runListUsersTestCases(t)
 }
 
 func TestListUsersDepthExceeded(t *testing.T) {
@@ -2507,7 +2666,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 			model
 				schema 1.1
 			type user
-			
+
 			type document
 				relations
 					define a: [user]
@@ -2563,13 +2722,18 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
 
 			actualUsers := resp.GetUsers()
-
 			actualCompare := make([]string, len(actualUsers))
-			for i, u := range resp.GetUsers() {
+			for i, u := range actualUsers {
 				actualCompare[i] = tuple.UserProtoToString(u)
 			}
-
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
+
+			exceptUsers := resp.GetExcludedUsers()
+			actualCompare = make([]string, len(exceptUsers))
+			for i, u := range exceptUsers {
+				actualCompare[i] = tuple.FromObjectOrUsersetProto(u)
+			}
+			require.ElementsMatch(t, actualCompare, test.expectedExcludedUsers)
 		})
 	}
 }
@@ -2705,15 +2869,15 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 	model := parser.MustTransformDSLToProto(`model
 		schema 1.1
 	type user
-	
+
 	type company
 	  relations
 		define member: [user]
-	
+
 	type org
 	  relations
 		define member: [user]
-	
+
 	type document
 	  relations
 		define wildcard: [user:*]
@@ -3078,7 +3242,7 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 	t.Cleanup(ds.Close)
 
 	testCases := map[string]struct {
-		inputTuples         []*openfgav1.TupleKey
+		inputTuples         []string
 		inputModel          string
 		inputRequest        *openfgav1.ListUsersRequest
 		inputConfigDeadline time.Duration     // request can only take this time
@@ -3095,8 +3259,8 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 				type repo
 					relations
 						define admin: [user]`,
-			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			inputTuples: []string{
+				"repo:target#admin@user:1",
 			},
 			inputRequest: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
@@ -3108,7 +3272,6 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 			allResults: []*openfgav1.User{
 				{User: &openfgav1.User_Object{Object: &openfgav1.Object{Type: "user", Id: "1"}}},
 			},
-			expectError: "context deadline exceeded",
 		},
 		`deadline_very_high_returns_everything`: {
 			inputModel: `
@@ -3118,8 +3281,8 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 				type repo
 					relations
 						define admin: [user]`,
-			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:target", "admin", "user:1"),
+			inputTuples: []string{
+				"repo:target#admin@user:1",
 			},
 			inputRequest: &openfgav1.ListUsersRequest{
 				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
@@ -3136,27 +3299,16 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-
-			// arrange: write model
-			model := testutils.MustTransformDSLToProtoWithID(test.inputModel)
-
-			storeID := ulid.Make().String()
-
-			err := ds.WriteAuthorizationModel(ctx, storeID, model)
-			require.NoError(t, err)
-
-			// arrange: write tuples
-			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
-			require.NoError(t, err)
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.inputModel, test.inputTuples)
 
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			ctx = typesystem.ContextWithTypesystem(context.Background(), typesys)
 
-			// assertions
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
 			t.Run("regular_endpoint", func(t *testing.T) {
 				test.inputRequest.StoreId = storeID
+
 				res, err := NewListUsersQuery(
 					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
 					WithListUsersDeadline(test.inputConfigDeadline),

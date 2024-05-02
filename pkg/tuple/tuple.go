@@ -198,6 +198,43 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 	}}}
 }
 
+// FromObjectOrUsersetProto returns a string from a ObjectOrUserset proto. Ex: 'user:maria' or 'group:fga#member'. It is
+// the opposite from StringToObjectOrUserset function.
+func FromObjectOrUsersetProto(obj *openfgav1.ObjectOrUserset) UserString {
+	switch obj.GetUser().(type) {
+	case *openfgav1.ObjectOrUserset_Userset:
+		us := obj.GetUser().(*openfgav1.ObjectOrUserset_Userset)
+		return fmt.Sprintf("%s:%s#%s", us.Userset.GetType(), us.Userset.GetId(), us.Userset.GetRelation())
+	case *openfgav1.ObjectOrUserset_Object:
+		us := obj.GetUser().(*openfgav1.ObjectOrUserset_Object)
+		return fmt.Sprintf("%s:%s", us.Object.GetType(), us.Object.GetId())
+	default:
+		panic("unsupported type")
+	}
+}
+
+// StringToObjectOrUserset returns a ObjectOrUserset proto from a string. Ex: 'user:maria#member'.
+// It is the opposite from FromObjectOrUsersetProto function.
+func StringToObjectOrUserset(userKey UserString) *openfgav1.ObjectOrUserset {
+	userObj, userRel := SplitObjectRelation(userKey)
+	userObjType, userObjID := SplitObject(userObj)
+	if userRel == "" {
+		return &openfgav1.ObjectOrUserset{User: &openfgav1.ObjectOrUserset_Object{
+			Object: &openfgav1.Object{
+				Type: userObjType,
+				Id:   userObjID,
+			},
+		}}
+	}
+	return &openfgav1.ObjectOrUserset{User: &openfgav1.ObjectOrUserset_Userset{
+		Userset: &openfgav1.UsersetUser{
+			Type:     userObjType,
+			Id:       userObjID,
+			Relation: userRel,
+		},
+	}}
+}
+
 // SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string
 // and the original object.
 func SplitObject(object string) (string, string) {
