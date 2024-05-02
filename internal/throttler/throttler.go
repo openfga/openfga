@@ -65,8 +65,6 @@ func newThrottler(frequency time.Duration, metricName string) *throttler {
 	return dispatchThrottler
 }
 
-var ()
-
 func (r *throttler) nonBlockingSend(signalChan chan struct{}) {
 	select {
 	case signalChan <- struct{}{}:
