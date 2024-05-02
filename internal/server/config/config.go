@@ -479,9 +479,10 @@ func DefaultConfig() *Config {
 			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
 		},
 		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
-			Enabled:   DefaultCheckDispatchThrottlingEnabled,
-			Frequency: DefaultCheckDispatchThrottlingFrequency,
-			Threshold: DefaultCheckDispatchThrottlingThreshold,
+			Enabled:      DefaultListObjectsDispatchThrottlingEnabled,
+			Frequency:    DefaultListObjectsDispatchThrottlingFrequency,
+			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
 		RequestTimeout: DefaultRequestTimeout,
 	}
