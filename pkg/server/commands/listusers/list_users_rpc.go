@@ -157,7 +157,8 @@ func (l *listUsersQuery) ListUsers(
 		if !hasPossibleEdges {
 			span.SetAttributes(attribute.Bool("no_possible_edges", true))
 			return &listUsersResponse{
-				Users: []*openfgav1.User{},
+				Users:         []*openfgav1.User{},
+				ExcludedUsers: []*openfgav1.ObjectOrUserset{},
 				Metadata: listUsersResponseMetadata{
 					DatastoreQueryCount: 0,
 				},

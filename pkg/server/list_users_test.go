@@ -181,7 +181,15 @@ func TestModelIdNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	req := &openfgav1.ListUsersRequest{
-		StoreId: "some-store-id",
+		StoreId: ulid.Make().String(),
+		Object: &openfgav1.Object{
+			Type: "document",
+			Id:   "1",
+		},
+		Relation: "viewer",
+		UserFilters: []*openfgav1.UserTypeFilter{
+			{Type: "user"},
+		},
 	}
 
 	mockController := gomock.NewController(t)
@@ -208,13 +216,23 @@ func TestModelIdNotFound(t *testing.T) {
 func TestExperimentalListUsers(t *testing.T) {
 	ctx := context.Background()
 
-	req := &openfgav1.ListUsersRequest{}
+	storeID := ulid.Make().String()
 
+	req := &openfgav1.ListUsersRequest{
+		StoreId: storeID,
+		Object: &openfgav1.Object{
+			Type: "document",
+			Id:   "1",
+		},
+		Relation: "viewer",
+		UserFilters: []*openfgav1.UserTypeFilter{
+			{Type: "user"},
+		},
+	}
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
 
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
@@ -231,12 +249,39 @@ func TestExperimentalListUsers(t *testing.T) {
 		require.Equal(t, codes.Unimplemented, e.Code())
 	})
 
-	t.Run("list_users_does_not_error_if_experimentally_enabled", func(t *testing.T) {
+	t.Run("list_users_returns_error_if_latest_model_not_found", func(t *testing.T) {
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
+
 		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 		_, err := server.ListUsers(ctx, req)
 
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(2020) desc = No authorization models found for store ''", err.Error())
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgav1.ErrorCode_latest_authorization_model_not_found), st.Code())
+	})
+
+	t.Run("list_users_returns_error_if_model_not_found", func(t *testing.T) {
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil, storage.ErrNotFound)
+
+		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
+		_, err := server.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: ulid.Make().String(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgav1.ErrorCode_authorization_model_not_found), st.Code())
 	})
 }
 
