@@ -570,6 +570,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsDispatchThrottlingEnabled(config.ListObjectsDispatchThrottling.Enabled),
 		server.WithListObjectsDispatchThrottlingFrequency(config.ListObjectsDispatchThrottling.Frequency),
 		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
+		server.WithListObjectsDispatchThrottlingMaxThreshold(config.ListObjectsDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
 	)
 
