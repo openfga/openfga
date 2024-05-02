@@ -14,6 +14,13 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
+type Config struct {
+	Enabled      bool
+	Throttler    Throttler
+	Threshold    uint32
+	MaxThreshold uint32
+}
+
 type Throttler interface {
 	Close()
 	Throttle(context.Context)

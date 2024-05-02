@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openfga/openfga/internal/throttler"
+
 	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/mocks"
@@ -203,10 +205,12 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
-				WithDispatchThrottler(mockThrottler),
-				WithDispatchThrottlingEnabled(true),
-				WithDispatchThrottlingThreshold(3),
-				WithMaxDispatchThrottlingThreshold(0),
+				WithDispatchThrottlerConfig(throttler.Config{
+					Throttler:    mockThrottler,
+					Enabled:      true,
+					Threshold:    3,
+					MaxThreshold: 0,
+				}),
 			)
 			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
 

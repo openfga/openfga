@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/throttler"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -465,9 +467,12 @@ type document
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesystem.New(model),
-			WithDispatchThrottler(mockThrottler),
-			WithDispatchThrottlingThreshold(200),
-			WithMaxDispatchThrottlingThreshold(200),
+			WithDispatchThrottlerConfig(throttler.Config{
+				Throttler:    mockThrottler,
+				Enabled:      true,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
@@ -483,9 +488,12 @@ type document
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesystem.New(model),
-			WithDispatchThrottler(mockThrottler),
-			WithDispatchThrottlingThreshold(200),
-			WithMaxDispatchThrottlingThreshold(200),
+			WithDispatchThrottlerConfig(throttler.Config{
+				Throttler:    mockThrottler,
+				Enabled:      true,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(201)
@@ -501,9 +509,12 @@ type document
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesystem.New(model),
-			WithDispatchThrottler(mockThrottler),
-			WithDispatchThrottlingThreshold(200),
-			WithMaxDispatchThrottlingThreshold(0),
+			WithDispatchThrottlerConfig(throttler.Config{
+				Throttler:    mockThrottler,
+				Enabled:      true,
+				Threshold:    200,
+				MaxThreshold: 0,
+			}),
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
@@ -519,9 +530,12 @@ type document
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesystem.New(model),
-			WithDispatchThrottler(mockThrottler),
-			WithDispatchThrottlingThreshold(200),
-			WithMaxDispatchThrottlingThreshold(210),
+			WithDispatchThrottlerConfig(throttler.Config{
+				Throttler:    mockThrottler,
+				Enabled:      true,
+				Threshold:    200,
+				MaxThreshold: 210,
+			}),
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
@@ -537,9 +551,12 @@ type document
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			typesystem.New(model),
-			WithDispatchThrottler(mockThrottler),
-			WithDispatchThrottlingThreshold(200),
-			WithMaxDispatchThrottlingThreshold(0),
+			WithDispatchThrottlerConfig(throttler.Config{
+				Throttler:    mockThrottler,
+				Enabled:      true,
+				Threshold:    200,
+				MaxThreshold: 210,
+			}),
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)

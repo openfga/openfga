@@ -55,10 +55,7 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	dispatchThrottler      throttler.Throttler
-	throttlingEnabled      bool
-	throttlingThreshold    uint32
-	maxThrottlingThreshold uint32
+	dispatchThrottlerConfig throttler.Config
 
 	checkResolver graph.CheckResolver
 }
@@ -95,27 +92,9 @@ func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	}
 }
 
-func WithDispatchThrottler(throttler throttler.Throttler) ListObjectsQueryOption {
+func WithDispatchThrottlerConfig(config throttler.Config) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.dispatchThrottler = throttler
-	}
-}
-
-func WithDispatchThrottlingEnabled(enabled bool) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.throttlingEnabled = enabled
-	}
-}
-
-func WithDispatchThrottlingThreshold(threshold uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.throttlingThreshold = threshold
-	}
-}
-
-func WithMaxDispatchThrottlingThreshold(threshold uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.maxThrottlingThreshold = threshold
+		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -173,11 +152,13 @@ func NewListObjectsQuery(
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
-		throttlingEnabled:       serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
-		maxThrottlingThreshold:  serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
-		dispatchThrottler:       &throttler.NoopThrottler{},
-		checkResolver:           checkResolver,
+		dispatchThrottlerConfig: throttler.Config{
+			Throttler:    &throttler.NoopThrottler{},
+			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+		},
+		checkResolver: checkResolver,
 	}
 
 	for _, opt := range opts {
@@ -294,11 +275,8 @@ func (q *ListObjectsQuery) evaluate(
 			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
-			reverseexpand.WithDispatchThrottler(q.dispatchThrottler),
+			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			reverseexpand.WithDispatchThrottlingEnabled(q.throttlingEnabled),
-			reverseexpand.WithDispatchThrottlingThreshold(q.throttlingThreshold),
-			reverseexpand.WithMaxDispatchThrottlingThreshold(q.maxThrottlingThreshold),
 			reverseexpand.WithLogger(q.logger),
 		)
 

@@ -115,10 +115,7 @@ type ReverseExpandQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
-	dispatchThrottler      throttler.Throttler
-	throttlingEnabled      bool
-	throttlingThreshold    uint32
-	maxThrottlingThreshold uint32
+	dispatchThrottlerConfig throttler.Config
 
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
@@ -134,27 +131,9 @@ func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
-func WithDispatchThrottler(dispatchThrottler throttler.Throttler) ReverseExpandQueryOption {
+func WithDispatchThrottlerConfig(config throttler.Config) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
-		d.dispatchThrottler = dispatchThrottler
-	}
-}
-
-func WithDispatchThrottlingEnabled(enabled bool) ReverseExpandQueryOption {
-	return func(d *ReverseExpandQuery) {
-		d.throttlingEnabled = enabled
-	}
-}
-
-func WithDispatchThrottlingThreshold(threshold uint32) ReverseExpandQueryOption {
-	return func(d *ReverseExpandQuery) {
-		d.throttlingThreshold = threshold
-	}
-}
-
-func WithMaxDispatchThrottlingThreshold(threshold uint32) ReverseExpandQueryOption {
-	return func(d *ReverseExpandQuery) {
-		d.maxThrottlingThreshold = threshold
+		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -171,12 +150,14 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		throttlingEnabled:       serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
-		throttlingThreshold:     serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
-		maxThrottlingThreshold:  serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
-		dispatchThrottler:       &throttler.NoopThrottler{},
-		candidateObjectsMap:     new(sync.Map),
-		visitedUsersetsMap:      new(sync.Map),
+		dispatchThrottlerConfig: throttler.Config{
+			Throttler:    &throttler.NoopThrottler{},
+			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+		},
+		candidateObjectsMap: new(sync.Map),
+		visitedUsersetsMap:  new(sync.Map),
 	}
 
 	for _, opt := range opts {
@@ -365,7 +346,7 @@ LoopOnEdges:
 				},
 			}
 			_ = atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			if c.throttlingEnabled {
+			if c.dispatchThrottlerConfig.Enabled {
 				c.throttle(ctx, resolutionMetadata)
 			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
@@ -568,7 +549,7 @@ LoopOnIterator:
 
 		pool.Go(func(ctx context.Context) error {
 			_ = atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			if c.throttlingEnabled {
+			if c.dispatchThrottlerConfig.Enabled {
 				c.throttle(ctx, resolutionMetadata)
 			}
 			return c.execute(ctx, &ReverseExpandRequest{
@@ -634,11 +615,11 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 	currentNumDispatch := *metadata.DispatchCount
 	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
-	threshold := c.throttlingThreshold
+	threshold := c.dispatchThrottlerConfig.Threshold
 
-	maxThreshold := c.maxThrottlingThreshold
+	maxThreshold := c.dispatchThrottlerConfig.MaxThreshold
 	if maxThreshold == 0 {
-		maxThreshold = c.maxThrottlingThreshold
+		maxThreshold = c.dispatchThrottlerConfig.MaxThreshold
 	}
 
 	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
@@ -649,6 +630,6 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 
 	if currentNumDispatch > threshold {
 		metadata.WasThrottled.Store(true)
-		c.dispatchThrottler.Throttle(ctx)
+		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }
