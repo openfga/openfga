@@ -231,9 +231,13 @@ func NewRunCommand() *cobra.Command {
     
     Defines how frequent Check dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch Check requests are dispatched.`)
 
-	flags.Uint32("dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, "DEPRECATED: Use check-dispatch-throttling-threshold instead. define the default threshold on number of dispatches above which requests will be throttled.")
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead. 
 
-	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.CheckDispatchThrottling.MaxThreshold, "DEPRECATED: Use check-dispatch-throttling-max-threshold instead. define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum")
+	Define the default threshold on number of dispatches above which requests will be throttled.`)
+
+	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.CheckDispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead. 
+
+	Define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum`)
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
