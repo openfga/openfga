@@ -442,6 +442,13 @@ func NewLayeredCheckResolver(
 
 	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
 
+	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
+	if throttlingEnabled {
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckConfig, throttler)
+		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+	}
+
 	var cachedCheckResolver *CachedCheckResolver
 	if cacheEnabled {
 		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
@@ -450,13 +457,6 @@ func NewLayeredCheckResolver(
 	}
 
 	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
-
-	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
-	if throttlingEnabled {
-		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckConfig, throttler)
-		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
-		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-	}
 
 	return cycleDetectionCheckResolver, func() {
 		localCheckResolver.Close()
