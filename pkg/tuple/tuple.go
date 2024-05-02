@@ -213,7 +213,7 @@ func FromObjectOrUsersetProto(obj *openfgav1.ObjectOrUserset) UserString {
 	}
 }
 
-// StringToObjectOrUserset returns a ObjectOrUserset proto from a string. Ex: 'user:maria#member'.
+// StringToObjectOrUserset returns a ObjectOrUserset proto from a string. Ex: 'group:fga#member'.
 // It is the opposite from FromObjectOrUsersetProto function.
 func StringToObjectOrUserset(userKey UserString) *openfgav1.ObjectOrUserset {
 	userObj, userRel := SplitObjectRelation(userKey)
