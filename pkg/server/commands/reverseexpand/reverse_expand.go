@@ -608,11 +608,11 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 }
 
 func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionMetadata) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	ctx, span := tracer.Start(ctx, "throttle")
 	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "DispatchThrottlingCheckResolver"))
+	span.SetAttributes(attribute.String("resolver_type", "ReverseExpandQuery"))
 
-	currentNumDispatch := *metadata.DispatchCounter
+	currentNumDispatch := metadata.DispatchCounter.Load()
 	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
 	threshold := c.dispatchThrottlerConfig.Threshold
