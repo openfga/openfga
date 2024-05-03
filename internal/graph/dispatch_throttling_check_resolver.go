@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/server/config"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -33,6 +34,13 @@ var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 // instance.
 type DispatchThrottlingCheckResolverOpt func(checkResolver *DispatchThrottlingCheckResolver)
 
+// WithDispatchThrottlingCheckResolverConfig sets the config to be used for DispatchThrottlingCheckResolver
+func WithDispatchThrottlingCheckResolverConfig(config DispatchThrottlingCheckResolverConfig) DispatchThrottlingCheckResolverOpt {
+	return func(r *DispatchThrottlingCheckResolver) {
+		r.config = &config
+	}
+}
+
 // WithThrottler sets the throttler to be used for DispatchThrottlingCheckResolver
 func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolverOpt {
 	return func(r *DispatchThrottlingCheckResolver) {
@@ -40,10 +48,12 @@ func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolve
 	}
 }
 
-func NewDispatchThrottlingCheckResolver(
-	config *DispatchThrottlingCheckResolverConfig, opts ...DispatchThrottlingCheckResolverOpt) *DispatchThrottlingCheckResolver {
+func NewDispatchThrottlingCheckResolver(opts ...DispatchThrottlingCheckResolverOpt) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
-		config:    config,
+		config: &DispatchThrottlingCheckResolverConfig{
+			DefaultThreshold: config.DefaultCheckDispatchThrottlingDefaultThreshold,
+			MaxThreshold:     config.DefaultCheckDispatchThrottlingMaxThreshold,
+		},
 		throttler: throttler.NewNoopThrottler(),
 	}
 	dispatchThrottlingCheckResolver.delegate = dispatchThrottlingCheckResolver

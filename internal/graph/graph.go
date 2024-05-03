@@ -444,7 +444,7 @@ func NewLayeredCheckResolver(
 	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
 	if throttlingEnabled {
 		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(
-			dispatchThrottlingCheckConfig,
+			WithDispatchThrottlingCheckResolverConfig(*dispatchThrottlingCheckConfig),
 			WithThrottler(throttler),
 		)
 		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
