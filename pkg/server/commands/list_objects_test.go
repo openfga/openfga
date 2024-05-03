@@ -40,6 +40,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockThrottler := mocks.NewMockThrottler(ctrl)
 	t.Cleanup(ds.Close)
+	t.Cleanup(ctrl.Finish)
 	tests := []struct {
 		name                    string
 		model                   string
