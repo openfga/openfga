@@ -496,13 +496,12 @@ condition condition1(x: int) {
 					graph.WithMaxConcurrentReads(30),
 				},
 				test.useCheckCache,
+				false,
 				[]graph.CachedCheckResolverOpt{
 					graph.WithMaxCacheSize(100),
 					graph.WithCacheTTL(10 * time.Second),
 				},
-				false,
-				nil,
-				nil,
+				[]graph.DispatchThrottlingCheckResolverOpt{},
 			)
 			t.Cleanup(closer)
 

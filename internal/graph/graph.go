@@ -10,7 +10,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -423,42 +422,42 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 //
 //	CycleDetectionCheckResolver  <-----|
 //		CachedCheckResolver              |
-//			LocalChecker                   |
-//				CycleDetectionCheckResolver -|
+//			DispatchThrottlingCheckResolver |
+//				LocalChecker                   |
+//					CycleDetectionCheckResolver -|
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the
 // composition after you are done with the CheckResolver.
 func NewLayeredCheckResolver(
 	localResolverOpts []LocalCheckerOption,
 	cacheEnabled bool,
-	cachedResolverOpts []CachedCheckResolverOpt,
 	throttlingEnabled bool,
-	throttler throttler.Throttler,
-	dispatchThrottlingCheckConfig *DispatchThrottlingCheckResolverConfig,
+	cachedResolverOpts []CachedCheckResolverOpt,
+	dispatchThrottlingCheckResolverOpts []DispatchThrottlingCheckResolverOpt,
 ) (CheckResolver, CheckResolverCloser) {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	var cachedCheckResolver *CachedCheckResolver
+	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
 	localCheckResolver := NewLocalChecker(localResolverOpts...)
 
 	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
-	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
 	if throttlingEnabled {
-		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(
-			WithDispatchThrottlingCheckResolverConfig(*dispatchThrottlingCheckConfig),
-			WithThrottler(throttler),
-		)
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverOpts...)
 		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 	}
 
-	var cachedCheckResolver *CachedCheckResolver
 	if cacheEnabled {
 		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 		cachedCheckResolver.SetDelegate(localCheckResolver)
+		if throttlingEnabled {
+			dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		}
 	}
-
-	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
 	return cycleDetectionCheckResolver, func() {
 		localCheckResolver.Close()
