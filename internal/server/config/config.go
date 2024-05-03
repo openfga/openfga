@@ -351,10 +351,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.CheckDispatchThrottling.Enabled {
 		if cfg.CheckDispatchThrottling.Frequency <= 0 {
-			return errors.New("dispatchThrottling.frequency (deprecated) or checkDispatchThrottling.frequency must be non-negative time duration")
+			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
 		}
 		if cfg.CheckDispatchThrottling.Threshold <= 0 {
-			return errors.New("dispatchThrottling.threshold (deprecated) or checkDispatchThrottling.threshold must be non-negative integer")
+			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
 		}
 		if cfg.CheckDispatchThrottling.MaxThreshold != 0 && cfg.CheckDispatchThrottling.Threshold > cfg.CheckDispatchThrottling.MaxThreshold {
 			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
@@ -363,10 +363,13 @@ func (cfg *Config) Verify() error {
 
 	if cfg.ListObjectsDispatchThrottling.Enabled {
 		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
-			return errors.New("dispatch throttling frequency must be non-negative time duration")
+			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
 		}
 		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
-			return errors.New("dispatch throttling threshold must be non-negative integer")
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
 		}
 	}
 
