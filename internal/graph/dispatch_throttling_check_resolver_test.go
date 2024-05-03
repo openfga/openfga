@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -104,7 +105,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		defer ctrl.Finish()
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
-			DefaultThreshold: 200,
+			DefaultThreshold: 0,
 			MaxThreshold:     210,
 		}
 		mockThrottler := mocks.NewMockThrottler(ctrl)
@@ -115,12 +116,13 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut.SetDelegate(mockCheckResolver)
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
 		ctx := context.Background()
+		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
 
 		_, err := dut.ResolveCheck(ctx, req)
 

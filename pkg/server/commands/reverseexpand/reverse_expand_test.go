@@ -3,6 +3,7 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"strconv"
 	"testing"
 	"time"
@@ -533,12 +534,13 @@ type document
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
 				Enabled:      true,
-				Threshold:    200,
+				Threshold:    0,
 				MaxThreshold: 210,
 			}),
 		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(190)
+		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCount = &dispatchCountValue
 
