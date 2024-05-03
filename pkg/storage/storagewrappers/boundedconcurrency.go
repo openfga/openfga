@@ -52,7 +52,10 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 	store string,
 	tupleKey *openfgav1.TupleKey,
 ) (*openfgav1.Tuple, error) {
-	b.waitForLimiter(ctx)
+	err := b.waitForLimiter(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	defer func() {
 		<-b.limiter
@@ -63,7 +66,10 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
 func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
-	b.waitForLimiter(ctx)
+	err := b.waitForLimiter(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	defer func() {
 		<-b.limiter
@@ -78,7 +84,10 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
 ) (storage.TupleIterator, error) {
-	b.waitForLimiter(ctx)
+	err := b.waitForLimiter(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	defer func() {
 		<-b.limiter
@@ -94,7 +103,10 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 	store string,
 	filter storage.ReadStartingWithUserFilter,
 ) (storage.TupleIterator, error) {
-	b.waitForLimiter(ctx)
+	err := b.waitForLimiter(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	defer func() {
 		<-b.limiter
@@ -103,10 +115,17 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
 }
 
-func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
+// waitForLimiter respects context errors and returns an error only if it couldn't send an item to the channel.
+func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) error {
 	start := time.Now()
 
-	b.limiter <- struct{}{}
+	select {
+	// Note: if both cases can proceed, one will be selected at random
+	case <-ctx.Done():
+		return ctx.Err()
+	case b.limiter <- struct{}{}:
+		break
+	}
 
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
@@ -119,4 +138,5 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
+	return nil
 }
