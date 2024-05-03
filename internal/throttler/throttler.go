@@ -48,33 +48,33 @@ func (r *noopThrottler) Close() {
 
 func NewNoopThrottler() Throttler { return &noopThrottler{} }
 
-// throttler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
-// Throttling will start to kick in when the dispatch count exceeds the configured dispatch threshold.
-type throttler struct {
+// constantRateThrottler implements a throttling mechanism that can be used to control the rate of recursive resource consumption.
+// Throttling will release the goroutines from teh throttlingQueue based on the configured ticker.
+type constantRateThrottler struct {
 	name            string
 	ticker          *time.Ticker
 	throttlingQueue chan struct{}
 	done            chan struct{}
 }
 
-// NewThrottler constructs a throttler which can be used to control the rate of dispatched sub problems in FGA queries.
-func NewThrottler(frequency time.Duration, metricName string) Throttler {
-	return newThrottler(frequency, metricName)
+// NewConstantRateThrottler constructs a constantRateThrottler which can be used to control the rate of recursive resource consumption.
+func NewConstantRateThrottler(frequency time.Duration, metricName string) Throttler {
+	return newConstantRateThrottler(frequency, metricName)
 }
 
-// Returns a throttler instead of Throttler for testing purpose to be used internally.
-func newThrottler(frequency time.Duration, throttlerName string) *throttler {
-	dispatchThrottler := &throttler{
+// Returns a constantRateThrottler instead of Throttler for testing purpose to be used internally.
+func newConstantRateThrottler(frequency time.Duration, throttlerName string) *constantRateThrottler {
+	constantRateThrottler := &constantRateThrottler{
 		name:            throttlerName,
 		ticker:          time.NewTicker(frequency),
 		throttlingQueue: make(chan struct{}),
 		done:            make(chan struct{}),
 	}
-	go dispatchThrottler.runTicker()
-	return dispatchThrottler
+	go constantRateThrottler.runTicker()
+	return constantRateThrottler
 }
 
-func (r *throttler) nonBlockingSend(signalChan chan struct{}) {
+func (r *constantRateThrottler) nonBlockingSend(signalChan chan struct{}) {
 	select {
 	case signalChan <- struct{}{}:
 		// message sent
@@ -83,7 +83,7 @@ func (r *throttler) nonBlockingSend(signalChan chan struct{}) {
 	}
 }
 
-func (r *throttler) runTicker() {
+func (r *constantRateThrottler) runTicker() {
 	for {
 		select {
 		case <-r.done:
@@ -97,14 +97,14 @@ func (r *throttler) runTicker() {
 	}
 }
 
-func (r *throttler) Close() {
+func (r *constantRateThrottler) Close() {
 	r.done <- struct{}{}
 }
 
 // Throttle provides a synchronous blocking mechanism that will block if the currentNumDispatch exceeds the configured dispatch threshold.
 // It will block until a value is produced on the underlying throttling queue channel,
 // which is produced by periodically sending a value on the channel based on the configured ticker frequency.
-func (r *throttler) Throttle(ctx context.Context) {
+func (r *constantRateThrottler) Throttle(ctx context.Context) {
 	start := time.Now()
 	<-r.throttlingQueue
 	end := time.Now()
