@@ -602,7 +602,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 	).Observe(datastoreQueryCount)
 
-	dispatchCount := float64(*result.ResolutionMetadata.DispatchCount)
+	dispatchCount := float64(result.ResolutionMetadata.DispatchCounter.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -615,7 +615,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(*result.ResolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(result.ResolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListObjectsResponse{
@@ -694,7 +694,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		methodName,
 	).Observe(datastoreQueryCount)
 
-	dispatchCount := float64(*resolutionMetadata.DispatchCount)
+	dispatchCount := float64(resolutionMetadata.DispatchCounter.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -707,7 +707,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(*resolutionMetadata.DispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(resolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return nil
