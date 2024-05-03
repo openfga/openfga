@@ -20,7 +20,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		defer ctrl.Finish()
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
-			// We set timer ticker to 1 hour to avoid it interfering with test
 			DefaultThreshold: 200,
 			MaxThreshold:     200,
 		}
@@ -81,7 +80,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		defer ctrl.Finish()
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
-			// We set timer ticker to 1 hour to avoid it interfering with test
 			DefaultThreshold: 200,
 			MaxThreshold:     0,
 		}
@@ -112,7 +110,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		defer ctrl.Finish()
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
-			// We set timer ticker to 1 hour to avoid it interfering with test
 			DefaultThreshold: 200,
 			MaxThreshold:     210,
 		}
