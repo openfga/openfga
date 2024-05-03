@@ -7,22 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/telemetry"
-
-	"github.com/openfga/openfga/internal/throttler"
-
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
-	"go.uber.org/mock/gomock"
-
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 )
 
 func TestReverseExpandResultChannelClosed(t *testing.T) {
