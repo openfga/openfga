@@ -2,11 +2,13 @@ package throttler
 
 import (
 	"context"
-	"github.com/openfga/openfga/pkg/telemetry"
-	"go.uber.org/goleak"
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
+
+	"github.com/openfga/openfga/pkg/telemetry"
 
 	"github.com/stretchr/testify/require"
 )
@@ -49,20 +51,20 @@ func TestShouldThrottle(t *testing.T) {
 	})
 	t.Run("expect_should_throttle_logic_to_work", func(t *testing.T) {
 		ctx := context.Background()
-		require.Equal(t, false, ShouldThrottle(ctx, 190, 200, 200))
-		require.Equal(t, true, ShouldThrottle(ctx, 201, 200, 200))
-		require.Equal(t, false, ShouldThrottle(ctx, 190, 200, 0))
+		require.False(t, ShouldThrottle(ctx, 190, 200, 200))
+		require.True(t, ShouldThrottle(ctx, 201, 200, 200))
+		require.False(t, ShouldThrottle(ctx, 190, 200, 0))
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
 		ctx := context.Background()
 		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
-		require.Equal(t, true, ShouldThrottle(ctx, 190, 0, 210))
+		require.True(t, ShouldThrottle(ctx, 190, 0, 210))
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
 		ctx := context.Background()
 		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 300)
-		require.Equal(t, true, ShouldThrottle(ctx, 190, 100, 200))
+		require.True(t, ShouldThrottle(ctx, 190, 100, 200))
 	})
 }

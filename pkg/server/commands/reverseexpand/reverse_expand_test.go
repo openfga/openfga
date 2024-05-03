@@ -3,10 +3,11 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
-	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"strconv"
 	"testing"
 	"time"
+
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -697,16 +698,13 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				}
 			}()
 
-			var results []string
-
 		ConsumerLoop:
 			for {
 				select {
-				case res, open := <-resultChan:
+				case _, open := <-resultChan:
 					if !open {
 						break ConsumerLoop
 					}
-					results = append(results, res.Object)
 				case err := <-errChan:
 					require.FailNow(t, "unexpected error received on error channel :%v", err)
 					break ConsumerLoop
@@ -718,7 +716,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
 			require.Equal(t, test.expectedWasThrottled, resolutionMetadata.WasThrottled.Load())
-
 		})
 	}
 }

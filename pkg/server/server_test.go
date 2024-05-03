@@ -607,8 +607,8 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
 }
 
-//TODO Remove this if test is not needed, discussing with Jon and Adrian about this
-//func TestListObjectsDispatchThrottledTimeout(t *testing.T) {
+// TODO Remove this if test is not needed, discussing with Jon and Adrian about this
+// func TestListObjectsDispatchThrottledTimeout(t *testing.T) {
 //	t.Cleanup(func() {
 //		goleak.VerifyNone(t)
 //	})
@@ -635,13 +635,13 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 //	model := testutils.MustTransformDSLToProtoWithID(`model
 //		schema 1.1
 //
-//type user
+// type user
 //
-//type folder
+// type folder
 //  relations
 //    define parent: [folder]
 //    define can_view: [user] or can_view from parent
-//`)
+// `)
 //
 //	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 //		StoreId:         storeID,
