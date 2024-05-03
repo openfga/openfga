@@ -443,7 +443,10 @@ func NewLayeredCheckResolver(
 
 	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
 	if throttlingEnabled {
-		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckConfig, throttler)
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(
+			dispatchThrottlingCheckConfig,
+			WithThrottler(throttler),
+		)
 		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
 		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 	}

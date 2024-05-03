@@ -29,13 +29,28 @@ type DispatchThrottlingCheckResolver struct {
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
+// DispatchThrottlingCheckResolverOpt defines an option that can be used to change the behavior of DispatchThrottlingCheckResolver
+// instance.
+type DispatchThrottlingCheckResolverOpt func(checkResolver *DispatchThrottlingCheckResolver)
+
+// WithThrottler sets the throttler to be used for DispatchThrottlingCheckResolver
+func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolverOpt {
+	return func(r *DispatchThrottlingCheckResolver) {
+		r.throttler = throttler
+	}
+}
+
 func NewDispatchThrottlingCheckResolver(
-	config *DispatchThrottlingCheckResolverConfig, throttler throttler.Throttler) *DispatchThrottlingCheckResolver {
+	config *DispatchThrottlingCheckResolverConfig, opts ...DispatchThrottlingCheckResolverOpt) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
 		config:    config,
-		throttler: throttler,
+		throttler: throttler.NewNoopThrottler(),
 	}
 	dispatchThrottlingCheckResolver.delegate = dispatchThrottlingCheckResolver
+
+	for _, opt := range opts {
+		opt(dispatchThrottlingCheckResolver)
+	}
 	return dispatchThrottlingCheckResolver
 }
 

@@ -447,7 +447,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
 			&dispatchThrottlingConfig,
-			throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency, "check_dispatch_throttle"))
+			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency, "check_dispatch_throttle")),
+		)
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 

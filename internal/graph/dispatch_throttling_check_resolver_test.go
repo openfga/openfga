@@ -27,7 +27,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		}
 		mockThrottler := mocks.NewMockThrottler(ctrl)
 
-		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, mockThrottler)
+		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, WithThrottler(mockThrottler))
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -55,7 +55,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			DefaultThreshold: 200,
 			MaxThreshold:     200,
 		}
-		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, mockThrottler)
+		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, WithThrottler(mockThrottler))
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -83,7 +83,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		}
 		mockThrottler := mocks.NewMockThrottler(ctrl)
 
-		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, mockThrottler)
+		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, WithThrottler(mockThrottler))
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -111,7 +111,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		}
 		mockThrottler := mocks.NewMockThrottler(ctrl)
 
-		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, mockThrottler)
+		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, WithThrottler(mockThrottler))
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -140,7 +140,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		}
 		mockThrottler := mocks.NewMockThrottler(ctrl)
 
-		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, mockThrottler)
+		dut := NewDispatchThrottlingCheckResolver(&dispatchThrottlingCheckResolverConfig, WithThrottler(mockThrottler))
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
