@@ -462,12 +462,12 @@ func TestReverseExpandThrottle(t *testing.T) {
 	defer mockController.Finish()
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	ctx := context.Background()
+	ts, err := typesystem.NewAndValidate(ctx, model)
 	require.NoError(t, err)
 
 	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
-		ctx := context.Background()
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			ts,
@@ -488,10 +488,9 @@ func TestReverseExpandThrottle(t *testing.T) {
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
-		ctx := context.Background()
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
-			typesystem.New(model),
+			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
 				Enabled:      true,
@@ -509,10 +508,9 @@ func TestReverseExpandThrottle(t *testing.T) {
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
-		ctx := context.Background()
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
-			typesystem.New(model),
+			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
 				Enabled:      true,
@@ -530,10 +528,9 @@ func TestReverseExpandThrottle(t *testing.T) {
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
-		ctx := context.Background()
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
-			typesystem.New(model),
+			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
 				Enabled:      true,
@@ -552,10 +549,9 @@ func TestReverseExpandThrottle(t *testing.T) {
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
-		ctx := context.Background()
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
-			typesystem.New(model),
+			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
 				Enabled:      true,
