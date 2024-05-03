@@ -237,6 +237,11 @@ func (c *ReverseExpandQuery) execute(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	// This code will throttle if ResolutionMetadata.DispatchCounter is more than the value set at Threshold values set at dispatchThrottlerConfig
+	if c.dispatchThrottlerConfig.Enabled {
+		c.throttle(ctx, resolutionMetadata)
+	}
+
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -346,9 +351,6 @@ LoopOnEdges:
 				},
 			}
 			resolutionMetadata.DispatchCounter.Add(1)
-			if c.dispatchThrottlerConfig.Enabled {
-				c.throttle(ctx, resolutionMetadata)
-			}
 			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -549,9 +551,6 @@ LoopOnIterator:
 
 		pool.Go(func(ctx context.Context) error {
 			resolutionMetadata.DispatchCounter.Add(1)
-			if c.dispatchThrottlerConfig.Enabled {
-				c.throttle(ctx, resolutionMetadata)
-			}
 			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
