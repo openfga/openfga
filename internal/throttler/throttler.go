@@ -90,9 +90,6 @@ func (r *constantRateThrottler) runTicker() {
 	for {
 		select {
 		case <-r.done:
-			r.ticker.Stop()
-			close(r.done)
-			close(r.throttlingQueue)
 			return
 		case <-r.ticker.C:
 			r.nonBlockingSend(r.throttlingQueue)
@@ -102,6 +99,9 @@ func (r *constantRateThrottler) runTicker() {
 
 func (r *constantRateThrottler) Close() {
 	r.done <- struct{}{}
+	r.ticker.Stop()
+	close(r.done)
+	close(r.throttlingQueue)
 }
 
 // Throttle provides a synchronous blocking mechanism that will block if the currentNumDispatch exceeds the configured dispatch threshold.
