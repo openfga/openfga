@@ -3,6 +3,7 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"strconv"
 	"testing"
 	"time"
@@ -567,4 +568,162 @@ func TestReverseExpandThrottle(t *testing.T) {
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
+}
+
+func TestReverseExpandDispatchCount(t *testing.T) {
+	ds := memory.New()
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctrl := gomock.NewController(t)
+	mockThrottler := mocks.NewMockThrottler(ctrl)
+	t.Cleanup(ds.Close)
+	t.Cleanup(ctrl.Finish)
+	tests := []struct {
+		name                    string
+		model                   string
+		tuples                  []string
+		objectType              string
+		relation                string
+		user                    *UserRefObject
+		throttlingEnabled       bool
+		expectedDispatchCount   uint32
+		expectedThrottlingValue int
+		expectedWasThrottled    bool
+	}{
+		{
+			name: "should_throttle",
+			model: `model
+			schema 1.1
+
+			type user
+
+			type folder
+				 relations
+					  define editor: [user]
+					  define viewer: [user] or editor 
+			`,
+			tuples: []string{
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
+			},
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+			throttlingEnabled:       true,
+			expectedWasThrottled:    true,
+			expectedDispatchCount:   4,
+			expectedThrottlingValue: 1,
+		},
+		{
+			name: "should_not_throttle",
+			model: `model
+			schema 1.1
+
+			type user
+
+			type folder
+				 relations
+					  define editor: [user]
+					  define viewer: [user] or editor 
+			`,
+			tuples: []string{
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
+			},
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+			throttlingEnabled:       false,
+			expectedWasThrottled:    false,
+			expectedDispatchCount:   4,
+			expectedThrottlingValue: 0,
+		},
+		{
+			name: "should_not_throttle_if_there_are_not_enough_dispatches",
+			model: `model
+			schema 1.1
+
+			type user
+
+			type document
+			  relations
+				define editor: [user]
+				define viewer: editor
+			`,
+			tuples: []string{
+				"document:1#editor@user:jon",
+			},
+			objectType:              "document",
+			relation:                "viewer",
+			user:                    &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "jon"}},
+			throttlingEnabled:       true,
+			expectedWasThrottled:    false,
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+			resultChan := make(chan *ReverseExpandResult)
+			errChan := make(chan error, 1)
+			ts, err := typesystem.NewAndValidate(
+				context.Background(),
+				model,
+			)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			resolutionMetadata := NewResolutionMetadata()
+
+			go func() {
+				q := NewReverseExpandQuery(
+					ds,
+					ts,
+					WithDispatchThrottlerConfig(throttler.Config{
+						Throttler:    mockThrottler,
+						Enabled:      test.throttlingEnabled,
+						Threshold:    3,
+						MaxThreshold: 0,
+					}),
+				)
+
+				mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
+
+				err = q.Execute(ctx, &ReverseExpandRequest{
+					StoreID:    storeID,
+					ObjectType: test.objectType,
+					Relation:   test.relation,
+					User:       test.user,
+				}, resultChan, resolutionMetadata)
+
+				if err != nil {
+					errChan <- err
+				}
+			}()
+
+			var results []string
+
+		ConsumerLoop:
+			for {
+				select {
+				case res, open := <-resultChan:
+					if !open {
+						break ConsumerLoop
+					}
+					results = append(results, res.Object)
+				case err := <-errChan:
+					require.FailNow(t, "unexpected error received on error channel :%v", err)
+					break ConsumerLoop
+				case <-ctx.Done():
+					break ConsumerLoop
+				}
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
+			require.Equal(t, test.expectedWasThrottled, resolutionMetadata.WasThrottled.Load())
+
+		})
+	}
 }
