@@ -118,6 +118,18 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 // waitForLimiter respects context errors and returns an error only if it couldn't send an item to the channel.
 func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) error {
 	start := time.Now()
+	defer func() {
+		timeWaiting := time.Since(start).Milliseconds()
+
+		rpcInfo := telemetry.RPCInfoFromContext(ctx)
+		boundedReadDelayMsHistogram.WithLabelValues(
+			rpcInfo.Service,
+			rpcInfo.Method,
+		).Observe(float64(timeWaiting))
+
+		span := trace.SpanFromContext(ctx)
+		span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
+	}()
 
 	select {
 	// Note: if both cases can proceed, one will be selected at random
@@ -127,16 +139,5 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) erro
 		break
 	}
 
-	end := time.Now()
-	timeWaiting := end.Sub(start).Milliseconds()
-
-	rpcInfo := telemetry.RPCInfoFromContext(ctx)
-	boundedReadDelayMsHistogram.WithLabelValues(
-		rpcInfo.Service,
-		rpcInfo.Method,
-	).Observe(float64(timeWaiting))
-
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
 	return nil
 }
