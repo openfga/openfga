@@ -65,7 +65,7 @@ type ListObjectsResolutionMetadata struct {
 	DatastoreQueryCount *uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
-	DispatchCount *uint32
+	DispatchCounter *atomic.Uint32
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
@@ -74,7 +74,7 @@ type ListObjectsResolutionMetadata struct {
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ListObjectsResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
-		DispatchCount:       new(uint32),
+		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
 	}
 }
@@ -304,7 +304,7 @@ func (q *ListObjectsQuery) evaluate(
 				errChan <- err
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
-			atomic.AddUint32(resolutionMetadata.DispatchCount, *reverseExpandResolutionMetadata.DispatchCount)
+			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
 			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 		}()
 
@@ -363,7 +363,7 @@ func (q *ListObjectsQuery) evaluate(
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					atomic.AddUint32(resolutionMetadata.DispatchCount, checkRequestMetadata.DispatchCounter.Load())
+					resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
 					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 
 					if resp.Allowed {

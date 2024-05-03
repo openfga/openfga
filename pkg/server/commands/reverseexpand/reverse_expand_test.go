@@ -479,7 +479,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCount = &dispatchCountValue
+		metadata.DispatchCounter = &dispatchCountValue
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -500,7 +500,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(201)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCount = &dispatchCountValue
+		metadata.DispatchCounter = &dispatchCountValue
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -521,7 +521,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCount = &dispatchCountValue
+		metadata.DispatchCounter = &dispatchCountValue
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -543,7 +543,7 @@ type document
 		dispatchCountValue := uint32(190)
 		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCount = &dispatchCountValue
+		metadata.DispatchCounter = &dispatchCountValue
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -564,7 +564,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCount = &dispatchCountValue
+		metadata.DispatchCounter = &dispatchCountValue
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})

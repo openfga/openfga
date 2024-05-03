@@ -183,7 +183,7 @@ type ResolutionMetadata struct {
 	DatastoreQueryCount *uint32
 
 	// The number of times we are expanding from each node to find set of objects
-	DispatchCount *uint32
+	DispatchCounter *atomic.Uint32
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
@@ -192,7 +192,7 @@ type ResolutionMetadata struct {
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
-		DispatchCount:       new(uint32),
+		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
 	}
 }
@@ -345,7 +345,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			_ = atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			resolutionMetadata.DispatchCounter.Add(1)
 			if c.dispatchThrottlerConfig.Enabled {
 				c.throttle(ctx, resolutionMetadata)
 			}
@@ -548,7 +548,7 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			_ = atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
+			resolutionMetadata.DispatchCounter.Add(1)
 			if c.dispatchThrottlerConfig.Enabled {
 				c.throttle(ctx, resolutionMetadata)
 			}
@@ -612,7 +612,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 	defer span.End()
 	span.SetAttributes(attribute.String("resolver_type", "DispatchThrottlingCheckResolver"))
 
-	currentNumDispatch := *metadata.DispatchCount
+	currentNumDispatch := *metadata.DispatchCounter
 	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
 	threshold := c.dispatchThrottlerConfig.Threshold
