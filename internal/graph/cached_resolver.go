@@ -140,8 +140,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Bool("is_cached", false))
-
 	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := CheckRequestCacheKey(req)
@@ -152,9 +150,10 @@ func (c *CachedCheckResolver) ResolveCheck(
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
-	if cachedResp != nil && !cachedResp.Expired() {
+	isCached := cachedResp != nil && !cachedResp.Expired()
+	span.SetAttributes(attribute.Bool("is_cached", isCached))
+	if isCached {
 		checkCacheHitCounter.Inc()
-		span.SetAttributes(attribute.Bool("is_cached", true))
 
 		// return a copy to avoid races across goroutines
 		return CloneResolveCheckResponse(cachedResp.Value()), nil

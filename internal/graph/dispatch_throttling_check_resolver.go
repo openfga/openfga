@@ -102,7 +102,6 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	span := trace.SpanFromContext(ctx)
 
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
-	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
 	threshold := r.config.DefaultThreshold
 
@@ -117,7 +116,11 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 		threshold = min(thresholdInCtx, maxThreshold)
 	}
 
-	if currentNumDispatch > threshold {
+	isThrottled := currentNumDispatch > threshold
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", isThrottled))
+	if isThrottled {
 		req.GetRequestMetadata().WasThrottled.Store(true)
 
 		start := time.Now()

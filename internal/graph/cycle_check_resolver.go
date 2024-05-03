@@ -31,7 +31,6 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Bool("cycle_detected", false))
 
 	key := tuple.TupleKeyToString(req.GetTupleKey())
 
@@ -40,8 +39,8 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 	}
 
 	_, cycleDetected := req.VisitedPaths[key]
+	span.SetAttributes(attribute.Bool("cycle_detected", cycleDetected))
 	if cycleDetected {
-		span.SetAttributes(attribute.Bool("cycle_detected", true))
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
