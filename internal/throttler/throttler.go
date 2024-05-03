@@ -4,12 +4,15 @@ package throttler
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/build"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"time"
 
-	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/openfga/openfga/internal/build"
+
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 var (
@@ -49,7 +52,7 @@ func (r *noopThrottler) Close() {
 func NewNoopThrottler() Throttler { return &noopThrottler{} }
 
 // constantRateThrottler implements a throttling mechanism that can be used to control the rate of recursive resource consumption.
-// Throttling will release the goroutines from teh throttlingQueue based on the configured ticker.
+// Throttling will release the goroutines from the throttlingQueue based on the configured ticker.
 type constantRateThrottler struct {
 	name            string
 	ticker          *time.Ticker

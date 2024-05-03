@@ -3,10 +3,11 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/pkg/telemetry"
 
 	"github.com/openfga/openfga/internal/throttler"
 

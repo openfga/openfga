@@ -2,8 +2,9 @@ package graph
 
 import (
 	"context"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"testing"
+
+	"github.com/openfga/openfga/pkg/telemetry"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
