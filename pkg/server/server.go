@@ -508,6 +508,10 @@ func (s *Server) Close() {
 		s.dispatchThrottlingCheckResolver.Close()
 	}
 
+	if s.listObjectsDispatchThrottler != nil {
+		s.listObjectsDispatchThrottler.Close()
+	}
+
 	if s.cachedCheckResolver != nil {
 		s.cachedCheckResolver.Close()
 	}
