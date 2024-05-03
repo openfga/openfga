@@ -151,7 +151,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		dispatchThrottlerConfig: throttler.Config{
-			Throttler:    &throttler.NoopThrottler{},
+			Throttler:    throttler.NewNoopThrottler(),
 			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
 			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
 			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,

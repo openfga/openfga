@@ -153,7 +153,7 @@ func NewListObjectsQuery(
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		dispatchThrottlerConfig: throttler.Config{
-			Throttler:    &throttler.NoopThrottler{},
+			Throttler:    throttler.NewNoopThrottler(),
 			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
 			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
 			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,

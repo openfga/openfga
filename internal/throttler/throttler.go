@@ -36,15 +36,17 @@ type Throttler interface {
 	Throttle(context.Context)
 }
 
-type NoopThrottler struct{}
+type noopThrottler struct{}
 
-var _ Throttler = (*NoopThrottler)(nil)
+var _ Throttler = (*noopThrottler)(nil)
 
-func (r *NoopThrottler) Throttle(ctx context.Context) {
+func (r *noopThrottler) Throttle(ctx context.Context) {
 }
 
-func (r *NoopThrottler) Close() {
+func (r *noopThrottler) Close() {
 }
+
+func NewNoopThrottler() Throttler { return &noopThrottler{} }
 
 // throttler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
 // Throttling will start to kick in when the dispatch count exceeds the configured dispatch threshold.
