@@ -475,7 +475,6 @@ func TestReverseExpandThrottle(t *testing.T) {
 			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
-				Enabled:      true,
 				Threshold:    200,
 				MaxThreshold: 200,
 			}),
@@ -495,7 +494,6 @@ func TestReverseExpandThrottle(t *testing.T) {
 			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
-				Enabled:      true,
 				Threshold:    200,
 				MaxThreshold: 200,
 			}),
@@ -515,7 +513,6 @@ func TestReverseExpandThrottle(t *testing.T) {
 			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
-				Enabled:      true,
 				Threshold:    200,
 				MaxThreshold: 0,
 			}),
@@ -535,7 +532,6 @@ func TestReverseExpandThrottle(t *testing.T) {
 			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
-				Enabled:      true,
 				Threshold:    0,
 				MaxThreshold: 210,
 			}),
@@ -556,7 +552,6 @@ func TestReverseExpandThrottle(t *testing.T) {
 			ts,
 			WithDispatchThrottlerConfig(throttler.Config{
 				Throttler:    mockThrottler,
-				Enabled:      true,
 				Threshold:    200,
 				MaxThreshold: 210,
 			}),
