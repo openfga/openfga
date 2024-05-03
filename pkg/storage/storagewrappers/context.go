@@ -21,6 +21,8 @@ var _ storage.OpenFGADatastore = (*ContextTracerWrapper)(nil)
 
 // NewContextWrapper creates a new instance of [ContextTracerWrapper], wrapping the specified datastore. It is crucial
 // for [ContextTracerWrapper] to be the first wrapper around the datastore for traces to function correctly.
+// This wrapper is the last line of defense against cancelled contexts (this wrapper doesn't do the read
+// if the context has errored).
 func NewContextWrapper(inner storage.OpenFGADatastore) *ContextTracerWrapper {
 	return &ContextTracerWrapper{inner}
 }
@@ -39,6 +41,9 @@ func (c *ContextTracerWrapper) Close() {
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
 func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey)
@@ -46,6 +51,9 @@ func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey 
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
 func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadPage(queryCtx, store, tupleKey, opts)
@@ -53,6 +61,9 @@ func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tuple
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadUserTuple(queryCtx, store, tupleKey)
@@ -60,6 +71,9 @@ func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, 
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, filter)
@@ -67,6 +81,9 @@ func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store stri
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
 func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadStartingWithUser(queryCtx, store, opts)
