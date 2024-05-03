@@ -33,8 +33,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		// this is to simulate how many times request has been dispatched
-		// Since this is a small value, we will not expect throttling
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
@@ -63,8 +61,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
-		// this is to simulate how many times request has been dispatched
-		// Since this is a small value, we will not expect throttling
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(201)
 
@@ -93,8 +89,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		// this is to simulate how many times request has been dispatched
-		// Since this is a small value, we will not expect throttling
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
@@ -123,8 +117,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		// this is to simulate how many times request has been dispatched
-		// Since this is a small value, we will not expect throttling
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
@@ -153,8 +145,6 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		// this is to simulate how many times request has been dispatched
-		// Since this is a small value, we will not expect throttling
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
