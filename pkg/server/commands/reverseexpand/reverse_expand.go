@@ -614,20 +614,13 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 	currentNumDispatch := metadata.DispatchCounter.Load()
 	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
-	threshold := c.dispatchThrottlerConfig.Threshold
-
-	maxThreshold := c.dispatchThrottlerConfig.MaxThreshold
-	if maxThreshold == 0 {
-		maxThreshold = c.dispatchThrottlerConfig.MaxThreshold
-	}
-
-	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
-
-	if thresholdInCtx > 0 {
-		threshold = min(thresholdInCtx, maxThreshold)
-	}
-
-	if currentNumDispatch > threshold {
+	shouldThrottle := throttler.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		c.dispatchThrottlerConfig.Threshold,
+		c.dispatchThrottlerConfig.MaxThreshold,
+	)
+	if shouldThrottle {
 		metadata.WasThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}

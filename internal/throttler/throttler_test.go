@@ -2,6 +2,8 @@ package throttler
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"go.uber.org/goleak"
 	"sync"
 	"testing"
 	"time"
@@ -38,5 +40,29 @@ func TestDispatchThrottler(t *testing.T) {
 		testThrottler.nonBlockingSend(testThrottler.throttlingQueue)
 		goFuncDone.Wait()
 		require.Equal(t, 1, counter)
+	})
+}
+
+func TestShouldThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("expect_should_throttle_logic_to_work", func(t *testing.T) {
+		ctx := context.Background()
+		require.Equal(t, false, ShouldThrottle(ctx, 190, 200, 200))
+		require.Equal(t, true, ShouldThrottle(ctx, 201, 200, 200))
+		require.Equal(t, false, ShouldThrottle(ctx, 190, 200, 0))
+	})
+
+	t.Run("should_respect_max_threshold", func(t *testing.T) {
+		ctx := context.Background()
+		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
+		require.Equal(t, true, ShouldThrottle(ctx, 190, 0, 210))
+	})
+
+	t.Run("should_respect_max_threshold", func(t *testing.T) {
+		ctx := context.Background()
+		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 300)
+		require.Equal(t, true, ShouldThrottle(ctx, 190, 100, 200))
 	})
 }

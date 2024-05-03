@@ -7,7 +7,6 @@ import (
 
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.
@@ -86,20 +85,13 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
-	threshold := r.config.DefaultThreshold
-
-	maxThreshold := r.config.MaxThreshold
-	if maxThreshold == 0 {
-		maxThreshold = r.config.DefaultThreshold
-	}
-
-	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
-
-	if thresholdInCtx > 0 {
-		threshold = min(thresholdInCtx, maxThreshold)
-	}
-
-	if currentNumDispatch > threshold {
+	shouldThrottle := throttler.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		r.config.DefaultThreshold,
+		r.config.MaxThreshold,
+	)
+	if shouldThrottle {
 		req.GetRequestMetadata().WasThrottled.Store(true)
 		r.throttler.Throttle(ctx)
 	}
