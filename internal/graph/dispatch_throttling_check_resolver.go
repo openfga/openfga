@@ -6,7 +6,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/openfga/openfga/internal/throttler"
-
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
