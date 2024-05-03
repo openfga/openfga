@@ -88,10 +88,6 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
-
-	checkThrottlingDelayHistogramName = "check_throttling_resolver_delay_ms"
-
-	listObjectsThrottlingDelayHistogramName = "list_objects_throttling_resolver_delay_ms"
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -451,7 +447,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
 			&dispatchThrottlingConfig,
-			throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency, checkThrottlingDelayHistogramName))
+			throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency, "check_dispatch_throttle"))
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
@@ -465,7 +461,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
 		)
 
-		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, listObjectsThrottlingDelayHistogramName)
+		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 
 	if s.checkQueryCacheEnabled {

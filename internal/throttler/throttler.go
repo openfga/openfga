@@ -61,8 +61,8 @@ type constantRateThrottler struct {
 }
 
 // NewConstantRateThrottler constructs a constantRateThrottler which can be used to control the rate of recursive resource consumption.
-func NewConstantRateThrottler(frequency time.Duration, metricName string) Throttler {
-	return newConstantRateThrottler(frequency, metricName)
+func NewConstantRateThrottler(frequency time.Duration, metricLabel string) Throttler {
+	return newConstantRateThrottler(frequency, metricLabel)
 }
 
 // Returns a constantRateThrottler instead of Throttler for testing purpose to be used internally.
