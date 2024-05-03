@@ -4,14 +4,24 @@ package throttler
 
 import (
 	"context"
-	"fmt"
+	"github.com/openfga/openfga/internal/build"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+var (
+	throttlingDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            "throttling_delay_ms",
+		Help:                            "Time spent waiting for dispatch throttling resolver",
+		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method", "throttler_name"})
 )
 
 type Config struct {
@@ -39,10 +49,10 @@ func (r *NoopThrottler) Close() {
 // throttler implements a throttling mechanism that can be used to control the rate of dispatched sub problems in FGA queries.
 // Throttling will start to kick in when the dispatch count exceeds the configured dispatch threshold.
 type throttler struct {
-	ticker                     *time.Ticker
-	throttlingQueue            chan struct{}
-	done                       chan struct{}
-	throttlingDelayMsHistogram *prometheus.HistogramVec
+	name            string
+	ticker          *time.Ticker
+	throttlingQueue chan struct{}
+	done            chan struct{}
 }
 
 // NewThrottler constructs a throttler which can be used to control the rate of dispatched sub problems in FGA queries.
@@ -51,22 +61,12 @@ func NewThrottler(frequency time.Duration, metricName string) Throttler {
 }
 
 // Returns a throttler instead of Throttler for testing purpose to be used internally.
-func newThrottler(frequency time.Duration, metricName string) *throttler {
-	throttlingDelayMsHistogram := promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:                       build.ProjectName,
-		Name:                            metricName,
-		Help:                            fmt.Sprintf("Time spent waiting for %s throttler", metricName),
-		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
-		NativeHistogramBucketFactor:     1.1,
-		NativeHistogramMaxBucketNumber:  100,
-		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method"})
-
+func newThrottler(frequency time.Duration, throttlerName string) *throttler {
 	dispatchThrottler := &throttler{
-		ticker:                     time.NewTicker(frequency),
-		throttlingQueue:            make(chan struct{}),
-		done:                       make(chan struct{}),
-		throttlingDelayMsHistogram: throttlingDelayMsHistogram,
+		name:            throttlerName,
+		ticker:          time.NewTicker(frequency),
+		throttlingQueue: make(chan struct{}),
+		done:            make(chan struct{}),
 	}
 	go dispatchThrottler.runTicker()
 	return dispatchThrottler
@@ -109,8 +109,9 @@ func (r *throttler) Throttle(ctx context.Context) {
 	timeWaiting := end.Sub(start).Milliseconds()
 
 	rpcInfo := telemetry.RPCInfoFromContext(ctx)
-	r.throttlingDelayMsHistogram.WithLabelValues(
+	throttlingDelayMsHistogram.WithLabelValues(
 		rpcInfo.Service,
 		rpcInfo.Method,
+		r.name,
 	).Observe(float64(timeWaiting))
 }
