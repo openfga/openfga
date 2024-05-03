@@ -4,18 +4,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/tuple"
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -43,7 +41,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	tests := []struct {
 		name                    string
 		model                   string
-		tuples                  []*openfgav1.TupleKey
+		tuples                  []string
 		objectType              string
 		relation                string
 		user                    string
@@ -61,10 +59,10 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				relations
 					define viewer: [user] 
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
+			tuples: []string{
+				"folder:C#viewer@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
 			objectType:              "folder",
 			relation:                "viewer",
@@ -84,10 +82,10 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define viewer: [user] or editor 
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:C", "editor", "user:jon"),
-				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
+			tuples: []string{
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
 			objectType:              "folder",
 			relation:                "viewer",
@@ -107,10 +105,10 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define can_delete: [user] and editor 
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:C", "can_delete", "user:jon"),
-				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
+			tuples: []string{
+				"folder:C#can_delete@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
 			objectType:              "folder",
 			relation:                "can_delete",
@@ -130,7 +128,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define can_delete: [user] and editor 
 			`,
-			tuples:                  []*openfgav1.TupleKey{},
+			tuples:                  []string{},
 			objectType:              "folder",
 			relation:                "can_delete",
 			user:                    "user:jon",
@@ -148,9 +146,9 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			  relations
 				define member: [user, group#member]
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
-				tuple.NewTupleKey("group:fga", "member", "user:jon"),
+			tuples: []string{
+				"group:eng#member@group:fga#member",
+				"group:fga#member@user:jon",
 			},
 			objectType:              "group",
 			relation:                "member",
@@ -170,8 +168,8 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				define editor: [user]
 				define viewer: editor
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "editor", "user:jon"),
+			tuples: []string{
+				"document:1#editor@user:jon",
 			},
 			objectType:              "document",
 			relation:                "viewer",
@@ -182,19 +180,13 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			storeID := ulid.Make().String()
-			model := parser.MustTransformDSLToProto(test.model)
-
-			err := ds.Write(ctx, storeID, nil, test.tuples)
-			require.NoError(t, err)
-
-			typesys, err := typesystem.NewAndValidate(
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+			ts, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
 			require.NoError(t, err)
-
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker := graph.NewLocalCheckerWithCycleDetection(
 				graph.WithMaxConcurrentReads(1),
