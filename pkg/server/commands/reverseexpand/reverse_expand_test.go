@@ -450,12 +450,14 @@ func TestReverseExpandThrottle(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
-type user
-type document
-  relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`model 
+	schema 1.1
+
+	type user
+
+	type document
+	  relations
+		define viewer: [user]`)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -476,7 +478,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter = &dispatchCountValue
+		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -497,7 +499,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(201)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter = &dispatchCountValue
+		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -518,7 +520,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter = &dispatchCountValue
+		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -540,7 +542,7 @@ type document
 		dispatchCountValue := uint32(190)
 		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter = &dispatchCountValue
+		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
@@ -561,7 +563,7 @@ type document
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 		dispatchCountValue := uint32(190)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter = &dispatchCountValue
+		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, metadata)
 	})
