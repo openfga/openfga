@@ -39,7 +39,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
 	mockThrottler := mocks.NewMockThrottler(ctrl)
-
+	t.Cleanup(ds.Close)
 	tests := []struct {
 		name                    string
 		model                   string
