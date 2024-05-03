@@ -2,10 +2,10 @@ package graph
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/server/config"
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
@@ -34,14 +34,14 @@ var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 // instance.
 type DispatchThrottlingCheckResolverOpt func(checkResolver *DispatchThrottlingCheckResolver)
 
-// WithDispatchThrottlingCheckResolverConfig sets the config to be used for DispatchThrottlingCheckResolver
+// WithDispatchThrottlingCheckResolverConfig sets the config to be used for DispatchThrottlingCheckResolver.
 func WithDispatchThrottlingCheckResolverConfig(config DispatchThrottlingCheckResolverConfig) DispatchThrottlingCheckResolverOpt {
 	return func(r *DispatchThrottlingCheckResolver) {
 		r.config = &config
 	}
 }
 
-// WithThrottler sets the throttler to be used for DispatchThrottlingCheckResolver
+// WithThrottler sets the throttler to be used for DispatchThrottlingCheckResolver.
 func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolverOpt {
 	return func(r *DispatchThrottlingCheckResolver) {
 		r.throttler = throttler
