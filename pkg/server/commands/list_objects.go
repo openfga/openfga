@@ -305,7 +305,7 @@ func (q *ListObjectsQuery) evaluate(
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			atomic.AddUint32(resolutionMetadata.DispatchCount, *reverseExpandResolutionMetadata.DispatchCount)
-			resolutionMetadata.WasThrottled = reverseExpandResolutionMetadata.WasThrottled
+			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 		}()
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -364,7 +364,7 @@ func (q *ListObjectsQuery) evaluate(
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 					atomic.AddUint32(resolutionMetadata.DispatchCount, checkRequestMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled = reverseExpandResolutionMetadata.WasThrottled
+					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
