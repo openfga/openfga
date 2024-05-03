@@ -443,19 +443,19 @@ func NewLayeredCheckResolver(
 	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
 	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
-	if throttlingEnabled {
-		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverOpts...)
-		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
-		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-	}
-
 	if cacheEnabled {
 		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
 		cachedCheckResolver.SetDelegate(localCheckResolver)
-		if throttlingEnabled {
-			dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+	}
+
+	if throttlingEnabled {
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverOpts...)
+		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
+		if cacheEnabled {
+			cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 		} else {
-			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 		}
 	}
 
