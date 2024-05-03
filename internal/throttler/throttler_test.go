@@ -9,16 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func mockThrottlerTest(ctx context.Context, throttler Throttler, r *int) {
+func mockThrottlerTest(ctx context.Context, throttler Throttler, counter *int) {
 	throttler.Throttle(ctx)
-	*r++
+	*counter++
 }
 
 func TestDispatchThrottler(t *testing.T) {
 	t.Run("throttler_will_release_only_when_ticked", func(t *testing.T) {
 		testThrottler := newConstantRateThrottler(1*time.Hour, "test")
 
-		i := 0
+		counter := 0
 		var goFuncDone sync.WaitGroup
 		goFuncDone.Add(1)
 		var goFuncInitiated sync.WaitGroup
@@ -28,15 +28,15 @@ func TestDispatchThrottler(t *testing.T) {
 
 		go func() {
 			goFuncInitiated.Done()
-			mockThrottlerTest(ctx, testThrottler, &i)
+			mockThrottlerTest(ctx, testThrottler, &counter)
 			goFuncDone.Done()
 		}()
 
 		goFuncInitiated.Wait()
-		require.Equal(t, 0, i)
+		require.Equal(t, 0, counter)
 
 		testThrottler.nonBlockingSend(testThrottler.throttlingQueue)
 		goFuncDone.Wait()
-		require.Equal(t, 1, i)
+		require.Equal(t, 1, counter)
 	})
 }
