@@ -27,11 +27,11 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
-type user
-type document
-  relations
-	define viewer: [user]`)
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -93,11 +93,11 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
-type user
-type document
-  relations
-	define viewer: [user]`)
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -175,12 +175,12 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
-type user
-type document
-  relations
-	define allowed: [user]
-	define viewer: [user] and allowed`)
+		schema 1.1
+		type user
+		type document
+			relations
+				define allowed: [user]
+				define viewer: [user] and allowed`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -232,11 +232,11 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
-type user
-type document
-  relations
-	define viewer: [user]`)
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -305,11 +305,11 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
-type user
-type document
-  relations
-    define viewer: [user]`)
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 

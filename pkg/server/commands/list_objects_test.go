@@ -46,14 +46,14 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		{
 			name: "test_direct_relation",
 			model: `model
-			schema 1.1
+				schema 1.1
 
-			type user
+				type user
 
-			type folder
-				relations
-					define viewer: [user] 
-			`,
+				type folder
+					relations
+						define viewer: [user] 
+				`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
@@ -67,15 +67,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		{
 			name: "test_union_relation",
 			model: `model
-			schema 1.1
+				schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define viewer: [user] or editor 
-			`,
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor 
+				`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:C", "editor", "user:jon"),
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
@@ -89,15 +89,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		{
 			name: "test_intersection_relation",
 			model: `model
-			schema 1.1
+				schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define can_delete: [user] and editor 
-			`,
+				type folder
+					relations
+						define editor: [user]
+						define can_delete: [user] and editor 
+				`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:C", "can_delete", "user:jon"),
 				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
@@ -111,15 +111,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		{
 			name: "no_tuples",
 			model: `model
-			schema 1.1
+				schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define can_delete: [user] and editor 
-			`,
+				type folder
+					relations
+						define editor: [user]
+						define can_delete: [user] and editor 
+				`,
 			tuples:                []*openfgav1.TupleKey{},
 			objectType:            "folder",
 			relation:              "can_delete",
@@ -129,14 +129,14 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		{
 			name: "direct_userset_dispatch",
 			model: `model
-			schema 1.1
+				schema 1.1
 
-			type user
+				type user
 
-			type group
-			  relations
-				define member: [user, group#member]
-			`,
+				type group
+					relations
+						define member: [user, group#member]
+				`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
@@ -149,15 +149,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		{
 			name: "computed_userset_dispatch",
 			model: `model
-			schema 1.1
+				schema 1.1
 
-			type user
+				type user
 
-			type document
-			  relations
-				define editor: [user]
-				define viewer: editor
-			`,
+				type document
+					relations
+						define editor: [user]
+						define viewer: editor
+				`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "editor", "user:jon"),
 			},

@@ -239,12 +239,12 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
+				schema 1.1
+				type user
 
-type document
-  relations
-	define viewer: [user]`), nil)
+				type document
+					relations
+						define viewer: [user]`), nil)
 
 	mockDatastore.EXPECT().
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
