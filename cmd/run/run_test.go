@@ -48,7 +48,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -289,14 +288,11 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	cfg.Trace.OTLP.TLS.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
+	serverDone := make(chan error)
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
+		serverDone <- runServer(ctx, cfg)
 	}()
-
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	// attempt a random request
@@ -309,8 +305,9 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// wait for trace exporting
-	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
+	cancel()
+	<-serverDone
+	// at this point, all spans should have been forcefully exported
 
 	require.Equal(t, 1, otlpServer.GetExportCount())
 }

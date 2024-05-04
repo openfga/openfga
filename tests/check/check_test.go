@@ -49,8 +49,9 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
-	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
-	// defer goleak.VerifyNone(t)
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
@@ -223,8 +224,10 @@ type document
 
 				httpReq.Header.Set("User-Agent", "test-user-agent")
 				client := &http.Client{}
+				var resp *http.Response
 
-				_, err = client.Do(httpReq)
+				resp, err = client.Do(httpReq)
+				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
 				require.Error(t, err)

@@ -279,9 +279,9 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
-func (s *ServerContext) telemetryConfig(ctx context.Context, config *serverconfig.Config) func() {
-	var tracerProviderCloser func()
-
+// telemetryConfig returns the function that must be called to shut down tracing.
+// The context provided to this function should be error-free, or shut down will be incomplete.
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx context.Context) error {
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
@@ -301,14 +301,14 @@ func (s *ServerContext) telemetryConfig(ctx context.Context, config *serverconfi
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		tracerProviderCloser = func() {
-			_ = tp.ForceFlush(ctx)
-			_ = tp.Shutdown(ctx)
+		return func(ctx context.Context) error {
+			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
-	} else {
-		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
-	return tracerProviderCloser
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	return func(ctx context.Context) error {
+		return nil
+	}
 }
 
 func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, error) {
@@ -384,7 +384,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	tracerProviderCloser := s.telemetryConfig(ctx, config)
+	tracerProviderCloser := s.telemetryConfig(config)
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
@@ -768,8 +768,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	datastore.Close()
 
-	if tracerProviderCloser != nil {
-		tracerProviderCloser()
+	if err := tracerProviderCloser(ctx); err != nil {
+		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
 	}
 
 	s.Logger.Info("server exited. goodbye 👋")
