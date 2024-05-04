@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	mySQLImage = "mysql:8"
+	mySQLImage = "mysql:8.0.36"
 )
 
 type mySQLTestContainer struct {
