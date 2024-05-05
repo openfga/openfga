@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
+	"github.com/openfga/openfga/pkg/middleware/grpc_ctxtags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"

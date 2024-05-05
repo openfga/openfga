@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
@@ -49,6 +48,7 @@ import (
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/grpc_ctxtags"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
@@ -377,7 +377,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+				// grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+				grpc_ctxtags.UnaryServerInterceptor(),
 				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
 				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests

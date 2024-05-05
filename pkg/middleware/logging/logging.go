@@ -6,7 +6,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -17,6 +16,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/openfga/openfga/pkg/logger"
+	ctxzap "github.com/openfga/openfga/pkg/middleware/grpc_ctxtags/zap"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )
