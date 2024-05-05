@@ -21,15 +21,6 @@ var (
 	nullLogger   = zap.NewNop()
 )
 
-// AddFields adds zap fields to the logger.
-func AddFields(ctx context.Context, fields ...zapcore.Field) {
-	l, ok := ctx.Value(ctxMarkerKey).(*ctxLogger)
-	if !ok || l == nil {
-		return
-	}
-	l.fields = append(l.fields, fields...)
-}
-
 // Extract takes the call-scoped Logger from grpc_zap middleware.
 //
 // It always returns a Logger that has all the grpc_ctxtags updated.
