@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -91,14 +90,14 @@ func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
 	}
 }
 
-// WithResolveNodeLimit see server.WithResolveNodeLimit
+// WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
-// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeBreadthLimit = limit
@@ -111,7 +110,7 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects.
 func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.maxConcurrentReads = limit
@@ -406,7 +405,7 @@ func (q *ListObjectsQuery) Execute(
 
 	objects := make([]string, 0)
 
-	var errs *multierror.Error
+	var errs error
 
 	for result := range resultsChan {
 		if result.Err != nil {
@@ -415,7 +414,7 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-				errs = multierror.Append(errs, result.Err)
+				errs = errors.Join(errs, result.Err)
 				continue
 			}
 
@@ -429,7 +428,7 @@ func (q *ListObjectsQuery) Execute(
 		objects = append(objects, result.ObjectID)
 	}
 
-	if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
+	if len(objects) < int(maxResults) && errs != nil {
 		return nil, errs
 	}
 
@@ -441,7 +440,7 @@ func (q *ListObjectsQuery) Execute(
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
-// until q.listObjectsDeadline is hit
+// until q.listObjectsDeadline is hit.
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result

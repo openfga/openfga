@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -14,9 +13,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/typesystem"
-
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestCycleDetectionCheckResolver(t *testing.T) {
@@ -36,7 +34,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		visitedPaths[tuple.TupleKeyToString(cyclicalTuple)] = struct{}{}
 
 		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:         uuid.NewString(),
+			StoreID:         ulid.Make().String(),
 			TupleKey:        cyclicalTuple,
 			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
 			VisitedPaths:    visitedPaths,
@@ -60,7 +58,7 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		cycleDetectionCheckResolver.SetDelegate(mockLocalChecker)
 
 		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:         uuid.NewString(),
+			StoreID:         ulid.Make().String(),
 			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:will"),
 			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
 			VisitedPaths:    map[string]struct{}{},

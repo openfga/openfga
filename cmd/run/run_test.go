@@ -207,7 +207,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -234,7 +234,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -297,12 +297,17 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	response, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// wait for trace exporting
 	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
@@ -359,8 +364,13 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
-	_, err = retryClient.Do(req)
+	response, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute create authorization model request")
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)
@@ -421,7 +431,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	type args struct {
 		origin string
@@ -527,7 +537,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	tests := []authTest{
 		{
@@ -601,7 +611,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	retryClient := retryablehttp.NewClient()
 	test := authTest{
@@ -638,7 +648,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
@@ -698,7 +708,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
@@ -728,7 +738,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", creds)
 	})
 }
 
@@ -767,7 +777,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -876,7 +886,6 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	expectedMetrics := []string{
 		"openfga_datastore_query_count",
-		"openfga_request_duration_by_query_count_ms",
 		"openfga_request_duration_ms",
 		"grpc_server_handling_seconds",
 		"openfga_datastore_bounded_read_delay_ms",
@@ -908,7 +917,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil)
 
 	_, err := http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.Error(t, err)
@@ -927,7 +936,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1111,6 +1120,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+
+	val = res.Get("properties.dispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.requestTimeout.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1195,6 +1212,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1209,6 +1227,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
 		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
+		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 
 		return nil
 	}
@@ -1231,7 +1250,7 @@ func TestHTTPHeaders(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 

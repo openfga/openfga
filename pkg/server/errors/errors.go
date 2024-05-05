@@ -16,7 +16,7 @@ import (
 const InternalServerErrorMsg = "Internal Server Error"
 
 var (
-	// AuthorizationModelResolutionTooComplex is used to avoid stack overflows
+	// AuthorizationModelResolutionTooComplex is used to avoid stack overflows.
 	AuthorizationModelResolutionTooComplex = status.Error(codes.Code(openfgav1.ErrorCode_authorization_model_resolution_too_complex), "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting")
 	InvalidWriteInput                      = status.Error(codes.Code(openfgav1.ErrorCode_invalid_write_input), "Invalid input. Make sure you provide at least one write, or at least one delete")
 	InvalidContinuationToken               = status.Error(codes.Code(openfgav1.ErrorCode_invalid_continuation_token), "Invalid continuation token")
@@ -26,6 +26,7 @@ var (
 	MismatchObjectType                     = status.Error(codes.Code(openfgav1.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
 	RequestCancelled                       = status.Error(codes.Code(openfgav1.InternalErrorCode_cancelled), "Request Cancelled")
 	RequestDeadlineExceeded                = status.Error(codes.Code(openfgav1.InternalErrorCode_deadline_exceeded), "Request Deadline Exceeded")
+	ThrottledTimeout                       = status.Error(codes.Code(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error), "timeout due to throttling on complex request")
 )
 
 type InternalError struct {
@@ -114,24 +115,25 @@ func InvalidAuthorizationModelInput(err error) error {
 // HandleError is used to surface some errors, and hide others.
 // Use `public` if you want to return a useful error message to the user.
 func HandleError(public string, err error) error {
-	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
+	switch {
+	case errors.Is(err, storage.ErrTransactionalWriteFailed):
 		return status.Error(codes.Aborted, err.Error())
-	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
+	case errors.Is(err, storage.ErrInvalidWriteInput):
 		return WriteFailedDueToInvalidInput(err)
-	} else if errors.Is(err, storage.ErrInvalidContinuationToken) {
+	case errors.Is(err, storage.ErrInvalidContinuationToken):
 		return InvalidContinuationToken
-	} else if errors.Is(err, storage.ErrMismatchObjectType) {
+	case errors.Is(err, storage.ErrMismatchObjectType):
 		return MismatchObjectType
-	} else if errors.Is(err, storage.ErrCancelled) {
+	case errors.Is(err, storage.ErrCancelled):
 		return RequestCancelled
-	} else if errors.Is(err, storage.ErrDeadlineExceeded) {
+	case errors.Is(err, storage.ErrDeadlineExceeded):
 		return RequestDeadlineExceeded
+	default:
+		return NewInternalError(public, err)
 	}
-
-	return NewInternalError(public, err)
 }
 
-// HandleTupleValidateError provide common routines for handling tuples validation error
+// HandleTupleValidateError provide common routines for handling tuples validation error.
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:

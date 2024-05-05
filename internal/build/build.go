@@ -4,7 +4,7 @@ package build
 
 var (
 
-	// Version is the build version of the app (e.g. v0.1.0)
+	// Version is the build version of the app (e.g. v0.1.0).
 	Version = "dev"
 
 	// Commit is the sha of the git commit the app was built against.

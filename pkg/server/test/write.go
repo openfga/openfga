@@ -10,6 +10,8 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/testutils"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -1318,6 +1320,29 @@ type org
 				},
 			),
 		},
+		{
+			_name: "ExecuteForbidsInvariantTuple",
+			model: testutils.MustTransformDSLToProtoWithID(`
+					model
+						schema 1.1
+					type user
+					type document
+						relations
+							define viewer: [document#viewer]`),
+			request: &openfgav1.WriteRequest{
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						{Object: "document:1", Relation: "viewer", User: "document:1#viewer"},
+					},
+				},
+			},
+			err: serverErrors.ValidationError(
+				&tuple.InvalidTupleError{
+					Cause:    fmt.Errorf("cannot write a tuple that is implicit"),
+					TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
+				},
+			),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -1346,6 +1371,8 @@ type org
 			if test.err != nil {
 				require.ErrorIs(t, gotErr, test.err)
 				require.ErrorContains(t, gotErr, test.err.Error())
+			} else {
+				require.NoError(t, gotErr)
 			}
 
 			if test.response != nil {

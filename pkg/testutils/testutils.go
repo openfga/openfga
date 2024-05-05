@@ -87,7 +87,7 @@ func CreateRandomString(n int) string {
 	return string(b)
 }
 
-func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
+func MustNewStruct(t require.TestingT, v map[string]interface{}) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
@@ -153,9 +153,10 @@ func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOpt
 	return conn
 }
 
-// EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
-// ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
-func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+// EnsureServiceHealthy is a test helper that ensures that a service's grpc and http health endpoints are responding OK.
+// If the http address is empty, it doesn't check the http health endpoint.
+// If the service doesn't respond healthy in 30 seconds it fails the test.
+func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials) {
 	t.Helper()
 
 	creds := insecure.NewCredentials()
@@ -205,9 +206,15 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}, policy)
 	require.NoError(t, err, "server did not reach healthy status")
 
-	if httpHealthCheck {
+	if httpAddr != "" {
 		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
 		require.NoError(t, err, "http endpoint not healthy")
+
+		t.Cleanup(func() {
+			err := resp.Body.Close()
+			require.NoError(t, err)
+		})
+
 		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 	}
 }
