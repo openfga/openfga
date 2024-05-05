@@ -50,7 +50,7 @@ import (
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/middleware/grpc_ctxtags"
+	grpc_ctxtags "github.com/openfga/openfga/pkg/middleware/ctxtags"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
 	"github.com/openfga/openfga/pkg/middleware/recovery"
