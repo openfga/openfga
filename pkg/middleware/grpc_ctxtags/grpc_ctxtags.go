@@ -9,30 +9,20 @@ import (
 
 // UnaryServerInterceptor returns a new unary server interceptors that sets the values for request tags.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	/// o := evaluateOptions(opts)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		newCtx := newTagsForCtx(ctx)
-		// if o.requestFieldsFunc != nil {
-		// 	setRequestFieldTags(newCtx, o.requestFieldsFunc, info.FullMethod, req)
-		// }
 		return handler(newCtx, req)
 	}
 }
 
 // StreamServerInterceptor returns a new streaming server interceptor that sets the values for request tags.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	// o := evaluateOptions(opts)
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		newCtx := newTagsForCtx(stream.Context())
-		// if o.requestFieldsFunc == nil {
 		// Short-circuit, don't do the expensive bit of allocating a wrappedStream.
 		wrappedStream := wrapServerStream(stream)
 		wrappedStream.WrappedContext = newCtx
 		return handler(srv, wrappedStream)
-		// }
-		// wrapped := &wrappedStream{stream, info, o, newCtx, true}
-		// err := handler(srv, wrapped)
-		// return err
 	}
 }
 
