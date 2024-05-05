@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/openfga/openfga/pkg/logger"
-	ctxzap "github.com/openfga/openfga/pkg/middleware/grpc_ctxtags/zap"
+	ctxzap "github.com/openfga/openfga/pkg/middleware/ctxtags/zap"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )

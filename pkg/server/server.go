@@ -29,7 +29,7 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/middleware/grpc_ctxtags"
+	grpc_ctxtags "github.com/openfga/openfga/pkg/middleware/ctxtags"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"

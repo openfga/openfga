@@ -3,10 +3,10 @@ package zap
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/middleware/grpc_ctxtags"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/openfga/openfga/pkg/middleware/ctxtags"
 )
 
 type ctxMarker struct{}
@@ -48,7 +48,7 @@ func Extract(ctx context.Context) *zap.Logger {
 // TagsToFields transforms the Tags on the supplied context into zap fields.
 func TagsToFields(ctx context.Context) []zapcore.Field {
 	fields := []zapcore.Field{}
-	tags := grpc_ctxtags.Extract(ctx)
+	tags := ctxtags.Extract(ctx)
 	for k, v := range tags.Values() {
 		fields = append(fields, zap.Any(k, v))
 	}

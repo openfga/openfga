@@ -1,12 +1,11 @@
-package grpc_ctxtags
+package ctxtags
 
 import "context"
 
 type ctxMarker struct{}
 
 var (
-	// ctxMarkerKey is the Context value marker used by *all* logging middleware.
-	// The logging middleware object must interf
+	// CtxMarkerKey is the Context value marker used by *all* logging middleware.
 	ctxMarkerKey = &ctxMarker{}
 	// NoopTags is a trivial, minimum overhead implementation of Tags for which all operations are no-ops.
 	NoopTags = &noopTags{}
