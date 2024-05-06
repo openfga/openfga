@@ -105,9 +105,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidIssuer
 	}
 
-	v := jwt.NewValidator(jwt.WithAudience(oidc.Audience))
-	err = v.Validate(claims)
-	if err != nil {
+	if err := jwt.NewValidator(jwt.WithAudience(oidc.Audience)).Validate(claims); err != nil {
 		return nil, errInvalidAudience
 	}
 
