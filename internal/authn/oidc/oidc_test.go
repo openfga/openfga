@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MicahParks/keyfunc"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/MicahParks/keyfunc/v2"
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
@@ -195,6 +195,25 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				)
 			},
 		},
+		{
+			testDescription: "when_issuer_alias_set_token_is_valid_with_orig_issuer,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					[]string{"issuer_alias"},
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "openfga client",
+						"scope": scopes,
+					},
+					nil,
+				)
+			},
+		},
 	}
 
 	for _, testC := range successTestCases {
@@ -259,7 +278,7 @@ func generateJWTSignatureKeys() (*rsa.PrivateKey, *rsa.PublicKey) {
 // fetchKeysMock returns a function that sets up a mock JWKS.
 func fetchKeysMock(publicKey *rsa.PublicKey, kid string) func(oidc *RemoteOidcAuthenticator) error {
 	// Create a keyfunc with the given RSA public key and RS256 algorithm
-	givenKeys := keyfunc.NewGivenRSACustomWithOptions(publicKey, keyfunc.GivenKeyOptions{
+	givenKeys := keyfunc.NewGivenCustom(publicKey, keyfunc.GivenKeyOptions{
 		Algorithm: "RS256",
 	})
 	// Return a function that sets up the mock JWKS with the provided kid

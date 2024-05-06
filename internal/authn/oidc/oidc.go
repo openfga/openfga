@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MicahParks/keyfunc"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/MicahParks/keyfunc/v2"
+	jwt "github.com/golang-jwt/jwt/v5"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
 
@@ -83,26 +83,31 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	if !token.Valid {
 		return nil, errInvalidToken
 	}
-
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, errInvalidClaims
 	}
 
-	validIssuers := []string{
-		oidc.MainIssuer,
+	if err := jwt.NewValidator(jwt.WithIssuedAt()).Validate(claims); err != nil {
+		return nil, errInvalidToken
 	}
+
+	validIssuers := []string{oidc.MainIssuer}
 	validIssuers = append(validIssuers, oidc.IssuerAliases...)
 
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
-		return claims.VerifyIssuer(issuer, true)
+		v := jwt.NewValidator(jwt.WithIssuer(issuer))
+		err := v.Validate(claims)
+		return err == nil
 	})
 
 	if !ok {
 		return nil, errInvalidIssuer
 	}
 
-	if ok := claims.VerifyAudience(oidc.Audience, true); !ok {
+	v := jwt.NewValidator(jwt.WithAudience(oidc.Audience))
+	err = v.Validate(claims)
+	if err != nil {
 		return nil, errInvalidAudience
 	}
 
