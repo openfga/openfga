@@ -612,7 +612,6 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 	span.SetAttributes(attribute.String("resolver_type", "ReverseExpandQuery"))
 
 	currentNumDispatch := metadata.DispatchCounter.Load()
-	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
 	shouldThrottle := throttler.ShouldThrottle(
 		ctx,
@@ -620,6 +619,11 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 		c.dispatchThrottlerConfig.Threshold,
 		c.dispatchThrottlerConfig.MaxThreshold,
 	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
 	if shouldThrottle {
 		metadata.WasThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
