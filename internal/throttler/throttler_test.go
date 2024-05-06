@@ -19,8 +19,13 @@ func mockThrottlerTest(ctx context.Context, throttler Throttler, counter *int) {
 }
 
 func TestDispatchThrottler(t *testing.T) {
+	testThrottler := newConstantRateThrottler(1*time.Hour, "test")
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+		testThrottler.Close()
+	})
+
 	t.Run("throttler_will_release_only_when_ticked", func(t *testing.T) {
-		testThrottler := newConstantRateThrottler(1*time.Hour, "test")
 
 		counter := 0
 		var goFuncDone sync.WaitGroup

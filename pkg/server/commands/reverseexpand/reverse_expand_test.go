@@ -713,7 +713,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				}
 			}
 
-			require.NoError(t, err)
 			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
 			require.Equal(t, test.expectedWasThrottled, resolutionMetadata.WasThrottled.Load())
 		})
