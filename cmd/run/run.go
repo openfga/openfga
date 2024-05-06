@@ -768,6 +768,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	datastore.Close()
 
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	if err := tracerProviderCloser(ctx); err != nil {
 		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
 	}

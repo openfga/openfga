@@ -306,7 +306,13 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	})
 
 	cancel()
-	<-serverDone
+	select {
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "timed out")
+	case err := <-serverDone:
+		require.NoError(t, err)
+	}
+
 	// at this point, all spans should have been forcefully exported
 
 	require.Equal(t, 1, otlpServer.GetExportCount())
