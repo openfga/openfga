@@ -545,3 +545,81 @@ func TestParseTupleString(t *testing.T) {
 		})
 	}
 }
+
+func TestFromObjectOrUsersetProto(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    *openfgav1.ObjectOrUserset
+		expected string
+	}{
+		{
+			name: "user_with_id",
+			input: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Object{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "id-123",
+					},
+				},
+			},
+			expected: "user:id-123",
+		},
+		{
+			name: "user_with_id_and_relation",
+			input: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     "user",
+						Id:       "id-123",
+						Relation: "member",
+					},
+				},
+			},
+			expected: "user:id-123#member",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := FromObjectOrUsersetProto(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestToObjectOrUsersetProto(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected *openfgav1.ObjectOrUserset
+	}{
+		{
+			name:  "user_with_id",
+			input: "user:id-123",
+			expected: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Object{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "id-123",
+					},
+				},
+			},
+		},
+		{
+			name:  "user_with_id_and_relation",
+			input: "user:id-123#member",
+			expected: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     "user",
+						Id:       "id-123",
+						Relation: "member",
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := StringToObjectOrUserset(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

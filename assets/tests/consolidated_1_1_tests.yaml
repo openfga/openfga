@@ -6517,7 +6517,9 @@ tests:
               object: document:1
               relation: can_view
             expectation:
-              - user:* # TODO but user:bob doesn't have access
+              - user:*
+            expectedExcludedUsers:
+              - user:bob
           - request:
               filters:
                 - user
