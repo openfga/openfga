@@ -593,6 +593,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			return nil, serverErrors.ValidationError(err)
 		}
 
+		//Currently it is unlikely this is thrown since unlike Check, ListObjects will have partial results to return.
+		//In future, if we have implementation to detect whether we are returning partial or complete results, this can be useful
 		if errors.Is(err, context.DeadlineExceeded) && result.ResolutionMetadata.WasThrottled.Load() {
 			return nil, serverErrors.ThrottledTimeout
 		}
