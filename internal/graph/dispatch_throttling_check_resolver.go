@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/trace"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -78,9 +79,7 @@ func (r *DispatchThrottlingCheckResolver) Close() {
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
-	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "DispatchThrottlingCheckResolver"))
+	span := trace.SpanFromContext(ctx)
 
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
