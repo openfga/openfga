@@ -37,40 +37,6 @@ type ListUsersTests []struct {
 
 const maximumRecursiveDepth = 25
 
-func TestBlah(t *testing.T) {
-	tests := ListUsersTests{
-		{
-			name: "blah_1",
-			req: &openfgav1.ListUsersRequest{
-				Object: &openfgav1.Object{
-					Type: "document",
-					Id:   "1",
-				},
-				Relation: "can_view",
-				UserFilters: []*openfgav1.UserTypeFilter{
-					{Type: "user"},
-				},
-			},
-			model: `
-			model
-              schema 1.1
-            type user
-            type document
-              relations
-                define restricted: [user]
-                define viewer: [user:*] but not restricted
-                define can_view: viewer`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				tuple.NewTupleKey("document:1", "restricted", "user:bob"),
-			},
-			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:bob"},
-		},
-	}
-	tests.runListUsersTestCases(t)
-}
-
 func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
