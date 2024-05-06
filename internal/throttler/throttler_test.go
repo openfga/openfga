@@ -26,7 +26,6 @@ func TestDispatchThrottler(t *testing.T) {
 	})
 
 	t.Run("throttler_will_release_only_when_ticked", func(t *testing.T) {
-
 		counter := 0
 		var goFuncDone sync.WaitGroup
 		goFuncDone.Add(1)
