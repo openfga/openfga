@@ -1760,16 +1760,16 @@ func TestDelegateCheckResolver(t *testing.T) {
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
 
 		require.True(t, s.checkQueryCacheEnabled)
 		require.NotNil(t, s.cachedCheckResolver)
 
-		cachedCheckResolver, ok := dispatchThrottlingResolver.GetDelegate().(*graph.CachedCheckResolver)
+		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
-		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
 		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)

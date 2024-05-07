@@ -430,6 +430,22 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	cycleDetectionCheckResolver.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
+	if s.checkQueryCacheEnabled {
+		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
+			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
+			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
+
+		cachedCheckResolver := graph.NewCachedCheckResolver(
+			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		)
+		s.cachedCheckResolver = cachedCheckResolver
+
+		cachedCheckResolver.SetDelegate(localChecker)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+	}
+
 	if s.checkDispatchThrottlingEnabled {
 		s.logger.Info("Enabling Check dispatch throttling",
 			zap.Duration("Frequency", s.checkDispatchThrottlingFrequency),
@@ -453,7 +469,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
 		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
-		cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		if s.cachedCheckResolver != nil {
+			s.cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		}
 	}
 
 	if s.listObjectsDispatchThrottlingEnabled {
@@ -468,26 +488,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
-	}
-
-	if s.checkQueryCacheEnabled {
-		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
-			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
-			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
-
-		cachedCheckResolver := graph.NewCachedCheckResolver(
-			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		)
-		s.cachedCheckResolver = cachedCheckResolver
-
-		cachedCheckResolver.SetDelegate(localChecker)
-		if s.dispatchThrottlingCheckResolver != nil {
-			s.dispatchThrottlingCheckResolver.SetDelegate(cachedCheckResolver)
-		} else {
-			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
-		}
 	}
 
 	if s.datastore == nil {
