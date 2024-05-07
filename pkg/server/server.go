@@ -597,6 +597,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			return nil, serverErrors.ValidationError(err)
 		}
 
+		if errors.Is(err, context.DeadlineExceeded) && result.ResolutionMetadata.WasThrottled.Load() {
+			return nil, serverErrors.ThrottledTimeout
+		}
 		return nil, err
 	}
 	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)

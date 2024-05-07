@@ -621,6 +621,85 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
 }
 
+func TestListObjectsDispatchThrottledTimeout(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	const dispatchFrequency = 10 * time.Millisecond
+	const dispatchThreshold = 2
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithListObjectsDeadline(),
+		WithListObjectsDispatchThrottlingFrequency(dispatchFrequency),
+		WithListObjectsDispatchThrottlingEnabled(true),
+		WithListObjectsDispatchThrottlingThreshold(dispatchThreshold),
+	)
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+		schema 1.1
+type user
+type folder
+ relations
+   define parent: [folder]
+   define can_view: [user] or can_view from parent
+`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:1", "can_view", "user:1"),
+				tuple.NewTupleKey("folder:1_1", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_2", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_3", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_4", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_5", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_6", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_7", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_8", "parent", "folder:1"),
+				tuple.NewTupleKey("folder:1_9", "parent", "folder:1"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// we know that the above query will take 10 dispatches
+	// Since the threshold level is 5 and each dispatch will be throttled by 5ms
+	// The request will take at least 25 ms and will be timeout since timeout is 20ms.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	result, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		User:                 "user:1",
+		Relation:             "can_view",
+		Type:                 "folder",
+	})
+	println(result)
+	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
+}
+
 func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Cleanup(func() {
 		goleak.VerifyNone(b,
