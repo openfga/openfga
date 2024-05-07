@@ -282,3 +282,76 @@ func TestDefaultContextTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
+	var testCases = map[string]struct {
+		configGeneratingFunction    func() Config
+		expectedCheckDispatchConfig DispatchThrottlingConfig
+	}{
+		"get_value_from_dispatch_config_if_check_dispatch_config_is_not_set": {
+			configGeneratingFunction: func() Config {
+				config := DefaultConfig()
+				config.DispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      true,
+					Frequency:    10,
+					Threshold:    10,
+					MaxThreshold: 10,
+				}
+				return *config
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      true,
+				Frequency:    10,
+				Threshold:    10,
+				MaxThreshold: 10,
+			},
+		},
+		"override_from_check_dispatch_config_if_set": {
+			configGeneratingFunction: func() Config {
+				config := DefaultConfig()
+				config.DispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      false,
+					Frequency:    100,
+					Threshold:    100,
+					MaxThreshold: 100,
+				}
+				config.CheckDispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      true,
+					Frequency:    10,
+					Threshold:    10,
+					MaxThreshold: 10,
+				}
+				return *config
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      true,
+				Frequency:    10,
+				Threshold:    10,
+				MaxThreshold: 10,
+			},
+		},
+		"get_default_values_if_none_are_set": {
+			configGeneratingFunction: func() Config {
+				return *DefaultConfig()
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      DefaultCheckDispatchThrottlingEnabled,
+				Frequency:    DefaultCheckDispatchThrottlingFrequency,
+				Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
+				MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+			},
+		},
+	}
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			config := test.configGeneratingFunction()
+			result := GetCheckDispatchThrottlingConfig(&config)
+			require.Equal(t, test.expectedCheckDispatchConfig.Enabled, result.Enabled)
+			require.Equal(t, test.expectedCheckDispatchConfig.Frequency, result.Frequency)
+			require.Equal(t, test.expectedCheckDispatchConfig.Threshold, result.Threshold)
+			require.Equal(t, test.expectedCheckDispatchConfig.MaxThreshold, result.MaxThreshold)
+		})
+	}
+}

@@ -34,7 +34,6 @@ const (
 
 	DefaultCheckDispatchThrottlingEnabled          = false
 	DefaultCheckDispatchThrottlingFrequency        = 10 * time.Microsecond
-	DefaultCheckDispatchThrottlingThreshold        = 100
 	DefaultCheckDispatchThrottlingDefaultThreshold = 100
 	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
@@ -404,26 +403,27 @@ func DefaultContextTimeout(config *Config) time.Duration {
 }
 
 // GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
-// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if value
-// exists there
+// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
+// a non-zero value exists there
 func GetCheckDispatchThrottlingConfig(config *Config) DispatchThrottlingConfig {
 	checkDispatchThrottlingEnabled := config.DispatchThrottling.Enabled
-	if !checkDispatchThrottlingEnabled {
+	checkDispatchThrottlingFrequency := config.DispatchThrottling.Frequency
+	checkDispatchThrottlingDefaultThreshold := config.DispatchThrottling.Threshold
+	checkDispatchThrottlingMaxThreshold := config.DispatchThrottling.MaxThreshold
+
+	if config.CheckDispatchThrottling.Enabled {
 		checkDispatchThrottlingEnabled = config.CheckDispatchThrottling.Enabled
 	}
 
-	checkDispatchThrottlingFrequency := config.DispatchThrottling.Frequency
-	if checkDispatchThrottlingFrequency == 0 {
+	if config.CheckDispatchThrottling.Frequency != 0 {
 		checkDispatchThrottlingFrequency = config.CheckDispatchThrottling.Frequency
 	}
 
-	checkDispatchThrottlingDefaultThreshold := config.DispatchThrottling.Threshold
-	if checkDispatchThrottlingDefaultThreshold == 0 {
+	if config.CheckDispatchThrottling.Threshold != 0 {
 		checkDispatchThrottlingDefaultThreshold = config.CheckDispatchThrottling.Threshold
 	}
 
-	checkDispatchThrottlingMaxThreshold := config.DispatchThrottling.MaxThreshold
-	if checkDispatchThrottlingDefaultThreshold == 0 {
+	if config.CheckDispatchThrottling.MaxThreshold != 0 {
 		checkDispatchThrottlingMaxThreshold = config.CheckDispatchThrottling.MaxThreshold
 	}
 
@@ -508,14 +508,15 @@ func DefaultConfig() *Config {
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
-		//Avoiding default values as we will get it from CheckDispatchThrottling using GetCheckDispatchThrottlingConfig
-		DispatchThrottling: DispatchThrottlingConfig{},
-		CheckDispatchThrottling: DispatchThrottlingConfig{
+		DispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
 			Frequency:    DefaultCheckDispatchThrottlingFrequency,
-			Threshold:    DefaultCheckDispatchThrottlingThreshold,
+			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
 		},
+		//Avoiding default values as we will get it from DispatchThrottling using GetCheckDispatchThrottlingConfig
+		//When DispatchThrottling is Removed, default values should be set to CheckDispatchThrottling
+		CheckDispatchThrottling: DispatchThrottlingConfig{},
 		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultListObjectsDispatchThrottlingEnabled,
 			Frequency:    DefaultListObjectsDispatchThrottlingFrequency,
