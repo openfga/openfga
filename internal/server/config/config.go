@@ -259,6 +259,7 @@ type Config struct {
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
 	CheckQueryCache               CheckQueryCache
+	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 
@@ -402,6 +403,38 @@ func DefaultContextTimeout(config *Config) time.Duration {
 	return 0
 }
 
+// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
+// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if value
+// exists there
+func GetCheckDispatchThrottlingConfig(config *Config) DispatchThrottlingConfig {
+	checkDispatchThrottlingEnabled := config.DispatchThrottling.Enabled
+	if !checkDispatchThrottlingEnabled {
+		checkDispatchThrottlingEnabled = config.CheckDispatchThrottling.Enabled
+	}
+
+	checkDispatchThrottlingFrequency := config.DispatchThrottling.Frequency
+	if checkDispatchThrottlingFrequency == 0 {
+		checkDispatchThrottlingFrequency = config.CheckDispatchThrottling.Frequency
+	}
+
+	checkDispatchThrottlingDefaultThreshold := config.DispatchThrottling.Threshold
+	if checkDispatchThrottlingDefaultThreshold == 0 {
+		checkDispatchThrottlingDefaultThreshold = config.CheckDispatchThrottling.Threshold
+	}
+
+	checkDispatchThrottlingMaxThreshold := config.DispatchThrottling.MaxThreshold
+	if checkDispatchThrottlingDefaultThreshold == 0 {
+		checkDispatchThrottlingMaxThreshold = config.CheckDispatchThrottling.MaxThreshold
+	}
+
+	return DispatchThrottlingConfig{
+		Enabled:      checkDispatchThrottlingEnabled,
+		Frequency:    checkDispatchThrottlingFrequency,
+		Threshold:    checkDispatchThrottlingDefaultThreshold,
+		MaxThreshold: checkDispatchThrottlingMaxThreshold,
+	}
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -475,6 +508,8 @@ func DefaultConfig() *Config {
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
+		//Avoiding default values as we will get it from CheckDispatchThrottling using GetCheckDispatchThrottlingConfig
+		DispatchThrottling: DispatchThrottlingConfig{},
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
 			Frequency:    DefaultCheckDispatchThrottlingFrequency,

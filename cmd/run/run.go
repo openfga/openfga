@@ -554,6 +554,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}()
 	}
 
+	checkDispatchThrottlingConfig := serverconfig.GetCheckDispatchThrottlingConfig(config)
+
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
 		server.WithLogger(s.Logger),
@@ -571,10 +573,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
-		server.WithDispatchThrottlingCheckResolverEnabled(config.CheckDispatchThrottling.Enabled),
-		server.WithDispatchThrottlingCheckResolverFrequency(config.CheckDispatchThrottling.Frequency),
-		server.WithDispatchThrottlingCheckResolverThreshold(config.CheckDispatchThrottling.Threshold),
-		server.WithDispatchThrottlingCheckResolverMaxThreshold(config.CheckDispatchThrottling.MaxThreshold),
+		server.WithDispatchThrottlingCheckResolverEnabled(checkDispatchThrottlingConfig.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(checkDispatchThrottlingConfig.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(checkDispatchThrottlingConfig.Threshold),
+		server.WithDispatchThrottlingCheckResolverMaxThreshold(checkDispatchThrottlingConfig.MaxThreshold),
 		server.WithListObjectsDispatchThrottlingEnabled(config.ListObjectsDispatchThrottling.Enabled),
 		server.WithListObjectsDispatchThrottlingFrequency(config.ListObjectsDispatchThrottling.Frequency),
 		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
