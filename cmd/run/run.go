@@ -223,19 +223,19 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
 
-	flags.Bool("dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
     
     Enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.`)
 
-	flags.Duration("dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead. 
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead. 
     
     Defines how frequent Check dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch Check requests are dispatched.`)
 
-	flags.Uint32("dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead. 
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead. 
 
 	Define the default threshold on number of dispatches above which requests will be throttled.`)
 
-	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.CheckDispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead. 
+	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead. 
 
 	Define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum`)
 

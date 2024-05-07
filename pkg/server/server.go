@@ -462,6 +462,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
 		)
 
+		if s.listObjectsDispatchThrottlingMaxThreshold != 0 && s.listObjectsDispatchDefaultThreshold > s.listObjectsDispatchThrottlingMaxThreshold {
+			return nil, fmt.Errorf("ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects")
+		}
+
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 

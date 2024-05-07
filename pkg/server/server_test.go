@@ -178,7 +178,7 @@ func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
 }
 
 func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
@@ -187,6 +187,20 @@ func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t 
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(100),
 			WithDispatchThrottlingCheckResolverMaxThreshold(80),
+		)
+	})
+}
+
+func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithListObjectsDispatchThrottlingEnabled(true),
+			WithListObjectsDispatchThrottlingThreshold(100),
+			WithListObjectsDispatchThrottlingMaxThreshold(80),
 		)
 	})
 }
