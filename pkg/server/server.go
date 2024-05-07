@@ -442,7 +442,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 
 		if s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
-			return nil, fmt.Errorf("default dispatch throttling threshold must be equal or smaller than max dispatch threshold")
+			return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
 		}
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
