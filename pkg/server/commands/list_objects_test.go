@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
@@ -196,7 +196,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
-				WithDispatchThrottlerConfig(throttler.Config{
+				WithDispatchThrottlerConfig(threshold.Config{
 					Throttler:    mockThrottler,
 					Enabled:      true,
 					Threshold:    3,

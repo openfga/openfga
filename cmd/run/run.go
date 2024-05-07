@@ -554,7 +554,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}()
 	}
 
-	checkDispatchThrottlingConfig := serverconfig.GetCheckDispatchThrottlingConfig(config)
+	checkDispatchThrottlingConfig := serverconfig.GetCheckDispatchThrottlingConfig(s.Logger, config)
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),

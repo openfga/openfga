@@ -27,13 +27,6 @@ var (
 	}, []string{"grpc_service", "grpc_method", "throttler_name"})
 )
 
-type Config struct {
-	Enabled      bool
-	Throttler    Throttler
-	Threshold    uint32
-	MaxThreshold uint32
-}
-
 type Throttler interface {
 	Close()
 	Throttle(context.Context)
@@ -119,20 +112,4 @@ func (r *constantRateThrottler) Throttle(ctx context.Context) {
 		rpcInfo.Method,
 		r.name,
 	).Observe(float64(timeWaiting))
-}
-
-func ShouldThrottle(ctx context.Context, currentCount uint32, defaultThreshold uint32, maxThreshold uint32) bool {
-	threshold := defaultThreshold
-
-	if maxThreshold == 0 {
-		maxThreshold = defaultThreshold
-	}
-
-	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
-
-	if thresholdInCtx > 0 {
-		threshold = min(thresholdInCtx, maxThreshold)
-	}
-
-	return currentCount > threshold
 }

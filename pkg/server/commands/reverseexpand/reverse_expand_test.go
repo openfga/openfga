@@ -3,6 +3,7 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"strconv"
 	"testing"
 	"time"
@@ -16,10 +17,8 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -474,7 +473,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			ts,
-			WithDispatchThrottlerConfig(throttler.Config{
+			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 200,
@@ -493,7 +492,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			ts,
-			WithDispatchThrottlerConfig(throttler.Config{
+			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 200,
@@ -512,7 +511,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			ts,
-			WithDispatchThrottlerConfig(throttler.Config{
+			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 0,
@@ -531,7 +530,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			ts,
-			WithDispatchThrottlerConfig(throttler.Config{
+			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    0,
 				MaxThreshold: 210,
@@ -539,7 +538,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(190)
-		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
+		threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
@@ -551,7 +550,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		reverseExpandQuery := NewReverseExpandQuery(
 			mockDatastore,
 			ts,
-			WithDispatchThrottlerConfig(throttler.Config{
+			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
 				MaxThreshold: 210,
@@ -676,7 +675,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				q := NewReverseExpandQuery(
 					ds,
 					ts,
-					WithDispatchThrottlerConfig(throttler.Config{
+					WithDispatchThrottlerConfig(threshold.Config{
 						Throttler:    mockThrottler,
 						Enabled:      test.throttlingEnabled,
 						Threshold:    3,

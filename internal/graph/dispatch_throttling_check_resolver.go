@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"go.opentelemetry.io/otel/trace"
 
@@ -84,7 +85,7 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
-	shouldThrottle := throttler.ShouldThrottle(
+	shouldThrottle := threshold.ShouldThrottle(
 		ctx,
 		currentNumDispatch,
 		r.config.DefaultThreshold,

@@ -2,9 +2,8 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"testing"
-
-	"github.com/openfga/openfga/pkg/telemetry"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -135,7 +134,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
 		ctx := context.Background()
-		telemetry.ContextWithDispatchThrottlingThreshold(ctx, 200)
+		threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
 
 		_, err := dut.ResolveCheck(ctx, req)
 

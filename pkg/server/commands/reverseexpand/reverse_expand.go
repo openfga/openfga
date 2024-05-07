@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"sync"
 	"sync/atomic"
 
@@ -115,7 +116,7 @@ type ReverseExpandQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
-	dispatchThrottlerConfig throttler.Config
+	dispatchThrottlerConfig threshold.Config
 
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
@@ -131,7 +132,7 @@ func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
-func WithDispatchThrottlerConfig(config throttler.Config) ReverseExpandQueryOption {
+func WithDispatchThrottlerConfig(config threshold.Config) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.dispatchThrottlerConfig = config
 	}
@@ -150,7 +151,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		dispatchThrottlerConfig: throttler.Config{
+		dispatchThrottlerConfig: threshold.Config{
 			Throttler:    throttler.NewNoopThrottler(),
 			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
 			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
@@ -611,7 +612,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionM
 
 	currentNumDispatch := metadata.DispatchCounter.Load()
 
-	shouldThrottle := throttler.ShouldThrottle(
+	shouldThrottle := threshold.ShouldThrottle(
 		ctx,
 		currentNumDispatch,
 		c.dispatchThrottlerConfig.Threshold,

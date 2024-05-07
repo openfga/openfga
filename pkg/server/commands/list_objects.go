@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -55,7 +56,7 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
-	dispatchThrottlerConfig throttler.Config
+	dispatchThrottlerConfig threshold.Config
 
 	checkResolver graph.CheckResolver
 }
@@ -92,7 +93,7 @@ func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	}
 }
 
-func WithDispatchThrottlerConfig(config throttler.Config) ListObjectsQueryOption {
+func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.dispatchThrottlerConfig = config
 	}
@@ -152,7 +153,7 @@ func NewListObjectsQuery(
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
-		dispatchThrottlerConfig: throttler.Config{
+		dispatchThrottlerConfig: threshold.Config{
 			Throttler:    throttler.NewNoopThrottler(),
 			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
 			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,

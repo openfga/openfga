@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/spf13/viper"
 	"testing"
 	"time"
 
@@ -285,19 +286,23 @@ func TestDefaultContextTimeout(t *testing.T) {
 
 func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 	var testCases = map[string]struct {
-		configGeneratingFunction    func() Config
+		configGeneratingFunction    func() *Config
 		expectedCheckDispatchConfig DispatchThrottlingConfig
 	}{
 		"get_value_from_dispatch_config_if_check_dispatch_config_is_not_set": {
-			configGeneratingFunction: func() Config {
+			configGeneratingFunction: func() *Config {
 				config := DefaultConfig()
+				viper.Set("dispatchThrottling.enabled", true)
+				viper.Set("dispatchThrottling.frequency", 10)
+				viper.Set("dispatchThrottling.threshold", 10)
+				viper.Set("dispatchThrottling.maxThreshold", 10)
 				config.DispatchThrottling = DispatchThrottlingConfig{
 					Enabled:      true,
 					Frequency:    10,
 					Threshold:    10,
 					MaxThreshold: 10,
 				}
-				return *config
+				return config
 			},
 			expectedCheckDispatchConfig: DispatchThrottlingConfig{
 				Enabled:      true,
@@ -307,32 +312,40 @@ func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 			},
 		},
 		"override_from_check_dispatch_config_if_set": {
-			configGeneratingFunction: func() Config {
+			configGeneratingFunction: func() *Config {
+				viper.Set("dispatchThrottling.enabled", true)
+				viper.Set("dispatchThrottling.frequency", 100)
+				viper.Set("dispatchThrottling.threshold", 100)
+				viper.Set("dispatchThrottling.maxThreshold", 100)
+				viper.Set("checkDispatchThrottling.enabled", true)
+				viper.Set("checkDispatchThrottling.frequency", 10)
+				viper.Set("checkDispatchThrottling.threshold", 10)
+				viper.Set("checkDispatchThrottling.maxThreshold", 10)
 				config := DefaultConfig()
 				config.DispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      false,
+					Enabled:      true,
 					Frequency:    100,
 					Threshold:    100,
 					MaxThreshold: 100,
 				}
 				config.CheckDispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      true,
+					Enabled:      false,
 					Frequency:    10,
 					Threshold:    10,
 					MaxThreshold: 10,
 				}
-				return *config
+				return config
 			},
 			expectedCheckDispatchConfig: DispatchThrottlingConfig{
-				Enabled:      true,
+				Enabled:      false,
 				Frequency:    10,
 				Threshold:    10,
 				MaxThreshold: 10,
 			},
 		},
 		"get_default_values_if_none_are_set": {
-			configGeneratingFunction: func() Config {
-				return *DefaultConfig()
+			configGeneratingFunction: func() *Config {
+				return DefaultConfig()
 			},
 			expectedCheckDispatchConfig: DispatchThrottlingConfig{
 				Enabled:      DefaultCheckDispatchThrottlingEnabled,
@@ -345,9 +358,12 @@ func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 	for name, test := range testCases {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+			t.Cleanup(func() {
+				viper.Reset()
+			})
+
 			config := test.configGeneratingFunction()
-			result := GetCheckDispatchThrottlingConfig(&config)
+			result := GetCheckDispatchThrottlingConfig(nil, config)
 			require.Equal(t, test.expectedCheckDispatchConfig.Enabled, result.Enabled)
 			require.Equal(t, test.expectedCheckDispatchConfig.Frequency, result.Frequency)
 			require.Equal(t, test.expectedCheckDispatchConfig.Threshold, result.Threshold)

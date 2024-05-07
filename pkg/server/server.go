@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"net/http"
 	"sort"
 	"strconv"
@@ -565,7 +566,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
-		commands.WithDispatchThrottlerConfig(throttler.Config{
+		commands.WithDispatchThrottlerConfig(threshold.Config{
 			Throttler:    s.listObjectsDispatchThrottler,
 			Enabled:      s.listObjectsDispatchThrottlingEnabled,
 			Threshold:    s.listObjectsDispatchDefaultThreshold,
@@ -597,9 +598,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		if errors.Is(err, context.DeadlineExceeded) && result.ResolutionMetadata.WasThrottled.Load() {
-			return nil, serverErrors.ThrottledTimeout
-		}
 		return nil, err
 	}
 	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
@@ -668,7 +666,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		s.checkResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
-		commands.WithDispatchThrottlerConfig(throttler.Config{
+		commands.WithDispatchThrottlerConfig(threshold.Config{
 			Throttler:    s.listObjectsDispatchThrottler,
 			Enabled:      s.listObjectsDispatchThrottlingEnabled,
 			Threshold:    s.listObjectsDispatchDefaultThreshold,
@@ -863,7 +861,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		// Note for ListObjects:
 		// Currently this is not feasible in ListObjects as we return partial results.
-		// In the future, if we have implementation to detect whether we are returning partial or complete results, this can be useful
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, serverErrors.ThrottledTimeout
 		}

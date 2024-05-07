@@ -5,6 +5,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/spf13/viper"
 	"math"
 	"strconv"
 	"time"
@@ -349,16 +351,10 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if cfg.CheckDispatchThrottling.Enabled {
-		if cfg.CheckDispatchThrottling.Frequency <= 0 {
-			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.CheckDispatchThrottling.Threshold <= 0 {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.CheckDispatchThrottling.MaxThreshold != 0 && cfg.CheckDispatchThrottling.Threshold > cfg.CheckDispatchThrottling.MaxThreshold {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
-		}
+	//Tha validation ensures we are picking the right values for Check Dispatch Throttlign
+	err := cfg.VerifyCheckDispatchThrottlingConfig()
+	if err != nil {
+		return err
 	}
 
 	if cfg.ListObjectsDispatchThrottling.Enabled {
@@ -405,26 +401,35 @@ func DefaultContextTimeout(config *Config) time.Duration {
 // GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
 // we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
 // a non-zero value exists there
-func GetCheckDispatchThrottlingConfig(config *Config) DispatchThrottlingConfig {
-	checkDispatchThrottlingEnabled := config.DispatchThrottling.Enabled
-	checkDispatchThrottlingFrequency := config.DispatchThrottling.Frequency
-	checkDispatchThrottlingDefaultThreshold := config.DispatchThrottling.Threshold
-	checkDispatchThrottlingMaxThreshold := config.DispatchThrottling.MaxThreshold
+func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
+	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
+	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
+	checkDispatchThrottlingDefaultThreshold := config.CheckDispatchThrottling.Threshold
+	checkDispatchThrottlingMaxThreshold := config.CheckDispatchThrottling.MaxThreshold
 
-	if config.CheckDispatchThrottling.Enabled {
-		checkDispatchThrottlingEnabled = config.CheckDispatchThrottling.Enabled
+	if viper.IsSet("dispatchThrottling.enabled") && !viper.IsSet("checkDispatchThrottling.enabled") {
+		if logger != nil {
+			logger.Info("'dispatchThrottling.enabled' is deprecated. Please use 'checkDispatchThrottling.enabled'")
+		}
+		checkDispatchThrottlingEnabled = config.DispatchThrottling.Enabled
 	}
-
-	if config.CheckDispatchThrottling.Frequency != 0 {
-		checkDispatchThrottlingFrequency = config.CheckDispatchThrottling.Frequency
+	if viper.IsSet("dispatchThrottling.frequency") && !viper.IsSet("checkDispatchThrottling.frequency") {
+		if logger != nil {
+			logger.Info("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
+		}
+		checkDispatchThrottlingFrequency = config.DispatchThrottling.Frequency
 	}
-
-	if config.CheckDispatchThrottling.Threshold != 0 {
-		checkDispatchThrottlingDefaultThreshold = config.CheckDispatchThrottling.Threshold
+	if viper.IsSet("dispatchThrottling.threshold") && !viper.IsSet("checkDispatchThrottling.threshold") {
+		if logger != nil {
+			logger.Info("'dispatchThrottling.threshold' is deprecated. Please use 'checkDispatchThrottling.threshold'")
+		}
+		checkDispatchThrottlingDefaultThreshold = config.DispatchThrottling.Threshold
 	}
-
-	if config.CheckDispatchThrottling.MaxThreshold != 0 {
-		checkDispatchThrottlingMaxThreshold = config.CheckDispatchThrottling.MaxThreshold
+	if viper.IsSet("dispatchThrottling.maxThreshold") && !viper.IsSet("checkDispatchThrottling.maxThreshold") {
+		if logger != nil {
+			logger.Info("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
+		}
+		checkDispatchThrottlingMaxThreshold = config.DispatchThrottling.MaxThreshold
 	}
 
 	return DispatchThrottlingConfig{
@@ -433,6 +438,23 @@ func GetCheckDispatchThrottlingConfig(config *Config) DispatchThrottlingConfig {
 		Threshold:    checkDispatchThrottlingDefaultThreshold,
 		MaxThreshold: checkDispatchThrottlingMaxThreshold,
 	}
+}
+
+// VerifyCheckDispatchThrottlingConfig ensures GetCheckDispatchThrottlingConfig is called so that the right values are verified.
+func (c *Config) VerifyCheckDispatchThrottlingConfig() error {
+	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, c)
+	if checkDispatchThrottlingConfig.Enabled {
+		if checkDispatchThrottlingConfig.Frequency <= 0 {
+			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if checkDispatchThrottlingConfig.Threshold <= 0 {
+			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if checkDispatchThrottlingConfig.MaxThreshold != 0 && checkDispatchThrottlingConfig.Threshold > checkDispatchThrottlingConfig.MaxThreshold {
+			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
+		}
+	}
+	return nil
 }
 
 // DefaultConfig is the OpenFGA server default configurations.
@@ -514,9 +536,12 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
 		},
-		//Avoiding default values as we will get it from DispatchThrottling using GetCheckDispatchThrottlingConfig
-		//When DispatchThrottling is Removed, default values should be set to CheckDispatchThrottling
-		CheckDispatchThrottling: DispatchThrottlingConfig{},
+		CheckDispatchThrottling: DispatchThrottlingConfig{
+			Enabled:      DefaultCheckDispatchThrottlingEnabled,
+			Frequency:    DefaultCheckDispatchThrottlingFrequency,
+			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+		},
 		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultListObjectsDispatchThrottlingEnabled,
 			Frequency:    DefaultListObjectsDispatchThrottlingFrequency,
