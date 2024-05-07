@@ -2,8 +2,9 @@ package commands
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"testing"
+
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

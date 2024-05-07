@@ -2,9 +2,10 @@ package threshold
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	"testing"
 )
 
 func TestShouldThrottle(t *testing.T) {

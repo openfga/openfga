@@ -3,10 +3,11 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 

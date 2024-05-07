@@ -2,6 +2,7 @@ package threshold
 
 import (
 	"context"
+
 	"github.com/openfga/openfga/internal/throttler"
 )
 

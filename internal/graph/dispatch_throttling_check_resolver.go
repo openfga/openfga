@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+
 	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"go.opentelemetry.io/otel/trace"

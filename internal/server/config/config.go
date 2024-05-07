@@ -5,11 +5,13 @@ package config
 import (
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/spf13/viper"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -351,7 +353,7 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	//Tha validation ensures we are picking the right values for Check Dispatch Throttlign
+	// Tha validation ensures we are picking the right values for Check Dispatch Throttlign
 	err := cfg.VerifyCheckDispatchThrottlingConfig()
 	if err != nil {
 		return err
@@ -400,7 +402,7 @@ func DefaultContextTimeout(config *Config) time.Duration {
 
 // GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
 // we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
-// a non-zero value exists there
+// a non-zero value exists there.
 func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
 	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
 	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
@@ -441,8 +443,8 @@ func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) Disp
 }
 
 // VerifyCheckDispatchThrottlingConfig ensures GetCheckDispatchThrottlingConfig is called so that the right values are verified.
-func (c *Config) VerifyCheckDispatchThrottlingConfig() error {
-	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, c)
+func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
+	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, cfg)
 	if checkDispatchThrottlingConfig.Enabled {
 		if checkDispatchThrottlingConfig.Frequency <= 0 {
 			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")

@@ -1,9 +1,10 @@
 package config
 
 import (
-	"github.com/spf13/viper"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/stretchr/testify/require"
 )
@@ -344,9 +345,7 @@ func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 			},
 		},
 		"get_default_values_if_none_are_set": {
-			configGeneratingFunction: func() *Config {
-				return DefaultConfig()
-			},
+			configGeneratingFunction: DefaultConfig,
 			expectedCheckDispatchConfig: DispatchThrottlingConfig{
 				Enabled:      DefaultCheckDispatchThrottlingEnabled,
 				Frequency:    DefaultCheckDispatchThrottlingFrequency,

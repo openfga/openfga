@@ -5,11 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"net/http"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/internal/throttler"
 

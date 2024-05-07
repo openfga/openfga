@@ -5,9 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 	"sync"
 	"sync/atomic"
+
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/internal/throttler"
 
