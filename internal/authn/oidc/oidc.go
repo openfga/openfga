@@ -92,7 +92,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidToken
 	}
 
-	validIssuers := append(oidc.IssuerAliases, oidc.MainIssuer)
+	validIssuers := append([]string{oidc.MainIssuer}, oidc.IssuerAliases...)
 
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
 		v := jwt.NewValidator(jwt.WithIssuer(issuer))
