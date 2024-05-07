@@ -49,6 +49,25 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			expectedError: "invalid bearer token",
 		},
 		{
+			testDescription: "when_no_expiration_set,_return_'invalid_bearer_token'",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "right_audience",
+						"sub": "openfga client",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid bearer token",
+		},
+		{
 			testDescription: "when_the_JWT_contains_a_future_'iat',_return_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup(
@@ -62,6 +81,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud": "right_audience",
 						"sub": "openfga client",
 						"iat": time.Now().Add(10 * time.Minute).Unix(),
+						"exp": time.Now().Add(100 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -71,7 +91,17 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		{
 			testDescription: "when_JWT_and_JWK_kid_don't_match,_returns_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
-				return quickConfigSetup("kid_1", "kid_2", "", "", nil, jwt.MapClaims{}, nil)
+				return quickConfigSetup(
+					"kid_1",
+					"kid_2",
+					"",
+					"",
+					nil,
+					jwt.MapClaims{
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					nil,
+				)
 			},
 			expectedError: "invalid bearer token",
 		},
@@ -79,7 +109,17 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			testDescription: "when_token_is_signed_using_different_public/private_key_pairs,_returns__'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				privateKey, _ := generateJWTSignatureKeys()
-				return quickConfigSetup("kid_1", "kid_1", "", "", nil, jwt.MapClaims{}, privateKey)
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"",
+					"",
+					nil,
+					jwt.MapClaims{
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKey,
+				)
 			},
 			expectedError: "invalid bearer token",
 		},
@@ -94,6 +134,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 					jwt.MapClaims{
 						"iss": "wrong_issuer",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -112,6 +153,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "wrong_audience",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -131,6 +173,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"iss": "right_issuer",
 						"aud": "right_audience",
 						"sub": 12,
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -171,6 +214,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud":   "right_audience",
 						"sub":   "openfga client",
 						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -190,6 +234,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud":   "right_audience",
 						"sub":   "openfga client",
 						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -209,6 +254,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud":   "right_audience",
 						"sub":   "openfga client",
 						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)

@@ -71,28 +71,28 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, authn.ErrMissingBearerToken
 	}
 
-	jwtParser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
+	jwtParser := jwt.NewParser(
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithIssuedAt(),
+		jwt.WithExpirationRequired(),
+	)
 
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
 	})
-	if err != nil {
+	if err != nil || !token.Valid {
 		return nil, errInvalidToken
 	}
 
-	if !token.Valid {
-		return nil, errInvalidToken
-	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, errInvalidClaims
 	}
 
-	if err := jwt.NewValidator(jwt.WithIssuedAt()).Validate(claims); err != nil {
-		return nil, errInvalidToken
+	validIssuers := []string{
+		oidc.MainIssuer,
 	}
-
-	validIssuers := append([]string{oidc.MainIssuer}, oidc.IssuerAliases...)
+	validIssuers = append(validIssuers, oidc.IssuerAliases...)
 
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
 		v := jwt.NewValidator(jwt.WithIssuer(issuer))
