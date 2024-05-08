@@ -7,21 +7,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+	"go.uber.org/goleak"
+
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 
-	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -31,10 +32,10 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
+ schema 1.1
 type user
 type document
-  relations
+ relations
 	define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
@@ -97,10 +98,10 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
+ schema 1.1
 type user
 type document
-  relations
+ relations
 	define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
@@ -179,10 +180,10 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
+ schema 1.1
 type user
 type document
-  relations
+ relations
 	define allowed: [user]
 	define viewer: [user] and allowed`)
 
@@ -236,10 +237,10 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
+ schema 1.1
 type user
 type document
-  relations
+ relations
 	define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
@@ -309,11 +310,11 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 	store := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`model
-  schema 1.1
+ schema 1.1
 type user
 type document
-  relations
-    define viewer: [user]`)
+ relations
+   define viewer: [user]`)
 
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 
@@ -453,7 +454,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	model := testutils.MustTransformDSLToProtoWithID(`model 
+	model := testutils.MustTransformDSLToProtoWithID(`model
 	schema 1.1
 
 	type user
@@ -485,7 +486,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
-		reverseExpandQuery.throttle(ctx, metadata)
+		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
 	})
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
@@ -504,7 +505,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
-		reverseExpandQuery.throttle(ctx, metadata)
+		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
 	})
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
@@ -523,7 +524,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
-		reverseExpandQuery.throttle(ctx, metadata)
+		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
 	})
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
@@ -544,7 +545,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
-		reverseExpandQuery.throttle(ctx, metadata)
+		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -563,19 +564,14 @@ func TestReverseExpandThrottle(t *testing.T) {
 		ctx := context.Background()
 		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 1000)
 		metadata := NewResolutionMetadata()
-		metadata.DispatchCounter.Store(dispatchCountValue)
 
-		reverseExpandQuery.throttle(ctx, metadata)
+		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
 	})
 }
 
 func TestReverseExpandDispatchCount(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-	ctrl := gomock.NewController(t)
-	mockThrottler := mocks.NewMockThrottler(ctrl)
-	t.Cleanup(ctrl.Finish)
 	tests := []struct {
 		name                    string
 		model                   string
@@ -617,13 +613,13 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 			name: "should_not_throttle",
 			model: `model
 			schema 1.1
-
+		
 			type user
-
+		
 			type folder
 				 relations
 					  define editor: [user]
-					  define viewer: [user] or editor 
+					  define viewer: [user] or editor
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -642,9 +638,9 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 			name: "should_not_throttle_if_there_are_not_enough_dispatches",
 			model: `model
 			schema 1.1
-
+		
 			type user
-
+		
 			type document
 			  relations
 				define editor: [user]
@@ -672,8 +668,14 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				model,
 			)
 			require.NoError(t, err)
+			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+			ctrl := gomock.NewController(t)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			resolutionMetadata := NewResolutionMetadata()
+
+			mockThrottler := mocks.NewMockThrottler(ctrl)
+			t.Cleanup(ctrl.Finish)
+			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
 
 			go func() {
 				q := NewReverseExpandQuery(
@@ -686,8 +688,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 						MaxThreshold: 0,
 					}),
 				)
-
-				mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
 
 				err = q.Execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
@@ -715,7 +715,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 					break ConsumerLoop
 				}
 			}
-
 			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
 			require.Equal(t, test.expectedWasThrottled, resolutionMetadata.WasThrottled.Load())
 		})

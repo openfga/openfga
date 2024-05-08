@@ -230,6 +230,20 @@ func (c *ReverseExpandQuery) Execute(
 	return nil
 }
 
+func (c *ReverseExpandQuery) dispatch(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	newcount := resolutionMetadata.DispatchCounter.Add(1)
+	if c.dispatchThrottlerConfig.Enabled {
+		c.throttle(ctx, newcount, resolutionMetadata)
+	}
+	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+}
+
 func (c *ReverseExpandQuery) execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -237,11 +251,6 @@ func (c *ReverseExpandQuery) execute(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	// This code will throttle if ResolutionMetadata.DispatchCounter is more than the value set at Threshold values set at dispatchThrottlerConfig
-	if c.dispatchThrottlerConfig.Enabled {
-		c.throttle(ctx, resolutionMetadata)
-	}
-
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -350,8 +359,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			resolutionMetadata.DispatchCounter.Add(1)
-			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				break LoopOnEdges
@@ -550,8 +558,7 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			resolutionMetadata.DispatchCounter.Add(1)
-			return c.execute(ctx, &ReverseExpandRequest{
+			return c.dispatch(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
 				Relation:   req.Relation,
@@ -606,10 +613,8 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 	return nil
 }
 
-func (c *ReverseExpandQuery) throttle(ctx context.Context, metadata *ResolutionMetadata) {
+func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
 	span := trace.SpanFromContext(ctx)
-
-	currentNumDispatch := metadata.DispatchCounter.Load()
 
 	shouldThrottle := threshold.ShouldThrottle(
 		ctx,
