@@ -467,7 +467,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	ctx := context.Background()
-	ts, err := typesystem.NewAndValidate(ctx, model)
+	typesys, err := typesystem.NewAndValidate(ctx, model)
 	require.NoError(t, err)
 
 	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
