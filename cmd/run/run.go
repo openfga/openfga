@@ -221,7 +221,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-dispatch-throttling-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "defines the number of dispatches above which ListObjects requests will be throttled.")
 
-	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
+	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
 
 	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
     
