@@ -353,7 +353,7 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	// Tha validation ensures we are picking the right values for Check Dispatch Throttlign
+	// Tha validation ensures we are picking the right values for Check dispatch throttling
 	err := cfg.VerifyCheckDispatchThrottlingConfig()
 	if err != nil {
 		return err
