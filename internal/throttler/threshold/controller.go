@@ -26,7 +26,7 @@ func ShouldThrottle(ctx context.Context, currentCount uint32, defaultThreshold u
 		maxThreshold = defaultThreshold
 	}
 
-	thresholdInCtx := DispatchThrottlingThresholdFromContext(ctx)
+	thresholdInCtx := ThrottlingThresholdFromContext(ctx)
 
 	if thresholdInCtx > 0 {
 		threshold = min(thresholdInCtx, maxThreshold)
