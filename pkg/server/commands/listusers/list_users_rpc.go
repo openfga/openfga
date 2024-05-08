@@ -619,13 +619,8 @@ func (l *listUsersQuery) expandExclusion(
 	}
 
 	subtractFoundUsersMap := make(map[string]foundUser, len(baseFoundUsersMap))
-	negatedSubtractionMap := make(map[string]struct{})
 
 	for fu := range subtractFoundUsersCh {
-		for _, s := range fu.excludedUsers {
-			negatedSubtractionMap[tuple.UserProtoToString(s)] = struct{}{}
-		}
-
 		key := tuple.UserProtoToString(fu.user)
 		subtractFoundUsersMap[key] = fu
 	}
@@ -691,18 +686,22 @@ func (l *listUsersQuery) expandExclusion(
 						user:           tuple.StringToUserProto(userKey),
 						noRelationship: false,
 					}, foundUsersChan)
-				} else {
-					trySendResult(ctx, foundUser{
-						user:           tuple.StringToUserProto(userKey),
-						noRelationship: true,
-						excludedUsers: []*openfgav1.User{
-							tuple.StringToUserProto(userKey),
-						},
-					}, foundUsersChan)
+
+					continue
 				}
+
+				trySendResult(ctx, foundUser{
+					user:           tuple.StringToUserProto(userKey),
+					noRelationship: true,
+					excludedUsers: []*openfgav1.User{
+						tuple.StringToUserProto(userKey),
+					},
+				}, foundUsersChan)
 			}
 		}
-	} else if subtractWildcardExists {
+	}
+
+	if !baseWildcardExists && subtractWildcardExists {
 		for userKey := range baseFoundUsersMap {
 			if !tuple.IsTypedWildcard(userKey) {
 				subtractedUser, userIsSubtracted := subtractFoundUsersMap[userKey]
@@ -719,10 +718,11 @@ func (l *listUsersQuery) expandExclusion(
 					user:           tuple.StringToUserProto(userKey),
 					noRelationship: true,
 				}, foundUsersChan)
-
 			}
 		}
-	} else {
+	}
+
+	if !baseWildcardExists && !subtractWildcardExists {
 		for key, fu := range baseFoundUsersMap {
 			subtractedUser, userIsSubtracted := subtractFoundUsersMap[key]
 
@@ -734,23 +734,21 @@ func (l *listUsersQuery) expandExclusion(
 					}, foundUsersChan)
 
 					continue
-				} else {
-					trySendResult(ctx, foundUser{
-						user:           tuple.StringToUserProto(key),
-						noRelationship: true,
-					}, foundUsersChan)
+				}
 
-					continue
-				}
-			} else {
-				if !fu.noRelationship {
-					trySendResult(ctx, foundUser{
-						user:           tuple.StringToUserProto(key),
-						noRelationship: false,
-					}, foundUsersChan)
-				}
+				trySendResult(ctx, foundUser{
+					user:           tuple.StringToUserProto(key),
+					noRelationship: true,
+				}, foundUsersChan)
 
 				continue
+			}
+
+			if !fu.noRelationship {
+				trySendResult(ctx, foundUser{
+					user:           tuple.StringToUserProto(key),
+					noRelationship: false,
+				}, foundUsersChan)
 			}
 		}
 	}
