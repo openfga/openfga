@@ -429,7 +429,7 @@ func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) Disp
 	}
 	if viper.IsSet("dispatchThrottling.maxThreshold") && !viper.IsSet("checkDispatchThrottling.maxThreshold") {
 		if logger != nil {
-			logger.Info("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
+			logger.Warn("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
 		}
 		checkDispatchThrottlingMaxThreshold = config.DispatchThrottling.MaxThreshold
 	}
