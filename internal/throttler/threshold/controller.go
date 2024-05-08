@@ -42,7 +42,7 @@ func ContextWithDispatchThrottlingThreshold(ctx context.Context, threshold uint3
 
 // DispatchThrottlingThresholdFromContext returns the dispatch throttling threshold saved in context
 // Return 0 if not found.
-func DispatchThrottlingThresholdFromContext(ctx context.Context) uint32 {
+func ThrottlingThresholdFromContext(ctx context.Context) uint32 {
 	thresholdInContext := ctx.Value(dispatchThrottlingThreshold)
 	if thresholdInContext != nil {
 		thresholdInInt, ok := thresholdInContext.(uint32)
