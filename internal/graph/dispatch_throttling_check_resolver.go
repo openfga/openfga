@@ -3,14 +3,12 @@ package graph
 import (
 	"context"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
-	"go.opentelemetry.io/otel/trace"
-
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 )
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.

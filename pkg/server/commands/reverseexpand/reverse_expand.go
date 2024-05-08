@@ -8,10 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
-	"github.com/openfga/openfga/internal/throttler"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
@@ -23,6 +19,8 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"

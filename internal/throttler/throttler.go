@@ -6,12 +6,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
-
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 

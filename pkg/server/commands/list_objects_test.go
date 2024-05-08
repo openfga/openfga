@@ -4,15 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
@@ -35,11 +33,11 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestListObjectsDispatchCount(t *testing.T) {
 	ds := memory.New()
+	t.Cleanup(ds.Close)
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
-	mockThrottler := mocks.NewMockThrottler(ctrl)
-	t.Cleanup(ds.Close)
 	t.Cleanup(ctrl.Finish)
+	mockThrottler := mocks.NewMockThrottler(ctrl)
 	tests := []struct {
 		name                    string
 		model                   string

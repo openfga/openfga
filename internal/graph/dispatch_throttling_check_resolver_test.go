@@ -4,13 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
 	mocks "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 )
 
 func TestDispatchThrottlingCheckResolver(t *testing.T) {

@@ -9,19 +9,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
-	"github.com/openfga/openfga/internal/throttler"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
