@@ -16,7 +16,7 @@ func mockThrottlerTest(ctx context.Context, throttler Throttler, counter *int) {
 	*counter++
 }
 
-func TestDispatchThrottler(t *testing.T) {
+func TestConstantRateThrottler(t *testing.T) {
 	testThrottler := newConstantRateThrottler(1*time.Hour, "test")
 	t.Cleanup(func() {
 		testThrottler.Close()
