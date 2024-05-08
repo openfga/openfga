@@ -3,9 +3,9 @@ package requestid
 import (
 	"context"
 
+	"github.com/google/uuid"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
-	"github.com/oklog/ulid/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -28,7 +28,8 @@ func InitID(ctx context.Context) string {
 	if spanCtx.TraceID().IsValid() {
 		return spanCtx.TraceID().String()
 	}
-	return ulid.Make().String()
+	id, _ := uuid.NewRandom()
+	return id.String()
 }
 
 // NewUnaryInterceptor creates a grpc.UnaryServerInterceptor which must
