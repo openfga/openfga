@@ -158,7 +158,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_PASSWORD"
                 },
                 "maxCacheSize": {
-                    "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
+                    "description": "The maximum number of authorization models that will be cached in memory",
                     "type": "integer",
                     "default": 100000,
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
