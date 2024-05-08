@@ -571,10 +571,10 @@ func TestReverseExpandThrottle(t *testing.T) {
 
 func TestReverseExpandDispatchCount(t *testing.T) {
 	ds := memory.New()
+	t.Cleanup(ds.Close)
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
 	mockThrottler := mocks.NewMockThrottler(ctrl)
-	t.Cleanup(ds.Close)
 	t.Cleanup(ctrl.Finish)
 	tests := []struct {
 		name                    string
