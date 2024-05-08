@@ -467,7 +467,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	ctx := context.Background()
-	typesys, err := typesystem.NewAndValidate(ctx, model)
+	ts, err := typesystem.NewAndValidate(ctx, model)
 	require.NoError(t, err)
 
 	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
@@ -541,7 +541,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(201)
 		ctx := context.Background()
-		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
+		ctx = threshold.ContextWithThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
@@ -562,7 +562,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(301)
 		ctx := context.Background()
-		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 1000)
+		ctx = threshold.ContextWithThrottlingThreshold(ctx, 1000)
 		metadata := NewResolutionMetadata()
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
@@ -670,7 +670,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 			ctrl := gomock.NewController(t)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 			resolutionMetadata := NewResolutionMetadata()
 
 			mockThrottler := mocks.NewMockThrottler(ctrl)
@@ -680,7 +680,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 			go func() {
 				q := NewReverseExpandQuery(
 					ds,
-					ts,
+					typesys,
 					WithDispatchThrottlerConfig(threshold.Config{
 						Throttler:    mockThrottler,
 						Enabled:      test.throttlingEnabled,
