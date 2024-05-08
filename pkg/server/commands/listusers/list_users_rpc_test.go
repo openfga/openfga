@@ -1281,7 +1281,7 @@ func TestListUsersIntersection(t *testing.T) {
 			expectedUsers: []string{"user:will"},
 		},
 		{
-			name: "intersection_and_excluded_users_1",
+			name: "excluded_subjects_of_subtracted_branches_propagate",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1310,6 +1310,39 @@ func TestListUsersIntersection(t *testing.T) {
 			},
 			expectedUsers: []string{"user:*"},
 			butNot:        []string{"user:maria"},
+		},
+		{
+			name: "intersection_and_excluded_users_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+			model
+			  schema 1.1
+
+			type user
+			type document
+				relations
+					define b: [user:*] but not b1
+					define b1: [user]
+					define a: [user:*] but not a1
+					define a1: [user]
+					define viewer: a and b`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "b", "user:*"),
+				tuple.NewTupleKey("document:1", "b1", "user:will"),
+				tuple.NewTupleKey("document:1", "a", "user:*"),
+				tuple.NewTupleKey("document:1", "a1", "user:maria"),
+			},
+			expectedUsers: []string{"user:*"},
+			butNot:        []string{"user:maria", "user:will"},
 		},
 		{
 			name: "intersection_and_excluded_users_2",
