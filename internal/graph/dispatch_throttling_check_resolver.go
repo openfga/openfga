@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -98,12 +99,9 @@ func (r *DispatchThrottlingCheckResolver) runTicker() {
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
-	defer span.End()
-	span.SetAttributes(attribute.String("resolver_type", "DispatchThrottlingCheckResolver"))
+	span := trace.SpanFromContext(ctx)
 
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
-	span.SetAttributes(attribute.Int("dispatch_count", int(currentNumDispatch)))
 
 	threshold := r.config.DefaultThreshold
 
@@ -118,7 +116,11 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 		threshold = min(thresholdInCtx, maxThreshold)
 	}
 
-	if currentNumDispatch > threshold {
+	isThrottled := currentNumDispatch > threshold
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", isThrottled))
+	if isThrottled {
 		req.GetRequestMetadata().WasThrottled.Store(true)
 
 		start := time.Now()

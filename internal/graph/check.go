@@ -878,8 +878,10 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		tk := req.GetTupleKey()
 		object := tk.GetObject()
 
-		span.SetAttributes(attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)))
-		span.SetAttributes(attribute.String("computed_relation", computedRelation))
+		span.SetAttributes(
+			attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)),
+			attribute.String("computed_relation", computedRelation),
+		)
 
 		iter, err := ds.Read(
 			ctx,

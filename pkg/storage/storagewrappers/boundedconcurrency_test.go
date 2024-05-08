@@ -8,6 +8,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openfga/openfga/internal/mocks"
@@ -17,6 +19,9 @@ import (
 )
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	store := ulid.Make().String()
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
@@ -73,4 +78,51 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	end := time.Now()
 
 	require.GreaterOrEqual(t, end.Sub(start), numRoutine*time.Second)
+}
+
+func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	// concurrency set to zero to allow zero calls to go through
+	dut := NewBoundedConcurrencyTupleReader(mockDatastore, 0)
+
+	var testCases = map[string]struct {
+		requestFunc func(ctx context.Context) (any, error)
+	}{
+		`read`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{})
+			},
+		},
+		`read_user_tuple`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{})
+			},
+		},
+		`read_userset_tuples`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.ReadUsersetTuples(ctx, ulid.Make().String(), storage.ReadUsersetTuplesFilter{})
+			},
+		},
+		`read_starting_with_user`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.ReadStartingWithUser(ctx, ulid.Make().String(), storage.ReadStartingWithUserFilter{})
+			},
+		},
+	}
+
+	for testName, test := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			resp, err := test.requestFunc(ctx)
+			require.ErrorIs(t, err, context.Canceled)
+			require.Nil(t, resp)
+		})
+	}
 }
