@@ -21,13 +21,16 @@ func TestShouldThrottle(t *testing.T) {
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
 		ctx := context.Background()
-		ContextWithDispatchThrottlingThreshold(ctx, 200)
-		require.True(t, ShouldThrottle(ctx, 190, 0, 210))
-	})
+		ctx = ContextWithDispatchThrottlingThreshold(ctx, 200)
+		require.False(t, ShouldThrottle(ctx, 190, 100, 210))
 
-	t.Run("should_respect_max_threshold", func(t *testing.T) {
-		ctx := context.Background()
-		ContextWithDispatchThrottlingThreshold(ctx, 300)
-		require.True(t, ShouldThrottle(ctx, 190, 100, 200))
+		ctx = ContextWithDispatchThrottlingThreshold(ctx, 200)
+		require.True(t, ShouldThrottle(ctx, 205, 100, 210))
+
+		ctx = ContextWithDispatchThrottlingThreshold(ctx, 200)
+		require.True(t, ShouldThrottle(ctx, 211, 100, 210))
+
+		ctx = ContextWithDispatchThrottlingThreshold(ctx, 1000)
+		require.True(t, ShouldThrottle(ctx, 301, 100, 300))
 	})
 }

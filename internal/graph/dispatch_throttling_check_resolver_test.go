@@ -132,10 +132,10 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
-		req.GetRequestMetadata().DispatchCounter.Store(190)
+		req.GetRequestMetadata().DispatchCounter.Store(201)
 
 		ctx := context.Background()
-		threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
+		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
 
 		_, err := dut.ResolveCheck(ctx, req)
 
@@ -148,7 +148,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 
 		dispatchThrottlingCheckResolverConfig := DispatchThrottlingCheckResolverConfig{
 			DefaultThreshold: 200,
-			MaxThreshold:     0,
+			MaxThreshold:     300,
 		}
 		mockThrottler := mocks.NewMockThrottler(ctrl)
 
@@ -161,12 +161,13 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		dut.SetDelegate(mockCheckResolver)
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
-
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
-		req.GetRequestMetadata().DispatchCounter.Store(190)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
 		ctx := context.Background()
+		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 1000)
+
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req.GetRequestMetadata().DispatchCounter.Store(301)
 
 		_, err := dut.ResolveCheck(ctx, req)
 

@@ -538,8 +538,9 @@ func TestReverseExpandThrottle(t *testing.T) {
 			}),
 		)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
-		dispatchCountValue := uint32(190)
-		threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
+		dispatchCountValue := uint32(201)
+		ctx := context.Background()
+		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
@@ -554,11 +555,13 @@ func TestReverseExpandThrottle(t *testing.T) {
 			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
-				MaxThreshold: 210,
+				MaxThreshold: 300,
 			}),
 		)
-		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
-		dispatchCountValue := uint32(190)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(301)
+		ctx := context.Background()
+		ctx = threshold.ContextWithDispatchThrottlingThreshold(ctx, 1000)
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
