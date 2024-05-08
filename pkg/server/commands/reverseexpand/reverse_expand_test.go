@@ -667,7 +667,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
 			resultChan := make(chan *ReverseExpandResult)
 			errChan := make(chan error, 1)
-			ts, err := typesystem.NewAndValidate(
+			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
