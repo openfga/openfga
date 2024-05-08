@@ -55,10 +55,7 @@ type DatastoreConfig struct {
 	Username string
 	Password string
 
-	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before
-	// evicting
-	// old keys. The storage cache is used to cache query results for various static resources
-	// such as type definitions.
+	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
 
 	// MaxOpenConns is the maximum number of open connections to the database.
