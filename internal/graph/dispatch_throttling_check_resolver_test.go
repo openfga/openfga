@@ -30,6 +30,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingCheckResolverConfig),
 			WithThrottler(mockThrottler),
 		)
+		t.Cleanup(dut.Close)
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -61,6 +62,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingCheckResolverConfig),
 			WithThrottler(mockThrottler),
 		)
+		t.Cleanup(dut.Close)
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -92,6 +94,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingCheckResolverConfig),
 			WithThrottler(mockThrottler),
 		)
+		t.Cleanup(dut.Close)
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -123,6 +126,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingCheckResolverConfig),
 			WithThrottler(mockThrottler),
 		)
+		t.Cleanup(dut.Close)
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
@@ -155,6 +159,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingCheckResolverConfig),
 			WithThrottler(mockThrottler),
 		)
+		t.Cleanup(dut.Close)
 
 		mockCheckResolver := NewMockCheckResolver(ctrl)
 		dut.SetDelegate(mockCheckResolver)
