@@ -36,7 +36,7 @@ func ShouldThrottle(ctx context.Context, currentCount uint32, defaultThreshold u
 }
 
 // ContextWithDispatchThrottlingThreshold will save the dispatch throttling threshold in context.
-func ContextWithDispatchThrottlingThreshold(ctx context.Context, threshold uint32) context.Context {
+func ContextWithThrottlingThreshold(ctx context.Context, threshold uint32) context.Context {
 	return context.WithValue(ctx, dispatchThrottlingThreshold, threshold)
 }
 
