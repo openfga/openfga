@@ -417,7 +417,7 @@ func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) Disp
 	}
 	if viper.IsSet("dispatchThrottling.frequency") && !viper.IsSet("checkDispatchThrottling.frequency") {
 		if logger != nil {
-			logger.Info("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
+			logger.Warn("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
 		}
 		checkDispatchThrottlingFrequency = config.DispatchThrottling.Frequency
 	}
