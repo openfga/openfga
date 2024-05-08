@@ -270,7 +270,6 @@ func (l *listUsersQuery) expand(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-
 	ctx, span := tracer.Start(ctx, "expand")
 	defer span.End()
 	span.SetAttributes(attribute.Int("depth", int(req.depth)))
