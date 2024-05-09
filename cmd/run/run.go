@@ -386,7 +386,9 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	tracerProviderCloser := s.telemetryConfig(config)
 
-	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	if len(config.Experimentals) > 0 {
+		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
 
 	var experimentals []server.ExperimentalFeatureFlag
 	for _, feature := range config.Experimentals {
@@ -492,9 +494,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		serverOpts = append(serverOpts, grpc.Creds(creds))
 
-		s.Logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
+		s.Logger.Info("gRPC TLS is enabled, serving connections using the provided certificate")
 	} else {
-		s.Logger.Warn("grpc TLS is disabled, serving connections using insecure plaintext")
+		s.Logger.Warn("gRPC TLS is disabled, serving connections using insecure plaintext")
 	}
 
 	var profilerServer *http.Server
@@ -522,7 +524,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	var metricsServer *http.Server
 	if config.Metrics.Enabled {
-		s.Logger.Info(fmt.Sprintf("📈 starting metrics server on '%s'", config.Metrics.Addr))
+		s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 
 		go func() {
 			mux := http.NewServeMux()
@@ -563,11 +565,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	)
 
 	s.Logger.Info(
-		"🚀 starting openfga service...",
+		"starting openfga service...",
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
 		zap.String("commit", build.Commit),
 		zap.String("go-version", goruntime.Version()),
+		zap.Any("config", config),
 	)
 
 	// nosemgrep: grpc-server-insecure-connection
@@ -583,15 +586,14 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	go func() {
+		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", config.GRPC.Addr))
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
-				s.Logger.Fatal("failed to start grpc server", zap.Error(err))
+				s.Logger.Fatal("failed to start gRPC server", zap.Error(err))
 			}
-
-			s.Logger.Info("grpc server shut down..")
 		}
+		s.Logger.Info("gRPC server shut down.")
 	}()
-	s.Logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
@@ -650,6 +652,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		go func() {
+			s.Logger.Info(fmt.Sprintf("🚀 starting HTTP server on '%s'...", httpServer.Addr))
 			var err error
 			if config.HTTP.TLS.Enabled {
 				if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
@@ -657,13 +660,14 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				}
 				err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
 			} else {
+				s.Logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
 				err = httpServer.ListenAndServe()
 			}
 			if err != http.ErrServerClosed {
 				s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
 			}
+			s.Logger.Info("HTTP server shut down.")
 		}()
-		s.Logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 	}
 
 	var playground *http.Server
@@ -740,7 +744,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			if err != http.ErrServerClosed {
 				s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
 			}
-			s.Logger.Info("shutdown the openfga playground server")
+			s.Logger.Info("playground shut down.")
 		}()
 	}
 
@@ -751,14 +755,14 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	case <-done:
 	case <-ctx.Done():
 	}
-	s.Logger.Info("attempting to shutdown gracefully")
+	s.Logger.Info("attempting to shutdown gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if playground != nil {
 		if err := playground.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to gracefully shutdown playground server", zap.Error(err))
+			s.Logger.Info("failed to shutdown the playground", zap.Error(err))
 		}
 	}
 
