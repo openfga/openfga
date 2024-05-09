@@ -302,7 +302,50 @@ type repo
 			),
 		},
 		{
-			_name: "writing_assertion_with_not_found_id",
+			_name: "write_conceptual_tuple_assertion_with_invalid_object_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "invalidobect",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("invalid 'object' field format"),
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_object_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "invaliduser",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)"),
+			),
+		},
+
+		{
+			_name: "writing_contextual_tuples_assertion_with_not_found_id",
 			assertions: []*openfgav1.Assertion{
 				{
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
