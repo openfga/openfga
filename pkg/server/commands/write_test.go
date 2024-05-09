@@ -204,13 +204,13 @@ func TestValidateWriteRequest(t *testing.T) {
 					Return(&openfgav1.AuthorizationModel{
 						SchemaVersion: typesystem.SchemaVersion1_1,
 						TypeDefinitions: parser.MustTransformDSLToProto(`
-								model
-									schema 1.1
-								type user
-								
-								type document
-									relations
-										define viewer: [document#viewer]`).GetTypeDefinitions(),
+model
+	schema 1.1
+type user
+
+type document
+	relations
+		define viewer: [document#viewer]`).GetTypeDefinitions(),
 					}, nil)
 			}
 
