@@ -487,6 +487,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
+		require.False(t, metadata.WasThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
@@ -506,6 +507,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
+		require.True(t, metadata.WasThrottled.Load())
 	})
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
@@ -525,6 +527,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
+		require.False(t, metadata.WasThrottled.Load())
 	})
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
@@ -546,6 +549,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
+		require.True(t, metadata.WasThrottled.Load())
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -566,6 +570,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		metadata := NewResolutionMetadata()
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
+		require.True(t, metadata.WasThrottled.Load())
 	})
 }
 
