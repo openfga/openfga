@@ -499,6 +499,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Warn("gRPC TLS is disabled, serving connections using insecure plaintext")
 	}
 
+	var profilerServer *http.Server
 	if config.Profiler.Enabled {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -507,28 +508,35 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
+		profilerServer = &http.Server{Addr: config.Profiler.Addr, Handler: mux}
+
 		go func() {
 			s.Logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
 
-			if err := http.ListenAndServe(config.Profiler.Addr, mux); err != nil {
+			if err := profilerServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
 				}
 			}
+			s.Logger.Info("profiler shut down.")
 		}()
 	}
 
+	var metricsServer *http.Server
 	if config.Metrics.Enabled {
 		s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 
 		go func() {
 			mux := http.NewServeMux()
 			mux.Handle("/metrics", promhttp.Handler())
-			if err := http.ListenAndServe(config.Metrics.Addr, mux); err != nil {
+
+			metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
+			if err := metricsServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
 				}
 			}
+			s.Logger.Info("metrics server shut down.")
 		}()
 	}
 
@@ -761,6 +769,18 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if httpServer != nil {
 		if err := httpServer.Shutdown(ctx); err != nil {
 			s.Logger.Info("failed to shutdown the http server", zap.Error(err))
+		}
+	}
+
+	if profilerServer != nil {
+		if err := profilerServer.Shutdown(ctx); err != nil {
+			s.Logger.Info("failed to shutdown the profiler", zap.Error(err))
+		}
+	}
+
+	if metricsServer != nil {
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			s.Logger.Info("failed to shutdown the prometheus metrics server", zap.Error(err))
 		}
 	}
 
