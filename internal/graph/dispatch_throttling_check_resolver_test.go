@@ -47,8 +47,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx := context.Background()
 
 		_, err := dut.ResolveCheck(ctx, req)
-
 		require.NoError(t, err)
+
+		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
@@ -82,8 +83,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx := context.Background()
 
 		_, err := dut.ResolveCheck(ctx, req)
-
 		require.NoError(t, err)
+
+		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
@@ -117,8 +119,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx := context.Background()
 
 		_, err := dut.ResolveCheck(ctx, req)
-
 		require.NoError(t, err)
+
+		require.False(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
@@ -153,8 +156,9 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx = threshold.ContextWithThrottlingThreshold(ctx, 200)
 
 		_, err := dut.ResolveCheck(ctx, req)
-
 		require.NoError(t, err)
+
+		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -189,7 +193,8 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		req.GetRequestMetadata().DispatchCounter.Store(301)
 
 		_, err := dut.ResolveCheck(ctx, req)
-
 		require.NoError(t, err)
+
+		require.True(t, req.GetRequestMetadata().WasThrottled.Load())
 	})
 }
