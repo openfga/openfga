@@ -53,7 +53,7 @@ type DatastoreConfig struct {
 	Engine   string
 	URI      string
 	Username string
-	Password string
+	Password string `json:"-"` // private field, won't be logged
 
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int

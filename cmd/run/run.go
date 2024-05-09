@@ -3,7 +3,6 @@ package run
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -380,11 +379,6 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 	return authenticator, nil
-}
-
-func PrintJSON(obj interface{}) string {
-	bytes, _ := json.Marshal(obj)
-	return string(bytes)
 }
 
 // Run returns an error if the server was unable to start successfully.
