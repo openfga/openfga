@@ -97,6 +97,48 @@ type repo
 			_name:      "writing_empty_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{},
 		},
+		{
+			_name: "writing_multiple_contextual_tuples_assertions_succeeds",
+
+			assertions: []*openfgav1.Assertion{
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:smeadows",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:maria",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: true,
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -184,6 +226,94 @@ type repo
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
+					Expectation: false,
+				},
+			},
+			modelID: "not_valid_id",
+			err: serverErrors.AuthorizationModelNotFound(
+				"not_valid_id",
+			),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+			request := &openfgav1.WriteAssertionsRequest{
+				StoreId:              store,
+				Assertions:           test.assertions,
+				AuthorizationModelId: test.modelID,
+			}
+
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
+			_, err = writeAssertionCmd.Execute(ctx, request)
+			require.ErrorIs(t, test.err, err)
+		})
+	}
+}
+
+func TestConceptualTuplesWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore) {
+	type writeAssertionsTestSettings struct {
+		_name      string
+		assertions []*openfgav1.Assertion
+		modelID    string
+		err        error
+	}
+
+	store := testutils.CreateRandomString(10)
+
+	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: store,
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type repo
+  relations
+	define reader: [user]
+	define can_read: reader`).GetTypeDefinitions(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	}
+	ctx := context.Background()
+
+	writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
+	modelID, err := writeAuthzModelCmd.Execute(ctx, githubModelReq)
+	require.NoError(t, err)
+
+	var tests = []writeAssertionsTestSettings{
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_relation_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "repo:test",
+								Relation: "invalidrelation",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("relation 'repo#invalidrelation' not found"),
+			),
+		},
+		{
+			_name: "writing_assertion_with_not_found_id",
+			assertions: []*openfgav1.Assertion{
+				{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:smeadows",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
 					Expectation: false,
 				},
 			},
