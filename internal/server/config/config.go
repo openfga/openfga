@@ -122,7 +122,7 @@ type AuthnOIDCConfig struct {
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
 	// Keys define the preshared keys to verify authn tokens against.
-	Keys []string
+	Keys []string `json:"-"` // private field, won't be logged
 }
 
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
