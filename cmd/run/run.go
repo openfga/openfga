@@ -392,7 +392,9 @@ func PrintJSON(obj interface{}) string {
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	tracerProviderCloser := s.telemetryConfig(config)
 
-	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	if len(config.Experimentals) > 0 {
+		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
 
 	var experimentals []server.ExperimentalFeatureFlag
 	for _, feature := range config.Experimentals {
