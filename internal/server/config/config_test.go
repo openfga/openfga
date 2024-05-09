@@ -195,6 +195,18 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("list_objects_threshold_larger_than_max_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:      true,
+			Frequency:    10 * time.Microsecond,
+			Threshold:    30,
+			MaxThreshold: 29,
+		}
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
 	t.Run("negative_request_timeout_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.RequestTimeout = -2 * time.Second
