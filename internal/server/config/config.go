@@ -51,9 +51,9 @@ type DatastoreMetricsConfig struct {
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
 	Engine   string
-	URI      string
+	URI      string `json:"-"` // private field, won't be logged
 	Username string
-	Password string
+	Password string `json:"-"` // private field, won't be logged
 
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
@@ -122,7 +122,7 @@ type AuthnOIDCConfig struct {
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
 	// Keys define the preshared keys to verify authn tokens against.
-	Keys []string
+	Keys []string `json:"-"` // private field, won't be logged
 }
 
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
