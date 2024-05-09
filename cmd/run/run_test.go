@@ -27,6 +27,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/pkg/testutils"
 
@@ -746,6 +747,10 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestServerMetricsReporting(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")
 	})
