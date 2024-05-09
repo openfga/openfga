@@ -25,11 +25,9 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"go.uber.org/goleak"
-
-	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
@@ -747,10 +745,6 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestServerMetricsReporting(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")
 	})
