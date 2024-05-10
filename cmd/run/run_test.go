@@ -28,11 +28,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -527,6 +526,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer.Stop)
 
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -599,8 +599,10 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer1.Stop)
 
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+	t.Cleanup(trustedIssuerServer2.Stop)
 
 	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
