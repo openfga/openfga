@@ -102,6 +102,7 @@ type repo
 
 			assertions: []*openfgav1.Assertion{
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{
@@ -114,6 +115,7 @@ type repo
 					Expectation: false,
 				},
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{
@@ -126,6 +128,7 @@ type repo
 					Expectation: false,
 				},
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{
@@ -284,6 +287,7 @@ type repo
 			_name: "write_conceptual_tuple_assertion_with_invalid_relation_fails",
 			assertions: []*openfgav1.Assertion{
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{
@@ -305,6 +309,7 @@ type repo
 			_name: "write_conceptual_tuple_assertion_with_invalid_object_fails",
 			assertions: []*openfgav1.Assertion{
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{
@@ -326,6 +331,7 @@ type repo
 			_name: "write_conceptual_tuple_assertion_with_invalid_object_fails",
 			assertions: []*openfgav1.Assertion{
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{
@@ -348,6 +354,7 @@ type repo
 			_name: "writing_contextual_tuples_assertion_with_not_found_id",
 			assertions: []*openfgav1.Assertion{
 				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: []*openfgav1.TupleKey{
 							{

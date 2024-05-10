@@ -61,10 +61,8 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
-		if assertion.GetTupleKey() != nil {
-			if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.GetTupleKey())); err != nil {
-				return nil, serverErrors.ValidationError(err)
-			}
+		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.GetTupleKey())); err != nil {
+			return nil, serverErrors.ValidationError(err)
 		}
 
 		for _, ct := range assertion.GetContextualTuples().GetTupleKeys() {
