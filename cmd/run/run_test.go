@@ -602,7 +602,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	t.Cleanup(trustedIssuerServer1.Stop)
 
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
-	t.Cleanup(trustedIssuerServer1.Stop)
+	t.Cleanup(trustedIssuerServer2.Stop)
 
 	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
