@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -12,12 +13,14 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v4"
+	"go.uber.org/zap"
 )
 
 type mockOidcServer struct {
 	issuerURL  string
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
+	httpServer *http.Server
 }
 
 const kidHeader = "1"
@@ -80,9 +83,22 @@ func (server mockOidcServer) start() {
 		}
 	})
 
+	server.httpServer = &http.Server{Addr: ":" + port, Handler: mockHandler}
+
 	go func() {
-		log.Fatal(http.ListenAndServe(":"+port, mockHandler))
+		if err := server.httpServer.ListenAndServe(); err != nil {
+			if err != http.ErrServerClosed {
+				log.Fatal("failed to start mock OIDC server", zap.Error(err))
+			}
+		}
+		log.Println("mock OIDC server shut down.")
 	}()
+}
+
+func (server mockOidcServer) Stop() {
+	if server.httpServer != nil {
+		_ = server.httpServer.Shutdown(context.Background())
+	}
 }
 
 func (server mockOidcServer) GetToken(audience, subject string) (string, error) {
