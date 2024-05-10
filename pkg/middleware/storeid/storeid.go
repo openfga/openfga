@@ -4,12 +4,13 @@ import (
 	"context"
 	"time"
 
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/openfga/openfga/pkg/middleware/ctxtags"
 )
 
 type ctxKey string
@@ -89,7 +90,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 		SetStoreIDInContext(r.ctx, msg)
 		trace.SpanFromContext(r.ctx).SetAttributes(attribute.String(storeIDKey, storeID))
 
-		grpc_ctxtags.Extract(r.ctx).Set(storeIDKey, storeID)
+		ctxtags.Extract(r.ctx).Set(storeIDKey, storeID)
 
 		_ = grpc.SetHeader(r.ctx, metadata.Pairs(StoreIDHeader, storeID))
 	}
