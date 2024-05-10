@@ -65,7 +65,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
@@ -352,7 +351,6 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 	return datastore, nil
@@ -542,6 +540,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
@@ -789,8 +788,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	svr.Close()
 
 	authenticator.Close()
-
-	datastore.Close()
 
 	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
