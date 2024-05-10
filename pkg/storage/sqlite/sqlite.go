@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -46,6 +47,38 @@ var _ storage.OpenFGADatastore = (*SQLite)(nil)
 
 // New creates a new [SQLite] storage.
 func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
+	// Set journal mode and busy timeout pragmas if not specified.
+	query := url.Values{}
+	var err error
+
+	if i := strings.Index(uri, "?"); i != -1 {
+		query, err = url.ParseQuery(uri[i+1:])
+		if err != nil {
+			return nil, fmt.Errorf("error parsing dsn: %w", err)
+		}
+
+		uri = uri[:i]
+	}
+
+	foundJournalMode := false
+	foundBusyTimeout := false
+	for _, val := range query["_pragma"] {
+		if strings.HasPrefix(val, "journal_mode") {
+			foundJournalMode = true
+		} else if strings.HasPrefix(val, "busy_timeout") {
+			foundBusyTimeout = true
+		}
+	}
+
+	if !foundJournalMode {
+		query.Add("_pragma", "journal_mode(WAL)")
+	}
+	if !foundBusyTimeout {
+		query.Add("_pragma", "busy_timeout(500)")
+	}
+
+	uri += "?" + query.Encode()
+
 	db, err := sql.Open("sqlite", uri)
 	if err != nil {
 		return nil, fmt.Errorf("initialize sqlite connection: %w", err)
