@@ -37,6 +37,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					nil,
+					nil,
+					"",
+					nil,
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -57,6 +60,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					nil,
+					nil,
+					"",
+					nil,
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -71,7 +77,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		{
 			testDescription: "when_JWT_and_JWK_kid_don't_match,_returns_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
-				return quickConfigSetup("kid_1", "kid_2", "", "", nil, jwt.MapClaims{}, nil)
+				return quickConfigSetup("kid_1", "kid_2", "", "", nil, nil, "", nil, jwt.MapClaims{}, nil)
 			},
 			expectedError: "invalid bearer token",
 		},
@@ -79,7 +85,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			testDescription: "when_token_is_signed_using_different_public/private_key_pairs,_returns__'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				privateKey, _ := generateJWTSignatureKeys()
-				return quickConfigSetup("kid_1", "kid_1", "", "", nil, jwt.MapClaims{}, privateKey)
+				return quickConfigSetup("kid_1", "kid_1", "", "", nil, nil, "", nil, jwt.MapClaims{}, privateKey)
 			},
 			expectedError: "invalid bearer token",
 		},
@@ -90,6 +96,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"kid_1",
 					"kid_1",
 					"right_issuer",
+					"",
+					nil,
+					nil,
 					"",
 					nil,
 					jwt.MapClaims{
@@ -109,6 +118,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					nil,
+					nil,
+					"",
+					nil,
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "wrong_audience",
@@ -127,6 +139,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					nil,
+					nil,
+					"",
+					nil,
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -136,6 +151,136 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				)
 			},
 			expectedError: "invalid subject",
+		},
+		{
+			testDescription: "when_the_role_claim_is_missing_and_role_is_required,_MUST_return_'invalid_role'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					[]string{"role"},
+					"",
+					nil,
+					jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "right_audience",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid role",
+		},
+		{
+			testDescription: "when_the_role_claim_contains_incorrect_role_and_role_is_required,_MUST_return_'invalid_role'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					[]string{"role"},
+					"",
+					nil,
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"roles": "admin",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid role",
+		},
+		{
+			testDescription: "when_the_role_claim_contains_incorrect_roles_and_role_is_required,_MUST_return_'invalid_role'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					[]string{"role"},
+					"",
+					nil,
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"roles": "[\"admin\",\"user\"]",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid role",
+		},
+		{
+			testDescription: "when_claim_is_required_and_claim_is_missing,_MUST_return_'invalid_claim'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"claim",
+					nil,
+					jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "right_audience",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid required claims",
+		},
+		{
+			testDescription: "when_claim_is_required_and_claim_contains_incorrect_value,_MUST_return_'invalid_claim'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"claim",
+					[]string{"value"},
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"claim": "tataloco",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid required claims",
+		},
+		{
+			testDescription: "when_claim_is_required_and_claim_contains_incorrect_values,_MUST_return_'invalid_claim'_error",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"claim",
+					[]string{"value"},
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"claim": "[\"tata\",\"loco\"]",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid required claims",
 		},
 	}
 
@@ -166,6 +311,9 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					nil,
+					nil,
+					"",
+					nil,
 					jwt.MapClaims{
 						"iss":   "right_issuer",
 						"aud":   "right_audience",
@@ -185,11 +333,152 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					[]string{"issuer_alias"},
+					nil,
+					"",
+					nil,
 					jwt.MapClaims{
 						"iss":   "issuer_alias",
 						"aud":   "right_audience",
 						"sub":   "openfga client",
 						"scope": scopes,
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_the_token_is_valid_with_role_required,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					[]string{"role"},
+					"",
+					nil,
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "openfga client",
+						"scope": scopes,
+						"roles": "role",
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_the_token_is_valid_with_one_of_the_roles_required,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					[]string{"role", "role2"},
+					"",
+					nil,
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "openfga client",
+						"scope": scopes,
+						"roles": []string{"role", "role3"},
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_the_token_is_valid_with_required_claim,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"theClaim",
+					nil,
+					jwt.MapClaims{
+						"iss":      "right_issuer",
+						"aud":      "right_audience",
+						"sub":      "openfga client",
+						"scope":    scopes,
+						"theClaim": "",
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_the_token_is_valid_with_required_claim_and_no_value,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"theClaim",
+					[]string{},
+					jwt.MapClaims{
+						"iss":      "right_issuer",
+						"aud":      "right_audience",
+						"sub":      "openfga client",
+						"scope":    scopes,
+						"theClaim": "",
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_the_token_is_valid_with_required_claim_and_value,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"theClaim",
+					[]string{"required"},
+					jwt.MapClaims{
+						"iss":      "right_issuer",
+						"aud":      "right_audience",
+						"sub":      "openfga client",
+						"scope":    scopes,
+						"theClaim": "required",
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_the_token_is_valid_with_required_claim_and_values,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					"theClaim",
+					[]string{"required"},
+					jwt.MapClaims{
+						"iss":      "right_issuer",
+						"aud":      "right_audience",
+						"sub":      "openfga client",
+						"scope":    scopes,
+						"theClaim": []string{"required", "not_required"},
 					},
 					nil,
 				)
@@ -217,7 +506,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 }
 
 // quickConfigSetup sets up a basic configuration for testing purposes.
-func quickConfigSetup(jwkKid, jwtKid, issuerURL, audience string, issuerAliases []string, jwtClaims jwt.MapClaims, privateKeyOverride *rsa.PrivateKey) (*RemoteOidcAuthenticator, context.Context, error) {
+func quickConfigSetup(jwkKid, jwtKid, issuerURL, audience string, issuerAliases []string, roles []string, claimName string, claimValues []string, jwtClaims jwt.MapClaims, privateKeyOverride *rsa.PrivateKey) (*RemoteOidcAuthenticator, context.Context, error) {
 	// Generate JWT signature keys
 	privateKey, publicKey := generateJWTSignatureKeys()
 	if privateKeyOverride != nil {
@@ -227,7 +516,7 @@ func quickConfigSetup(jwkKid, jwtKid, issuerURL, audience string, issuerAliases 
 	fetchJWKs = fetchKeysMock(publicKey, jwkKid)
 
 	// Initialize RemoteOidcAuthenticator
-	oidc, err := NewRemoteOidcAuthenticator(issuerURL, issuerAliases, audience)
+	oidc, err := NewRemoteOidcAuthenticator(issuerURL, issuerAliases, audience, roles, claimName, claimValues)
 	if err != nil {
 		return nil, nil, err
 	}

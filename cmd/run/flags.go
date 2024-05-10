@@ -69,6 +69,20 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("authn.oidc.issuerAliases", flags.Lookup("authn-oidc-issuer-aliases"))
 		util.MustBindEnv("authn.oidc.issuerAliases", "OPENFGA_AUTHN_OIDC_ISSUER_ALIASES")
 
+		util.MustBindPFlag("authn.oidc.roles", flags.Lookup("authn-oidc-roles"))
+		util.MustBindEnv("authn.oidc.roles", "OPENFGA_AUTHN_OIDC_ROLES")
+
+		util.MustBindPFlag("authn.oidc.roles", flags.Lookup("authn-oidc-roles"))
+		util.MustBindEnv("authn.oidc.roles", "OPENFGA_AUTHN_OIDC_ROLES")
+
+		util.MustBindPFlag("authn.oidc.claimValues", flags.Lookup("authn-oidc-claim-values"))
+		util.MustBindEnv("authn.oidc.claimValues", "OPENFGA_AUTHN_OIDC_CLAIM_VALUES")
+
+		util.MustBindPFlag("authn.oidc.claimName", flags.Lookup("authn-oidc-claim-name"))
+		util.MustBindEnv("authn.oidc.claimName", "OPENFGA_AUTHN_OIDC_CLAIM_NAME")
+
+		command.MarkFlagsRequiredTogether("authn-oidc-claim-name", "authn-oidc-claim-values")
+
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
 

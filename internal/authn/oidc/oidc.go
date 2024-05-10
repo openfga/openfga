@@ -27,6 +27,9 @@ type RemoteOidcAuthenticator struct {
 	MainIssuer    string
 	IssuerAliases []string
 	Audience      string
+	Roles         []string
+	ClaimName     string
+	ClaimValues   []string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -37,11 +40,13 @@ type RemoteOidcAuthenticator struct {
 var (
 	jwkRefreshInterval = 48 * time.Hour
 
-	errInvalidAudience = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
-	errInvalidClaims   = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
-	errInvalidIssuer   = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
-	errInvalidSubject  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
-	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+	errInvalidAudience      = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
+	errInvalidClaims        = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
+	errInvalidIssuer        = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
+	errInvalidSubject       = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
+	errInvalidToken         = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+	errInvalidRole          = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid role")
+	errInvalidRequiredClaim = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid required claims")
 
 	fetchJWKs = fetchJWK
 )
@@ -49,13 +54,16 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, roles []string, claimName string, claimValues []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
 		MainIssuer:    mainIssuer,
 		IssuerAliases: issuerAliases,
 		Audience:      audience,
+		Roles:         roles,
+		ClaimName:     claimName,
+		ClaimValues:   claimValues,
 		httpClient:    client.StandardClient(),
 	}
 	err := fetchJWKs(oidc)
@@ -106,6 +114,32 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidAudience
 	}
 
+	// optional role check
+	ok = len(oidc.Roles) == 0 || slices.ContainsFunc(oidc.Roles, func(role string) bool {
+		return verifyClaimContains(claims, "roles", role, true)
+	})
+
+	if !ok {
+		return nil, errInvalidRole
+	}
+
+	// optional claim check
+	if len(oidc.ClaimName) > 0 {
+		if len(oidc.ClaimValues) > 0 {
+			// if required values are specified, check if the claim contains any of the required values
+			ok = slices.ContainsFunc(oidc.ClaimValues, func(value string) bool {
+				return verifyClaimContains(claims, oidc.ClaimName, value, true)
+			})
+		} else {
+			// if no required values are specified, just check if the claim exists
+			ok = len(readClaimValues(claims, oidc.ClaimName)) > 0
+		}
+
+		if !ok {
+			return nil, errInvalidRequiredClaim
+		}
+	}
+
 	// optional subject
 	var subject = ""
 	if subjectClaim, ok := claims["sub"]; ok {
@@ -130,6 +164,36 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	}
 
 	return principal, nil
+}
+
+func verifyClaimContains(claims jwt.MapClaims, claim string, cmp string, req bool) bool {
+	var claimValues = readClaimValues(claims, claim)
+	if len(claimValues) == 0 {
+		return !req
+	}
+	return slices.ContainsFunc(claimValues, func(item string) bool {
+		return item == cmp
+	})
+}
+
+func readClaimValues(claims jwt.MapClaims, claim string) []string {
+	var claimValues []string
+	if claimKey, ok := claims[claim]; ok {
+		switch v := claimKey.(type) {
+		case string:
+			claimValues = append(claimValues, v)
+		case []string:
+			claimValues = v
+		case []interface{}:
+			for _, a := range v {
+				vs, ok := a.(string)
+				if ok {
+					claimValues = append(claimValues, vs)
+				}
+			}
+		}
+	}
+	return claimValues
 }
 
 func fetchJWK(oidc *RemoteOidcAuthenticator) error {

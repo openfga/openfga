@@ -126,6 +126,14 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
 
+	flags.StringSlice("authn-oidc-roles", defaultConfig.Authn.Roles, "the OIDC roles that will be required when verifying tokens")
+
+	flags.String("authn-oidc-claim-name", defaultConfig.Authn.ClaimName, "an additonal OIDC token claim that will be required when verifying tokens")
+
+	flags.StringSlice("authn-oidc-claim-values", defaultConfig.Authn.ClaimValues, "the OIDC claim values that will be accepted when verifying tokens")
+
+	cmd.MarkFlagsRequiredTogether("authn-oidc-claim-name", "authn-oidc-claim-values")
+
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
@@ -371,7 +379,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Roles, config.Authn.ClaimName, config.Authn.ClaimValues)
 	default:
 		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}

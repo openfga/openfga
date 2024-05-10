@@ -117,6 +117,9 @@ type AuthnOIDCConfig struct {
 	Issuer        string
 	IssuerAliases []string
 	Audience      string
+	Roles         []string
+	ClaimName     string
+	ClaimValues   []string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
