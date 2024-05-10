@@ -16,7 +16,7 @@ const (
 	requestIDKey      = "request_id"
 	requestIDTraceKey = "request_id"
 
-	// RequestIDHeader defines the HTTP header that is set in each HTTP response
+	// RequestIDHeader defines the HTTP header that is set in each HTTP response.
 	// for a given request. The value of the header is unique per request.
 	RequestIDHeader = "X-Request-Id"
 )
