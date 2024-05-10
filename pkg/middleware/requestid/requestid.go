@@ -21,9 +21,10 @@ const (
 	RequestIDHeader = "X-Request-Id"
 )
 
-// InitID returns the ID to be used to identify the request.
-// If trace is enabled, returns trace ID; otherwise returns a new ULID.
-func InitID(ctx context.Context) string {
+// InitRequestID returns the ID to be used to identify the request.
+// If tracing is enabled, returns trace ID, e.g. "1e20da43269fe07e3d2ac018c0aad2d1".
+// Otherwise returns a new UUID, e.g. "38fee7ac-4bfe-4cf6-baa2-8b5ec296b485"
+func InitRequestID(ctx context.Context) string {
 	spanCtx := trace.SpanContextFromContext(ctx)
 	if spanCtx.TraceID().IsValid() {
 		return spanCtx.TraceID().String()
