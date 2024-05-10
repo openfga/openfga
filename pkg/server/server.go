@@ -375,6 +375,23 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		opt(s)
 	}
 
+	if s.datastore == nil {
+		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+	}
+
+	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
+	}
+	if s.dispatchThrottlingCheckResolverEnabled && s.dispatchThrottlingMaxThreshold != 0 && s.dispatchThrottlingDefaultThreshold > s.dispatchThrottlingMaxThreshold {
+		return nil, fmt.Errorf("default dispatch throttling threshold must be equal or smaller than max dispatch threshold")
+	}
+
+	// below this point, don't throw errors or we may leak resources in tests
+
 	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
 	s.checkResolver = cycleDetectionCheckResolver
 
@@ -408,10 +425,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			MaxThreshold:     s.dispatchThrottlingMaxThreshold,
 		}
 
-		if s.dispatchThrottlingMaxThreshold != 0 && s.dispatchThrottlingDefaultThreshold > s.dispatchThrottlingMaxThreshold {
-			return nil, fmt.Errorf("default dispatch throttling threshold must be equal or smaller than max dispatch threshold")
-		}
-
 		s.logger.Info("Enabling dispatch throttling",
 			zap.Duration("Frequency", s.dispatchThrottlingCheckResolverFrequency),
 			zap.Uint32("DefaultThreshold", s.dispatchThrottlingDefaultThreshold),
@@ -427,18 +440,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		} else {
 			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 		}
-	}
-
-	if s.datastore == nil {
-		return nil, fmt.Errorf("a datastore option must be provided")
-	}
-
-	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
-		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
-	}
-
-	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
-		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)

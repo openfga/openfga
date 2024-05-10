@@ -124,9 +124,59 @@ func ExampleNewServerWithOpts() {
 	// Output: true
 }
 
-func TestServerPanicIfNoDatastore(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
-		_ = MustNewServerWithOpts()
+func TestServerPanicIfValidationsFail(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("no_datastore", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts()
+		})
+	})
+	t.Run("no_datastore_and_check_query_cache_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts(
+				WithCheckQueryCacheEnabled(true))
+		})
+	})
+
+	t.Run("no_request_duration_by_query_histogram_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			s := MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByQueryHistogramBuckets([]uint{}),
+			)
+			defer s.Close()
+		})
+	})
+	t.Run("no_request_duration_by_dispatch_count_histogram_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
+			)
+		})
+	})
+
+	t.Run("invalid_dispatch_throttle_threshold", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithDispatchThrottlingCheckResolverEnabled(true),
+				WithDispatchThrottlingCheckResolverThreshold(100),
+				WithDispatchThrottlingCheckResolverMaxThreshold(80),
+			)
+		})
 	})
 }
 
@@ -151,44 +201,6 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 			require.False(t, status.IsReady)
 		})
 	}
-}
-
-func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithRequestDurationByQueryHistogramBuckets([]uint{}),
-		)
-	})
-}
-
-func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
-		)
-	})
-}
-
-func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithDispatchThrottlingCheckResolverEnabled(true),
-			WithDispatchThrottlingCheckResolverThreshold(100),
-			WithDispatchThrottlingCheckResolverMaxThreshold(80),
-		)
-	})
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
