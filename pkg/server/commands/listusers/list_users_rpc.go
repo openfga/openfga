@@ -559,11 +559,11 @@ func (l *listUsersQuery) expandExclusion(
 		close(baseFoundUsersCh)
 	}()
 
-	var substractError error
+	var subtractError error
 	var subtractHasCycle bool
 	go func() {
 		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
-		substractError = resp.err
+		subtractError = resp.err
 		subtractHasCycle = resp.hasCycle
 		close(subtractFoundUsersCh)
 	}()
@@ -602,7 +602,7 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	errs := errors.Join(baseError, substractError)
+	errs := errors.Join(baseError, subtractError)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 	}
