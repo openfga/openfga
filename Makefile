@@ -84,7 +84,6 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: test test-docker test-bench generate-mocks
 
-<<<<<<< HEAD
 .PHONY: build
 build: ## Build the OpenFGA service
 	go build -o ./openfga ./cmd/openfga
