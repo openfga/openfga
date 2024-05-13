@@ -20,6 +20,10 @@ var serverInstance *server.Server
 
 var ctx = context.Background()
 
+var storeId string
+
+var authorizationModelId string
+
 func InitServer(dbPath string) {
 	var datastore storage.OpenFGADatastore
 	var err error
@@ -42,6 +46,16 @@ func InitServer(dbPath string) {
 	println("serverInstance: ", serverInstance)
 }
 
+type Config struct {
+	StoreId              string
+	AuthorizationModelId string
+}
+
+func configure(config Config) {
+	storeId = config.StoreId
+	authorizationModelId = config.AuthorizationModelId
+}
+
 func CreateStore(storeName string) {
 	if serverInstance == nil {
 		log.Fatalf("server instance is nil")
@@ -58,35 +72,6 @@ func CreateStore(storeName string) {
 	}
 
 	println("CreateStoreResponse: ", resp)
-}
-
-func ListObjects(storeId string,
-	authorizationModelId string,
-	objectType string,
-	relation string,
-	user string,
-) {
-	if serverInstance == nil {
-		log.Fatalf("server instance is nil")
-	}
-
-	req := openfgav1.ListObjectsRequest{
-		StoreId:              storeId,
-		AuthorizationModelId: authorizationModelId,
-		Type:                 objectType,
-		Relation:             relation,
-		User:                 user,
-	}
-
-	println("ListObjectsRequest: ", req.User)
-
-	resp, err := serverInstance.ListObjects(ctx, &req)
-
-	if err != nil {
-		println("ListObjectsRequest error: ", err.Error())
-	}
-
-	println("ListObjectsResponse: ", resp)
 }
 
 func MigrateDatabase(dbPath string) {
@@ -142,4 +127,32 @@ func MigrateDatabase(dbPath string) {
 	if err := goose.Up(db, migrationsPath); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func check(
+	user string,
+	object string,
+	relation string,
+) (bool, error) {
+	if serverInstance == nil {
+		log.Fatalf("server instance is nil")
+	}
+
+	req := openfgav1.CheckRequest{
+		StoreId:              storeId,
+		AuthorizationModelId: authorizationModelId,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     user,
+			Object:   object,
+			Relation: relation,
+		},
+	}
+
+	resp, err := serverInstance.Check(ctx, &req)
+
+	if err != nil {
+		return false, err
+	}
+
+	return resp.Allowed, nil
 }
