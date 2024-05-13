@@ -42,11 +42,11 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		//				SchemaVersion: typesystem.SchemaVersion1_0,
 		//				TypeDefinitions: parser.MustTransformDSLToProto(`model
 		//  schema 1.0
-		//type user
+		// type user
 		//
-		//type team
+		// type team
 		//
-		//type repo
+		// type repo
 		//  relations
 		//	define owner: [team]
 		//	define admin: [user]`).GetTypeDefinitions(),
@@ -173,7 +173,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 		//{
 		//	_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
 		//	// state
@@ -235,7 +235,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
@@ -356,7 +356,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 	}
 
 	ctx := context.Background()
@@ -376,7 +376,7 @@ type repo
 			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
 			require.NoError(t, err)
 
-			if test.response.Tuples != nil {
+			if test.response.GetTuples() != nil {
 				require.Equal(t, len(test.response.GetTuples()), len(resp.GetTuples()))
 
 				for i, responseTuple := range test.response.GetTuples() {

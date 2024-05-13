@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -28,32 +29,13 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	}{
 		{
 			name: "1.1_simple_direct",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -86,33 +68,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_computed_userset",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":  typesystem.This(),
-							"writer": typesystem.ComputedUserset("admin"),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]
+						define writer: admin`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey(
@@ -139,50 +102,17 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_tuple_to_userset",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":   typesystem.TupleToUserset("manager", "repo_admin"),
-							"manager": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"manager": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "org",
-										},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgav1.Userset{
-							"repo_admin": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"repo_admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: repo_admin from manager
+						define manager: [org]
+				type org
+					relations
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -225,50 +155,17 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_tuple_to_userset_II",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":   typesystem.TupleToUserset("manager", "repo_admin"),
-							"manager": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"manager": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "org",
-										},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgav1.Userset{
-							"repo_admin": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"repo_admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: repo_admin from manager
+						define manager: [org]
+				type org
+					relations
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -316,50 +213,17 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_tuple_to_userset_implicit",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":   typesystem.TupleToUserset("manager", "repo_admin"),
-							"manager": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"manager": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "org",
-										},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgav1.Userset{
-							"repo_admin": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"repo_admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: repo_admin from manager
+						define manager: [org]
+				type org
+					relations
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -402,42 +266,17 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_simple_union",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin": typesystem.This(),
-							"writer": typesystem.Union(
-								typesystem.This(),
-								typesystem.ComputedUserset("admin")),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]
+						define writer: [user] or admin
+				type org
+					relations
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -491,43 +330,15 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_simple_difference",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":  typesystem.This(),
-							"banned": typesystem.This(),
-							"active_admin": typesystem.Difference(
-								typesystem.ComputedUserset("admin"),
-								typesystem.ComputedUserset("banned")),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"banned": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]
+						define banned: [user]
+						define active_admin: admin but not banned`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey(
@@ -573,43 +384,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_intersection",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin": typesystem.This(),
-							// Writers must be both directly in 'writers', and in 'admins'
-							"writer": typesystem.Intersection(
-								typesystem.This(),
-								typesystem.ComputedUserset("admin")),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+				  schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]
+						define writer: [user] and admin`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey(
@@ -657,79 +439,19 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_complex_tree",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "repo",
-						Relations: map[string]*openfgav1.Userset{
-							"admin":         typesystem.This(),
-							"owner":         typesystem.This(),
-							"banned_writer": typesystem.This(),
-							// Users can write if they are direct members of writers, or repo_writers
-							// in the org, unless they are also in banned_writers
-							"writer": typesystem.Difference(
-								typesystem.Union(
-									typesystem.This(),
-									typesystem.TupleToUserset("owner", "repo_writer")),
-								typesystem.ComputedUserset("banned_writer")),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"owner": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "org",
-										},
-									},
-								},
-								"banned_writer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgav1.Userset{
-							"repo_writer": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"repo_writer": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+				  schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user]
+						define owner: [org]
+						define banned_writer: [user]
+						define writer: ([user] or repo_writer from owner) but not banned_writer
+				type org
+					relations
+						define repo_writer: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -810,38 +532,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_Tuple_involving_userset_that_is_not_involved_in_TTU_rewrite",
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgav1.Userset{
-							"parent": typesystem.This(),
-							"editor": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.DirectRelationReference("document", "editor"),
-									},
-								},
-								"editor": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: testutils.MustTransformDSLToProtoWithID(`
+				model
+				  schema 1.1
+				type user
+				type document
+					relations
+						define parent: [document#editor]
+						define editor: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
 			},
@@ -857,6 +555,221 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 								Value: &openfgav1.UsersetTree_Leaf_Users{
 									Users: &openfgav1.UsersetTree_Users{
 										Users: []string{"document:2#editor"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "self_defined_userset_not_returned",
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define viewer: [user]
+			`),
+			tuples: []*openfgav1.TupleKey{},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("group:1", "viewer"),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "group:1#viewer",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										// group:1#viewer isn't included because it's implicit
+										Users: []string{},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "self_defined_userset_not_returned_even_if_tuple_written",
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define viewer: [user]
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "viewer", "group:1#viewer"), // invalid, so should be skipped over
+			},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("group:1", "viewer"),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "group:1#viewer",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "self_defined_userset_returned_if_tuple_written",
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define viewer: [user, group#viewer]
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "viewer", "group:1#viewer"),
+			},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("group:1", "viewer"),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "group:1#viewer",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										Users: []string{"group:1#viewer"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "cyclical_tuples",
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define viewer: [user, group#viewer]
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:2", "viewer", "group:3#viewer"),
+				tuple.NewTupleKey("group:1", "viewer", "group:2#viewer"),
+				tuple.NewTupleKey("group:3", "viewer", "group:1#viewer"),
+			},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("group:1", "viewer"),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "group:1#viewer",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										Users: []string{"group:2#viewer"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "nested_groups_I",
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			
+			type employee
+			  relations
+				define can_manage: manager or can_manage from manager
+				define manager: [employee]
+			
+			type report
+			  relations
+				define approver: can_manage from submitter
+				define submitter: [employee]
+			`),
+			tuples: []*openfgav1.TupleKey{
+				// employee:d has no manager
+				tuple.NewTupleKey("employee:c", "manager", "employee:d"),
+				tuple.NewTupleKey("employee:b", "manager", "employee:c"),
+				tuple.NewTupleKey("employee:a", "manager", "employee:b"),
+			},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("employee:d", "manager"),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "employee:d#manager",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										// employee:d has no manager
+										Users: []string{},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "nested_groups_II",
+			model: testutils.MustTransformDSLToProtoWithID(`
+			model
+			  schema 1.1
+			
+			type employee
+			  relations
+				define can_manage: manager or can_manage from manager
+				define manager: [employee]
+			
+			type report
+			  relations
+				define approver: can_manage from submitter
+				define submitter: [employee]
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("employee:c", "manager", "employee:d"),
+				tuple.NewTupleKey("employee:b", "manager", "employee:c"),
+				tuple.NewTupleKey("employee:a", "manager", "employee:b"),
+			},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewExpandRequestTupleKey("employee:c", "manager"),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "employee:c#manager",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										Users: []string{"employee:d"},
 									},
 								},
 							},

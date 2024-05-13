@@ -15,7 +15,6 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -25,14 +24,14 @@ import (
 
 // newOpenFGAServerAndClient starts an OpenFGA server, waits until its is healthy, and returns a grpc client to it.
 func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
 	StartServer(t, cfg)
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 	return client
@@ -92,9 +91,9 @@ condition conds(s: string) {
 	require.Nil(t, checkResp)
 }
 
-// TODO make a unit test from this
+// TODO make a unit test from this.
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
 
 	StartServer(t, cfg)
@@ -313,7 +312,7 @@ type document
 
 func TestFunctionalGRPC(t *testing.T) {
 	// uncomment when https://github.com/hashicorp/go-retryablehttp/issues/214 is solved
-	//defer goleak.VerifyNone(t)
+	// defer goleak.VerifyNone(t)
 	client := newOpenFGAServerAndClient(t)
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, client) })
@@ -338,7 +337,7 @@ func TestFunctionalGRPC(t *testing.T) {
 }
 
 func TestGRPCWithPresharedKey(t *testing.T) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &config.AuthnPresharedKeyConfig{Keys: []string{"key1", "key2"}}
 
@@ -346,7 +345,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 
@@ -992,7 +991,7 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
-// TODO move to consolidated_1_1_tests.yaml
+// TODO move to consolidated_1_1_tests.yaml.
 func TestExpandWorkflows(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)
 

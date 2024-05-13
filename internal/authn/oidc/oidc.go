@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,8 +24,9 @@ import (
 )
 
 type RemoteOidcAuthenticator struct {
-	IssuerURL string
-	Audience  string
+	MainIssuer    string
+	IssuerAliases []string
+	Audience      string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -40,20 +42,23 @@ var (
 	errInvalidIssuer   = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
 	errInvalidSubject  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
 	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+
+	fetchJWKs = fetchJWK
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
-		IssuerURL:  issuerURL,
-		Audience:   audience,
-		httpClient: client.StandardClient(),
+		MainIssuer:    mainIssuer,
+		IssuerAliases: issuerAliases,
+		Audience:      audience,
+		httpClient:    client.StandardClient(),
 	}
-	err := oidc.fetchKeys()
+	err := fetchJWKs(oidc)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +89,16 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, errInvalidClaims
 	}
 
-	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
+	validIssuers := []string{
+		oidc.MainIssuer,
+	}
+	validIssuers = append(validIssuers, oidc.IssuerAliases...)
+
+	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
+		return claims.VerifyIssuer(issuer, true)
+	})
+
+	if !ok {
 		return nil, errInvalidIssuer
 	}
 
@@ -118,14 +132,13 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	return principal, nil
 }
 
-func (oidc *RemoteOidcAuthenticator) fetchKeys() error {
+func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 	oidcConfig, err := oidc.GetConfiguration()
 	if err != nil {
 		return fmt.Errorf("error fetching OIDC configuration: %w", err)
 	}
 
 	oidc.JwksURI = oidcConfig.JWKsURI
-
 	jwks, err := oidc.GetKeys()
 	if err != nil {
 		return fmt.Errorf("error fetching OIDC keys: %w", err)
@@ -148,7 +161,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 }
 
 func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, error) {
-	wellKnown := strings.TrimSuffix(oidc.IssuerURL, "/") + "/.well-known/openid-configuration"
+	wellKnown := strings.TrimSuffix(oidc.MainIssuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error forming request to get OIDC: %w", err)
