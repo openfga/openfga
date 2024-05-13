@@ -513,7 +513,7 @@ condition condition1(x: int) {
 				}
 
 				done := make(chan struct{})
-				var streamedObjectIds []string
+				var streamedObjectIDs []string
 				go func() {
 					for {
 						select {
@@ -523,7 +523,7 @@ condition condition1(x: int) {
 								return
 							}
 
-							streamedObjectIds = append(streamedObjectIds, objectID)
+							streamedObjectIDs = append(streamedObjectIDs, objectID)
 
 						// for tests whose deadline is sooner than the latency of the storage layer
 						case <-time.After(test.readTuplesDelay + 1*time.Second):
@@ -546,8 +546,8 @@ condition condition1(x: int) {
 
 				require.NoError(t, err)
 				// there is no upper bound of the number of results for the streamed version
-				require.GreaterOrEqual(t, len(streamedObjectIds), int(test.minimumResultsExpected))
-				require.ElementsMatch(t, test.allResults, streamedObjectIds)
+				require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
+				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
 			})
 
 			t.Run("regular_endpoint", func(t *testing.T) {
@@ -575,7 +575,7 @@ condition condition1(x: int) {
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
 var listObjectsResponse *commands.ListObjectsResponse //nolint
 
-// setupListObjectsBenchmark writes the model and lots of tuples
+// setupListObjectsBenchmark writes the model and lots of tuples.
 func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeID string) (*openfgav1.AuthorizationModel, string, int) {
 	b.Helper()
 	modelID := ulid.Make().String()
@@ -607,7 +607,7 @@ type document
 
 			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", "user:maria"))
 
-			numberObjectsAccesible += 1
+			numberObjectsAccesible++
 		}
 
 		err := ds.Write(context.Background(), storeID, nil, tuples)

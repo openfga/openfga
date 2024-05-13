@@ -5,10 +5,13 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
+
+	"github.com/openfga/openfga/pkg/tuple"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -52,4 +55,32 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 
 	// Stores.
 	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
+}
+
+// BootstrapFGAStore is a utility to write an FGA model and relationship tuples to a datastore.
+// It doesn't validate the model. It validates the format of the tuples, but not the types within them.
+// It returns the store_id and FGA AuthorizationModel, respectively.
+func BootstrapFGAStore(
+	t require.TestingT,
+	ds storage.OpenFGADatastore,
+	model string,
+	tupleStrs []string,
+) (string, *openfgav1.AuthorizationModel) {
+	storeID := ulid.Make().String()
+
+	fgaModel := testutils.MustTransformDSLToProtoWithID(model)
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, fgaModel)
+	require.NoError(t, err)
+
+	tuples := tuple.MustParseTupleStrings(tupleStrs...)
+
+	batchSize := ds.MaxTuplesPerWrite()
+	for batch := 0; batch < len(tuples); batch += batchSize {
+		batchEnd := min(batch+batchSize, len(tuples))
+
+		err := ds.Write(context.Background(), storeID, nil, tuples[batch:batchEnd])
+		require.NoError(t, err)
+	}
+
+	return storeID, fgaModel
 }

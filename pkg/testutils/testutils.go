@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -25,6 +26,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 )
 
 const (
@@ -84,7 +87,7 @@ func CreateRandomString(n int) string {
 	return string(b)
 }
 
-func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
+func MustNewStruct(t require.TestingT, v map[string]interface{}) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
@@ -150,9 +153,10 @@ func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOpt
 	return conn
 }
 
-// EnsureServiceHealthy is a test helper that ensures that a service's grpc health endpoint is responding OK. It can also
-// ensure that the HTTP /healthz endpoint is responding OK. If the service doesn't respond healthy in 30 seconds it fails the test.
-func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+// EnsureServiceHealthy is a test helper that ensures that a service's grpc and http health endpoints are responding OK.
+// If the http address is empty, it doesn't check the http health endpoint.
+// If the service doesn't respond healthy in 30 seconds it fails the test.
+func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials) {
 	t.Helper()
 
 	creds := insecure.NewCredentials()
@@ -202,9 +206,44 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	}, policy)
 	require.NoError(t, err, "server did not reach healthy status")
 
-	if httpHealthCheck {
+	if httpAddr != "" {
 		resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
 		require.NoError(t, err, "http endpoint not healthy")
+
+		t.Cleanup(func() {
+			err := resp.Body.Close()
+			require.NoError(t, err)
+		})
+
 		require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
+	}
+}
+
+// MustDefaultConfigWithRandomPorts returns default server config but with random ports for the grpc and http addresses
+// and with the playground, tracing and metrics turned off.
+// This function may panic if somehow a random port cannot be chosen.
+func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
+	config := serverconfig.MustDefaultConfig()
+
+	httpPort, httpPortReleaser := TCPRandomPort()
+	defer httpPortReleaser()
+	grpcPort, grpcPortReleaser := TCPRandomPort()
+	defer grpcPortReleaser()
+
+	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+
+	return config
+}
+
+// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
+// It is the responsibility of the caller to call the release function right before trying to listen on the given port.
+func TCPRandomPort() (int, func()) {
+	l, err := net.Listen("tcp", "")
+	if err != nil {
+		panic(err)
+	}
+	return l.Addr().(*net.TCPAddr).Port, func() {
+		l.Close()
 	}
 }

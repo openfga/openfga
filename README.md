@@ -208,26 +208,24 @@ Don't hesitate to browse the official [Documentation](https://openfga.dev/), [AP
 ### MySQL Storage engine
 The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga/docker#configuring-data-storage).
 
+OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https://github.com/twintag). Thanks!
+
 ## Production Readiness
 
-The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
+The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Okta FGA](https://fga.dev) in production since December 2021.
 
 OpenFGA's Memory Storage Adapter was built for development purposes only and is not recommended for a production environment, because it is not designed for scalable queries and has no support for persistence.
 
-OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
-
-OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https://github.com/twintag), who are using it in a production environment. Auth0 is not using it in a production environment.
+You can learn about more organizations using OpenFGA in production [here](https://github.com/openfga/community/blob/main/ADOPTERS.md). If your organization is using OpenFGA in production please consider adding it to the list.
 
 The OpenFGA team will do its best to address all production issues with high priority.
-
-You can learn about more organizations using OpenFGA in production [here](https://github.com/openfga/community/blob/main/ADOPTERS.md). If your organization is using OpenFGA in production please consider adding it to the list.
 
 ## Contributing
 
 See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
 
 [doc]: https://openfga.dev/docs
-[config-doc]: https://openfga.dev/docs/getting-started/setup-openfga
+[config-doc]: https://openfga.dev/docs/getting-started/setup-openfga/configure-openfga
 [api]: https://openfga.dev/api/service
 [prod-checklist]: https://openfga.dev/docs/getting-started/running-in-production
 

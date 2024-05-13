@@ -62,7 +62,7 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 		}
 
-		if err := ValidateCondition(typesys, tk); err != nil {
+		if err := validateCondition(typesys, tk); err != nil {
 			return err
 		}
 	}
@@ -77,7 +77,7 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 //
 // 1. `document:1#parent@folder:1#parent` (cannot evaluate/assign a userset value to a tupleset relation)
 // 2. `document:1#parent@*` (cannot evaluate/assign untyped wildcard to a tupleset relation (1.0 models))
-// 3. `document:1#parent@folder:*` (cannot evaluate/assign typed wildcard to a tupleset relation (1.1. models))
+// 3. `document:1#parent@folder:*` (cannot evaluate/assign typed wildcard to a tupleset relation (1.1. Models)).
 func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())
 	relation := tk.GetRelation()
@@ -176,8 +176,9 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
 }
 
-// ValidateCondition enforces conditions on a relationship tuple
-func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// validateCondition returns an error if the condition of the tuple is required but not present,
+// or if the tuple provides a condition but it is invalid according to the model.
+func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())
 	userType := tuple.GetType(tk.GetUser())
 	userRelation := tuple.GetRelation(tk.GetUser())
@@ -259,10 +260,7 @@ func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 	return nil
 }
 
-// FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide
-// a generic filtering mechanism when reading tuples. It is particularly useful to filter
-// out tuples that aren't valid according to the provided model, which can help filter
-// tuples that were introduced due to another authorization model.
+// FilterInvalidTuples filters out tuples that aren't valid according to the provided model.
 func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgav1.TupleKey) bool {
 		err := ValidateTuple(typesys, tupleKey)
@@ -335,7 +333,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	schemaVersion := typesys.GetSchemaVersion()
 
 	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
-	if schemaVersion == typesystem.SchemaVersion1_1 {
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
@@ -369,7 +367,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 
 	// if the model is a 1.1 model we make sure that the objectType of the 'user' field is a defined
 	// type in the model.
-	if schemaVersion == typesystem.SchemaVersion1_1 {
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		_, ok := typesys.GetTypeDefinition(userObjectType)
 		if !ok {
 			return &tuple.TypeNotFoundError{TypeName: userObjectType}

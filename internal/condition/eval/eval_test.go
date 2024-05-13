@@ -103,10 +103,10 @@ condition correct_ip(ip: string) {
 }
 
 // TestDefaultCELEvaluationCost is used to ensure we don't decreasee the default evaluation cost
-// of CEL expressions, which would break API compability.
+// of CEL expressions, which would break API compatibility.
 //
 // Critical paths involving ABAC Condition evaluations use the EvaluateTupleCondition function,
-// and so we test that directly to give us higher confidence we're not introducing a compability
+// and so we test that directly to give us higher confidence we're not introducing a compatibility
 // issue.
 func TestDefaultCELEvaluationCost(t *testing.T) {
 	tests := []struct {

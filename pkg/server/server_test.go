@@ -77,7 +77,7 @@ func ExampleNewServerWithOpts() {
 	model
 		schema 1.1
 	type user
-	
+
 	type document
 		relations
 			define reader: [user]`)
@@ -124,9 +124,59 @@ func ExampleNewServerWithOpts() {
 	// Output: true
 }
 
-func TestServerPanicIfNoDatastore(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
-		_ = MustNewServerWithOpts()
+func TestServerPanicIfValidationsFail(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("no_datastore", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts()
+		})
+	})
+	t.Run("no_datastore_and_check_query_cache_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts(
+				WithCheckQueryCacheEnabled(true))
+		})
+	})
+
+	t.Run("no_request_duration_by_query_histogram_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			s := MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByQueryHistogramBuckets([]uint{}),
+			)
+			defer s.Close()
+		})
+	})
+	t.Run("no_request_duration_by_dispatch_count_histogram_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
+			)
+		})
+	})
+
+	t.Run("invalid_dispatch_throttle_threshold", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithDispatchThrottlingCheckResolverEnabled(true),
+				WithDispatchThrottlingCheckResolverThreshold(100),
+				WithDispatchThrottlingCheckResolverMaxThreshold(80),
+			)
+		})
 	})
 }
 
@@ -151,18 +201,6 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 			require.False(t, status.IsReady)
 		})
 	}
-}
-
-func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		_ = MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-			WithRequestDurationByQueryHistogramBuckets([]uint{}),
-		)
-	})
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
@@ -301,7 +339,6 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "document:1#viewer"),
 				tuple.NewTupleKey("document:1", "editor", "user:andres"),
 			},
@@ -311,7 +348,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(3)
 
 	var resp1 *openfgav1.CheckResponse
 	var err1 error
@@ -337,13 +374,30 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		})
 	}()
 
+	var resp3 *openfgav1.CheckResponse
+	var err3 error
+	go func() {
+		defer wg.Done()
+
+		resp3, err3 = s.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:andres"),
+		})
+	}()
+
 	wg.Wait()
 
 	require.NoError(t, err1)
+	require.NotNil(t, resp1)
 	require.False(t, resp1.GetAllowed())
 
 	require.NoError(t, err2)
-	require.False(t, resp2.GetAllowed())
+	require.NotNil(t, resp2)
+
+	require.NoError(t, err3)
+	require.NotNil(t, resp3)
+	require.True(t, resp3.GetAllowed())
 }
 
 func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
@@ -402,7 +456,9 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 		AuthorizationModelId: modelID,
 		TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "can_view", "user:jon"),
 	})
+
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 	require.False(t, resp.GetAllowed())
 }
 
@@ -496,20 +552,103 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	}
 }
 
+func TestCheckDispatchThrottledTimeout(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	const dispatchFrequency = 5 * time.Millisecond
+	const dispatchThreshold = 5
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
+		WithDispatchThrottlingCheckResolverEnabled(true),
+		WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
+	)
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`model
+		schema 1.1
+
+  type user
+
+  type group
+    relations
+      define member: [user, group#member]
+`)
+
+	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthModelResp.GetAuthorizationModelId()
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:x", "member", "group:1#member"),
+				tuple.NewTupleKey("group:x", "member", "group:2#member"),
+				tuple.NewTupleKey("group:x", "member", "group:3#member"),
+				tuple.NewTupleKey("group:x", "member", "group:4#member"),
+				tuple.NewTupleKey("group:x", "member", "group:5#member"),
+				tuple.NewTupleKey("group:x", "member", "group:6#member"),
+				tuple.NewTupleKey("group:x", "member", "group:7#member"),
+				tuple.NewTupleKey("group:x", "member", "group:8#member"),
+				tuple.NewTupleKey("group:x", "member", "group:9#member"),
+				tuple.NewTupleKey("group:x", "member", "group:10#member"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// we know that the above query will take 10 dispatches
+	// Since the threshold level is 5 and each dispatch will be throttled by 5ms
+	// The request will take at least 25 ms and will be timeout since timeout is 20ms.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("group:x", "member", "user:anne"),
+	})
+	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
+}
+
 func BenchmarkOpenFGAServer(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New()
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
@@ -519,7 +658,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
-		defer ds.Close()
+		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
 
@@ -535,6 +674,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 }
 
 func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -582,6 +724,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -593,6 +739,10 @@ type repo
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
@@ -607,6 +757,7 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
 		WithMaxConcurrentReadsForListObjects(1),
 	)
+	t.Cleanup(s.Close)
 
 	storeID := ulid.Make().String()
 
@@ -662,6 +813,10 @@ type document
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -698,6 +853,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	_, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -745,6 +904,10 @@ type repo
 }
 
 func TestShortestPathToSolutionWins(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -800,6 +963,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	start := time.Now()
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -816,6 +983,10 @@ type repo
 }
 
 func TestCheckWithCachedResolution(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -856,6 +1027,10 @@ type repo
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -878,6 +1053,10 @@ type repo
 }
 
 func TestWriteAssertionModelDSError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -972,6 +1151,10 @@ type repo
 }
 
 func TestReadAssertionModelDSError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -995,6 +1178,10 @@ func TestReadAssertionModelDSError(t *testing.T) {
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
@@ -1009,6 +1196,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
@@ -1035,6 +1226,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		typesys, err := s.resolveTypesystem(ctx, store, "")
 		require.NoError(t, err)
@@ -1054,6 +1249,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		_, err := s.resolveTypesystem(ctx, store, modelID)
 		require.Equal(t, want, err)
@@ -1078,6 +1277,13 @@ func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
 
 // This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1105,6 +1311,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	b.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1131,6 +1341,10 @@ type repo
 }
 
 func TestListObjects_ErrorCases(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -1143,6 +1357,10 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		modelID := ulid.Make().String()
 
@@ -1196,6 +1414,7 @@ type document
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),
 		)
+		t.Cleanup(s.Close)
 
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
@@ -1255,6 +1474,10 @@ type document
 }
 
 func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1282,6 +1505,10 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -1380,6 +1607,10 @@ type repo
 }
 
 func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	cfg := serverconfig.DefaultConfig()
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
@@ -1387,6 +1618,247 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
 	)
+	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
+}
+
+func TestDelegateCheckResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("default_check_resolver_alone", func(t *testing.T) {
+		cfg := serverconfig.DefaultConfig()
+		require.False(t, cfg.DispatchThrottling.Enabled)
+		require.False(t, cfg.CheckQueryCache.Enabled)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(s.Close)
+		require.Nil(t, s.dispatchThrottlingCheckResolver)
+		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		localCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localCheckResolver.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		const dispatchThreshold = 50
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
+		)
+		t.Cleanup(s.Close)
+
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("dispatch_throttling_check_resolver_enabled_zero_max_threshold", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		const dispatchThreshold = 50
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
+			WithDispatchThrottlingCheckResolverMaxThreshold(0),
+		)
+		t.Cleanup(s.Close)
+
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("dispatch_throttling_check_resolver_enabled_non_zero_max_threshold", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		const dispatchThreshold = 50
+		const maxDispatchThreshold = 60
+
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
+			WithDispatchThrottlingCheckResolverMaxThreshold(maxDispatchThreshold),
+		)
+		t.Cleanup(s.Close)
+
+		require.False(t, s.checkQueryCacheEnabled)
+		require.Nil(t, s.cachedCheckResolver)
+
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, maxDispatchThreshold, s.dispatchThrottlingMaxThreshold)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("cache_check_resolver_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithCheckQueryCacheEnabled(true),
+		)
+		t.Cleanup(s.Close)
+
+		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.Nil(t, s.dispatchThrottlingCheckResolver)
+
+		require.True(t, s.checkQueryCacheEnabled)
+		require.NotNil(t, s.cachedCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+
+	t.Run("both_dispatch_throttling_and_cache_check_resolver_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithCheckQueryCacheEnabled(true),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(50),
+			WithDispatchThrottlingCheckResolverMaxThreshold(100),
+		)
+		t.Cleanup(s.Close)
+
+		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.EqualValues(t, 50, s.dispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 100, s.dispatchThrottlingMaxThreshold)
+		require.NotNil(t, s.dispatchThrottlingCheckResolver)
+		require.NotNil(t, s.checkResolver)
+		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
+		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		require.True(t, ok)
+
+		require.True(t, s.checkQueryCacheEnabled)
+		require.NotNil(t, s.cachedCheckResolver)
+
+		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		require.True(t, ok)
+
+		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+	})
+}
+
+func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	t.Run("accepts_request_with_schema_version_1.2", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_2,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+					Metadata: &openfgav1.Metadata{
+						Relations:  nil,
+						Module:     "usermanagement",
+						SourceInfo: nil,
+					},
+				},
+			},
+		})
+
+		require.NoError(t, err)
+	})
 }
