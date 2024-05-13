@@ -352,7 +352,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	case "sqlite":
 		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("initialize sqlite datastore: %w", err)
+			return nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
