@@ -73,7 +73,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		return nil
 	case "sqlite":
 		driver = "sqlite3"
-		dialect = "sqlite3"
+
 		migrationsPath = assets.SQLiteMigrationDir
 
 		if uri == "" {
