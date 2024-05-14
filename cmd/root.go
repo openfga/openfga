@@ -15,7 +15,7 @@ const (
 	datastoreURIConf    = "datastore.uri"
 )
 
-// NewRootCommand enables all children commands to read flags from CLI flags, environment variables prefixed with OPENFGA, or config.yaml (in that order)
+// NewRootCommand enables all children commands to read flags from CLI flags, environment variables prefixed with OPENFGA, or config.yaml (in that order).
 func NewRootCommand() *cobra.Command {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")

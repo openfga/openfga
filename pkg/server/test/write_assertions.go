@@ -36,7 +36,7 @@ type user
 type repo
   relations
 	define reader: [user]
-	define can_read: reader`).TypeDefinitions,
+	define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 
@@ -97,6 +97,51 @@ type repo
 			_name:      "writing_empty_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{},
 		},
+		{
+			_name: "writing_multiple_contextual_tuples_assertions_succeeds",
+
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:smeadows",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:maria",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: true,
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -112,18 +157,18 @@ type repo
 			request := &openfgav1.WriteAssertionsRequest{
 				StoreId:              store,
 				Assertions:           test.assertions,
-				AuthorizationModelId: modelID.AuthorizationModelId,
+				AuthorizationModelId: modelID.GetAuthorizationModelId(),
 			}
 
 			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
 			_, err = writeAssertionCmd.Execute(ctx, request)
 			require.NoError(t, err)
 			query := commands.NewReadAssertionsQuery(datastore)
-			actualResponse, actualError := query.Execute(ctx, store, modelID.AuthorizationModelId)
+			actualResponse, actualError := query.Execute(ctx, store, modelID.GetAuthorizationModelId())
 			require.NoError(t, actualError)
 
 			expectedResponse := &openfgav1.ReadAssertionsResponse{
-				AuthorizationModelId: modelID.AuthorizationModelId,
+				AuthorizationModelId: modelID.GetAuthorizationModelId(),
 				Assertions:           test.assertions,
 			}
 			if diff := cmp.Diff(expectedResponse, actualResponse, protocmp.Transform()); diff != "" {
@@ -152,7 +197,7 @@ type user
 type repo
   relations
 	define reader: [user]
-	define can_read: reader`).TypeDefinitions,
+	define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 	ctx := context.Background()
@@ -174,7 +219,7 @@ type repo
 					Expectation: false,
 				},
 			},
-			modelID: modelID.AuthorizationModelId,
+			modelID: modelID.GetAuthorizationModelId(),
 			err: serverErrors.ValidationError(
 				fmt.Errorf("relation 'repo#invalidrelation' not found"),
 			),
@@ -190,6 +235,72 @@ type repo
 			modelID: "not_valid_id",
 			err: serverErrors.AuthorizationModelNotFound(
 				"not_valid_id",
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_relation_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "repo:test",
+								Relation: "invalidrelation",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("relation 'repo#invalidrelation' not found"),
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_object_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "invalidobject",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("invalid 'object' field format"),
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_user_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "invaliduser",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)"),
 			),
 		},
 	}

@@ -13,15 +13,19 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -45,18 +49,17 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
-	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
-	// defer goleak.VerifyNone(t)
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 
 	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	_, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
+	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -70,17 +73,11 @@ func TestCheckLogs(t *testing.T) {
 
 	// We're starting a full fledged server because the logs we
 	// want to observe are emitted on the interceptors/middleware layer.
-	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
-	defer cancel()
+	tests.StartServerWithContext(t, cfg, serverCtx)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr,
 		grpc.WithUserAgent("test-user-agent"),
 	)
-	require.NoError(t, err)
-	defer conn.Close()
-
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	createStoreResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
@@ -101,8 +98,8 @@ type document
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(t, err)
 
@@ -227,8 +224,10 @@ type document
 
 				httpReq.Header.Set("User-Agent", "test-user-agent")
 				client := &http.Client{}
+				var resp *http.Response
 
-				_, err = client.Do(httpReq)
+				resp, err = client.Do(httpReq)
+				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
 				require.Error(t, err)
@@ -252,9 +251,11 @@ type document
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
+			require.Equal(t, fields["request_id"], fields["trace_id"])
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
-				require.Len(t, fields, 13)
+				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
+				require.Len(t, fields, 14)
 			} else {
 				require.Len(t, fields, 12)
 			}
@@ -263,19 +264,16 @@ type document
 }
 
 func testRunAll(t *testing.T, engine string) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
-	cancel := tests.StartServer(t, cfg)
-	defer cancel()
+	tests.StartServer(t, cfg)
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(t, err)
-	defer conn.Close()
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
 }
@@ -293,6 +291,13 @@ func BenchmarkCheckMySQL(b *testing.B) {
 }
 
 func benchmarkAll(b *testing.B, engine string) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
 	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
 	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
@@ -325,27 +330,27 @@ type organization
     define repo_writer: [user,organization#member]`
 
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
-// and a cancellation function that stops the benchmark timer, cleans up the server and the datastore, and
-// closes the client connection.
+// and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
-	cancel := tests.StartServer(b, cfg)
+	tests.StartServer(b, cfg)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(b, err)
+	b.Cleanup(func() {
+		conn.Close()
+	})
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 	return client, func() {
 		// so we don't steal time from the benchmark itself
 		b.StopTimer()
-		cancel()
-		conn.Close()
 	}
 }
 
@@ -362,13 +367,13 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: tuples,
 		},
@@ -380,7 +385,7 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 		})
 
@@ -401,13 +406,13 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: tuples,
 		},
@@ -419,7 +424,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 			Trace:                true,
 		})
@@ -441,8 +446,8 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 
@@ -450,7 +455,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	for i := 0; i < 1000; i++ {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
@@ -463,7 +468,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	// one of those usersets gives access to the repo
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
@@ -475,7 +480,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	// add direct access to the repo
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
@@ -489,7 +494,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "admin", "user:anne"),
 		})
 
@@ -510,8 +515,8 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.TypeDefinitions,
-		Conditions:      model.Conditions,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
 	})
 	require.NoError(b, err)
 
@@ -520,12 +525,12 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		check, err := client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			// users can't be direct owners of repos
 			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "owner", "user:anne"),
 		})
 
-		require.False(b, check.Allowed)
+		require.False(b, check.GetAllowed())
 		require.NoError(b, err)
 	}
 }
@@ -551,7 +556,7 @@ type group
     define member: [user]
 type document
   relations
-    define viewer: [user:*, group#member]`).TypeDefinitions,
+    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -559,7 +564,7 @@ type document
 	for i := 0; i < 1000; i++ {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					{Object: fmt.Sprintf("group:%d", i), Relation: "member", User: "user:anne"},
@@ -572,7 +577,7 @@ type document
 	// one of those usersets gives access to document:budget
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "document:budget", Relation: "viewer", User: "group:999#member"},
@@ -594,7 +599,7 @@ type group
     define member: [user2]
 type document
   relations
-    define viewer: [user:*, group#member]`).TypeDefinitions,
+    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -605,11 +610,11 @@ type document
 	for i := 0; i < b.N; i++ {
 		check, err := client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 		})
 
-		require.False(b, check.Allowed)
+		require.False(b, check.GetAllowed())
 		require.NoError(b, err)
 	}
 }
@@ -637,7 +642,7 @@ condition password(p: string) {
 	require.NoError(b, err)
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "password", nil),
@@ -656,12 +661,12 @@ condition password(p: string) {
 	for i := 0; i < b.N; i++ {
 		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
 			Context:              contextStruct,
 		})
 		require.NoError(b, err)
-		require.True(b, resp.Allowed)
+		require.True(b, resp.GetAllowed())
 	}
 }
 
@@ -688,7 +693,7 @@ condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t
 	require.NoError(b, err)
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "complex", nil),
@@ -714,11 +719,11 @@ condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t
 	for i := 0; i < b.N; i++ {
 		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
 			Context:              contextStruct,
 		})
 		require.NoError(b, err)
-		require.True(b, resp.Allowed)
+		require.True(b, resp.GetAllowed())
 	}
 }

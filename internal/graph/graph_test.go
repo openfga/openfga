@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -21,16 +20,16 @@ var (
 
 		// Sort by Type and then by edge and then by tupleset relation
 		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Type > out[j].Type {
-				return false
+			if out[i].Type != out[j].Type {
+				return out[i].Type < out[j].Type
 			}
 
-			if typesystem.GetRelationReferenceAsString(out[i].TargetReference) > typesystem.GetRelationReferenceAsString(out[j].TargetReference) {
-				return false
+			if typesystem.GetRelationReferenceAsString(out[i].TargetReference) != typesystem.GetRelationReferenceAsString(out[j].TargetReference) {
+				return typesystem.GetRelationReferenceAsString(out[i].TargetReference) < typesystem.GetRelationReferenceAsString(out[j].TargetReference)
 			}
 
-			if out[i].TuplesetRelation > out[j].TuplesetRelation {
-				return false
+			if out[i].TuplesetRelation != out[j].TuplesetRelation {
+				return out[i].TuplesetRelation < out[j].TuplesetRelation
 			}
 
 			return true

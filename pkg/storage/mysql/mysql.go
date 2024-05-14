@@ -33,6 +33,7 @@ var tracer = otel.Tracer("openfga/pkg/storage/mysql")
 type MySQL struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
@@ -105,9 +106,13 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		}
 	}
 
+	stbl := sq.StatementBuilder.RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"))
+
 	return &MySQL{
-		stbl:                   sq.StatementBuilder.RunWith(db),
+		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -207,7 +212,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 
 	now := time.Now().UTC()
 
-	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, sq.Expr("NOW()")), store, deletes, writes, now)
+	return sqlcommon.Write(ctx, m.dbInfo, store, deletes, writes, now)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -294,11 +299,11 @@ func (m *MySQL) ReadUsersetTuples(
 	if len(filter.AllowedUserTypeRestrictions) > 0 {
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				orConditions = append(orConditions, sq.Like{"_user": userset.GetType() + ":%#" + userset.GetRelation()})
 			}
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
+			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
+				orConditions = append(orConditions, sq.Eq{"_user": userset.GetType() + ":*"})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -358,7 +363,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, m.dbInfo, store, modelID)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -434,25 +439,12 @@ func (m *MySQL) ReadAuthorizationModels(
 	return models, token, nil
 }
 
-// FindLatestAuthorizationModelID see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModelID.
-func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModelID")
+// FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
+func (m *MySQL) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := tracer.Start(ctx, "mysql.FindLatestAuthorizationModel")
 	defer span.End()
 
-	var modelID string
-	err := m.stbl.
-		Select("authorization_model_id").
-		From("authorization_model").
-		Where(sq.Eq{"store": store}).
-		OrderBy("authorization_model_id desc").
-		Limit(1).
-		QueryRowContext(ctx).
-		Scan(&modelID)
-	if err != nil {
-		return "", sqlcommon.HandleSQLError(err)
-	}
-
-	return modelID, nil
+	return sqlcommon.FindLatestAuthorizationModel(ctx, m.dbInfo, store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -471,7 +463,7 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerModelField)
 	}
 
-	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, m.dbInfo, store, model)
 }
 
 // CreateStore adds a new store to the MySQL storage.
@@ -490,7 +482,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 	_, err = m.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.Id, store.Name, sq.Expr("NOW()"), sq.Expr("NOW()")).
+		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
@@ -502,7 +494,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 	err = m.stbl.
 		Select("id", "name", "created_at").
 		From("store").
-		Where(sq.Eq{"id": store.Id}).
+		Where(sq.Eq{"id": store.GetId()}).
 		RunWith(txn).
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
@@ -684,7 +676,7 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 		return nil, err
 	}
 
-	return assertions.Assertions, nil
+	return assertions.GetAssertions(), nil
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.

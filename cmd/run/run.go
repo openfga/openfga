@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -39,17 +40,20 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/pkg/gateway"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/gateway"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
+	"github.com/openfga/openfga/pkg/middleware/recovery"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -61,7 +65,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
@@ -118,7 +121,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
 
-	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
+	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens, and where the keys will be fetched from")
+
+	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -128,7 +133,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
 
-	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
+	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of authorization models that will be cached in memory")
 
 	flags.Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
 
@@ -151,6 +156,8 @@ func NewRunCommand() *cobra.Command {
 	flags.String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 
 	flags.String("log-level", defaultConfig.Log.Level, "the log level to use")
+
+	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
 
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
@@ -195,45 +202,25 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
-	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
+	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms.")
+
+	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms.")
+
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the default threshold on number of dispatches above which requests will be throttled.")
+
+	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum")
+
+	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
-}
-
-// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
-// It is the responsibility of the caller to call the release function.
-func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	return l.Addr().(*net.TCPAddr).Port, func() {
-		l.Close()
-	}
-}
-
-// MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
-// This function may panic if somehow a random port cannot be chosen.
-func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
-	config := serverconfig.DefaultConfig()
-
-	// Since this is used for tests, turn the following off:
-	config.Playground.Enabled = false
-	config.Metrics.Enabled = false
-
-	httpPort, httpPortReleaser := TCPRandomPort()
-	defer httpPortReleaser()
-	grpcPort, grpcPortReleaser := TCPRandomPort()
-	defer grpcPortReleaser()
-
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-
-	return config
 }
 
 // ReadConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
@@ -267,7 +254,7 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
+	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
 
 	serverCtx := &ServerContext{Logger: logger}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
@@ -291,9 +278,9 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 	return uintArray
 }
 
-func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	var tracerProviderCloser func()
-
+// telemetryConfig returns the function that must be called to shut down tracing.
+// The context provided to this function should be error-free, or shut down will be incomplete.
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx context.Context) error {
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
@@ -313,21 +300,17 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		tracerProviderCloser = func() {
-			_ = tp.ForceFlush(ctx)
-			_ = tp.Shutdown(ctx)
+		return func(ctx context.Context) error {
+			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
-	} else {
-		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
-
-	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-
-	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	return func(ctx context.Context) error {
+		return nil
 	}
+}
 
+func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, error) {
 	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
@@ -358,21 +341,25 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("initialize mysql datastore: %w", err)
+			return nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("initialize postgres datastore: %w", err)
+			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	default:
-		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
+		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+	return datastore, nil
+}
 
+func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.Authenticator, error) {
 	var authenticator authn.Authenticator
+	var err error
+
 	switch config.Authn.Method {
 	case "none":
 		s.Logger.Warn("authentication is disabled")
@@ -382,20 +369,76 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
 	default:
-		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
+		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to initialize authenticator: %w", err)
+		return nil, fmt.Errorf("failed to initialize authenticator: %w", err)
+	}
+	return authenticator, nil
+}
+
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
+func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+	tracerProviderCloser := s.telemetryConfig(config)
+
+	if len(config.Experimentals) > 0 {
+		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
+
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	}
+
+	datastore, err := s.datastoreConfig(config)
+	if err != nil {
+		return err
+	}
+
+	authenticator, err := s.authenticatorConfig(config)
+
+	if err != nil {
+		return err
 	}
 
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
 			[]grpc.UnaryServerInterceptor{
-				grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
-				requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+				grpc_recovery.UnaryServerInterceptor( // panic middleware must be 1st in chain
+					grpc_recovery.WithRecoveryHandlerContext(
+						recovery.PanicRecoveryHandler(s.Logger),
+					),
+				),
+				grpc_ctxtags.UnaryServerInterceptor(), // needed for logging
+				requestid.NewUnaryInterceptor(),       // add request_id to ctxtags
+			}...,
+		),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				grpc_recovery.StreamServerInterceptor(
+					grpc_recovery.WithRecoveryHandlerContext(
+						recovery.PanicRecoveryHandler(s.Logger),
+					),
+				),
+				requestid.NewStreamingInterceptor(),
+			}...,
+		),
+	}
+
+	if config.RequestTimeout > 0 {
+		timeoutMiddleware := middleware.NewTimeoutInterceptor(config.RequestTimeout, s.Logger)
+
+		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(timeoutMiddleware.NewUnaryTimeoutInterceptor()))
+		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(timeoutMiddleware.NewStreamTimeoutInterceptor()))
+	}
+
+	serverOpts = append(serverOpts,
+		grpc.ChainUnaryInterceptor(
+			[]grpc.UnaryServerInterceptor{
 				storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
 				logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
 				validator.UnaryServerInterceptor(),
@@ -403,12 +446,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				requestid.NewStreamingInterceptor(),
 				validator.StreamServerInterceptor(),
 				grpc_ctxtags.StreamServerInterceptor(),
 			}...,
 		),
-	}
+	)
 
 	if config.Metrics.Enabled {
 		serverOpts = append(serverOpts,
@@ -450,11 +492,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		serverOpts = append(serverOpts, grpc.Creds(creds))
 
-		s.Logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
+		s.Logger.Info("gRPC TLS is enabled, serving connections using the provided certificate")
 	} else {
-		s.Logger.Warn("grpc TLS is disabled, serving connections using insecure plaintext")
+		s.Logger.Warn("gRPC TLS is disabled, serving connections using insecure plaintext")
 	}
 
+	var profilerServer *http.Server
 	if config.Profiler.Enabled {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -463,33 +506,41 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
+		profilerServer = &http.Server{Addr: config.Profiler.Addr, Handler: mux}
+
 		go func() {
 			s.Logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
 
-			if err := http.ListenAndServe(config.Profiler.Addr, mux); err != nil {
+			if err := profilerServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
 				}
 			}
+			s.Logger.Info("profiler shut down.")
 		}()
 	}
 
+	var metricsServer *http.Server
 	if config.Metrics.Enabled {
-		s.Logger.Info(fmt.Sprintf("📈 starting metrics server on '%s'", config.Metrics.Addr))
+		s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 
 		go func() {
 			mux := http.NewServeMux()
 			mux.Handle("/metrics", promhttp.Handler())
-			if err := http.ListenAndServe(config.Metrics.Addr, mux); err != nil {
+
+			metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
+			if err := metricsServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
 				}
 			}
+			s.Logger.Info("metrics server shut down.")
 		}()
 	}
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
@@ -503,16 +554,22 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
+		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
+		server.WithDispatchThrottlingCheckResolverMaxThreshold(config.DispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
 	)
 
 	s.Logger.Info(
-		"🚀 starting openfga service...",
+		"starting openfga service...",
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
 		zap.String("commit", build.Commit),
 		zap.String("go-version", goruntime.Version()),
+		zap.Any("config", config),
 	)
 
 	// nosemgrep: grpc-server-insecure-connection
@@ -528,20 +585,18 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	go func() {
+		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", config.GRPC.Addr))
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
-				s.Logger.Fatal("failed to start grpc server", zap.Error(err))
+				s.Logger.Fatal("failed to start gRPC server", zap.Error(err))
 			}
-
-			s.Logger.Info("grpc server shut down..")
 		}
+		s.Logger.Info("gRPC server shut down.")
 	}()
-	s.Logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
-		// Set a request timeout.
-		runtime.DefaultContextTimeout = config.HTTP.UpstreamTimeout
+		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
@@ -586,16 +641,17 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
-			Handler: cors.New(cors.Options{
+			Handler: recovery.HTTPPanicRecoveryHandler(cors.New(cors.Options{
 				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 				AllowCredentials: true,
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux),
+			}).Handler(mux), s.Logger),
 		}
 
 		go func() {
+			s.Logger.Info(fmt.Sprintf("🚀 starting HTTP server on '%s'...", httpServer.Addr))
 			var err error
 			if config.HTTP.TLS.Enabled {
 				if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
@@ -603,13 +659,14 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				}
 				err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
 			} else {
+				s.Logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
 				err = httpServer.ListenAndServe()
 			}
 			if err != http.ErrServerClosed {
 				s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
 			}
+			s.Logger.Info("HTTP server shut down.")
 		}()
-		s.Logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 	}
 
 	var playground *http.Server
@@ -686,25 +743,25 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			if err != http.ErrServerClosed {
 				s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
 			}
-			s.Logger.Info("shutdown the openfga playground server")
+			s.Logger.Info("playground shut down.")
 		}()
 	}
 
 	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-done:
 	case <-ctx.Done():
 	}
-	s.Logger.Info("attempting to shutdown gracefully")
+	s.Logger.Info("attempting to shutdown gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if playground != nil {
 		if err := playground.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to gracefully shutdown playground server", zap.Error(err))
+			s.Logger.Info("failed to shutdown the playground", zap.Error(err))
 		}
 	}
 
@@ -714,16 +771,29 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 	}
 
+	if profilerServer != nil {
+		if err := profilerServer.Shutdown(ctx); err != nil {
+			s.Logger.Info("failed to shutdown the profiler", zap.Error(err))
+		}
+	}
+
+	if metricsServer != nil {
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			s.Logger.Info("failed to shutdown the prometheus metrics server", zap.Error(err))
+		}
+	}
+
 	grpcServer.GracefulStop()
 
 	svr.Close()
 
 	authenticator.Close()
 
-	datastore.Close()
+	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	if tracerProviderCloser != nil {
-		tracerProviderCloser()
+	if err := tracerProviderCloser(ctx); err != nil {
+		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
 	}
 
 	s.Logger.Info("server exited. goodbye 👋")

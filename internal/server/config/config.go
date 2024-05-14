@@ -15,6 +15,7 @@ const (
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
+	DefaultMaxAuthorizationModelCacheSize   = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
@@ -28,9 +29,18 @@ const (
 	DefaultCheckQueryCacheTTL    = 10 * time.Second
 	DefaultCheckQueryCacheEnable = false
 
-	// care should be taken here - decreasing can cause API compatibility problems with Conditions
+	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
+
+	DefaultDispatchThrottlingEnabled          = false
+	DefaultDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultDispatchThrottlingDefaultThreshold = 100
+	DefaultDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
+
+	DefaultRequestTimeout = 3 * time.Second
+
+	additionalUpstreamTimeout = 3 * time.Second
 )
 
 type DatastoreMetricsConfig struct {
@@ -42,14 +52,11 @@ type DatastoreMetricsConfig struct {
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
 	Engine   string
-	URI      string
+	URI      string `json:"-"` // private field, won't be logged
 	Username string
-	Password string
+	Password string `json:"-"` // private field, won't be logged
 
-	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before
-	// evicting
-	// old keys. The storage cache is used to cache query results for various static resources
-	// such as type definitions.
+	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
 
 	// MaxOpenConns is the maximum number of open connections to the database.
@@ -108,14 +115,15 @@ type AuthnConfig struct {
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
 type AuthnOIDCConfig struct {
-	Issuer   string
-	Audience string
+	Issuer        string
+	IssuerAliases []string
+	Audience      string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
 	// Keys define the preshared keys to verify authn tokens against.
-	Keys []string
+	Keys []string `json:"-"` // private field, won't be logged
 }
 
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
@@ -126,6 +134,9 @@ type LogConfig struct {
 
 	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
 	Level string
+
+	// Format of the timestamp in the log output (e.g. 'Unix'(default) or 'ISO8601')
+	TimestampFormat string
 }
 
 type TraceConfig struct {
@@ -163,11 +174,19 @@ type MetricConfig struct {
 	EnableRPCHistograms bool
 }
 
-// CheckQueryCache defines configuration for caching when resolving check
+// CheckQueryCache defines configuration for caching when resolving check.
 type CheckQueryCache struct {
 	Enabled bool
 	Limit   uint32 // (in items)
 	TTL     time.Duration
+}
+
+// DispatchThrottlingConfig defines configurations for dispatch throttling.
+type DispatchThrottlingConfig struct {
+	Enabled      bool
+	Frequency    time.Duration
+	Threshold    uint32
+	MaxThreshold uint32
 }
 
 type Config struct {
@@ -218,18 +237,24 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore       DatastoreConfig
-	GRPC            GRPCConfig
-	HTTP            HTTPConfig
-	Authn           AuthnConfig
-	Log             LogConfig
-	Trace           TraceConfig
-	Playground      PlaygroundConfig
-	Profiler        ProfilerConfig
-	Metrics         MetricConfig
-	CheckQueryCache CheckQueryCache
+	// RequestTimeout configures request timeout.  If both HTTP upstream timeout and request timeout are specified,
+	// request timeout will be prioritized
+	RequestTimeout time.Duration
+
+	Datastore          DatastoreConfig
+	GRPC               GRPCConfig
+	HTTP               HTTPConfig
+	Authn              AuthnConfig
+	Log                LogConfig
+	Trace              TraceConfig
+	Playground         PlaygroundConfig
+	Profiler           ProfilerConfig
+	Metrics            MetricConfig
+	CheckQueryCache    CheckQueryCache
+	DispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
+	RequestDurationDispatchCountBuckets       []string
 }
 
 func (cfg *Config) Verify() error {
@@ -237,6 +262,14 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf(
 			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
 			cfg.HTTP.UpstreamTimeout,
+			cfg.ListObjectsDeadline,
+		)
+	}
+
+	if cfg.RequestTimeout > 0 && cfg.ListObjectsDeadline > cfg.RequestTimeout {
+		return fmt.Errorf(
+			"config 'requestTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			cfg.RequestTimeout,
 			cfg.ListObjectsDeadline,
 		)
 	}
@@ -255,6 +288,10 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf(
 			"config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']",
 		)
+	}
+
+	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
+		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}
 
 	if cfg.Playground.Enabled {
@@ -291,7 +328,57 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
+	if cfg.DispatchThrottling.Enabled {
+		if cfg.DispatchThrottling.Frequency <= 0 {
+			return errors.New("dispatchThrottling.frequency must be non-negative time duration")
+		}
+		if cfg.DispatchThrottling.Threshold <= 0 {
+			return errors.New("dispatchThrottling.threshold must be non-negative integer")
+		}
+		if cfg.DispatchThrottling.MaxThreshold != 0 && cfg.DispatchThrottling.Threshold > cfg.DispatchThrottling.MaxThreshold {
+			return errors.New("'dispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold'")
+		}
+	}
+
+	if cfg.RequestTimeout < 0 {
+		return errors.New("requestTimeout must be a non-negative time duration")
+	}
+
+	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
+		return errors.New("http.upstreamTimeout must be a non-negative time duration")
+	}
+
+	if cfg.ListObjectsDeadline < 0 {
+		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
 	return nil
+}
+
+// DefaultContextTimeout returns the runtime DefaultContextTimeout.
+// If requestTimeout > 0, we should let the middleware take care of the timeout and the
+// runtime.DefaultContextTimeout is used as last resort.
+// Otherwise, use the http upstream timeout if http is enabled.
+func DefaultContextTimeout(config *Config) time.Duration {
+	if config.RequestTimeout > 0 {
+		return config.RequestTimeout + additionalUpstreamTimeout
+	}
+	if config.HTTP.Enabled && config.HTTP.UpstreamTimeout > 0 {
+		return config.HTTP.UpstreamTimeout
+	}
+	return 0
 }
 
 // DefaultConfig is the OpenFGA server default configurations.
@@ -309,9 +396,10 @@ func DefaultConfig() *Config {
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
-			MaxCacheSize: 100000,
+			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
 			MaxIdleConns: 10,
 			MaxOpenConns: 30,
 		},
@@ -333,8 +421,9 @@ func DefaultConfig() *Config {
 			AuthnOIDCConfig:         &AuthnOIDCConfig{},
 		},
 		Log: LogConfig{
-			Format: "text",
-			Level:  "info",
+			Format:          "text",
+			Level:           "info",
+			TimestampFormat: "Unix",
 		},
 		Trace: TraceConfig{
 			Enabled: false,
@@ -365,5 +454,22 @@ func DefaultConfig() *Config {
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
+		DispatchThrottling: DispatchThrottlingConfig{
+			Enabled:      DefaultDispatchThrottlingEnabled,
+			Frequency:    DefaultDispatchThrottlingFrequency,
+			Threshold:    DefaultDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultDispatchThrottlingMaxThreshold,
+		},
+		RequestTimeout: DefaultRequestTimeout,
 	}
+}
+
+// MustDefaultConfig returns default server config with the playground, tracing and metrics turned off.
+func MustDefaultConfig() *Config {
+	config := DefaultConfig()
+
+	config.Playground.Enabled = false
+	config.Metrics.Enabled = false
+
+	return config
 }

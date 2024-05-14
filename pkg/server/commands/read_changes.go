@@ -41,7 +41,7 @@ func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption 
 	}
 }
 
-// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`
+// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`.
 func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
 	rq := &ReadChangesQuery{
 		backend:       backend,
@@ -64,7 +64,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	}
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 
-	changes, contToken, err := q.backend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
+	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), req.GetType(), paginationOptions, q.horizonOffset)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1.ReadChangesResponse{

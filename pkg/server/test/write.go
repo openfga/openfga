@@ -10,6 +10,8 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/pkg/testutils"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -45,7 +47,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: parser.MustTransformDSLToProto(`model
 	schema 1.1
-type repo`).TypeDefinitions,
+type repo`).GetTypeDefinitions(),
 			},
 			request: &openfgav1.WriteRequest{},
 			// output
@@ -63,7 +65,7 @@ type user
 
 type repo
   relations
-    define admin: [user]`).TypeDefinitions,
+    define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -89,7 +91,7 @@ type repo
   relations
 	define writer: [user]
 	define owner: [user]
-	define viewer: writer or owner`).TypeDefinitions,
+	define viewer: writer or owner`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -123,7 +125,7 @@ type repo
   relations
 	define writer: [user]
 	define owner: [user]
-	define viewer: writer and owner`).TypeDefinitions,
+	define viewer: writer and owner`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -219,7 +221,7 @@ type repo
   relations
 	define writer: [user]
 	define owner: [user]
-	define viewer: writer`).TypeDefinitions,
+	define viewer: writer`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -256,7 +258,7 @@ type org
 type repo
   relations
 	define owner: [org]
-	define viewer: viewer from owner`).TypeDefinitions,
+	define viewer: viewer from owner`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -288,7 +290,7 @@ type user
 
 type repo
   relations
-	define admin: [user]`).TypeDefinitions,
+	define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -311,7 +313,7 @@ type user
 
 type repo
   relations
-	define admin: [user]`).TypeDefinitions,
+	define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -337,7 +339,7 @@ type user
 
 type repo
   relations
-	define admin: [user]`).TypeDefinitions,
+	define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -357,7 +359,7 @@ type repo
 				TypeDefinitions: parser.MustTransformDSLToProto(`model
   schema 1.1
 type user
-type repository`).TypeDefinitions,
+type repository`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -385,7 +387,7 @@ type user
 
 type repo
   relations
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -415,7 +417,7 @@ type user
 
 type repo
   relations
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -443,7 +445,7 @@ type user
 
 type repo
   relations
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -473,7 +475,7 @@ type user
 
 type repo
   relations
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -524,7 +526,7 @@ type repo
 				TypeDefinitions: parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
-type repo`).TypeDefinitions,
+type repo`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -556,7 +558,7 @@ type user
 type repo
   relations
 	define admin: [user]
-	define writer: [user]`).TypeDefinitions,
+	define writer: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -582,7 +584,7 @@ type user
 
 type org
   relations
-	define manager: [user]`).TypeDefinitions,
+	define manager: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
@@ -617,7 +619,7 @@ type org
 
 type team
   relations
-	define member: [user]`).TypeDefinitions,
+	define member: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -652,7 +654,7 @@ type org
 
 type team
   relations
-	define member: [user]`).TypeDefinitions,
+	define member: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
@@ -693,7 +695,7 @@ type org
 
 type team
   relations
-	define member: [user]`).TypeDefinitions,
+	define member: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|yenkel@openfga"),
@@ -729,7 +731,7 @@ type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
+	define viewer: [user]`).GetTypeDefinitions(),
 			},
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
@@ -757,7 +759,7 @@ type user
 
 type document
   relations
-	define viewer: [user]`).TypeDefinitions,
+	define viewer: [user]`).GetTypeDefinitions(),
 			},
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
@@ -789,7 +791,7 @@ type user
 
 type org
   relations
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				{
@@ -1318,6 +1320,29 @@ type org
 				},
 			),
 		},
+		{
+			_name: "ExecuteForbidsInvariantTuple",
+			model: testutils.MustTransformDSLToProtoWithID(`
+					model
+						schema 1.1
+					type user
+					type document
+						relations
+							define viewer: [document#viewer]`),
+			request: &openfgav1.WriteRequest{
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						{Object: "document:1", Relation: "viewer", User: "document:1#viewer"},
+					},
+				},
+			},
+			err: serverErrors.ValidationError(
+				&tuple.InvalidTupleError{
+					Cause:    fmt.Errorf("cannot write a tuple that is implicit"),
+					TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
+				},
+			),
+		},
 	}
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -1338,14 +1363,16 @@ type org
 
 			cmd := commands.NewWriteCommand(datastore)
 			test.request.StoreId = store
-			if test.request.AuthorizationModelId == "" {
-				test.request.AuthorizationModelId = test.model.Id
+			if test.request.GetAuthorizationModelId() == "" {
+				test.request.AuthorizationModelId = test.model.GetId()
 			}
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
 			if test.err != nil {
 				require.ErrorIs(t, gotErr, test.err)
 				require.ErrorContains(t, gotErr, test.err.Error())
+			} else {
+				require.NoError(t, gotErr)
 			}
 
 			if test.response != nil {

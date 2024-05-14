@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -30,7 +29,7 @@ type mockStreamServer struct {
 }
 
 func (x *mockStreamServer) Send(m *openfgav1.StreamedListObjectsResponse) error {
-	x.channel <- m.Object
+	x.channel <- m.GetObject()
 	return nil
 }
 
@@ -491,25 +490,21 @@ condition condition1(x: int) {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
-			checkOptions := []graph.LocalCheckerOption{
-				graph.WithResolveNodeBreadthLimit(100),
-				graph.WithMaxConcurrentReads(30),
-			}
+			checkResolver, closer := graph.NewLayeredCheckResolver(
+				[]graph.LocalCheckerOption{
+					graph.WithResolveNodeBreadthLimit(100),
+					graph.WithMaxConcurrentReads(30),
+				},
+				test.useCheckCache,
+				[]graph.CachedCheckResolverOpt{
+					graph.WithMaxCacheSize(100),
+					graph.WithCacheTTL(10 * time.Second),
+				},
+			)
+			t.Cleanup(closer)
 
-			if test.useCheckCache {
-				checkCache := ccache.New(
-					ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(100),
-				)
-				defer checkCache.Stop()
-
-				checkOptions = append(checkOptions, graph.WithCachedResolver(
-					graph.WithExistingCache(checkCache),
-					graph.WithCacheTTL(10*time.Second),
-				))
-			}
-
-			opts = append(opts, commands.WithCheckOptions(checkOptions))
-			listObjectsQuery := commands.NewListObjectsQuery(datastore, opts...)
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			require.NoError(t, err)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -518,7 +513,7 @@ condition condition1(x: int) {
 				}
 
 				done := make(chan struct{})
-				var streamedObjectIds []string
+				var streamedObjectIDs []string
 				go func() {
 					for {
 						select {
@@ -528,7 +523,7 @@ condition condition1(x: int) {
 								return
 							}
 
-							streamedObjectIds = append(streamedObjectIds, objectID)
+							streamedObjectIDs = append(streamedObjectIDs, objectID)
 
 						// for tests whose deadline is sooner than the latency of the storage layer
 						case <-time.After(test.readTuplesDelay + 1*time.Second):
@@ -551,8 +546,8 @@ condition condition1(x: int) {
 
 				require.NoError(t, err)
 				// there is no upper bound of the number of results for the streamed version
-				require.GreaterOrEqual(t, len(streamedObjectIds), int(test.minimumResultsExpected))
-				require.ElementsMatch(t, test.allResults, streamedObjectIds)
+				require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
+				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
 			})
 
 			t.Run("regular_endpoint", func(t *testing.T) {
@@ -580,7 +575,7 @@ condition condition1(x: int) {
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
 var listObjectsResponse *commands.ListObjectsResponse //nolint
 
-// setupListObjectsBenchmark writes the model and lots of tuples
+// setupListObjectsBenchmark writes the model and lots of tuples.
 func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeID string) (*openfgav1.AuthorizationModel, string, int) {
 	b.Helper()
 	modelID := ulid.Make().String()
@@ -598,7 +593,7 @@ type document
   relations
 	define viewer: [user]
 	define parent: [folder]
-	define can_view: viewer or viewer from parent`).TypeDefinitions,
+	define can_view: viewer or viewer from parent`).GetTypeDefinitions(),
 	}
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
 	require.NoError(b, err)
@@ -612,7 +607,7 @@ type document
 
 			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", "user:maria"))
 
-			numberObjectsAccesible += 1
+			numberObjectsAccesible++
 		}
 
 		err := ds.Write(context.Background(), storeID, nil, tuples)
@@ -642,9 +637,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	var oneResultIterations, allResultsIterations int
 
 	b.Run("oneResult", func(b *testing.B) {
-		listObjectsQuery := commands.NewListObjectsQuery(ds,
+		listObjectsQuery, err := commands.NewListObjectsQuery(
+			ds,
+			graph.NewLocalCheckerWithCycleDetection(),
 			commands.WithListObjectsMaxResults(1),
 		)
+		require.NoError(b, err)
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)
@@ -655,9 +654,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		oneResultIterations = b.N
 	})
 	b.Run("allResults", func(b *testing.B) {
-		listObjectsQuery := commands.NewListObjectsQuery(ds,
+		listObjectsQuery, err := commands.NewListObjectsQuery(
+			ds,
+			graph.NewLocalCheckerWithCycleDetection(),
 			commands.WithListObjectsMaxResults(0),
 		)
+		require.NoError(b, err)
+
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)

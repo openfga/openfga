@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/openfga/openfga/internal/server/config"
@@ -67,7 +65,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		req.GetWrites().GetTupleKeys(),
 	)
 	if err != nil {
-		return nil, handleError(err)
+		return nil, serverErrors.HandleError("", err)
 	}
 
 	return &openfgav1.WriteResponse{}, nil
@@ -105,6 +103,11 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
+			}
+
+			err = c.validateNotImplicit(tk)
+			if err != nil {
+				return err
 			}
 
 			contextSize := proto.Size(tk.GetCondition().GetContext())
@@ -164,12 +167,16 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 	return nil
 }
 
-func handleError(err error) error {
-	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return status.Error(codes.Aborted, err.Error())
-	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
-		return serverErrors.WriteFailedDueToInvalidInput(err)
+// validateNotImplicit ensures the tuple to be written (not deleted) is not of the form `object:id # relation @ object:id#relation`.
+func (c *WriteCommand) validateNotImplicit(
+	tk *openfgav1.TupleKey,
+) error {
+	userObject, userRelation := tupleUtils.SplitObjectRelation(tk.GetUser())
+	if tk.GetRelation() == userRelation && tk.GetObject() == userObject {
+		return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
+			Cause:    fmt.Errorf("cannot write a tuple that is implicit"),
+			TupleKey: tk,
+		})
 	}
-
-	return serverErrors.HandleError("", err)
+	return nil
 }

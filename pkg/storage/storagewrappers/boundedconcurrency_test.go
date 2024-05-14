@@ -2,13 +2,15 @@ package storagewrappers
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -17,6 +19,9 @@ import (
 )
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	store := ulid.Make().String()
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
@@ -31,33 +36,29 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	// Do reads from 4 goroutines - each should be run serially. Should be >4 seconds.
 	const numRoutine = 4
 
-	var wg sync.WaitGroup
-	wg.Add(numRoutine)
+	var wg errgroup.Group
 
 	start := time.Now()
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"))
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
 			Object:   "obj:1",
 			Relation: "viewer",
 		})
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.Read(context.Background(), store, nil)
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	go func() {
+	wg.Go(func() error {
 		_, err := limitedTupleReader.ReadStartingWithUser(
 			context.Background(),
 			store,
@@ -68,13 +69,60 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 						Relation: "viewer",
 					},
 				}})
-		require.NoError(t, err)
-		wg.Done()
-	}()
+		return err
+	})
 
-	wg.Wait()
+	err = wg.Wait()
+	require.NoError(t, err)
 
 	end := time.Now()
 
 	require.GreaterOrEqual(t, end.Sub(start), numRoutine*time.Second)
+}
+
+func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	// concurrency set to zero to allow zero calls to go through
+	dut := NewBoundedConcurrencyTupleReader(mockDatastore, 0)
+
+	var testCases = map[string]struct {
+		requestFunc func(ctx context.Context) (any, error)
+	}{
+		`read`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{})
+			},
+		},
+		`read_user_tuple`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{})
+			},
+		},
+		`read_userset_tuples`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.ReadUsersetTuples(ctx, ulid.Make().String(), storage.ReadUsersetTuplesFilter{})
+			},
+		},
+		`read_starting_with_user`: {
+			requestFunc: func(ctx context.Context) (any, error) {
+				return dut.ReadStartingWithUser(ctx, ulid.Make().String(), storage.ReadStartingWithUserFilter{})
+			},
+		},
+	}
+
+	for testName, test := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			resp, err := test.requestFunc(ctx)
+			require.ErrorIs(t, err, context.Canceled)
+			require.Nil(t, resp)
+		})
+	}
 }

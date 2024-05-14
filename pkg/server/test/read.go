@@ -21,6 +21,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// Read Command delegates to [storage.ReadPage].
+// TODO Tests here shouldn't assert on correctness of results because that should be tested in pkg/storage/test.
+// We should pass a mock datastore and assert that mock.ReadPage was called
+
 func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/openfga/sandcastle/issues/13
 	tests := []struct {
@@ -38,14 +42,14 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		//				SchemaVersion: typesystem.SchemaVersion1_0,
 		//				TypeDefinitions: parser.MustTransformDSLToProto(`model
 		//  schema 1.0
-		//type user
+		// type user
 		//
-		//type team
+		// type team
 		//
-		//type repo
+		// type repo
 		//  relations
 		//	define owner: [team]
-		//	define admin: [user]`).TypeDefinitions,
+		//	define admin: [user]`).GetTypeDefinitions(),
 		//			},
 		//			tuples: []*openfgav1.TupleKey{
 		//				{
@@ -93,7 +97,7 @@ type user
 type repo
   relations
 	define admin: [user]
-	define owner: [user]`).TypeDefinitions,
+	define owner: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose"),
@@ -169,7 +173,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 		//{
 		//	_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
 		//	// state
@@ -231,7 +235,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
@@ -352,7 +356,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 	}
 
 	ctx := context.Background()
@@ -372,15 +376,15 @@ type repo
 			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
 			require.NoError(t, err)
 
-			if test.response.Tuples != nil {
-				require.Equal(t, len(test.response.Tuples), len(resp.Tuples))
+			if test.response.GetTuples() != nil {
+				require.Equal(t, len(test.response.GetTuples()), len(resp.GetTuples()))
 
-				for i, responseTuple := range test.response.Tuples {
-					responseTupleKey := responseTuple.Key
-					actualTupleKey := resp.Tuples[i].Key
-					require.Equal(t, responseTupleKey.Object, actualTupleKey.Object)
-					require.Equal(t, responseTupleKey.Relation, actualTupleKey.Relation)
-					require.Equal(t, responseTupleKey.User, actualTupleKey.User)
+				for i, responseTuple := range test.response.GetTuples() {
+					responseTupleKey := responseTuple.GetKey()
+					actualTupleKey := resp.GetTuples()[i].GetKey()
+					require.Equal(t, responseTupleKey.GetObject(), actualTupleKey.GetObject())
+					require.Equal(t, responseTupleKey.GetRelation(), actualTupleKey.GetRelation())
+					require.Equal(t, responseTupleKey.GetUser(), actualTupleKey.GetUser())
 				}
 			}
 		})
@@ -520,18 +524,17 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			test.request.StoreId = store
 			_, err = commands.NewReadQuery(datastore).Execute(ctx, test.request)
-			require.Error(err)
+			require.Error(t, err)
 		})
 	}
 }
@@ -570,23 +573,23 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	firstResponse, err := cmd.Execute(ctx, firstRequest)
 	require.NoError(t, err)
 
-	require.Len(t, firstResponse.Tuples, 1)
-	require.NotEmpty(t, firstResponse.ContinuationToken)
+	require.Len(t, firstResponse.GetTuples(), 1)
+	require.NotEmpty(t, firstResponse.GetContinuationToken())
 
 	var receivedTuples []*openfgav1.TupleKey
-	for _, tuple := range firstResponse.Tuples {
-		receivedTuples = append(receivedTuples, tuple.Key)
+	for _, tuple := range firstResponse.GetTuples() {
+		receivedTuples = append(receivedTuples, tuple.GetKey())
 	}
 
-	secondRequest := &openfgav1.ReadRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
+	secondRequest := &openfgav1.ReadRequest{StoreId: store, ContinuationToken: firstResponse.GetContinuationToken()}
 	secondResponse, err := cmd.Execute(ctx, secondRequest)
 	require.NoError(t, err)
 
-	require.Len(t, secondResponse.Tuples, 2)
-	require.Empty(t, secondResponse.ContinuationToken)
+	require.Len(t, secondResponse.GetTuples(), 2)
+	require.Empty(t, secondResponse.GetContinuationToken())
 
-	for _, tuple := range secondResponse.Tuples {
-		receivedTuples = append(receivedTuples, tuple.Key)
+	for _, tuple := range secondResponse.GetTuples() {
+		receivedTuples = append(receivedTuples, tuple.GetKey())
 	}
 
 	cmpOpts := []cmp.Option{

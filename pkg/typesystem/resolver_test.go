@@ -2,15 +2,15 @@ package typesystem
 
 import (
 	"context"
-	"sync"
+	"fmt"
 	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 )
@@ -30,7 +30,7 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 type user
 type document
   relations
-	define viewer: [user]`).TypeDefinitions
+	define viewer: [user]`).GetTypeDefinitions()
 
 	gomock.InOrder(
 		mockDatastore.EXPECT().
@@ -42,11 +42,7 @@ type document
 			}, nil),
 
 		mockDatastore.EXPECT().
-			FindLatestAuthorizationModelID(gomock.Any(), storeID).
-			Return(modelID2, nil),
-
-		mockDatastore.EXPECT().
-			ReadAuthorizationModel(gomock.Any(), storeID, modelID2).
+			FindLatestAuthorizationModel(gomock.Any(), storeID).
 			Return(&openfgav1.AuthorizationModel{
 				Id:              modelID2,
 				SchemaVersion:   SchemaVersion1_1,
@@ -88,39 +84,33 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	gomock.InOrder(
-		mockDatastore.EXPECT().
-			FindLatestAuthorizationModelID(gomock.Any(), storeID).
-			DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
-				time.Sleep(1 * time.Second)
-				return modelID, nil
-			}).
-			Times(1),
-
-		mockDatastore.EXPECT().
-			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-			Return(&openfgav1.AuthorizationModel{
-				Id:            modelID,
-				SchemaVersion: SchemaVersion1_1,
-			}, nil).MinTimes(1).MaxTimes(numGoroutines),
-	)
+	mockDatastore.EXPECT().
+		FindLatestAuthorizationModel(gomock.Any(), storeID).
+		Return(&openfgav1.AuthorizationModel{
+			Id:            modelID,
+			SchemaVersion: SchemaVersion1_1,
+		}, nil).MinTimes(1).MaxTimes(numGoroutines)
 
 	resolver, resolverStop := MemoizedTypesystemResolverFunc(
 		mockDatastore,
 	)
 	defer resolverStop()
 
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
+	var wg errgroup.Group
 
 	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() error {
 			typesys, err := resolver(context.Background(), storeID, "")
-			require.NoError(t, err)
-			require.Equal(t, modelID, typesys.GetAuthorizationModelID())
-		}()
+			if err != nil {
+				return err
+			}
+			if typesys.GetAuthorizationModelID() != modelID {
+				return fmt.Errorf("expected model %s, actual %s", modelID, typesys.GetAuthorizationModelID())
+			}
+			return nil
+		})
 	}
 
-	wg.Wait()
+	err := wg.Wait()
+	require.NoError(t, err)
 }

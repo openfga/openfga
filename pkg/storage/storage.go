@@ -9,6 +9,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+type ctxKey string
+
 const (
 	// DefaultMaxTuplesPerWrite specifies the default maximum number of tuples that can be written
 	// in a single write operation. This constant is used to limit the batch size in write operations
@@ -27,7 +29,29 @@ const (
 	// parts of the system, ensuring a consistent and manageable volume of data per page. The default
 	// value is set to 50, balancing detail per page with the overall number of pages.
 	DefaultPageSize = 50
+
+	relationshipTupleReaderCtxKey ctxKey = "relationship-tuple-reader-context-key"
 )
+
+// ContextWithRelationshipTupleReader sets the provided [[RelationshipTupleReader]]
+// in the context. The context returned is a new context derived from the parent
+// context provided.
+func ContextWithRelationshipTupleReader(
+	parent context.Context,
+	reader RelationshipTupleReader,
+) context.Context {
+	return context.WithValue(parent, relationshipTupleReaderCtxKey, reader)
+}
+
+// RelationshipTupleReaderFromContext extracts a [[RelationshipTupleReader]] from the
+// provided context (if any). If no such value is in the context a boolean false is returned,
+// otherwise the RelationshipTupleReader is returned.
+func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleReader, bool) {
+	ctxValue := ctx.Value(relationshipTupleReaderCtxKey)
+
+	reader, ok := ctxValue.(RelationshipTupleReader)
+	return reader, ok
+}
 
 // PaginationOptions holds the settings for pagination in data retrieval operations. It defines
 // the number of items to be included on each page (PageSize) and a marker from where to start
@@ -38,7 +62,8 @@ type PaginationOptions struct {
 }
 
 // NewPaginationOptions creates a new [PaginationOptions] instance
-// with a specified page size and continuation token.
+// with a specified page size and continuation token. If the input page size is empty,
+// it uses DefaultPageSize.
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
 	if ps != 0 {
@@ -75,10 +100,9 @@ type RelationshipTupleReader interface {
 	// There is NO guarantee on the order returned on the iterator.
 	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
 
-	// ReadPage functions similarly to Read but includes support for pagination. It takes additional
-	// pagination parameters and returns a slice of tuples along with a continuation token, which may
-	// not be empty. This token can be used for retrieving subsequent pages of data.
-	// The tuples returned are ordered by ULID (Universally Unique Lexicographically Sortable Identifier).
+	// ReadPage functions similarly to Read but includes support for pagination. It takes
+	// mandatory pagination options (pageSize can be zero :/)
+	// and returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	ReadPage(
 		ctx context.Context,
 		store string,
@@ -167,9 +191,9 @@ type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
-	// FindLatestAuthorizationModelID returns the last model `id` written for a store.
+	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
-	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
+	FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error)
 }
 
 // TypeDefinitionWriteBackend provides a write interface for managing typed definition.

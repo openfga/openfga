@@ -10,9 +10,7 @@ import (
 
 func TestIPaddressCELBinaryBinding(t *testing.T) {
 	addr, err := ParseIPAddress("192.168.1.1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	tests := []struct {
 		name   string

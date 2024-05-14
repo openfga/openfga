@@ -1,4 +1,4 @@
-// Packge metrics provides various metric and telemetry definitions for OpenFGA Conditions.
+// Package metrics provides various metric and telemetry definitions for OpenFGA Conditions.
 package metrics
 
 import (

@@ -19,8 +19,7 @@ import (
 )
 
 func TestPostgresDatastore(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -30,8 +29,7 @@ func TestPostgresDatastore(t *testing.T) {
 }
 
 func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -44,8 +42,7 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
 func TestReadEnsureNoOrder(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -84,17 +81,16 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	// We expect that objectID1 will return first because it is inserted first.
 	curTuple, err := iter.Next(ctx)
 	require.NoError(t, err)
-	require.Equal(t, firstTuple, curTuple.Key)
+	require.Equal(t, firstTuple, curTuple.GetKey())
 
 	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
-	require.Equal(t, secondTuple, curTuple.Key)
+	require.Equal(t, secondTuple, curTuple.GetKey())
 }
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid.
 func TestReadPageEnsureOrder(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -132,13 +128,12 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	require.Len(t, tuples, 2)
 	// We expect that objectID2 will return first because it has a smaller ulid.
-	require.Equal(t, secondTuple, tuples[0].Key)
-	require.Equal(t, firstTuple, tuples[1].Key)
+	require.Equal(t, secondTuple, tuples[0].GetKey())
+	require.Equal(t, firstTuple, tuples[1].GetKey())
 }
 
 func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -166,8 +161,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 // migration 005_add_conditions_to_tuples can be successfully read.
 func TestAllowNullCondition(t *testing.T) {
 	ctx := context.Background()
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -193,7 +187,7 @@ func TestAllowNullCondition(t *testing.T) {
 
 	curTuple, err := iter.Next(ctx)
 	require.NoError(t, err)
-	require.Equal(t, tk, curTuple.Key)
+	require.Equal(t, tk, curTuple.GetKey())
 
 	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, storage.PaginationOptions{
 		PageSize: 2,
@@ -204,7 +198,7 @@ func TestAllowNullCondition(t *testing.T) {
 
 	userTuple, err := ds.ReadUserTuple(ctx, "store", tk)
 	require.NoError(t, err)
-	require.Equal(t, tk, userTuple.Key)
+	require.Equal(t, tk, userTuple.GetKey())
 
 	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
 	_, err = ds.db.ExecContext(
@@ -219,7 +213,7 @@ func TestAllowNullCondition(t *testing.T) {
 
 	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
-	require.Equal(t, tk2, curTuple.Key)
+	require.Equal(t, tk2, curTuple.GetKey())
 
 	iter, err = ds.ReadStartingWithUser(ctx, "store", storage.ReadStartingWithUserFilter{
 		ObjectType: "folder",
@@ -233,7 +227,7 @@ func TestAllowNullCondition(t *testing.T) {
 
 	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
-	require.Equal(t, tk, curTuple.Key)
+	require.Equal(t, tk, curTuple.GetKey())
 
 	stmt = `
 	INSERT INTO changelog (
@@ -256,8 +250,8 @@ func TestAllowNullCondition(t *testing.T) {
 	changes, _, err := ds.ReadChanges(ctx, "store", "folder", storage.PaginationOptions{}, 0)
 	require.NoError(t, err)
 	require.Len(t, changes, 2)
-	require.Equal(t, tk, changes[0].TupleKey)
-	require.Equal(t, tk, changes[1].TupleKey)
+	require.Equal(t, tk, changes[0].GetTupleKey())
+	require.Equal(t, tk, changes[1].GetTupleKey())
 }
 
 // TestMarshalledAssertions tests that previously persisted marshalled
@@ -265,8 +259,7 @@ func TestAllowNullCondition(t *testing.T) {
 // needs to change, we'll likely need to introduce a series of data migrations.
 func TestMarshalledAssertions(t *testing.T) {
 	ctx := context.Background()
-	testDatastore, stopFunc := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	defer stopFunc()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())

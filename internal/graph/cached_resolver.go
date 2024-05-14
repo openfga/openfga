@@ -10,11 +10,14 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
@@ -37,34 +40,11 @@ var (
 	})
 )
 
-// CachedResolveCheckResponse is very similar to ResolveCheckResponse except we
-// do not store the ResolutionData. This is due to the fact that the resolution metadata
-// will be incorrect as data is served from cache instead of actual database read.
-type CachedResolveCheckResponse struct {
-	Allowed bool
-}
-
-func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveCheckResponse {
-	return &ResolveCheckResponse{
-		Allowed: c.Allowed,
-		ResolutionMetadata: &ResolutionMetadata{
-			Depth:               defaultResolveNodeLimit,
-			DatastoreQueryCount: 0,
-		},
-	}
-}
-
-func newCachedResolveCheckResponse(r *ResolveCheckResponse) *CachedResolveCheckResponse {
-	return &CachedResolveCheckResponse{
-		Allowed: r.Allowed,
-	}
-}
-
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        *ccache.Cache[*CachedResolveCheckResponse]
+	cache        *ccache.Cache[*ResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
@@ -97,13 +77,13 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 // WithExistingCache sets the cache to the specified cache.
 // Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
 // to check whether the original cache should be stopped.
-func WithExistingCache(cache *ccache.Cache[*CachedResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
 }
 
-// WithLogger sets the logger for the cached check resolver
+// WithLogger sets the logger for the cached check resolver.
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
@@ -114,14 +94,14 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // but before delegating the query to the delegate a cache-key lookup is made to see if the Check sub-problem
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
-// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup
-func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverOpt) *CachedCheckResolver {
+// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup.
+func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
-		delegate:     delegate,
 		maxCacheSize: defaultMaxCacheSize,
 		cacheTTL:     defaultCacheTTL,
 		logger:       logger.NewNoopLogger(),
 	}
+	checker.delegate = checker
 
 	for _, opt := range opts {
 		opt(checker)
@@ -130,19 +110,28 @@ func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverO
 	if checker.cache == nil {
 		checker.allocatedCache = true
 		checker.cache = ccache.New(
-			ccache.Configure[*CachedResolveCheckResponse]().MaxSize(checker.maxCacheSize),
+			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
 		)
 	}
 
 	return checker
 }
 
+// SetDelegate sets this CachedCheckResolver's dispatch delegate.
+func (c *CachedCheckResolver) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
+}
+
+// GetDelegate returns this CachedCheckResolver's dispatch delegate.
+func (c *CachedCheckResolver) GetDelegate() CheckResolver {
+	return c.delegate
+}
+
 // Close will deallocate resource allocated by the CachedCheckResolver
-// It will not deallocate cache if it has been passed in from WithExistingCache
+// It will not deallocate cache if it has been passed in from WithExistingCache.
 func (c *CachedCheckResolver) Close() {
 	if c.allocatedCache {
 		c.cache.Stop()
-		c.cache = nil
 	}
 }
 
@@ -150,36 +139,49 @@ func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	span := trace.SpanFromContext(ctx)
 	checkCacheTotalCounter.Inc()
 
-	cacheKey, err := checkRequestCacheKey(req)
+	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
-	if cachedResp != nil && !cachedResp.Expired() {
+	isCached := cachedResp != nil && !cachedResp.Expired()
+	span.SetAttributes(attribute.Bool("is_cached", isCached))
+	if isCached {
 		checkCacheHitCounter.Inc()
-		return cachedResp.Value().convertToResolveCheckResponse(), nil
+
+		// return a copy to avoid races across goroutines
+		return CloneResolveCheckResponse(cachedResp.Value()), nil
 	}
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
+	// the cached subproblem's resolution metadata doesn't necessarily reflect
+	// the actual number of database reads for the inflight request, so set it
+	// to 0 so it doesn't bias the resolution metadata negatively
+	clonedResp := CloneResolveCheckResponse(resp)
+	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
+
+	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)
 	return resp, nil
 }
 
-// checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
+// CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
 // used for Check resolution cache key lookups in a stable way.
 //
 // For one store and model ID, the same tuple provided with the same contextual tuples and context
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
-func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
 	tupleKey := req.GetTupleKey()
