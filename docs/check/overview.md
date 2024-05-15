@@ -1,7 +1,42 @@
-# Check
-The [Check API](https://openfga.dev/api/service#/Relationship%20Queries/Check) looks up if a particular user/subject has specific relationship with a given object. 
+# Check <!-- omit in toc -->
 
-It is a forward expansion algorithm that starts at a given `object#relation` and iteratively and recursively expands relationships until a particular user/subject is found or until all paths of the expansion have been visited and no such paths were found. It can be viewed as a tree traversal or a directed graph traversal. 
+- [Overview](#overview)
+- [Definitions](#definitions)
+- [Direct Rewrites](#direct-rewrites)
+  - [Direct Relationships](#direct-relationships)
+  - [Computed Relationships (e.g. computed\_userset)](#computed-relationships-eg-computed_userset)
+  - [Hierarchical Relationships (e.g. tuple\_to\_userset or TTU)](#hierarchical-relationships-eg-tuple_to_userset-or-ttu)
+    - [TTU Rewrite Constraints](#ttu-rewrite-constraints)
+      - [Example 1 (invalid)](#example-1-invalid)
+      - [Example 2 (invalid)](#example-2-invalid)
+      - [Example 3 (valid)](#example-3-valid)
+- [Set Rewrites](#set-rewrites)
+  - [Union](#union)
+    - [Example 1](#example-1)
+    - [Example 2](#example-2)
+    - [Example 3](#example-3)
+  - [Intersection](#intersection)
+    - [Example 1](#example-1-1)
+    - [Example 2](#example-2-1)
+  - [Exclusion (Difference)](#exclusion-difference)
+    - [Example 1](#example-1-2)
+    - [Example 2](#example-2-2)
+    - [Example 3](#example-3-1)
+- [Advanced Behavior](#advanced-behavior)
+  - [Cycle Detection](#cycle-detection)
+  - [Concurrency Control](#concurrency-control)
+    - [Resolution Depth](#resolution-depth)
+    - [Resolution Breadth](#resolution-breadth)
+    - [Bounding Concurrency at the Storage Layer](#bounding-concurrency-at-the-storage-layer)
+  - [CheckResolver](#checkresolver)
+  - [Delegate Composition (Delegation)](#delegate-composition-delegation)
+- [Code References](#code-references)
+
+
+## Overview
+The [Check API](https://openfga.dev/api/service#/Relationship%20Queries/Check) looks up if a particular user/subject has specific relationship with a given object.
+
+It can be viewed as a traversal on a directed, possibly cyclical, graph. For a large number of scenarios, the relationship graph is just a tree. It starts at a given `object#relation` expands relationships until a particular user/subject is found, or until all paths of the graph have been visited and no such user was found.
 
 As relationships are expanded the Check algorithm follows relationship rewrite rules, and these rewrite rules define one or more paths that must be evaluated. For example, given the following FGA model:
 ```
@@ -29,7 +64,7 @@ Familiarity with basic [OpenFGA Concepts](https://openfga.dev/docs/concepts) is 
 
 * **Rewrite Operand** - for rewrites involving set operations (e.g. union, intersection, exclusion) a rewrite operand refers to the relation rewrites that are evaluated as part of the set expression. For example, the rewrite operands of the definition `a or b` are `a` and `b`.
 
-* **Expansion** - refers to the <u>process</u> of iteratively evaluating one or more subproblems in order to determine some FGA query outcome. 
+* **Expansion** - refers to the <u>process</u> of iteratively evaluating one or more subproblems in order to determine some FGA query outcome.
 
 * **Subproblem** - an FGA query that is contingent on one or more evaluations of nested relationship evaluations (including itself).
 
@@ -77,7 +112,7 @@ Server#Check(document:1#owner@user:jon)
 |--> LocalChecker#ResolveCheck(document:1#owner@user:jon)
 |-----> LocalChecker#checkDirect(document:1#owner@user:jon)
 |--------> storage#ReadUserTuple(document:1#owner@user:jon) --> ["document:1#owner@user:jon"]
-|--------> return {allowed: true} // found a direct resolution path 
+|--------> return {allowed: true} // found a direct resolution path
 ```
 
 Evaluation of the query `Check(document:1#owner@user:bob)` would involve the following callstack:
@@ -275,7 +310,7 @@ type document
 ```
 
 ## Set Rewrites
-Set rewrites allow developers to compose one or more of the direct or basic rewrites mentioned above using set operations including union, intersection, and exclusion. The operands of a set rewrite may also reference other set rewrite definitions. That is, you can compose unions, intersections, and exclusions together. These set rewrites allow developers to model more complex model semantics such as multiple relationships granting access and/or blacklists and the like. 
+Set rewrites allow developers to compose one or more of the direct or basic rewrites mentioned above using set operations including union, intersection, and exclusion. The operands of a set rewrite may also reference other set rewrite definitions. That is, you can compose unions, intersections, and exclusions together. These set rewrites allow developers to model more complex model semantics such as multiple relationships granting access and/or blacklists and the like.
 
 ### Union
 > e.g. define viewer: editor or owner
@@ -533,18 +568,16 @@ Notice that when we first visit the subproblem `group:1#member@user:jon` we add 
 - [] todo: fill me out
 
 ### CheckResolver
-The [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface establishes a contract that all implementations of a Check query resolver must implement. The interface allows for layered dispatch composition as well as remote dispatch semantics (though this is not implemented yet). 
+The [graph#CheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L9) interface establishes a contract that all implementations of a Check query resolver must implement. The interface allows for layered dispatch composition as well as remote dispatch semantics (though this is not implemented yet).
 
 The interface design is purposefully modeled after an RPC definition (notice its similarity to gRPC generated stubs), and it purposefully does not assume that internal (binary local) object references can be passed over RPC boundaries. In fact, this definition will eventually move to an internal protobuf package and we'll introduce a gRPC service definition to replace the interface. The reasoning behind this design is that we don't want the interface to assume purely local (same binary) resolution semantics. We want to set ourselves up to avoid a much larger refactor if/when we do remote dispatching, and it makes the composition of the code more uniform anyways. At some point we'll be implementing remote dispatching where we dispatch subproblems across a network boundary and not just dispatched internally across package/function boundaries. Changing the signature(s) of the CheckResolver or it's implementations in a way that would undermine this design objective would be counter-productive to the original design intent and shouldn't be taken litely as it was very explicitly intended.
 
 ### Delegate Composition (Delegation)
  We have various implementations of the `CheckResolver` interface and they are layered ontop of one another to establish the overall Check resolution behavior. For example, we have the following CheckResolver implementations today:
 
-* [SingleflightCheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/singleflight_resolver.go#L32) - this implementation provides a de-duplication mechanism. That is, overlapping subproblems being evaluated at the same time are de-duplicated. Actual evaluation of a given subproblem is delegated to the resolvers delegate.
-
 * [CachedCheckResolver](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L67) - this implementation provides a local cache of subproblems that have already been evaluated in the recent past. We avoid evaluating the same subproblem we've recently seen and we re-use the cached result from the previous evaluation of that subproblem.
 
-* [LocalChecker](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L125) - the LocalChecker is the "meat and potatoes" of the various resolvers. Though the other resolvers are very important, the LocalChecker implements the core algorithm. The LocalChecker follows relationship rewrite rules, does database lookups, and executes the expansion and dispatch of subproblems. A LocalChecker also has a delegate that it dispatches subproblems to, which allows the LocalChecker to dispatch subproblems through one of the CheckResovlers mentioned above and avoid duplicating subproblem evaluation and/or re-evaluation of previously computed subproblems.
+* [LocalChecker](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L125) - the LocalChecker implements the core algorithm. The LocalChecker follows relationship rewrite rules, does database lookups, and executes the expansion and dispatch of subproblems. A LocalChecker also has a delegate that it dispatches subproblems to, which allows the LocalChecker to dispatch subproblems through one of the CheckResolvers mentioned above and avoids duplicating subproblem evaluation and/or re-evaluation of previously computed subproblems.
 
 These implementations are very purposefully layered like so:
 ```
@@ -576,7 +609,7 @@ When a Check request is received in [Server#Check](https://github.com/openfga/op
 
 * [CachedCheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/cached_resolver.go#L151) - an implementation of the [CheckResolver#ResolveCheck](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/interface.go#L10) signature that attempts to resolve the subproblem using a previously cached result for the same subproblem, and delegates the subproblem if it does not have a cached result.
 
-* [storage#ReadUserTuple](https://github.com/openfga/openfga/blob/ad04038afbd58890cb65b409780b0cbbf85d5103/pkg/storage/storage.go#L91) - direct database/storage tuple lookup 
+* [storage#ReadUserTuple](https://github.com/openfga/openfga/blob/ad04038afbd58890cb65b409780b0cbbf85d5103/pkg/storage/storage.go#L91) - direct database/storage tuple lookup
 
 * [storage#ReadUsersetTuples](https://github.com/openfga/openfga/blob/ad04038afbd58890cb65b409780b0cbbf85d5103/pkg/storage/storage.go#L106) - lookup all user/subject sets related to a particular object and relation (e.g. userset lookup)
 
