@@ -62,6 +62,8 @@ Familiarity with basic [OpenFGA Concepts](https://openfga.dev/docs/concepts) is 
 
 * **Relation Rewrite (Rewrite)** - a rule that expresses an FGA relationship as a composition of other relationships. For example, you can "rewrite" a viewer relationship as editor or express a hierarchy between two objects. These rules can also be composed using set operations including union, intersection, and exclusion.
 
+![fga-model-highlighted](./fga_model_highlighted.svg)
+
 * **Rewrite Operand** - for rewrites involving set operations (e.g. union, intersection, exclusion) a rewrite operand refers to the relation rewrites that are evaluated as part of the set expression. For example, the rewrite operands of the definition `a or b` are `a` and `b`.
 
 * **Subproblem** - an FGA query that is contingent on one or more evaluations of nested relationship evaluations (including itself). An FGA query may involve duplicate subproblems. In other words, some parent subproblem may involved more than one identical descendant subproblem.
