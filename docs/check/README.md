@@ -36,7 +36,11 @@
 ## Overview
 The [Check API](https://openfga.dev/api/service#/Relationship%20Queries/Check) looks up if a particular user/subject has specific relationship with a given object.
 
-It can be viewed as a traversal on a directed, possibly cyclical, graph. For a large number of scenarios, the relationship graph is just a tree. It starts at a given `object#relation` expands relationships until a particular user/subject is found, or until all paths of the graph have been visited and no such user was found.
+It can be viewed as a traversal on a directed, possibly cyclical, graph. For a large number of scenarios, the relationship graph is just a tree. It starts at a given `object#relation` expands relationships until a particular user/subject is found, or until all paths of the graph have been visited and no such user was found. As a simple example, consider the following relationship tree:
+
+![fga_tree.svg](fga_tree.svg)
+
+In this relationship tree we say that anyone is a viewer of `document:1` if they are either (e.g. union) an owner of that document or an editor of it AND (intersection) they are allowed on the document.
 
 As relationships are expanded the Check algorithm follows relationship rewrite rules, and these rewrite rules define one or more paths that must be evaluated. For example, given the following FGA model:
 ```
