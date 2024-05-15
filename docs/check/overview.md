@@ -64,11 +64,11 @@ Familiarity with basic [OpenFGA Concepts](https://openfga.dev/docs/concepts) is 
 
 * **Rewrite Operand** - for rewrites involving set operations (e.g. union, intersection, exclusion) a rewrite operand refers to the relation rewrites that are evaluated as part of the set expression. For example, the rewrite operands of the definition `a or b` are `a` and `b`.
 
-* **Expansion** - refers to the <u>process</u> of iteratively evaluating one or more subproblems in order to determine some FGA query outcome.
-
 * **Subproblem** - an FGA query that is contingent on one or more evaluations of nested relationship evaluations (including itself).
 
-* **Dispatch** - refers to the process of evaluating a nested subproblem in order to resolve some parent subproblem.
+* **Dispatch** - refers to the process of evaluating a single nested subproblem (or indirect subgraph) in order to resolve some parent subproblem. A single dispatch may lead to 0 or more subsequent dispatches, which can be viewed as further expanding subgraphs stemming from a single parent relationship. Dispatches occur as a result of a change of object or relation, which largely occurs due to usersets in FGA and/or rewrite rules.
+
+* **Expansion** - refers more generally to the <u>process</u> of an iterative evaluation of one or more subproblems in order to determine some FGA query outcome. An expansion of an FGA relationship requires a minimum of 1 lookup followed by 0 or more subsequent dispatches to resolve residual usersets. Expansion is not to be confused with dispatch, because expansion involves potentially 0 or more dispatches whereas dispatch itself refers specifically to a evaluation of a singular subgraph. The term "expansion" is more generally used when referring to the evaluation of a whole relationship graph/tree whereas "dispatch" is a term more generally used to refer to the evaluation of a single branch of a larger relationship graph/tree. Expansion of an FGA relationships involves potentially many dispatches of related (indirect) subproblems.
 
 ## Direct Rewrites
 Direct rewrites establish the most basic form of FGA relationship rewrite definitions. These direct rewrites allow developers to express the most basic of authorization model semantics, including direct permissions, indirect or computed permissions, and/or hierarchical permissions.
