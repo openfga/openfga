@@ -64,7 +64,7 @@ Familiarity with basic [OpenFGA Concepts](https://openfga.dev/docs/concepts) is 
 
 * **Rewrite Operand** - for rewrites involving set operations (e.g. union, intersection, exclusion) a rewrite operand refers to the relation rewrites that are evaluated as part of the set expression. For example, the rewrite operands of the definition `a or b` are `a` and `b`.
 
-* **Subproblem** - an FGA query that is contingent on one or more evaluations of nested relationship evaluations (including itself).
+* **Subproblem** - an FGA query that is contingent on one or more evaluations of nested relationship evaluations (including itself). An FGA query may involve duplicate subproblems. In other words, some parent subproblem may involved more than one identical descendant subproblem.
 
 * **Dispatch** - refers to the process of evaluating a single nested subproblem (or indirect subgraph) in order to resolve some parent subproblem. A single dispatch may lead to 0 or more subsequent dispatches, which can be viewed as further expanding subgraphs stemming from a single parent relationship. Dispatches occur as a result of a change of object or relation, which largely occurs due to usersets in FGA and/or rewrite rules.
 
