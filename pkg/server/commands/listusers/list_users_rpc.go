@@ -53,6 +53,13 @@ type expandResponse struct {
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
 
+func (r *userRelationshipStatus) InvertRelationshipStatus() userRelationshipStatus {
+	if *r == NoRelationship {
+		return HasRelationship
+	}
+	return NoRelationship
+}
+
 const (
 	HasRelationship userRelationshipStatus = iota
 	NoRelationship
@@ -658,20 +665,15 @@ func (l *listUsersQuery) expandExclusion(
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 
 	_, baseWildcardExists := baseFoundUsersMap[wildcardKey]
-	subtractWildcardUser, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
-
-	if baseWildcardExists && (!subtractWildcardExists || subtractWildcardUser.relationshipStatus == NoRelationship) {
-		trySendResult(ctx, foundUser{
-			user: tuple.StringToUserProto(wildcardKey),
-		}, foundUsersChan)
-	}
+	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
 
 	for userKey, fu := range baseFoundUsersMap {
 		subtractedUser, userIsSubtracted := subtractFoundUsersMap[userKey]
 		_, wildcardSubtracted := subtractFoundUsersMap[wildcardKey]
 
-		if baseWildcardExists {
-			if !userIsSubtracted && !wildcardSubtracted {
+		switch {
+		case baseWildcardExists:
+			if !wildcardSubtracted {
 				trySendResult(ctx, foundUser{
 					user: tuple.StringToUserProto(userKey),
 				}, foundUsersChan)
@@ -680,17 +682,15 @@ func (l *listUsersQuery) expandExclusion(
 			for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
 				excludedUsers := map[string]struct{}{}
 				if tuple.IsTypedWildcard(subtractedUserKey) {
+					if subtractedFu.relationshipStatus == HasRelationship {
+						continue
+					}
 					for _, excludedUser := range subtractedFu.excludedUsers {
 						excludedUsers[tuple.UserProtoToString(excludedUser)] = struct{}{}
-
 						trySendResult(ctx, foundUser{
 							user:               excludedUser,
 							relationshipStatus: HasRelationship,
 						}, foundUsersChan)
-					}
-
-					if subtractedFu.relationshipStatus == HasRelationship {
-						continue
 					}
 				}
 
@@ -700,64 +700,33 @@ func (l *listUsersQuery) expandExclusion(
 							user:               tuple.StringToUserProto(subtractedUserKey),
 							relationshipStatus: HasRelationship,
 						}, foundUsersChan)
-
-						continue
+					} else if subtractedFu.relationshipStatus == HasRelationship {
+						trySendResult(ctx, foundUser{
+							user:               tuple.StringToUserProto(subtractedUserKey),
+							relationshipStatus: NoRelationship,
+							excludedUsers: []*openfgav1.User{
+								tuple.StringToUserProto(subtractedUserKey),
+							},
+						}, foundUsersChan)
 					}
-
-					trySendResult(ctx, foundUser{
-						user:               tuple.StringToUserProto(subtractedUserKey),
-						relationshipStatus: NoRelationship,
-						excludedUsers: []*openfgav1.User{
-							tuple.StringToUserProto(subtractedUserKey),
-						},
-					}, foundUsersChan)
 				}
 			}
-		}
+		case subtractWildcardExists:
+			trySendResult(ctx, foundUser{
+				user:               tuple.StringToUserProto(userKey),
+				relationshipStatus: subtractedUser.relationshipStatus.InvertRelationshipStatus(),
+			}, foundUsersChan)
 
-		if !baseWildcardExists && subtractWildcardExists {
-			if !tuple.IsTypedWildcard(userKey) {
-				if (userIsSubtracted && subtractedUser.relationshipStatus == NoRelationship) || subtractWildcardUser.relationshipStatus == NoRelationship {
-					trySendResult(ctx, foundUser{
-						user:               tuple.StringToUserProto(userKey),
-						relationshipStatus: HasRelationship,
-					}, foundUsersChan)
-
-					continue
-				}
-
-				trySendResult(ctx, foundUser{
-					user:               tuple.StringToUserProto(userKey),
-					relationshipStatus: NoRelationship,
-				}, foundUsersChan)
-			}
-		}
-
-		if !baseWildcardExists && !subtractWildcardExists {
-			if userIsSubtracted {
-				if subtractedUser.relationshipStatus == NoRelationship {
-					trySendResult(ctx, foundUser{
-						user:               tuple.StringToUserProto(userKey),
-						relationshipStatus: HasRelationship,
-					}, foundUsersChan)
-
-					continue
-				}
-
-				trySendResult(ctx, foundUser{
-					user:               tuple.StringToUserProto(userKey),
-					relationshipStatus: NoRelationship,
-				}, foundUsersChan)
-
-				continue
-			}
-
-			if fu.relationshipStatus == HasRelationship {
-				trySendResult(ctx, foundUser{
-					user:               tuple.StringToUserProto(userKey),
-					relationshipStatus: HasRelationship,
-				}, foundUsersChan)
-			}
+		case userIsSubtracted:
+			trySendResult(ctx, foundUser{
+				user:               tuple.StringToUserProto(userKey),
+				relationshipStatus: subtractedUser.relationshipStatus.InvertRelationshipStatus(),
+			}, foundUsersChan)
+		default:
+			trySendResult(ctx, foundUser{
+				user:               tuple.StringToUserProto(userKey),
+				relationshipStatus: fu.relationshipStatus,
+			}, foundUsersChan)
 		}
 	}
 
