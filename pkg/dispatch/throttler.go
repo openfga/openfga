@@ -9,6 +9,7 @@ const (
 )
 
 // ContextWithThrottlingThreshold will save the dispatch throttling threshold in context.
+// This can be used to set per request dispatch throttling when OpenFGA is used as library in another Go project
 func ContextWithThrottlingThreshold(ctx context.Context, threshold uint32) context.Context {
 	return context.WithValue(ctx, dispatchThrottlingThreshold, threshold)
 }
