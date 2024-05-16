@@ -442,7 +442,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
 	if s.checkDispatchThrottlingEnabled && s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
-		return nil, fmt.Errorf("default dispatch throttling threshold must be equal or smaller than max dispatch threshold")
+		return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
 	}
 
 	// below this point, don't throw errors or we may leak resources in tests
@@ -483,10 +483,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
 			DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
 			MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
-		}
-
-		if s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
-			return nil, fmt.Errorf("check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check")
 		}
 
 		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
