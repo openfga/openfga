@@ -2,8 +2,9 @@ package threshold
 
 import (
 	"context"
-	"github.com/openfga/openfga/pkg/dispatch"
 	"testing"
+
+	"github.com/openfga/openfga/pkg/dispatch"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"

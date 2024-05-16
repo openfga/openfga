@@ -2,9 +2,9 @@ package threshold
 
 import (
 	"context"
-	"github.com/openfga/openfga/pkg/dispatch"
 
 	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/pkg/dispatch"
 )
 
 type Config struct {
@@ -29,4 +29,3 @@ func ShouldThrottle(ctx context.Context, currentCount uint32, defaultThreshold u
 
 	return currentCount > threshold
 }
-

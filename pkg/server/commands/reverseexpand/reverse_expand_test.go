@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/pkg/dispatch"
+
 	"github.com/oklog/ulid/v2"
 	"go.uber.org/goleak"
 
@@ -544,7 +546,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(201)
 		ctx := context.Background()
-		ctx = threshold.ContextWithThrottlingThreshold(ctx, 200)
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
 		metadata := NewResolutionMetadata()
 		metadata.DispatchCounter.Store(dispatchCountValue)
 
@@ -566,7 +568,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 		dispatchCountValue := uint32(301)
 		ctx := context.Background()
-		ctx = threshold.ContextWithThrottlingThreshold(ctx, 1000)
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
 		metadata := NewResolutionMetadata()
 
 		reverseExpandQuery.throttle(ctx, dispatchCountValue, metadata)
