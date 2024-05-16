@@ -513,17 +513,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 
-	if s.datastore == nil {
-		return nil, fmt.Errorf("a datastore option must be provided")
-	}
-
-	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
-		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
-	}
-
-	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
-		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
-	}
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
