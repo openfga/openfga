@@ -27,12 +27,12 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-
-	"github.com/openfga/openfga/pkg/testutils"
+	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -187,6 +187,9 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{}
@@ -196,6 +199,9 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -218,6 +224,9 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
@@ -274,6 +283,9 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 }
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
@@ -527,6 +539,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer.Stop)
 
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -599,8 +612,10 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer1.Stop)
 
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+	t.Cleanup(trustedIssuerServer2.Stop)
 
 	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -632,6 +647,9 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 }
 
 func TestHTTPServingTLS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
@@ -685,12 +703,17 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
+		resp, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
+		resp.Body.Close()
+		client.HTTPClient.CloseIdleConnections()
 	})
 }
 
 func TestGRPCServingTLS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("enable_grpc_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
@@ -746,6 +769,9 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestServerMetricsReporting(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")
 	})
@@ -908,6 +934,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
@@ -928,6 +957,9 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1270,7 +1302,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 }
 
 func TestHTTPHeaders(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -1310,6 +1344,7 @@ type document
 	authorizationModelID := writeModelResp.GetAuthorizationModelId()
 
 	httpClient := retryablehttp.NewClient()
+	t.Cleanup(httpClient.HTTPClient.CloseIdleConnections)
 
 	var testCases = map[string]struct {
 		httpVerb      string
@@ -1363,6 +1398,8 @@ type document
 			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
 			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
+
+			httpResponse.Body.Close()
 		})
 	}
 }

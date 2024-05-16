@@ -19,6 +19,7 @@ const (
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
+	DefaultMaxAuthorizationModelCacheSize   = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
@@ -60,9 +61,9 @@ type DatastoreMetricsConfig struct {
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
 	Engine   string
-	URI      string
+	URI      string `json:"-"` // private field, won't be logged
 	Username string
-	Password string
+	Password string `json:"-"` // private field, won't be logged
 
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
@@ -131,7 +132,7 @@ type AuthnOIDCConfig struct {
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
 	// Keys define the preshared keys to verify authn tokens against.
-	Keys []string
+	Keys []string `json:"-"` // private field, won't be logged
 }
 
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
@@ -474,7 +475,7 @@ func DefaultConfig() *Config {
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
-			MaxCacheSize: 100000,
+			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
 			MaxIdleConns: 10,
 			MaxOpenConns: 30,
 		},

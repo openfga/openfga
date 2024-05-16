@@ -108,6 +108,7 @@ type Server struct {
 	listObjectsMaxResults            uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
@@ -147,6 +148,13 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+// WithAuthorizationModelCacheSize sets the maximum number of authorization models that will be cached in memory.
+func WithAuthorizationModelCacheSize(maxAuthorizationModelCacheSize int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxAuthorizationModelCacheSize = maxAuthorizationModelCacheSize
 	}
 }
 
@@ -396,6 +404,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
@@ -420,6 +429,23 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	for _, opt := range opts {
 		opt(s)
 	}
+
+	if s.datastore == nil {
+		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
+	}
+
+	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
+	}
+	if s.checkDispatchThrottlingEnabled && s.checkDispatchThrottlingMaxThreshold != 0 && s.checkDispatchThrottlingDefaultThreshold > s.checkDispatchThrottlingMaxThreshold {
+		return nil, fmt.Errorf("default dispatch throttling threshold must be equal or smaller than max dispatch threshold")
+	}
+
+	// below this point, don't throw errors or we may leak resources in tests
 
 	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
 	s.checkResolver = cycleDetectionCheckResolver
@@ -502,6 +528,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if len(s.requestDurationByDispatchCountHistogramBuckets) == 0 {
 		return nil, fmt.Errorf("request duration by dispatch count buckets must not be empty")
 	}
+	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
@@ -525,7 +552,7 @@ func (s *Server) Close() {
 	if s.checkResolver != nil {
 		s.checkResolver.Close()
 	}
-
+	s.datastore.Close()
 	s.typesystemResolverStop()
 }
 

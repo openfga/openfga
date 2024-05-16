@@ -97,6 +97,51 @@ type repo
 			_name:      "writing_empty_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{},
 		},
+		{
+			_name: "writing_multiple_contextual_tuples_assertions_succeeds",
+
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:smeadows",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:maria",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: true,
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -190,6 +235,72 @@ type repo
 			modelID: "not_valid_id",
 			err: serverErrors.AuthorizationModelNotFound(
 				"not_valid_id",
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_relation_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "repo:test",
+								Relation: "invalidrelation",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("relation 'repo#invalidrelation' not found"),
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_object_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "user:jon",
+								Object:   "invalidobject",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("invalid 'object' field format"),
+			),
+		},
+		{
+			_name: "write_conceptual_tuple_assertion_with_invalid_user_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: []*openfgav1.TupleKey{
+							{
+								User:     "invaliduser",
+								Object:   "repo:test",
+								Relation: "can_read",
+							},
+						},
+					},
+					Expectation: false,
+				},
+			},
+			modelID: modelID.GetAuthorizationModelId(),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)"),
 			),
 		},
 	}
