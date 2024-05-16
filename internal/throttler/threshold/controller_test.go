@@ -21,18 +21,46 @@ func TestShouldThrottle(t *testing.T) {
 		require.False(t, ShouldThrottle(ctx, 190, 200, 0))
 	})
 
-	t.Run("should_respect_threshold_in_ctx", func(t *testing.T) {
-		ctx := context.Background()
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
-		require.False(t, ShouldThrottle(ctx, 190, 100, 210))
+	type Tests struct {
+		name             string
+		thresholdInCtx   uint32
+		currentCount     uint32
+		defaultThreshold uint32
+		maxThreshold     uint32
+		expectedResult   bool
+	}
 
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
-		require.True(t, ShouldThrottle(ctx, 205, 100, 210))
-
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
-		require.True(t, ShouldThrottle(ctx, 211, 100, 210))
-
-		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
-		require.True(t, ShouldThrottle(ctx, 301, 100, 300))
-	})
+	tests := []Tests{
+		{
+			name:             "override_default_threshold_and_not_throttle",
+			thresholdInCtx:   200,
+			currentCount:     190,
+			defaultThreshold: 100,
+			maxThreshold:     210,
+			expectedResult:   false,
+		},
+		{
+			name:             "override_default_threshold_and_throttle",
+			thresholdInCtx:   200,
+			currentCount:     205,
+			defaultThreshold: 100,
+			maxThreshold:     210,
+			expectedResult:   true,
+		},
+		{
+			name:             "use_max_threshold_when_higher_than_set_in_ctx",
+			thresholdInCtx:   1000,
+			currentCount:     301,
+			defaultThreshold: 100,
+			maxThreshold:     300,
+			expectedResult:   true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctx = dispatch.ContextWithThrottlingThreshold(ctx, test.thresholdInCtx)
+			require.Equal(t, test.expectedResult, ShouldThrottle(ctx, test.currentCount, test.defaultThreshold, test.maxThreshold))
+		})
+	}
 }
