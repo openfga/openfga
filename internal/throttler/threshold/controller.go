@@ -2,14 +2,9 @@ package threshold
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/dispatch"
 
 	"github.com/openfga/openfga/internal/throttler"
-)
-
-type dispatchThrottlingThresholdType uint32
-
-const (
-	dispatchThrottlingThreshold dispatchThrottlingThresholdType = iota
 )
 
 type Config struct {
@@ -26,7 +21,7 @@ func ShouldThrottle(ctx context.Context, currentCount uint32, defaultThreshold u
 		maxThreshold = defaultThreshold
 	}
 
-	thresholdInCtx := ThrottlingThresholdFromContext(ctx)
+	thresholdInCtx := dispatch.ThrottlingThresholdFromContext(ctx)
 
 	if thresholdInCtx > 0 {
 		threshold = min(thresholdInCtx, maxThreshold)
@@ -35,20 +30,3 @@ func ShouldThrottle(ctx context.Context, currentCount uint32, defaultThreshold u
 	return currentCount > threshold
 }
 
-// ContextWithThrottlingThreshold will save the dispatch throttling threshold in context.
-func ContextWithThrottlingThreshold(ctx context.Context, threshold uint32) context.Context {
-	return context.WithValue(ctx, dispatchThrottlingThreshold, threshold)
-}
-
-// ThrottlingThresholdFromContext returns the dispatch throttling threshold saved in context
-// Return 0 if not found.
-func ThrottlingThresholdFromContext(ctx context.Context) uint32 {
-	thresholdInContext := ctx.Value(dispatchThrottlingThreshold)
-	if thresholdInContext != nil {
-		thresholdInInt, ok := thresholdInContext.(uint32)
-		if ok {
-			return thresholdInInt
-		}
-	}
-	return 0
-}

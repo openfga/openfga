@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/dispatch"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,7 +10,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	mocks "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/throttler/threshold"
 )
 
 func TestDispatchThrottlingCheckResolver(t *testing.T) {
@@ -153,7 +153,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		req.GetRequestMetadata().DispatchCounter.Store(201)
 
 		ctx := context.Background()
-		ctx = threshold.ContextWithThrottlingThreshold(ctx, 200)
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
 
 		_, err := dut.ResolveCheck(ctx, req)
 		require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
 		ctx := context.Background()
-		ctx = threshold.ContextWithThrottlingThreshold(ctx, 1000)
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
 
 		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
 		req.GetRequestMetadata().DispatchCounter.Store(301)
