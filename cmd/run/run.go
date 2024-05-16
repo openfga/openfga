@@ -600,8 +600,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		dialOpts := []grpc.DialOption{
-			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 			grpc.WithBlock(),
+		}
+		if config.Trace.Enabled {
+			dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 		}
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
