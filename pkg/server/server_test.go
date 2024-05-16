@@ -166,7 +166,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 	})
 
 	t.Run("invalid_dispatch_throttle_threshold", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
