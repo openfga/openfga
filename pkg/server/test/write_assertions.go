@@ -122,10 +122,16 @@ type repo
 								User:     "user:maria",
 								Object:   "repo:test",
 								Relation: "can_read",
+								Condition: &openfgav1.RelationshipCondition{
+									Name: "is_below_limit",
+									Context: testutils.MustNewStruct(t, map[string]any{
+										"limit": testutils.CreateRandomString(2),
+									}),
+								},
 							},
 						},
 					},
-					Expectation: false,
+					Expectation: true,
 				},
 				{
 					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
@@ -135,6 +141,12 @@ type repo
 								User:     "user:jon",
 								Object:   "repo:test",
 								Relation: "can_read",
+								Condition: &openfgav1.RelationshipCondition{
+									Name: "is_above_limit",
+									Context: testutils.MustNewStruct(t, map[string]any{
+										"limit": testutils.CreateRandomString(10),
+									}),
+								},
 							},
 						},
 					},
