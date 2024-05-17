@@ -22,27 +22,23 @@ import (
 func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAssertionsTestSettings struct {
 		_name      string
+		model      string
 		assertions []*openfgav1.Assertion
 	}
 
 	store := testutils.CreateRandomString(10)
 
-	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: store,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-
-type repo
-  relations
-	define reader: [user]
-	define can_read: reader`).GetTypeDefinitions(),
-		SchemaVersion: typesystem.SchemaVersion1_1,
-	}
-
 	var tests = []writeAssertionsTestSettings{
 		{
 			_name: "writing_assertions_succeeds",
+			model: `model
+			schema 1.1
+			type user
+			
+			type repo
+			  relations
+				define reader: [user]
+				define can_read: reader`,
 			assertions: []*openfgav1.Assertion{{
 				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 				Expectation: false,
@@ -50,6 +46,15 @@ type repo
 		},
 		{
 			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
+			//	model: "writing_assertions_succeeds",
+			model: `model
+			schema 1.1
+			type user
+			
+			type repo
+			  relations
+				define reader: [user]
+				define can_read: reader`,
 			assertions: []*openfgav1.Assertion{{
 				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 				Expectation: false,
@@ -57,6 +62,14 @@ type repo
 		},
 		{
 			_name: "writing_multiple_assertions_succeeds",
+			model: `model
+			schema 1.1
+			type user
+			
+			type repo
+			  relations
+				define reader: [user]
+				define can_read: reader`,
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
@@ -78,6 +91,14 @@ type repo
 		},
 		{
 			_name: "writing_multiple_assertions_succeeds_when_it_is_not_directly_assignable",
+			model: `model
+			schema 1.1
+			type user
+			
+			type repo
+			  relations
+				define reader: [user]
+				define can_read: reader`,
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
@@ -94,12 +115,30 @@ type repo
 			},
 		},
 		{
-			_name:      "writing_empty_assertions_succeeds",
+			_name: "writing_empty_assertions_succeeds",
+			model: `model
+			schema 1.1
+			type user
+			
+			type repo
+			  relations
+				define reader: [user]
+				define can_read: reader`,
 			assertions: []*openfgav1.Assertion{},
 		},
 		{
 			_name: "writing_multiple_contextual_tuples_assertions_succeeds",
-
+			model: `model
+			schema 1.1
+			type user
+			
+			type repo
+			  relations
+				define reader: [user with test_repo_name]
+			
+			condition test_repo_name(repo_name: string) {
+			  repo_name == "testing"
+			}`,
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
@@ -107,44 +146,12 @@ type repo
 						TupleKeys: []*openfgav1.TupleKey{
 							{
 								User:     "user:smeadows",
-								Object:   "repo:test",
-								Relation: "can_read",
-							},
-						},
-					},
-					Expectation: false,
-				},
-				{
-					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							{
-								User:     "user:maria",
-								Object:   "repo:test",
-								Relation: "can_read",
+								Object:   "repo:1",
+								Relation: "reader",
 								Condition: &openfgav1.RelationshipCondition{
-									Name: "is_below_limit",
+									Name: "test_repo_name",
 									Context: testutils.MustNewStruct(t, map[string]any{
-										"limit": testutils.CreateRandomString(2),
-									}),
-								},
-							},
-						},
-					},
-					Expectation: true,
-				},
-				{
-					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							{
-								User:     "user:jon",
-								Object:   "repo:test",
-								Relation: "can_read",
-								Condition: &openfgav1.RelationshipCondition{
-									Name: "is_above_limit",
-									Context: testutils.MustNewStruct(t, map[string]any{
-										"limit": testutils.CreateRandomString(10),
+										"repo_name": "testing",
 									}),
 								},
 							},
@@ -160,23 +167,23 @@ type repo
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			model := githubModelReq
-
-			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
-
-			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore).Execute(ctx, &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:         store,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: model.GetTypeDefinitions(),
+				Conditions:      model.GetConditions(),
+			})
 			require.NoError(t, err)
-			request := &openfgav1.WriteAssertionsRequest{
+
+			_, err = commands.NewWriteAssertionsCommand(datastore).Execute(ctx, &openfgav1.WriteAssertionsRequest{
 				StoreId:              store,
 				Assertions:           test.assertions,
 				AuthorizationModelId: modelID.GetAuthorizationModelId(),
-			}
-
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
-			_, err = writeAssertionCmd.Execute(ctx, request)
+			})
 			require.NoError(t, err)
-			query := commands.NewReadAssertionsQuery(datastore)
-			actualResponse, actualError := query.Execute(ctx, store, modelID.GetAuthorizationModelId())
+
+			actualResponse, actualError := commands.NewReadAssertionsQuery(datastore).Execute(ctx, store, modelID.GetAuthorizationModelId())
 			require.NoError(t, actualError)
 
 			expectedResponse := &openfgav1.ReadAssertionsResponse{

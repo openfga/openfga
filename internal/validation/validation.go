@@ -31,6 +31,18 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 	return nil
 }
 
+func ValidateUserObjectRelationCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
+		return err
+	}
+
+	if err := validateCondition(typesys, tk); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ValidateTuple returns nil if a tuple is well formed and valid according to the provided model.
 // It is a superset of ValidateUserObjectRelation; it also validates TTU relations and type restrictions.
 //
