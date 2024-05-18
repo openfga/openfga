@@ -1448,6 +1448,72 @@ func TestListUsersUnion(t *testing.T) {
 			},
 			expectedUsers: []string{"user:jon", "user:maria", "user:will"},
 		},
+		{
+			name: "union_and_excluded_users_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+
+		  type document
+			relations
+				define viewer: viewer1 or viewer2
+				define viewer1: [user,user:*] but not blocked
+			  	define viewer2: [user,user:*] but not blocked
+			  	define blocked: [user,user:*]`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer2", "user:*"),
+
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+			},
+			expectedUsers: []string{"user:*"},
+			butNot:        []string{"user:maria"},
+		},
+		{
+			name: "union_and_excluded_users_2",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+
+		  type document
+			relations
+				define viewer: viewer1 or viewer2
+				define viewer1: [user,user:*] but not blocked1
+			  	define viewer2: [user,user:*] but not blocked2
+			  	define blocked1: [user]
+				define blocked2: [user]`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer2", "user:*"),
+
+				tuple.NewTupleKey("document:1", "blocked1", "user:will"),
+
+				tuple.NewTupleKey("document:1", "blocked1", "user:maria"),
+				tuple.NewTupleKey("document:1", "blocked2", "user:maria"),
+			},
+			expectedUsers: []string{"user:*", "user:will"},
+			butNot:        []string{"user:maria"},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }

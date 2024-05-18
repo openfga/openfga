@@ -383,20 +383,22 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_Difference:
 		resp = l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
-		pool := pool.New().WithContext(ctx)
-		pool.WithCancelOnError()
-		pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+		resp = l.expandUnion(ctx, req, rewrite, foundUsersChan)
+	// case *openfgav1.Userset_Union:
+	// 	pool := pool.New().WithContext(ctx)
+	// 	pool.WithCancelOnError()
+	// 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
-		children := rewrite.Union.GetChild()
-		for _, childRewrite := range children {
-			childRewriteCopy := childRewrite
-			pool.Go(func(ctx context.Context) error {
-				resp := l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
-				return resp.err
-			})
-		}
+	// 	children := rewrite.Union.GetChild()
+	// 	for _, childRewrite := range children {
+	// 		childRewriteCopy := childRewrite
+	// 		pool.Go(func(ctx context.Context) error {
+	// 			resp := l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
+	// 			return resp.err
+	// 		})
+	// 	}
 
-		resp.err = pool.Wait()
+	// 	resp.err = pool.Wait()
 	default:
 		panic("unexpected userset rewrite encountered")
 	}
@@ -613,6 +615,88 @@ func (l *listUsersQuery) expandIntersection(
 			}
 			trySendResult(ctx, fu, foundUsersChan)
 		}
+	}
+
+	return expandResponse{
+		err: <-errChan,
+	}
+}
+
+func (l *listUsersQuery) expandUnion(
+	ctx context.Context,
+	req *internalListUsersRequest,
+	rewrite *openfgav1.Userset_Union,
+	foundUsersChan chan<- foundUser,
+) expandResponse {
+	ctx, span := tracer.Start(ctx, "expandUnion")
+	defer span.End()
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+
+	childOperands := rewrite.Union.GetChild()
+	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
+	for i, rewrite := range childOperands {
+		i := i
+		rewrite := rewrite
+		unionFoundUsersChans[i] = make(chan foundUser, 1)
+		pool.Go(func(ctx context.Context) error {
+			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			return resp.err
+		})
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		err := pool.Wait()
+		for i := range unionFoundUsersChans {
+			close(unionFoundUsersChans[i])
+		}
+		errChan <- err
+		close(errChan)
+	}()
+
+	var mu sync.Mutex
+
+	var wg sync.WaitGroup
+	wg.Add(len(childOperands))
+
+	foundUsersMap := make(map[string]struct{}, 0)
+	excludedUsersCountMap := make(map[string]uint32, 0)
+	for _, foundUsersChan := range unionFoundUsersChans {
+		go func(foundUsersChan chan foundUser) {
+			defer wg.Done()
+
+			for foundUser := range foundUsersChan {
+				key := tuple.UserProtoToString(foundUser.user)
+				mu.Lock()
+				foundUsersMap[key] = struct{}{}
+				mu.Unlock()
+				for _, excludedUser := range foundUser.excludedUsers {
+					key := tuple.UserProtoToString(excludedUser)
+					mu.Lock()
+					excludedUsersCountMap[key]++
+					mu.Unlock()
+				}
+			}
+		}(foundUsersChan)
+	}
+	wg.Wait()
+
+	excludedUsers := []*openfgav1.User{}
+	for key, count := range excludedUsersCountMap {
+		if count == uint32(len(childOperands)) {
+			excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
+		}
+	}
+
+	for key := range foundUsersMap {
+		fu := foundUser{
+			user:          tuple.StringToUserProto(key),
+			excludedUsers: excludedUsers,
+		}
+		trySendResult(ctx, fu, foundUsersChan)
 	}
 
 	return expandResponse{
