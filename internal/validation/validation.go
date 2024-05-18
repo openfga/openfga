@@ -36,11 +36,7 @@ func ValidateUserObjectRelationCondition(typesys *typesystem.TypeSystem, tk *ope
 		return err
 	}
 
-	if err := validateCondition(typesys, tk); err != nil {
-		return err
-	}
-
-	return nil
+	return validateCondition(typesys, tk)
 }
 
 // ValidateTuple returns nil if a tuple is well formed and valid according to the provided model.
