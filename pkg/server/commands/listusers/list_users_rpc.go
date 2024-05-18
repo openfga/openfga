@@ -569,13 +569,16 @@ func (l *listUsersQuery) expandIntersection(
 			foundUsersMap := make(map[string]uint32, 0)
 			for foundUser := range foundUsersChan {
 				key := tuple.UserProtoToString(foundUser.user)
-				foundUsersMap[key]++
 				for _, excludedUser := range foundUser.excludedUsers {
 					key := tuple.UserProtoToString(excludedUser)
 					mu.Lock()
 					excludedUsersMap[key] = struct{}{}
 					mu.Unlock()
 				}
+				if foundUser.relationshipStatus == NoRelationship {
+					continue
+				}
+				foundUsersMap[key]++
 			}
 
 			_, wildcardExists := foundUsersMap[wildcardKey]
@@ -670,15 +673,18 @@ func (l *listUsersQuery) expandUnion(
 
 			for foundUser := range foundUsersChan {
 				key := tuple.UserProtoToString(foundUser.user)
-				mu.Lock()
-				foundUsersMap[key] = struct{}{}
-				mu.Unlock()
 				for _, excludedUser := range foundUser.excludedUsers {
 					key := tuple.UserProtoToString(excludedUser)
 					mu.Lock()
 					excludedUsersCountMap[key]++
 					mu.Unlock()
 				}
+				if foundUser.relationshipStatus == NoRelationship {
+					continue
+				}
+				mu.Lock()
+				foundUsersMap[key] = struct{}{}
+				mu.Unlock()
 			}
 		}(foundUsersChan)
 	}

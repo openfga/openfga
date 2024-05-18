@@ -1511,7 +1511,7 @@ func TestListUsersUnion(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked1", "user:maria"),
 				tuple.NewTupleKey("document:1", "blocked2", "user:maria"),
 			},
-			expectedUsers: []string{"user:*", "user:will"},
+			expectedUsers: []string{"user:*"},
 			butNot:        []string{"user:maria"},
 		},
 	}
