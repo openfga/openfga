@@ -560,17 +560,20 @@ func (l *listUsersQuery) expandIntersection(
 	wildcardCount := atomic.Uint32{}
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	foundUsersCountMap := make(map[string]uint32, 0)
+	excludedUsersMap := make(map[string]struct{}, 0)
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
 			foundUsersMap := make(map[string]uint32, 0)
 			for foundUser := range foundUsersChan {
-				if foundUser.relationshipStatus == NoRelationship {
-					continue
-				}
-
 				key := tuple.UserProtoToString(foundUser.user)
 				foundUsersMap[key]++
+				for _, excludedUser := range foundUser.excludedUsers {
+					key := tuple.UserProtoToString(excludedUser)
+					mu.Lock()
+					excludedUsersMap[key] = struct{}{}
+					mu.Unlock()
+				}
 			}
 
 			_, wildcardExists := foundUsersMap[wildcardKey]
@@ -593,6 +596,11 @@ func (l *listUsersQuery) expandIntersection(
 	}
 	wg.Wait()
 
+	excludedUsers := []*openfgav1.User{}
+	for key := range excludedUsersMap {
+		excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
+	}
+
 	for key, count := range foundUsersCountMap {
 		// Compare the number of times the specific user was returned for
 		// all intersection operands plus the number of wildcards.
@@ -600,7 +608,8 @@ func (l *listUsersQuery) expandIntersection(
 		// the intersection expression and can be sent on `foundUsersChan`
 		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
 			fu := foundUser{
-				user: tuple.StringToUserProto(key),
+				user:          tuple.StringToUserProto(key),
+				excludedUsers: excludedUsers,
 			}
 			trySendResult(ctx, fu, foundUsersChan)
 		}
@@ -680,20 +689,11 @@ func (l *listUsersQuery) expandExclusion(
 			}
 
 			for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
-				excludedUsers := map[string]struct{}{}
 				if tuple.IsTypedWildcard(subtractedUserKey) {
-					if subtractedFu.relationshipStatus == HasRelationship {
-						continue
-					}
-					for _, excludedUser := range subtractedFu.excludedUsers {
-						excludedUsers[tuple.UserProtoToString(excludedUser)] = struct{}{}
-						trySendResult(ctx, foundUser{
-							user:               excludedUser,
-							relationshipStatus: HasRelationship,
-						}, foundUsersChan)
-					}
+					continue
 				}
 
+				excludedUsers := map[string]struct{}{}
 				if _, userIsExcluded := excludedUsers[subtractedUserKey]; !userIsExcluded {
 					if subtractedFu.relationshipStatus == NoRelationship {
 						trySendResult(ctx, foundUser{

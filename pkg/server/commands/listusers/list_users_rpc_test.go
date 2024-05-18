@@ -1280,6 +1280,72 @@ func TestListUsersIntersection(t *testing.T) {
 			},
 			expectedUsers: []string{"user:will"},
 		},
+		{
+			name: "intersection_and_excluded_users_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+
+		  type document
+			relations
+				define viewer: viewer1 and viewer2
+				define viewer1: [user,user:*] but not blocked
+			  	define viewer2: [user,user:*] but not blocked
+			  	define blocked: [user,user:*]`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer2", "user:*"),
+
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+			},
+			expectedUsers: []string{"user:*"},
+			butNot:        []string{"user:maria"},
+		},
+		{
+			name: "intersection_and_excluded_users_2",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `model
+			schema 1.1
+		  type user
+
+		  type document
+			relations
+				define viewer: viewer1 and viewer2
+				define viewer1: [user,user:*] but not blocked1
+			  	define viewer2: [user,user:*] but not blocked2
+			  	define blocked1: [user,user:*]
+				define blocked2: [user,user:*]`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer2", "user:*"),
+
+				tuple.NewTupleKey("document:1", "blocked1", "user:will"),
+
+				tuple.NewTupleKey("document:1", "blocked1", "user:maria"),
+				tuple.NewTupleKey("document:1", "blocked2", "user:maria"),
+			},
+			expectedUsers: []string{"user:*"},
+			butNot:        []string{"user:maria", "user:will"},
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
