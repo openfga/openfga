@@ -384,21 +384,6 @@ func (l *listUsersQuery) expandRewrite(
 		resp = l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
 		resp = l.expandUnion(ctx, req, rewrite, foundUsersChan)
-	// case *openfgav1.Userset_Union:
-	// 	pool := pool.New().WithContext(ctx)
-	// 	pool.WithCancelOnError()
-	// 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
-
-	// 	children := rewrite.Union.GetChild()
-	// 	for _, childRewrite := range children {
-	// 		childRewriteCopy := childRewrite
-	// 		pool.Go(func(ctx context.Context) error {
-	// 			resp := l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
-	// 			return resp.err
-	// 		})
-	// 	}
-
-	// 	resp.err = pool.Wait()
 	default:
 		panic("unexpected userset rewrite encountered")
 	}
