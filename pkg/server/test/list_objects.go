@@ -490,18 +490,20 @@ condition condition1(x: int) {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
-			checkResolver, closer := graph.NewLayeredCheckResolver(
-				[]graph.LocalCheckerOption{
-					graph.WithResolveNodeBreadthLimit(100),
-					graph.WithMaxConcurrentReads(30),
-				},
+			localCheckOpts := []graph.LocalCheckerOption{
+				graph.WithResolveNodeBreadthLimit(100),
+				graph.WithMaxConcurrentReads(30),
+			}
+			cacheOpts := []graph.CachedCheckResolverOpt{
+				graph.WithMaxCacheSize(100),
+				graph.WithCacheTTL(10 * time.Second),
+			}
+			checkBuilderOpts := []graph.CheckQueryBuilderOpt{
+				graph.WithLocalCheckerOpts(localCheckOpts...),
+				graph.WithCachedCheckResolverOpts(cacheOpts...)}
+			checkResolver, closer := graph.NewCheckQueryBuilder(checkBuilderOpts...).NewLayeredCheckResolver(
 				test.useCheckCache,
 				false,
-				[]graph.CachedCheckResolverOpt{
-					graph.WithMaxCacheSize(100),
-					graph.WithCacheTTL(10 * time.Second),
-				},
-				[]graph.DispatchThrottlingCheckResolverOpt{},
 			)
 			t.Cleanup(closer)
 
