@@ -91,7 +91,6 @@ func (c *CheckQueryBuilder) NewLayeredCheckResolver(
 	return c.cycleDetectionCheckResolver, c.close
 }
 
-// TODO Poovam test this
 // close will ensure all the CheckResolver constructed are closed
 func (c *CheckQueryBuilder) close() {
 	c.localCheckResolver.Close()
