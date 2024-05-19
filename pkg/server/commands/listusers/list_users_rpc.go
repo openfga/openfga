@@ -160,6 +160,7 @@ func (l *listUsersQuery) ListUsers(
 	}
 
 	datastoreQueryCount := atomic.Uint32{}
+	dispatchCount := atomic.Uint32{}
 
 	foundUsersCh := l.buildResultsChannel()
 	expandErrCh := make(chan error, 1)
@@ -181,7 +182,7 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
+		internalRequest := fromListUsersRequest(req, &datastoreQueryCount, &dispatchCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
 		// first send error and then close results channel, to ensure that error takes precedence
 		if resp.err != nil {
@@ -215,6 +216,7 @@ func (l *listUsersQuery) ListUsers(
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
+			DispatchCounter:     &dispatchCount,
 		},
 	}, nil
 }
@@ -233,6 +235,17 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 	}
 
 	return len(edges) > 0, err
+}
+
+func (l *listUsersQuery) dispatch(
+	ctx context.Context,
+	req *internalListUsersRequest,
+	foundUsersChan chan<- *openfgav1.User,
+) expandResponse {
+	req.dispatchCount.Add(1)
+	// Once https://github.com/openfga/openfga/pull/1571 is merged
+	// We can get the value from above call and pass it to `throttle` to implement dispatch throttling
+	return l.expand(ctx, req, foundUsersChan)
 }
 
 func (l *listUsersQuery) expand(
@@ -317,7 +330,7 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_ComputedUserset:
 		rewrittenReq := req.clone()
 		rewrittenReq.Relation = rewrite.ComputedUserset.GetRelation()
-		resp = l.expand(ctx, rewrittenReq, foundUsersChan)
+		resp = l.dispatch(ctx, rewrittenReq, foundUsersChan)
 	case *openfgav1.Userset_TupleToUserset:
 		resp = l.expandTTU(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Intersection:
@@ -436,7 +449,7 @@ LoopOnIterator:
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = userRelation
-			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
+			resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
 			if resp.hasCycle {
 				hasCycle.Store(true)
 			}
@@ -691,7 +704,7 @@ LoopOnIterator:
 			rewrittenReq := req.clone()
 			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 			rewrittenReq.Relation = computedRelation
-			resp := l.expand(ctx, rewrittenReq, foundUsersChan)
+			resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
 			return resp.err
 		})
 	}

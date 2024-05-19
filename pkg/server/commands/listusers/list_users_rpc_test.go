@@ -2679,7 +2679,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 	require.Nil(t, resp)
 }
 
-func TestListUsersDatastoreQueryCount(t *testing.T) {
+func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -2744,6 +2744,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 		userFilters      []*openfgav1.UserTypeFilter
 		contextualTuples []*openfgav1.TupleKey
 		dbReads          uint32
+		dispatches       uint32
 	}{
 		{
 			name:        "no_direct_access",
@@ -2751,6 +2752,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "direct_access",
@@ -2758,6 +2760,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:             "direct_access_thanks_to_contextual_tuple",
@@ -2766,6 +2769,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:           &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters:      []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:          1,
+			dispatches:       0,
 		},
 		{
 			name:        "union",
@@ -2773,6 +2777,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
+			dispatches:  2,
 		},
 		{
 			name:        "union_no_access",
@@ -2780,6 +2785,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
+			dispatches:  2,
 		},
 		{
 			name:        "intersection",
@@ -2787,6 +2793,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
+			dispatches:  2,
 		},
 		{
 			name:        "intersection_no_access",
@@ -2794,6 +2801,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
+			dispatches:  2,
 		},
 		{
 			name:        "difference",
@@ -2801,6 +2809,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
+			dispatches:  2,
 		},
 		{
 			name:        "difference_no_access",
@@ -2808,6 +2817,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     2,
+			dispatches:  2,
 		},
 		{
 			name:        "ttu",
@@ -2815,6 +2825,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "ttu_no_access",
@@ -2822,6 +2833,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "userset_no_access_1",
@@ -2829,6 +2841,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "userset_no_access_2",
@@ -2836,6 +2849,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "userset_access",
@@ -2843,6 +2857,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "multiple_userset_no_access",
@@ -2850,6 +2865,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "multiple_userset_access",
@@ -2857,6 +2873,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "wildcard_no_access",
@@ -2864,6 +2881,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 		{
 			name:        "wildcard_access",
@@ -2871,6 +2889,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     1,
+			dispatches:  0,
 		},
 
 		{
@@ -2879,6 +2898,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     3,
+			dispatches:  4,
 		},
 		{
 			name:        "union_and_ttu_no_access",
@@ -2886,6 +2906,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     3,
+			dispatches:  4,
 		},
 		{
 			name:        "union_or_ttu",
@@ -2893,6 +2914,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     5,
+			dispatches:  8,
 		},
 		{
 			name:        "union_or_ttu_no_access",
@@ -2900,6 +2922,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     5,
+			dispatches:  8,
 		},
 		{
 			name:        "intersection_of_ttus",
@@ -2907,6 +2930,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			object:      &openfgav1.Object{Type: "document", Id: "1"},
 			userFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			dbReads:     8,
+			dispatches:  14,
 		},
 	}
 
@@ -2932,6 +2956,7 @@ func TestListUsersDatastoreQueryCount(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.Equal(t, test.dbReads, resp.GetMetadata().DatastoreQueryCount)
+			require.Equal(t, test.dispatches, resp.GetMetadata().DispatchCounter.Load())
 		})
 	}
 }

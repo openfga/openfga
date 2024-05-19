@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/openfga/openfga/internal/utils"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -29,6 +32,7 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("object", fmt.Sprintf("%s:%s", req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
@@ -44,6 +48,8 @@ func (s *Server) ListUsers(
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
+
+	const methodName = "listusers"
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -90,6 +96,21 @@ func (s *Server) ListUsers(
 		s.serviceName,
 		"list-users",
 	).Observe(datastoreQueryCount)
+
+	dispatchCount := float64(resp.Metadata.DispatchCounter.Load())
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+	dispatchCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(dispatchCount)
+
+	requestDurationHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListUsersResponse{
 		Users: resp.GetUsers(),
