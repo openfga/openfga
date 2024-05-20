@@ -3723,7 +3723,7 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 		}
 
 		require.Len(t, actualResults, 3)
-		require.Equal(t, []struct {
+		require.ElementsMatch(t, []struct {
 			user               string
 			relationshipStatus userRelationshipStatus
 		}{
