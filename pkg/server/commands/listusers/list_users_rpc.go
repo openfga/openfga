@@ -757,13 +757,20 @@ func (l *listUsersQuery) expandExclusion(
 
 		switch {
 		case baseWildcardExists:
-			if !wildcardSubtracted {
+			if !userIsSubtracted && !wildcardSubtracted {
 				trySendResult(ctx, foundUser{
 					user: tuple.StringToUserProto(userKey),
 				}, foundUsersChan)
 			}
 
 			for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
+				if tuple.IsTypedWildcard(subtractedUserKey) && !userIsSubtracted {
+					trySendResult(ctx, foundUser{
+						user:               tuple.StringToUserProto(userKey),
+						relationshipStatus: NoRelationship,
+					}, foundUsersChan)
+				}
+
 				if tuple.IsTypedWildcard(subtractedUserKey) {
 					continue
 				}

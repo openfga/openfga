@@ -2556,6 +2556,7 @@ func TestListUsersChainedNegation(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:maria"),
 			},
 			expectedUsers: []string{"user:jon"},
 		},
@@ -2563,9 +2564,10 @@ func TestListUsersChainedNegation(t *testing.T) {
 			name: "chained_negation_4",
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
 			},
-			expectedUsers: []string{"user:*"},
+			expectedUsers: []string{"user:*", "user:maria"},
 		},
 		{
 			name: "chained_negation_5",
@@ -2573,8 +2575,13 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:1", "blocked", "user:*"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+
+				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:maria"),
 			},
-			expectedUsers: []string{"user:*"},
+			expectedUsers: []string{"user:*", "user:maria", "user:jon"},
 		},
 		{
 			name: "chained_negation_6",
@@ -2620,6 +2627,7 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:jon"),
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 				tuple.NewTupleKey("document:1", "unblocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:poovam"),
 			},
 			expectedUsers: []string{"user:*", "user:jon"},
 			butNot:        []string{"user:maria"},
@@ -2653,6 +2661,25 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
 			},
 			expectedUsers: []string{"user:*", "user:jon", "user:maria"},
+		},
+		{
+			name: "chained_negation_14",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*", "user:maria"},
+		},
+		{
+			name: "chained_negation_15",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+				tuple.NewTupleKey("document:1", "unblocked", "user:*"),
+			},
+			expectedUsers: []string{"user:*", "user:maria"},
 		},
 	}
 
