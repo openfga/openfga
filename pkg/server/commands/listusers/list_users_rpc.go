@@ -154,6 +154,7 @@ func (l *listUsersQuery) ListUsers(
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
 					DatastoreQueryCount: 0,
+					DispatchCounter:     new(atomic.Uint32),
 				},
 			}, nil
 		}
