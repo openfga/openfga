@@ -46,7 +46,6 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 		},
 		{
 			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
-			//	model: "writing_assertions_succeeds",
 			model: `model
 			schema 1.1
 			type user
