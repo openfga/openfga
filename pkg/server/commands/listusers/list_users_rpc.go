@@ -766,24 +766,23 @@ func (l *listUsersQuery) expandExclusion(
 					continue
 				}
 
-				excludedUsers := map[string]struct{}{}
-				if _, userIsExcluded := excludedUsers[subtractedUserKey]; !userIsExcluded {
-					if subtractedFu.relationshipStatus == NoRelationship {
-						trySendResult(ctx, foundUser{
-							user:               tuple.StringToUserProto(subtractedUserKey),
-							relationshipStatus: HasRelationship,
-						}, foundUsersChan)
-					}
+				if subtractedFu.relationshipStatus == NoRelationship {
+					trySendResult(ctx, foundUser{
+						user:               tuple.StringToUserProto(subtractedUserKey),
+						relationshipStatus: HasRelationship,
+					}, foundUsersChan)
+				}
 
-					if subtractedFu.relationshipStatus == HasRelationship {
-						trySendResult(ctx, foundUser{
-							user:               tuple.StringToUserProto(subtractedUserKey),
-							relationshipStatus: NoRelationship,
-							excludedUsers: []*openfgav1.User{
-								tuple.StringToUserProto(subtractedUserKey),
-							},
-						}, foundUsersChan)
-					}
+				// a found user under the subtracted branch causes the subtracted user to have a negated relationship with respect
+				// to the base relation and is excluded since a wildcard is contained under the base branch.
+				if subtractedFu.relationshipStatus == HasRelationship {
+					trySendResult(ctx, foundUser{
+						user:               tuple.StringToUserProto(subtractedUserKey),
+						relationshipStatus: NoRelationship,
+						excludedUsers: []*openfgav1.User{
+							tuple.StringToUserProto(subtractedUserKey),
+						},
+					}, foundUsersChan)
 				}
 			}
 		case subtractWildcardExists, userIsSubtracted:
