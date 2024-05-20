@@ -3,6 +3,7 @@ package listusers
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -3639,4 +3641,87 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 func TestInvertRelationshipStatus(t *testing.T) {
 	require.Equal(t, HasRelationship, NoRelationship.InvertRelationshipStatus())
 	require.Equal(t, NoRelationship, HasRelationship.InvertRelationshipStatus())
+}
+
+func TestListUsers_ExpandExclusionHandler(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("avoid_producing_explicitly_negated_subjects", func(t *testing.T) {
+		modelStr := `
+		model
+		  schema 1.1
+
+		type user
+
+		type document
+		  relations
+		    define restricted: [user, user:*]
+		    define viewer: [user, user:*] but not restricted
+	`
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelStr, []string{
+			"document:1#viewer@user:*",
+			"document:1#viewer@user:jon",
+			"document:1#restricted@user:jon",
+		})
+
+		l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+		channelDone := make(chan struct{})
+		channelWithResults := make(chan foundUser)
+		channelWithError := make(chan error, 1)
+
+		typesys := typesystem.New(model)
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+		relation, err := typesys.GetRelation("document", "viewer")
+		require.NoError(t, err)
+
+		rewrite := relation.GetRewrite().GetUserset().(*openfgav1.Userset_Difference)
+
+		go func() {
+			resp := l.expandExclusion(ctx, &internalListUsersRequest{
+				ListUsersRequest: &openfgav1.ListUsersRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: model.GetId(),
+					Object: &openfgav1.Object{
+						Type: "document",
+						Id:   "1",
+					},
+					Relation: "viewer",
+					UserFilters: []*openfgav1.UserTypeFilter{{
+						Type: "user",
+					}},
+				},
+				visitedUsersetsMap:  map[string]struct{}{},
+				datastoreQueryCount: new(atomic.Uint32),
+			}, rewrite, channelWithResults)
+			if resp.err != nil {
+				channelWithError <- resp.err
+				return
+			}
+
+			channelDone <- struct{}{}
+		}()
+
+		var actualUsers []string
+
+	OUTER:
+		for {
+			select {
+			case <-channelWithError:
+				require.FailNow(t, "expected 0 errors")
+			case result := <-channelWithResults:
+				actualUsers = append(actualUsers, tuple.UserProtoToString(result.user))
+			case <-channelDone:
+				break OUTER
+			}
+		}
+
+		require.Len(t, actualUsers, 1)
+		require.Equal(t, []string{"user:*"}, actualUsers)
+	})
 }
