@@ -53,8 +53,8 @@ type expandResponse struct {
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
 
-func (r *userRelationshipStatus) InvertRelationshipStatus() userRelationshipStatus {
-	if *r == NoRelationship {
+func (r userRelationshipStatus) InvertRelationshipStatus() userRelationshipStatus {
+	if r == NoRelationship {
 		return HasRelationship
 	}
 	return NoRelationship
