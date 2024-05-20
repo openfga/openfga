@@ -3638,11 +3638,6 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 	}
 }
 
-func TestInvertRelationshipStatus(t *testing.T) {
-	require.Equal(t, HasRelationship, NoRelationship.InvertRelationshipStatus())
-	require.Equal(t, NoRelationship, HasRelationship.InvertRelationshipStatus())
-}
-
 func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

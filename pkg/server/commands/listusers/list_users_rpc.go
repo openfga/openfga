@@ -53,13 +53,6 @@ type expandResponse struct {
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
 
-func (r userRelationshipStatus) InvertRelationshipStatus() userRelationshipStatus {
-	if r == NoRelationship {
-		return HasRelationship
-	}
-	return NoRelationship
-}
-
 const (
 	HasRelationship userRelationshipStatus = iota
 	NoRelationship
@@ -793,17 +786,19 @@ func (l *listUsersQuery) expandExclusion(
 					}
 				}
 			}
-		case subtractWildcardExists:
-			trySendResult(ctx, foundUser{
-				user:               tuple.StringToUserProto(userKey),
-				relationshipStatus: subtractedUser.relationshipStatus.InvertRelationshipStatus(),
-			}, foundUsersChan)
+		case subtractWildcardExists || userIsSubtracted:
+			if subtractedUser.relationshipStatus == HasRelationship {
+				trySendResult(ctx, foundUser{
+					user:               tuple.StringToUserProto(userKey),
+					relationshipStatus: NoRelationship,
+				}, foundUsersChan)
+			} else if subtractedUser.relationshipStatus == NoRelationship {
+				trySendResult(ctx, foundUser{
+					user:               tuple.StringToUserProto(userKey),
+					relationshipStatus: HasRelationship,
+				}, foundUsersChan)
+			}
 
-		case userIsSubtracted:
-			trySendResult(ctx, foundUser{
-				user:               tuple.StringToUserProto(userKey),
-				relationshipStatus: subtractedUser.relationshipStatus.InvertRelationshipStatus(),
-			}, foundUsersChan)
 		default:
 			trySendResult(ctx, foundUser{
 				user:               tuple.StringToUserProto(userKey),
