@@ -33,12 +33,13 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -99,12 +100,13 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -181,13 +183,14 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define allowed: [user]
-	define viewer: [user] and allowed`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
+		type user
+		type document
+			relations
+				define allowed: [user]
+				define viewer: [user] and allowed`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -238,12 +241,13 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -311,12 +315,13 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-   define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 
@@ -456,14 +461,15 @@ func TestReverseExpandThrottle(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
 
-	type user
+		type user
 
-	type document
-	  relations
-		define viewer: [user]`)
+		type document
+			relations
+				define viewer: [user]`)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -593,15 +599,16 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 	}{
 		{
 			name: "should_throttle",
-			model: `model
-			schema 1.1
+			model: `
+				model
+				schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define viewer: [user] or editor 
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor 
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -618,15 +625,16 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		},
 		{
 			name: "should_not_throttle",
-			model: `model
-			schema 1.1
-		
-			type user
-		
-			type folder
-				 relations
-					  define editor: [user]
-					  define viewer: [user] or editor
+			model: `
+				model
+				schema 1.1
+			
+				type user
+			
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -643,15 +651,16 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		},
 		{
 			name: "should_not_throttle_if_there_are_not_enough_dispatches",
-			model: `model
-			schema 1.1
-		
-			type user
-		
-			type document
-			  relations
-				define editor: [user]
-				define viewer: editor
+			model: `
+				model
+				schema 1.1
+			
+				type user
+			
+				type document
+					relations
+						define editor: [user]
+						define viewer: editor
 			`,
 			tuples: []string{
 				"document:1#editor@user:jon",
