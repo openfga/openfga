@@ -32,7 +32,7 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 }
 
 // ValidateUserObjectRelationCondition returns nil if the tuple is well-formed and the condition, if specfied
-// is valid according to the model.
+// and is valid according to the model.
 func ValidateUserObjectRelationCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return err
