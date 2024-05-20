@@ -189,15 +189,43 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("requestDurationDispatchCountBuckets", flags.Lookup("request-duration-dispatch-count-buckets"))
 		util.MustBindEnv("requestDurationDispatchCountBuckets", "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS")
 
+		util.MustBindPFlag("checkDispatchThrottling.enabled", flags.Lookup("check-dispatch-throttling-enabled"))
+		util.MustBindEnv("checkDispatchThrottling.enabled", "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("checkDispatchThrottling.frequency", flags.Lookup("check-dispatch-throttling-frequency"))
+		util.MustBindEnv("checkDispatchThrottling.frequency", "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("checkDispatchThrottling.threshold", flags.Lookup("check-dispatch-throttling-threshold"))
+		util.MustBindEnv("checkDispatchThrottling.threshold", "OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("checkDispatchThrottling.maxThreshold", flags.Lookup("check-dispatch-throttling-max-threshold"))
+		util.MustBindEnv("checkDispatchThrottling.maxThreshold", "OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.enabled", flags.Lookup("listObjects-dispatch-throttling-enabled"))
+		util.MustBindEnv("listObjectsDispatchThrottling.enabled", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.frequency", flags.Lookup("listObjects-dispatch-throttling-frequency"))
+		util.MustBindEnv("listObjectsDispatchThrottling.frequency", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.threshold", flags.Lookup("listObjects-dispatch-throttling-threshold"))
+		util.MustBindEnv("listObjectsDispatchThrottling.threshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.maxThreshold", flags.Lookup("listObjects-dispatch-throttling-max-threshold"))
+		util.MustBindEnv("listObjectsDispatchThrottling.maxThreshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD")
+
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED
 		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
 		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
 
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY
 		util.MustBindPFlag("dispatchThrottling.frequency", flags.Lookup("dispatch-throttling-frequency"))
 		util.MustBindEnv("dispatchThrottling.frequency", "OPENFGA_DISPATCH_THROTTLING_FREQUENCY")
 
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD
 		util.MustBindPFlag("dispatchThrottling.threshold", flags.Lookup("dispatch-throttling-threshold"))
 		util.MustBindEnv("dispatchThrottling.threshold", "OPENFGA_DISPATCH_THROTTLING_THRESHOLD")
 
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD
 		util.MustBindPFlag("dispatchThrottling.maxThreshold", flags.Lookup("dispatch-throttling-max-threshold"))
 		util.MustBindEnv("dispatchThrottling.maxThreshold", "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD")
 

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,9 +135,9 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_throttling_frequency", func(t *testing.T) {
+	t.Run("non_positive_check_dispatch_throttling_frequency", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 0,
 			Threshold: 30,
@@ -145,9 +147,33 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_threshold", func(t *testing.T) {
+	t.Run("non_positive_check_dispatch_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 10 * time.Microsecond,
+			Threshold: 0,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_list_objects_dispatch_throttling_frequency", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 0,
+			Threshold: 30,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_list_objects_dispatch_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 10 * time.Microsecond,
 			Threshold: 0,
@@ -159,7 +185,19 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("dispatch_throttling_threshold_larger_than_max_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:      true,
+			Frequency:    10 * time.Microsecond,
+			Threshold:    30,
+			MaxThreshold: 29,
+		}
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("list_objects_threshold_larger_than_max_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:      true,
 			Frequency:    10 * time.Microsecond,
 			Threshold:    30,
@@ -255,6 +293,92 @@ func TestDefaultContextTimeout(t *testing.T) {
 			t.Parallel()
 			timeout := DefaultContextTimeout(&test.config)
 			require.Equal(t, test.expectedContextTimeout, timeout)
+		})
+	}
+}
+
+func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
+	var testCases = map[string]struct {
+		configGeneratingFunction    func() *Config
+		expectedCheckDispatchConfig DispatchThrottlingConfig
+	}{
+		"get_value_from_dispatch_config_if_check_dispatch_config_is_not_set": {
+			configGeneratingFunction: func() *Config {
+				config := DefaultConfig()
+				viper.Set("dispatchThrottling.enabled", true)
+				viper.Set("dispatchThrottling.frequency", 10)
+				viper.Set("dispatchThrottling.threshold", 10)
+				viper.Set("dispatchThrottling.maxThreshold", 10)
+				config.DispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      true,
+					Frequency:    10,
+					Threshold:    10,
+					MaxThreshold: 10,
+				}
+				return config
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      true,
+				Frequency:    10,
+				Threshold:    10,
+				MaxThreshold: 10,
+			},
+		},
+		"override_from_check_dispatch_config_if_set": {
+			configGeneratingFunction: func() *Config {
+				viper.Set("dispatchThrottling.enabled", true)
+				viper.Set("dispatchThrottling.frequency", 100)
+				viper.Set("dispatchThrottling.threshold", 100)
+				viper.Set("dispatchThrottling.maxThreshold", 100)
+				viper.Set("checkDispatchThrottling.enabled", true)
+				viper.Set("checkDispatchThrottling.frequency", 10)
+				viper.Set("checkDispatchThrottling.threshold", 10)
+				viper.Set("checkDispatchThrottling.maxThreshold", 10)
+				config := DefaultConfig()
+				config.DispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      true,
+					Frequency:    100,
+					Threshold:    100,
+					MaxThreshold: 100,
+				}
+				config.CheckDispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      false,
+					Frequency:    10,
+					Threshold:    10,
+					MaxThreshold: 10,
+				}
+				return config
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      false,
+				Frequency:    10,
+				Threshold:    10,
+				MaxThreshold: 10,
+			},
+		},
+		"get_default_values_if_none_are_set": {
+			configGeneratingFunction: DefaultConfig,
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      DefaultCheckDispatchThrottlingEnabled,
+				Frequency:    DefaultCheckDispatchThrottlingFrequency,
+				Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
+				MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+			},
+		},
+	}
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(func() {
+				viper.Reset()
+			})
+
+			config := test.configGeneratingFunction()
+			result := GetCheckDispatchThrottlingConfig(nil, config)
+			require.Equal(t, test.expectedCheckDispatchConfig.Enabled, result.Enabled)
+			require.Equal(t, test.expectedCheckDispatchConfig.Frequency, result.Frequency)
+			require.Equal(t, test.expectedCheckDispatchConfig.Threshold, result.Threshold)
+			require.Equal(t, test.expectedCheckDispatchConfig.MaxThreshold, result.MaxThreshold)
 		})
 	}
 }

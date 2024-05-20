@@ -1146,19 +1146,47 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
 
 	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.DispatchThrottling.Frequency.String())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
 
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
 
-	val = res.Get("properties.dispatchThrottling.properties.maxThreshold.default")
+	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MaxThreshold)
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.checkDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
 
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
