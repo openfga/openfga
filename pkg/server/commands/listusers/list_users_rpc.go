@@ -773,7 +773,9 @@ func (l *listUsersQuery) expandExclusion(
 							user:               tuple.StringToUserProto(subtractedUserKey),
 							relationshipStatus: HasRelationship,
 						}, foundUsersChan)
-					} else if subtractedFu.relationshipStatus == HasRelationship {
+					}
+
+					if subtractedFu.relationshipStatus == HasRelationship {
 						trySendResult(ctx, foundUser{
 							user:               tuple.StringToUserProto(subtractedUserKey),
 							relationshipStatus: NoRelationship,
@@ -790,7 +792,9 @@ func (l *listUsersQuery) expandExclusion(
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: NoRelationship,
 				}, foundUsersChan)
-			} else if subtractedUser.relationshipStatus == NoRelationship {
+			}
+
+			if subtractedUser.relationshipStatus == NoRelationship {
 				trySendResult(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: HasRelationship,
