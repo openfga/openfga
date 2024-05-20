@@ -92,7 +92,8 @@ func (s *Server) ListUsers(
 	).Observe(datastoreQueryCount)
 
 	return &openfgav1.ListUsersResponse{
-		Users: resp.GetUsers(),
+		Users:         resp.GetUsers(),
+		ExcludedUsers: resp.GetExcludedUsers(),
 	}, nil
 }
 

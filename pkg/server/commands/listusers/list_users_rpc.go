@@ -47,6 +47,33 @@ type expandResponse struct {
 	err      error
 }
 
+// userRelationshipStatus represents the status of a relationship that a given user/subject has with respect to a specific relation.
+//
+// A user/subject either does or does not have a relationship, which represents that
+// they either explicitly do have a relationship or explicitly do not.
+type userRelationshipStatus int
+
+const (
+	HasRelationship userRelationshipStatus = iota
+	NoRelationship
+)
+
+type foundUser struct {
+	user          *openfgav1.User
+	excludedUsers []*openfgav1.User
+
+	// relationshipStatus indicates whether the user explicitly does or does not have
+	// a specific relationship with respect to the relation being expanded. It almost
+	// exclusively applies to behavior stemming from exclusion rewrite rules.
+	//
+	// As users/subjects are being expanded we propagate the relationship status with
+	// respect to the relation being evaluated so that we can handle subjects which
+	// have been explicitly excluded from a relationship and where that relation is
+	// contained under the subtracted branch of another exclusion. This allows us to
+	// buble up the subject from the subtracted branch of the exclusion.
+	relationshipStatus userRelationshipStatus
+}
+
 type ListUsersQueryOption func(l *listUsersQuery)
 
 func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
@@ -126,11 +153,12 @@ func (l *listUsersQuery) ListUsers(
 	defer span.End()
 
 	cancellableCtx, cancelCtx := context.WithCancel(ctx)
-	defer cancelCtx()
 	if l.deadline != 0 {
 		cancellableCtx, cancelCtx = context.WithTimeout(cancellableCtx, l.deadline)
 		defer cancelCtx()
 	}
+	defer cancelCtx()
+
 	l.ds = storagewrappers.NewCombinedTupleReader(
 		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
 		req.GetContextualTuples(),
@@ -164,11 +192,17 @@ func (l *listUsersQuery) ListUsers(
 	foundUsersCh := l.buildResultsChannel()
 	expandErrCh := make(chan error, 1)
 
-	foundUsersUnique := make(map[tuple.UserString]struct{}, 1000)
+	foundUsersUnique := make(map[tuple.UserString]foundUser, 1000)
+	excludedUsersUnique := make(map[tuple.UserString]struct{}, 1000)
+
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
-		for foundObject := range foundUsersCh {
-			foundUsersUnique[tuple.UserProtoToString(foundObject)] = struct{}{}
+		for foundUser := range foundUsersCh {
+			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
+			for _, exception := range foundUser.excludedUsers {
+				excludedUsersUnique[tuple.UserProtoToString(exception)] = struct{}{}
+			}
+
 			if l.maxResults > 0 {
 				if uint32(len(foundUsersUnique)) >= l.maxResults {
 					span.SetAttributes(attribute.Bool("max_results_found", true))
@@ -206,13 +240,30 @@ func (l *listUsersQuery) ListUsers(
 	cancelCtx()
 
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
-	for foundUser := range foundUsersUnique {
-		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUser))
+	for foundUserKey, foundUser := range foundUsersUnique {
+		if foundUser.relationshipStatus == NoRelationship {
+			continue
+		}
+		if _, userIsExcluded := excludedUsersUnique[foundUserKey]; userIsExcluded {
+			continue
+		}
+
+		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
 	}
+
+	var excludedUsers []*openfgav1.ObjectOrUserset
+	if len(foundUsers) > 0 {
+		excludedUsers = make([]*openfgav1.ObjectOrUserset, 0, len(excludedUsersUnique))
+		for foundExcludedUser := range excludedUsersUnique {
+			excludedUsers = append(excludedUsers, tuple.StringToObjectOrUserset(foundExcludedUser))
+		}
+	}
+
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
 	return &listUsersResponse{
-		Users: foundUsers,
+		Users:         foundUsers,
+		ExcludedUsers: excludedUsers,
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 		},
@@ -238,7 +289,7 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 func (l *listUsersQuery) expand(
 	ctx context.Context,
 	req *internalListUsersRequest,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expand")
 	defer span.End()
@@ -263,16 +314,17 @@ func (l *listUsersQuery) expand(
 
 	for _, userFilter := range req.GetUserFilters() {
 		if reqObjectType == userFilter.GetType() && reqRelation == userFilter.GetRelation() {
-			user := &openfgav1.User{
-				User: &openfgav1.User_Userset{
-					Userset: &openfgav1.UsersetUser{
-						Type:     reqObjectType,
-						Id:       reqObjectID,
-						Relation: reqRelation,
+			trySendResult(ctx, foundUser{
+				user: &openfgav1.User{
+					User: &openfgav1.User_Userset{
+						Userset: &openfgav1.UsersetUser{
+							Type:     reqObjectType,
+							Id:       reqObjectID,
+							Relation: reqRelation,
+						},
 					},
 				},
-			}
-			trySendResult(ctx, user, foundUsersChan)
+			}, foundUsersChan)
 		}
 	}
 
@@ -305,7 +357,7 @@ func (l *listUsersQuery) expandRewrite(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandRewrite")
 	defer span.End()
@@ -325,20 +377,7 @@ func (l *listUsersQuery) expandRewrite(
 	case *openfgav1.Userset_Difference:
 		resp = l.expandExclusion(ctx, req, rewrite, foundUsersChan)
 	case *openfgav1.Userset_Union:
-		pool := pool.New().WithContext(ctx)
-		pool.WithCancelOnError()
-		pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
-
-		children := rewrite.Union.GetChild()
-		for _, childRewrite := range children {
-			childRewriteCopy := childRewrite
-			pool.Go(func(ctx context.Context) error {
-				resp := l.expandRewrite(ctx, req, childRewriteCopy, foundUsersChan)
-				return resp.err
-			})
-		}
-
-		resp.err = pool.Wait()
+		resp = l.expandUnion(ctx, req, rewrite, foundUsersChan)
 	default:
 		panic("unexpected userset rewrite encountered")
 	}
@@ -352,7 +391,7 @@ func (l *listUsersQuery) expandRewrite(
 func (l *listUsersQuery) expandDirect(
 	ctx context.Context,
 	req *internalListUsersRequest,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
@@ -426,7 +465,10 @@ LoopOnIterator:
 			for _, f := range req.GetUserFilters() {
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
-					trySendResult(ctx, user, foundUsersChan)
+
+					trySendResult(ctx, foundUser{
+						user: user,
+					}, foundUsersChan)
 				}
 			}
 			continue
@@ -458,7 +500,7 @@ func (l *listUsersQuery) expandIntersection(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Intersection,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandIntersection")
 	defer span.End()
@@ -467,11 +509,11 @@ func (l *listUsersQuery) expandIntersection(
 	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Intersection.GetChild()
-	intersectionFoundUsersChans := make([]chan *openfgav1.User, len(childOperands))
+	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
 	for i, rewrite := range childOperands {
 		i := i
 		rewrite := rewrite
-		intersectionFoundUsersChans[i] = make(chan *openfgav1.User, 1)
+		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
 			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
 			return resp.err
@@ -497,12 +539,22 @@ func (l *listUsersQuery) expandIntersection(
 	wildcardCount := atomic.Uint32{}
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
 	foundUsersCountMap := make(map[string]uint32, 0)
+	excludedUsersMap := make(map[string]struct{}, 0)
 	for _, foundUsersChan := range intersectionFoundUsersChans {
-		go func(foundUsersChan chan *openfgav1.User) {
+		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
 			foundUsersMap := make(map[string]uint32, 0)
 			for foundUser := range foundUsersChan {
-				key := tuple.UserProtoToString(foundUser)
+				key := tuple.UserProtoToString(foundUser.user)
+				for _, excludedUser := range foundUser.excludedUsers {
+					key := tuple.UserProtoToString(excludedUser)
+					mu.Lock()
+					excludedUsersMap[key] = struct{}{}
+					mu.Unlock()
+				}
+				if foundUser.relationshipStatus == NoRelationship {
+					continue
+				}
 				foundUsersMap[key]++
 			}
 
@@ -526,14 +578,108 @@ func (l *listUsersQuery) expandIntersection(
 	}
 	wg.Wait()
 
+	excludedUsers := []*openfgav1.User{}
+	for key := range excludedUsersMap {
+		excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
+	}
+
 	for key, count := range foundUsersCountMap {
 		// Compare the number of times the specific user was returned for
 		// all intersection operands plus the number of wildcards.
 		// If this summed value equals the number of operands, the user satisfies
 		// the intersection expression and can be sent on `foundUsersChan`
 		if (count + wildcardCount.Load()) == uint32(len(childOperands)) {
-			trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
+			fu := foundUser{
+				user:          tuple.StringToUserProto(key),
+				excludedUsers: excludedUsers,
+			}
+			trySendResult(ctx, fu, foundUsersChan)
 		}
+	}
+
+	return expandResponse{
+		err: <-errChan,
+	}
+}
+
+func (l *listUsersQuery) expandUnion(
+	ctx context.Context,
+	req *internalListUsersRequest,
+	rewrite *openfgav1.Userset_Union,
+	foundUsersChan chan<- foundUser,
+) expandResponse {
+	ctx, span := tracer.Start(ctx, "expandUnion")
+	defer span.End()
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+
+	childOperands := rewrite.Union.GetChild()
+	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
+	for i, rewrite := range childOperands {
+		i := i
+		rewrite := rewrite
+		unionFoundUsersChans[i] = make(chan foundUser, 1)
+		pool.Go(func(ctx context.Context) error {
+			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			return resp.err
+		})
+	}
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		err := pool.Wait()
+		for i := range unionFoundUsersChans {
+			close(unionFoundUsersChans[i])
+		}
+		errChan <- err
+		close(errChan)
+	}()
+
+	var mu sync.Mutex
+
+	var wg sync.WaitGroup
+	wg.Add(len(childOperands))
+
+	foundUsersMap := make(map[string]struct{}, 0)
+	excludedUsersCountMap := make(map[string]uint32, 0)
+	for _, foundUsersChan := range unionFoundUsersChans {
+		go func(foundUsersChan chan foundUser) {
+			defer wg.Done()
+
+			for foundUser := range foundUsersChan {
+				key := tuple.UserProtoToString(foundUser.user)
+				for _, excludedUser := range foundUser.excludedUsers {
+					key := tuple.UserProtoToString(excludedUser)
+					mu.Lock()
+					excludedUsersCountMap[key]++
+					mu.Unlock()
+				}
+				if foundUser.relationshipStatus == NoRelationship {
+					continue
+				}
+				mu.Lock()
+				foundUsersMap[key] = struct{}{}
+				mu.Unlock()
+			}
+		}(foundUsersChan)
+	}
+	wg.Wait()
+
+	excludedUsers := []*openfgav1.User{}
+	for key, count := range excludedUsersCountMap {
+		if count == uint32(len(childOperands)) {
+			excludedUsers = append(excludedUsers, tuple.StringToUserProto(key))
+		}
+	}
+
+	for key := range foundUsersMap {
+		fu := foundUser{
+			user:          tuple.StringToUserProto(key),
+			excludedUsers: excludedUsers,
+		}
+		trySendResult(ctx, fu, foundUsersChan)
 	}
 
 	return expandResponse{
@@ -545,12 +691,12 @@ func (l *listUsersQuery) expandExclusion(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Difference,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandExclusion")
 	defer span.End()
-	baseFoundUsersCh := make(chan *openfgav1.User, 1)
-	subtractFoundUsersCh := make(chan *openfgav1.User, 1)
+	baseFoundUsersCh := make(chan foundUser, 1)
+	subtractFoundUsersCh := make(chan foundUser, 1)
 
 	var baseError error
 	go func() {
@@ -568,15 +714,17 @@ func (l *listUsersQuery) expandExclusion(
 		close(subtractFoundUsersCh)
 	}()
 
-	baseFoundUsersMap := make(map[string]struct{}, 0)
+	baseFoundUsersMap := make(map[string]foundUser, 0)
 	for fu := range baseFoundUsersCh {
-		key := tuple.UserProtoToString(fu)
-		baseFoundUsersMap[key] = struct{}{}
+		key := tuple.UserProtoToString(fu.user)
+		baseFoundUsersMap[key] = fu
 	}
-	subtractFoundUsersMap := make(map[string]struct{}, len(baseFoundUsersMap))
+
+	subtractFoundUsersMap := make(map[string]foundUser, len(baseFoundUsersMap))
+
 	for fu := range subtractFoundUsersCh {
-		key := tuple.UserProtoToString(fu)
-		subtractFoundUsersMap[key] = struct{}{}
+		key := tuple.UserProtoToString(fu.user)
+		subtractFoundUsersMap[key] = fu
 	}
 
 	if subtractHasCycle {
@@ -591,14 +739,72 @@ func (l *listUsersQuery) expandExclusion(
 	}
 
 	wildcardKey := tuple.TypedPublicWildcard(req.GetUserFilters()[0].GetType())
+
+	_, baseWildcardExists := baseFoundUsersMap[wildcardKey]
 	_, subtractWildcardExists := subtractFoundUsersMap[wildcardKey]
-	for key := range baseFoundUsersMap {
-		if _, isSubtracted := subtractFoundUsersMap[key]; !isSubtracted && !subtractWildcardExists {
-			// Iterate over base users because at minimum they need to pass
-			// but then they are further compared to the subtracted users map.
-			// If users exist in both maps, they are excluded. Only users that exist
-			// solely in the base map will be returned.
-			trySendResult(ctx, tuple.StringToUserProto(key), foundUsersChan)
+
+	for userKey, fu := range baseFoundUsersMap {
+		subtractedUser, userIsSubtracted := subtractFoundUsersMap[userKey]
+		_, wildcardSubtracted := subtractFoundUsersMap[wildcardKey]
+
+		switch {
+		case baseWildcardExists:
+			if !userIsSubtracted && !wildcardSubtracted {
+				trySendResult(ctx, foundUser{
+					user: tuple.StringToUserProto(userKey),
+				}, foundUsersChan)
+			}
+
+			for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
+				if tuple.IsTypedWildcard(subtractedUserKey) {
+					if !userIsSubtracted {
+						trySendResult(ctx, foundUser{
+							user:               tuple.StringToUserProto(userKey),
+							relationshipStatus: NoRelationship,
+						}, foundUsersChan)
+					}
+					continue
+				}
+
+				if subtractedFu.relationshipStatus == NoRelationship {
+					trySendResult(ctx, foundUser{
+						user:               tuple.StringToUserProto(subtractedUserKey),
+						relationshipStatus: HasRelationship,
+					}, foundUsersChan)
+				}
+
+				// a found user under the subtracted branch causes the subtracted user to have a negated relationship with respect
+				// to the base relation and is excluded since a wildcard is contained under the base branch.
+				if subtractedFu.relationshipStatus == HasRelationship {
+					trySendResult(ctx, foundUser{
+						user:               tuple.StringToUserProto(subtractedUserKey),
+						relationshipStatus: NoRelationship,
+						excludedUsers: []*openfgav1.User{
+							tuple.StringToUserProto(subtractedUserKey),
+						},
+					}, foundUsersChan)
+				}
+			}
+		case subtractWildcardExists, userIsSubtracted:
+			if subtractedUser.relationshipStatus == HasRelationship {
+				trySendResult(ctx, foundUser{
+					user:               tuple.StringToUserProto(userKey),
+					relationshipStatus: NoRelationship,
+				}, foundUsersChan)
+			}
+
+			if subtractedUser.relationshipStatus == NoRelationship {
+				trySendResult(ctx, foundUser{
+					user:               tuple.StringToUserProto(userKey),
+					relationshipStatus: HasRelationship,
+				}, foundUsersChan)
+			}
+
+		default:
+			trySendResult(ctx, foundUser{
+				user:               tuple.StringToUserProto(userKey),
+				relationshipStatus: fu.relationshipStatus,
+			}, foundUsersChan)
 		}
 	}
 
@@ -615,7 +821,7 @@ func (l *listUsersQuery) expandTTU(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandTTU")
 	defer span.End()
@@ -714,16 +920,17 @@ func enteredCycle(req *internalListUsersRequest) bool {
 	return false
 }
 
-func (l *listUsersQuery) buildResultsChannel() chan *openfgav1.User {
-	foundUsersCh := make(chan *openfgav1.User, serverconfig.DefaultListUsersMaxResults)
+func (l *listUsersQuery) buildResultsChannel() chan foundUser {
+	foundUsersCh := make(chan foundUser, serverconfig.DefaultListUsersMaxResults)
 	maxResults := l.maxResults
 	if maxResults > 0 {
-		foundUsersCh = make(chan *openfgav1.User, maxResults)
+		foundUsersCh = make(chan foundUser, maxResults)
 	}
+
 	return foundUsersCh
 }
 
-func trySendResult(ctx context.Context, user *openfgav1.User, foundUsersCh chan<- *openfgav1.User) {
+func trySendResult(ctx context.Context, user foundUser, foundUsersCh chan<- foundUser) {
 	select {
 	case <-ctx.Done():
 		return
