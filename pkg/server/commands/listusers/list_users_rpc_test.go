@@ -3707,7 +3707,10 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 			channelDone <- struct{}{}
 		}()
 
-		var actualUsers []string
+		var actualResults []struct {
+			user               string
+			relationshipStatus userRelationshipStatus
+		}
 
 	OUTER:
 		for {
@@ -3715,13 +3718,32 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 			case <-channelWithError:
 				require.FailNow(t, "expected 0 errors")
 			case result := <-channelWithResults:
-				actualUsers = append(actualUsers, tuple.UserProtoToString(result.user))
+				actualResults = append(actualResults, struct {
+					user               string
+					relationshipStatus userRelationshipStatus
+				}{user: tuple.UserProtoToString(result.user), relationshipStatus: result.relationshipStatus})
 			case <-channelDone:
 				break OUTER
 			}
 		}
 
-		require.Len(t, actualUsers, 1)
-		require.Equal(t, []string{"user:*"}, actualUsers)
+		require.Len(t, actualResults, 3)
+		require.Equal(t, []struct {
+			user               string
+			relationshipStatus userRelationshipStatus
+		}{
+			{
+				user:               "user:*",
+				relationshipStatus: HasRelationship,
+			},
+			{
+				user:               "user:jon",
+				relationshipStatus: NoRelationship,
+			},
+			{
+				user:               "user:jon",
+				relationshipStatus: NoRelationship,
+			},
+		}, actualResults)
 	})
 }

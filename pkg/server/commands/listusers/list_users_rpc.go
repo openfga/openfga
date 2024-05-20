@@ -247,14 +247,14 @@ func (l *listUsersQuery) ListUsers(
 
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
 	for foundUserKey, foundUser := range foundUsersUnique {
-		_, userIsExcluded := excludedUsersUnique[foundUserKey]
-		if userIsExcluded {
+		if foundUser.relationshipStatus == NoRelationship {
+			continue
+		}
+		if _, userIsExcluded := excludedUsersUnique[foundUserKey]; userIsExcluded {
 			continue
 		}
 
-		if foundUser.relationshipStatus == HasRelationship {
-			foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
-		}
+		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
 	}
 
 	var excludedUsers []*openfgav1.ObjectOrUserset
