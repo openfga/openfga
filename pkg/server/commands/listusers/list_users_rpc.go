@@ -217,14 +217,15 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
-		close(foundUsersCh)
-
+		// first send error and then close results channel, to ensure that error takes precedence
 		if resp.err != nil {
 			expandErrCh <- resp.err
 		}
+		close(foundUsersCh)
 	}()
 
 	select {
+	// Note: if all cases can proceed, one will be selected at random
 	case err := <-expandErrCh:
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -448,10 +449,8 @@ LoopOnIterator:
 				tupleKey.GetCondition().GetName(),
 				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 			)
-			if err != nil {
-				telemetry.TraceError(span, err)
-				errs = errors.Join(errs, err)
-			}
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
 		}
 
 		if !condEvalResult.ConditionMet {
@@ -706,11 +705,11 @@ func (l *listUsersQuery) expandExclusion(
 		close(baseFoundUsersCh)
 	}()
 
-	var substractError error
+	var subtractError error
 	var subtractHasCycle bool
 	go func() {
 		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
-		substractError = resp.err
+		subtractError = resp.err
 		subtractHasCycle = resp.hasCycle
 		close(subtractFoundUsersCh)
 	}()
@@ -806,7 +805,7 @@ func (l *listUsersQuery) expandExclusion(
 		}
 	}
 
-	errs := errors.Join(baseError, substractError)
+	errs := errors.Join(baseError, subtractError)
 	if errs != nil {
 		telemetry.TraceError(span, errs)
 	}
@@ -880,10 +879,8 @@ LoopOnIterator:
 				tupleKey.GetCondition().GetName(),
 				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 			)
-			if err != nil {
-				telemetry.TraceError(span, err)
-				errs = errors.Join(errs, err)
-			}
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
 		}
 
 		if !condEvalResult.ConditionMet {
