@@ -4,7 +4,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
-type CheckQueryBuilder struct {
+type CheckResolverBuilder struct {
 	logger logger.Logger
 
 	localCheckerOpts       []LocalCheckerOption
@@ -17,33 +17,33 @@ type CheckQueryBuilder struct {
 	localCheckResolver              *LocalChecker
 }
 
-// CheckQueryBuilderOpt defines an option that can be used to change the behavior of CheckQueryBuilder
+// CheckQueryBuilderOpt defines an option that can be used to change the behavior of CheckResolverBuilder
 // instance.
-type CheckQueryBuilderOpt func(checkResolver *CheckQueryBuilder)
+type CheckQueryBuilderOpt func(checkResolver *CheckResolverBuilder)
 
 // WithLocalCheckerOpts sets the opts to be used to build LocalChecker.
 func WithLocalCheckerOpts(opts ...LocalCheckerOption) CheckQueryBuilderOpt {
-	return func(r *CheckQueryBuilder) {
+	return func(r *CheckResolverBuilder) {
 		r.localCheckerOpts = opts
 	}
 }
 
 // WithCachedCheckResolverOpts sets the opts to be used to build CachedCheckResolver.
 func WithCachedCheckResolverOpts(opts ...CachedCheckResolverOpt) CheckQueryBuilderOpt {
-	return func(r *CheckQueryBuilder) {
+	return func(r *CheckResolverBuilder) {
 		r.cacheOpts = opts
 	}
 }
 
 // WithDispatchThrottlingCheckResolverOpts sets the opts to be used to build DispatchThrottlingCheckResolver.
 func WithDispatchThrottlingCheckResolverOpts(opts ...DispatchThrottlingCheckResolverOpt) CheckQueryBuilderOpt {
-	return func(r *CheckQueryBuilder) {
+	return func(r *CheckResolverBuilder) {
 		r.dispatchThrottlingOpts = opts
 	}
 }
 
-func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckQueryBuilder {
-	checkQueryBuilder := &CheckQueryBuilder{}
+func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckResolverBuilder {
+	checkQueryBuilder := &CheckResolverBuilder{}
 	for _, opt := range opts {
 		opt(checkQueryBuilder)
 	}
@@ -61,7 +61,7 @@ func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckQueryBuilder {
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the
 // composition after you are done with the CheckResolver.
-func (c *CheckQueryBuilder) NewLayeredCheckResolver(
+func (c *CheckResolverBuilder) NewLayeredCheckResolver(
 	cacheEnabled bool,
 	dispatchThrottlingEnabled bool,
 ) (CheckResolver, CheckResolverCloser) {
@@ -92,7 +92,7 @@ func (c *CheckQueryBuilder) NewLayeredCheckResolver(
 }
 
 // close will ensure all the CheckResolver constructed are closed
-func (c *CheckQueryBuilder) close() {
+func (c *CheckResolverBuilder) close() {
 	c.localCheckResolver.Close()
 
 	if c.cachedCheckResolver != nil {
