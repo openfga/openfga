@@ -231,6 +231,10 @@ type Config struct {
 	// Check queries
 	MaxConcurrentReadsForCheck uint32
 
+	// MaxConditionEvaluationCost defines the maximum cost for CEL condition evaluation before a request
+	// will return an error to the client
+	MaxConditionEvaluationCost uint64
+
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur
 	// after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
@@ -381,6 +385,10 @@ func (cfg *Config) Verify() error {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
 	}
 
+	if cfg.MaxConditionEvaluationCost < 100 {
+		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
+	}
+
 	return nil
 }
 
@@ -457,6 +465,11 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	return nil
 }
 
+// MaxConditionEvaluationCost ensures a safe value for CEL evaluation cost.
+func MaxConditionEvaluationCost() uint64 {
+	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -465,6 +478,7 @@ func DefaultConfig() *Config {
 		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
+		MaxConditionEvaluationCost:                DefaultMaxConditionEvaluationCost,
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,

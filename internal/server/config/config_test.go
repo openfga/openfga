@@ -250,6 +250,13 @@ func TestVerifyConfig(t *testing.T) {
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
+	t.Run("max_condition_evaluation_cost_too_low", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = 99
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
 	require.GreaterOrEqual(t, DefaultMaxConditionEvaluationCost, 100)
 }
 
