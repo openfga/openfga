@@ -51,14 +51,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	}{
 		{
 			name: "test_direct_relation",
-			model: `model
-			schema 1.1
+			model: `
+				model
+				schema 1.1
 
-			type user
+				type user
 
-			type folder
-				relations
-					define viewer: [user] 
+				type folder
+					relations
+						define viewer: [user] 
 			`,
 			tuples: []string{
 				"folder:C#viewer@user:jon",
