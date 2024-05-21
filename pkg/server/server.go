@@ -497,6 +497,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 
+	if s.listObjectsDispatchThrottlingEnabled {
+		s.logger.Info("Enabling ListObjects dispatch throttling",
+			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
+			zap.Uint32("DefaultThreshold", s.listObjectsDispatchDefaultThreshold),
+			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
+		)
+
+		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
+	}
+
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
