@@ -1,11 +1,13 @@
 package graph
 
 import (
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
 )
 
 func TestNewLayeredCheckResolver(t *testing.T) {
@@ -127,7 +129,7 @@ func TestOptsBeingPassed(t *testing.T) {
 }
 
 // TODO any good way to test the close method?
-//func TestCheckResolverClose(t *testing.T) {
+// func TestCheckResolverClose(t *testing.T) {
 //	ctrl := gomock.NewController(t)
 //	defer ctrl.Finish()
 //}

@@ -1,12 +1,6 @@
 package graph
 
-import (
-	"github.com/openfga/openfga/pkg/logger"
-)
-
 type CheckResolverBuilder struct {
-	logger logger.Logger
-
 	localCheckerOpts       []LocalCheckerOption
 	cacheOpts              []CachedCheckResolverOpt
 	dispatchThrottlingOpts []DispatchThrottlingCheckResolverOpt
@@ -91,7 +85,7 @@ func (c *CheckResolverBuilder) NewLayeredCheckResolver(
 	return c.cycleDetectionCheckResolver, c.close
 }
 
-// close will ensure all the CheckResolver constructed are closed
+// close will ensure all the CheckResolver constructed are closed.
 func (c *CheckResolverBuilder) close() {
 	c.localCheckResolver.Close()
 
