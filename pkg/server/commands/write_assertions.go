@@ -66,13 +66,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 		}
 
 		for _, ct := range assertion.GetContextualTuples().GetTupleKeys() {
-			if err = validation.ValidateUserObjectRelationCondition(typesys,
-				tupleUtils.NewTupleKeyWithCondition(
-					ct.GetObject(),
-					ct.GetRelation(),
-					ct.GetUser(),
-					ct.GetCondition().GetName(),
-					ct.GetCondition().GetContext())); err != nil {
+			if err = validation.ValidateUserObjectRelationCondition(typesys, ct); err != nil {
 				return nil, serverErrors.ValidationError(err)
 			}
 		}
