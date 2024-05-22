@@ -141,18 +141,16 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							{
-								User:     "user:smeadows",
-								Object:   "repo:1",
-								Relation: "reader",
-								Condition: &openfgav1.RelationshipCondition{
-									Name: "test_repo_name",
-									Context: testutils.MustNewStruct(t, map[string]any{
-										"repo_name": "testing",
-									}),
-								},
+					ContextualTuples: []*openfgav1.TupleKey{
+						{
+							User:     "user:smeadows",
+							Object:   "repo:1",
+							Relation: "reader",
+							Condition: &openfgav1.RelationshipCondition{
+								Name: "test_repo_name",
+								Context: testutils.MustNewStruct(t, map[string]any{
+									"repo_name": "testing",
+								}),
 							},
 						},
 					},
@@ -260,13 +258,11 @@ type repo
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							{
-								User:     "user:jon",
-								Object:   "repo:test",
-								Relation: "invalidrelation",
-							},
+					ContextualTuples: []*openfgav1.TupleKey{
+						{
+							User:     "user:jon",
+							Object:   "repo:test",
+							Relation: "invalidrelation",
 						},
 					},
 					Expectation: false,
@@ -282,13 +278,11 @@ type repo
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							{
-								User:     "user:jon",
-								Object:   "invalidobject",
-								Relation: "can_read",
-							},
+					ContextualTuples: []*openfgav1.TupleKey{
+						{
+							User:     "user:jon",
+							Object:   "invalidobject",
+							Relation: "can_read",
 						},
 					},
 					Expectation: false,
@@ -304,13 +298,11 @@ type repo
 			assertions: []*openfgav1.Assertion{
 				{
 					TupleKey: tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							{
-								User:     "invaliduser",
-								Object:   "repo:test",
-								Relation: "can_read",
-							},
+					ContextualTuples: []*openfgav1.TupleKey{
+						{
+							User:     "invaliduser",
+							Object:   "repo:test",
+							Relation: "can_read",
 						},
 					},
 					Expectation: false,
