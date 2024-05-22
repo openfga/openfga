@@ -21,7 +21,6 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
