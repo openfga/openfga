@@ -217,7 +217,7 @@ type Config struct {
 
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
-	// ListUsers endpoints. It cannot be larger than HTTPConfig.UpstreamTimeout.
+	// ListUsers endpoints. It cannot be larger than the configured server's request timeout (RequestTimeout or HTTPConfig.UpstreamTimeout).
 	ListUsersDeadline time.Duration
 
 	// ListUsersMaxResults defines the maximum number of results to accumulate
