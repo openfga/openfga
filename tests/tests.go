@@ -59,5 +59,5 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 		t.Log("server stopped with error: ", serverErr)
 	})
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }

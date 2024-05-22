@@ -160,7 +160,7 @@ func TestDocker(t *testing.T) {
 	t.Run("run_command", func(t *testing.T) {
 		tester := runOpenFGAContainerWithArgs(t, []string{"run"})
 
-		testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil, true)
+		testutils.EnsureServiceHealthy(t, tester.GetGRPCAddress(), tester.GetHTTPAddress(), nil)
 
 		t.Run("grpc_endpoint_works", func(t *testing.T) {
 			conn := testutils.CreateGrpcConnection(t, tester.GetGRPCAddress())

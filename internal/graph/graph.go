@@ -422,35 +422,52 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 //
 //	CycleDetectionCheckResolver  <-----|
 //		CachedCheckResolver              |
-//			LocalChecker                   |
-//				CycleDetectionCheckResolver -|
+//			DispatchThrottlingCheckResolver |
+//				LocalChecker                   |
+//					CycleDetectionCheckResolver -|
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the
 // composition after you are done with the CheckResolver.
 func NewLayeredCheckResolver(
 	localResolverOpts []LocalCheckerOption,
 	cacheEnabled bool,
+	throttlingEnabled bool,
 	cachedResolverOpts []CachedCheckResolverOpt,
+	dispatchThrottlingCheckResolverOpts []DispatchThrottlingCheckResolverOpt,
 ) (CheckResolver, CheckResolverCloser) {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	var cachedCheckResolver *CachedCheckResolver
+	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
 	localCheckResolver := NewLocalChecker(localResolverOpts...)
 
 	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
-	var cachedCheckResolver *CachedCheckResolver
 	if cacheEnabled {
 		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 		cachedCheckResolver.SetDelegate(localCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 	}
 
-	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+	if throttlingEnabled {
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverOpts...)
+		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
+		if cacheEnabled {
+			cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		}
+	}
 
 	return cycleDetectionCheckResolver, func() {
 		localCheckResolver.Close()
 
 		if cachedCheckResolver != nil {
 			cachedCheckResolver.Close()
+		}
+
+		if dispatchThrottlingCheckResolver != nil {
+			dispatchThrottlingCheckResolver.Close()
 		}
 
 		cycleDetectionCheckResolver.Close()

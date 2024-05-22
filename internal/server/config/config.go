@@ -8,6 +8,10 @@ import (
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -15,6 +19,7 @@ const (
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
+	DefaultMaxAuthorizationModelCacheSize   = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
@@ -35,10 +40,15 @@ const (
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
 
-	DefaultDispatchThrottlingEnabled          = false
-	DefaultDispatchThrottlingFrequency        = 10 * time.Microsecond
-	DefaultDispatchThrottlingDefaultThreshold = 100
-	DefaultDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
+	DefaultCheckDispatchThrottlingEnabled          = false
+	DefaultCheckDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultCheckDispatchThrottlingDefaultThreshold = 100
+	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
+
+	DefaultListObjectsDispatchThrottlingEnabled          = false
+	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
+	DefaultListObjectsDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout = 3 * time.Second
 
@@ -54,14 +64,11 @@ type DatastoreMetricsConfig struct {
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
 	Engine   string
-	URI      string
+	URI      string `json:"-"` // private field, won't be logged
 	Username string
-	Password string
+	Password string `json:"-"` // private field, won't be logged
 
-	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before
-	// evicting
-	// old keys. The storage cache is used to cache query results for various static resources
-	// such as type definitions.
+	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
 
 	// MaxOpenConns is the maximum number of open connections to the database.
@@ -128,7 +135,7 @@ type AuthnOIDCConfig struct {
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
 	// Keys define the preshared keys to verify authn tokens against.
-	Keys []string
+	Keys []string `json:"-"` // private field, won't be logged
 }
 
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
@@ -260,17 +267,19 @@ type Config struct {
 	// request timeout will be prioritized
 	RequestTimeout time.Duration
 
-	Datastore          DatastoreConfig
-	GRPC               GRPCConfig
-	HTTP               HTTPConfig
-	Authn              AuthnConfig
-	Log                LogConfig
-	Trace              TraceConfig
-	Playground         PlaygroundConfig
-	Profiler           ProfilerConfig
-	Metrics            MetricConfig
-	CheckQueryCache    CheckQueryCache
-	DispatchThrottling DispatchThrottlingConfig
+	Datastore                     DatastoreConfig
+	GRPC                          GRPCConfig
+	HTTP                          HTTPConfig
+	Authn                         AuthnConfig
+	Log                           LogConfig
+	Trace                         TraceConfig
+	Playground                    PlaygroundConfig
+	Profiler                      ProfilerConfig
+	Metrics                       MetricConfig
+	CheckQueryCache               CheckQueryCache
+	DispatchThrottling            DispatchThrottlingConfig
+	CheckDispatchThrottling       DispatchThrottlingConfig
+	ListObjectsDispatchThrottling DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -364,15 +373,21 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if cfg.DispatchThrottling.Enabled {
-		if cfg.DispatchThrottling.Frequency <= 0 {
-			return errors.New("dispatchThrottling.frequency must be non-negative time duration")
+	// Tha validation ensures we are picking the right values for Check dispatch throttling
+	err := cfg.VerifyCheckDispatchThrottlingConfig()
+	if err != nil {
+		return err
+	}
+
+	if cfg.ListObjectsDispatchThrottling.Enabled {
+		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
 		}
-		if cfg.DispatchThrottling.Threshold <= 0 {
-			return errors.New("dispatchThrottling.threshold must be non-negative integer")
+		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
 		}
-		if cfg.DispatchThrottling.MaxThreshold != 0 && cfg.DispatchThrottling.Threshold > cfg.DispatchThrottling.MaxThreshold {
-			return errors.New("'dispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold'")
+		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
 		}
 	}
 
@@ -405,6 +420,65 @@ func DefaultContextTimeout(config *Config) time.Duration {
 	return 0
 }
 
+// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
+// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
+// a non-zero value exists there.
+func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
+	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
+	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
+	checkDispatchThrottlingDefaultThreshold := config.CheckDispatchThrottling.Threshold
+	checkDispatchThrottlingMaxThreshold := config.CheckDispatchThrottling.MaxThreshold
+
+	if viper.IsSet("dispatchThrottling.enabled") && !viper.IsSet("checkDispatchThrottling.enabled") {
+		if logger != nil {
+			logger.Warn("'dispatchThrottling.enabled' is deprecated. Please use 'checkDispatchThrottling.enabled'")
+		}
+		checkDispatchThrottlingEnabled = config.DispatchThrottling.Enabled
+	}
+	if viper.IsSet("dispatchThrottling.frequency") && !viper.IsSet("checkDispatchThrottling.frequency") {
+		if logger != nil {
+			logger.Warn("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
+		}
+		checkDispatchThrottlingFrequency = config.DispatchThrottling.Frequency
+	}
+	if viper.IsSet("dispatchThrottling.threshold") && !viper.IsSet("checkDispatchThrottling.threshold") {
+		if logger != nil {
+			logger.Warn("'dispatchThrottling.threshold' is deprecated. Please use 'checkDispatchThrottling.threshold'")
+		}
+		checkDispatchThrottlingDefaultThreshold = config.DispatchThrottling.Threshold
+	}
+	if viper.IsSet("dispatchThrottling.maxThreshold") && !viper.IsSet("checkDispatchThrottling.maxThreshold") {
+		if logger != nil {
+			logger.Warn("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
+		}
+		checkDispatchThrottlingMaxThreshold = config.DispatchThrottling.MaxThreshold
+	}
+
+	return DispatchThrottlingConfig{
+		Enabled:      checkDispatchThrottlingEnabled,
+		Frequency:    checkDispatchThrottlingFrequency,
+		Threshold:    checkDispatchThrottlingDefaultThreshold,
+		MaxThreshold: checkDispatchThrottlingMaxThreshold,
+	}
+}
+
+// VerifyCheckDispatchThrottlingConfig ensures GetCheckDispatchThrottlingConfig is called so that the right values are verified.
+func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
+	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, cfg)
+	if checkDispatchThrottlingConfig.Enabled {
+		if checkDispatchThrottlingConfig.Frequency <= 0 {
+			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if checkDispatchThrottlingConfig.Threshold <= 0 {
+			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if checkDispatchThrottlingConfig.MaxThreshold != 0 && checkDispatchThrottlingConfig.Threshold > checkDispatchThrottlingConfig.MaxThreshold {
+			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
+		}
+	}
+	return nil
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -426,7 +500,7 @@ func DefaultConfig() *Config {
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
-			MaxCacheSize: 100000,
+			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
 			MaxIdleConns: 10,
 			MaxOpenConns: 30,
 		},
@@ -482,10 +556,22 @@ func DefaultConfig() *Config {
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultDispatchThrottlingEnabled,
-			Frequency:    DefaultDispatchThrottlingFrequency,
-			Threshold:    DefaultDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultDispatchThrottlingMaxThreshold,
+			Enabled:      DefaultCheckDispatchThrottlingEnabled,
+			Frequency:    DefaultCheckDispatchThrottlingFrequency,
+			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+		},
+		CheckDispatchThrottling: DispatchThrottlingConfig{
+			Enabled:      DefaultCheckDispatchThrottlingEnabled,
+			Frequency:    DefaultCheckDispatchThrottlingFrequency,
+			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+		},
+		ListObjectsDispatchThrottling: DispatchThrottlingConfig{
+			Enabled:      DefaultListObjectsDispatchThrottlingEnabled,
+			Frequency:    DefaultListObjectsDispatchThrottlingFrequency,
+			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
 		RequestTimeout: DefaultRequestTimeout,
 	}

@@ -14,15 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
           check-latest: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@9d1e0624a798bb64f6c3cea93db47765312263dc # v5.1.0
+        uses: golangci/golangci-lint-action@a4f60bb28d35aeee14e6880718e0c85ff1882e64 # v6.0.1
         with:
           version: latest
           args: -v -c .golangci.yaml
@@ -32,9 +32,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -50,7 +50,7 @@ jobs:
         run: make test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@84508663e988701840491b86de86b666e8a86bed # v4.3.0
+        uses: codecov/codecov-action@125fc84a9a348dbcf27191600683ec096ec9021c # v4.4.1
         with:
           files: ./coverageunit.out
           verbose: true
@@ -62,7 +62,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
       - name: Run govulncheck
         uses: golang/govulncheck-action@3a32958c2706f7048305d5a2e53633d7e37e97d0 # v1.0.2
         with:
@@ -73,9 +73,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -106,12 +106,12 @@ jobs:
     timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172
     steps:
       - name: Checkout code
-        uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Set up Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -124,7 +124,7 @@ jobs:
           make test-bench | tee ${{ github.sha }}_bench_output.txt
 
       - name: Get CPU information
-        uses: kenchan0130/actions-system-info@7aa4dfce36837f6cc820d6b2287925b3892c74d2 # v1
+        uses: kenchan0130/actions-system-info@bb2198ec238e3d4bf2a8e05dd1c8abe8a9e772c8 # v1
         id: system-info
 
       - name: Get Main branch SHA
@@ -141,7 +141,7 @@ jobs:
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark
 
       - name: Compare benchmarks with Main
-        uses: benchmark-action/github-action-benchmark@1846227a307d8c0149b960b986d46f8f4c95db0c # v1.20.1
+        uses: benchmark-action/github-action-benchmark@4de1bed97a47495fc4c5404952da0499e31f5c29 # v1.20.3
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           # What benchmark tool the output.txt came from
@@ -159,7 +159,7 @@ jobs:
           summary-always: true
 
       - name: Run benchmarks but don't compare to Main branch
-        uses: benchmark-action/github-action-benchmark@1846227a307d8c0149b960b986d46f8f4c95db0c # v1.20.1
+        uses: benchmark-action/github-action-benchmark@4de1bed97a47495fc4c5404952da0499e31f5c29 # v1.20.3
         if: steps.cache.outputs.cache-hit != 'true'
         with:
           # What benchmark tool the output.txt came from
