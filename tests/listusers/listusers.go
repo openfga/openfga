@@ -108,6 +108,7 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 				// arrange: write model
 				var typedefs []*openfgav1.TypeDefinition
 				model, err := parser.TransformDSLToProto(stage.Model)
+				require.NoError(t, err)
 				typedefs = model.GetTypeDefinitions()
 
 				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
