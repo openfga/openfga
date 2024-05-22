@@ -42,6 +42,7 @@ type listUsersQuery struct {
 	maxConcurrentReads      uint32
 	deadline                time.Duration
 }
+
 type expandResponse struct {
 	hasCycle bool
 	err      error
@@ -144,7 +145,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	return l
 }
 
-// ListUsers assumes that the typesystem is in the context.
+// ListUsers assumes that the typesystem is in the context and that the request is valid.
 func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,

@@ -34,6 +34,7 @@ func (s *Server) ListUsers(
 ) (*openfgav1.ListUsersResponse, error) {
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object", fmt.Sprintf("%s:%s", req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user_filters", userFiltersToString(req.GetUserFilters())),
