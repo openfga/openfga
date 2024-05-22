@@ -97,9 +97,13 @@ func TestListUsersLogs(t *testing.T) {
 	schema 1.1
 type user
 
+type group
+  relations
+    define member: [user]
+
 type document
   relations
-	define viewer: [user]`)
+	define viewer: [group#member]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -115,7 +119,8 @@ type document
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				{Object: "document:1", Relation: "viewer", User: "user:anne"},
+				{Object: "group:fga", Relation: "member", User: "user:anne"},
+				{Object: "document:1", Relation: "viewer", User: "group:fga#member"},
 			},
 		},
 	})
@@ -258,8 +263,8 @@ type document
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
 			if !test.expectedError {
-				require.NotEmpty(t, fields["datastore_query_count"])
-				require.Empty(t, fields["dispatch_count"])
+				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
+				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
 				require.Len(t, fields, 14)
 			} else {
 				require.Len(t, fields, 12)
