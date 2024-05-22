@@ -7,7 +7,6 @@ import (
 	"math"
 	"testing"
 
-	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
@@ -109,11 +108,7 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 				// arrange: write model
 				var typedefs []*openfgav1.TypeDefinition
 				model, err := parser.TransformDSLToProto(stage.Model)
-				if err != nil {
-					typedefs = oldparser.MustParse(stage.Model)
-				} else {
-					typedefs = model.GetTypeDefinitions()
-				}
+				typedefs = model.GetTypeDefinitions()
 
 				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
