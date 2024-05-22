@@ -292,7 +292,7 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 func (l *listUsersQuery) dispatch(
 	ctx context.Context,
 	req *internalListUsersRequest,
-	foundUsersChan chan<- *openfgav1.User,
+	foundUsersChan chan<- foundUser,
 ) expandResponse {
 	req.dispatchCount.Add(1)
 	return l.expand(ctx, req, foundUsersChan)
