@@ -10,13 +10,13 @@ import (
 )
 
 // slowDataStorage is a proxy to the actual ds except the Reads are slow time by the readTuplesDelay
-// This allows simulating list objection condition that times out
+// This allows simulating list objection condition that times out.
 type slowDataStorage struct {
 	readTuplesDelay time.Duration
 	storage.OpenFGADatastore
 }
 
-// NewMockSlowDataStorage returns a wrapper of a datastore that adds artificial delays into the reads of tuples
+// NewMockSlowDataStorage returns a wrapper of a datastore that adds artificial delays into the reads of tuples.
 func NewMockSlowDataStorage(ds storage.OpenFGADatastore, readTuplesDelay time.Duration) storage.OpenFGADatastore {
 	return &slowDataStorage{
 		readTuplesDelay:  readTuplesDelay,

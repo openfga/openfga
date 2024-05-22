@@ -56,6 +56,9 @@ type ResolveCheckRequestMetadata struct {
 	// The contents of this counter will be written by concurrent goroutines.
 	// After the root problem has been solved, this value can be read.
 	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
@@ -63,6 +66,7 @@ func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
 		Depth:               maxDepth,
 		DatastoreQueryCount: 0,
 		DispatchCounter:     new(atomic.Uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 
@@ -73,6 +77,10 @@ type ResolveCheckResponseMetadata struct {
 	// evaluated and potentially discarded
 	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreQueryCount uint32
+
+	// Indicates if the ResolveCheck subproblem that was evaluated involved
+	// a cycle in the evaluation.
+	CycleDetected bool
 }
 
 type RelationshipEdgeType int
@@ -414,35 +422,52 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 //
 //	CycleDetectionCheckResolver  <-----|
 //		CachedCheckResolver              |
-//			LocalChecker                   |
-//				CycleDetectionCheckResolver -|
+//			DispatchThrottlingCheckResolver |
+//				LocalChecker                   |
+//					CycleDetectionCheckResolver -|
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the
 // composition after you are done with the CheckResolver.
 func NewLayeredCheckResolver(
 	localResolverOpts []LocalCheckerOption,
 	cacheEnabled bool,
+	throttlingEnabled bool,
 	cachedResolverOpts []CachedCheckResolverOpt,
+	dispatchThrottlingCheckResolverOpts []DispatchThrottlingCheckResolverOpt,
 ) (CheckResolver, CheckResolverCloser) {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
+	var cachedCheckResolver *CachedCheckResolver
+	var dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
 	localCheckResolver := NewLocalChecker(localResolverOpts...)
 
 	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
+	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
 
-	var cachedCheckResolver *CachedCheckResolver
 	if cacheEnabled {
 		cachedCheckResolver = NewCachedCheckResolver(cachedResolverOpts...)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 		cachedCheckResolver.SetDelegate(localCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 	}
 
-	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
+	if throttlingEnabled {
+		dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(dispatchThrottlingCheckResolverOpts...)
+		dispatchThrottlingCheckResolver.SetDelegate(localCheckResolver)
+		if cacheEnabled {
+			cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		} else {
+			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
+		}
+	}
 
 	return cycleDetectionCheckResolver, func() {
 		localCheckResolver.Close()
 
 		if cachedCheckResolver != nil {
 			cachedCheckResolver.Close()
+		}
+
+		if dispatchThrottlingCheckResolver != nil {
+			dispatchThrottlingCheckResolver.Close()
 		}
 
 		cycleDetectionCheckResolver.Close()

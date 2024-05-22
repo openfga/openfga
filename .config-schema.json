@@ -89,7 +89,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-modular-models"]
+                "enum": []
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -158,7 +158,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_PASSWORD"
                 },
                 "maxCacheSize": {
-                    "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
+                    "description": "The maximum number of authorization models that will be cached in memory",
                     "type": "integer",
                     "default": 100000,
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
@@ -435,24 +435,94 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable throttling when request's number of dispatches is high",
+                    "description": "DEPRECATED: Use checkDispatchThrottling.enabled instead. enable throttling when request's number of dispatches is high",
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
-                    "description": "the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
+                    "description": "DEPRECATED: Use checkDispatchThrottling.frequency instead. the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
                     "type": "duration",
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_FREQUENCY"
                 },
                 "threshold": {
-                    "description": "define the number of recursive operations to occur before getting throttled",
+                    "description": "DEPRECATED: Use checkDispatchThrottling.threshold instead. define the number of recursive operations to occur before getting throttled",
                     "type": "integer",
                     "default": "100",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "DEPRECATED: Use checkDispatchThrottling.maxThreshold instead. define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD"
                 }
             }
+        },
+        "checkDispatchThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when check request's number of dispatches is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated for a check request. A higher value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY"
+                },
+                "threshold": {
+                    "description": "define the number of recursive operations to occur before getting throttled for a check request",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                }
+            }
+        },
+        "listObjectsDispatchThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when list objects request's number of dispatches is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated for a list objects request. A higher value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY"
+                },
+                "threshold": {
+                    "description": "define the number of recursive operations to occur before getting throttled for a list objects request",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum dispatch threshold beyond above which requests will be throttled for a list objects request. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                }
+            }
+        },
+        "requestTimeout": {
+            "description": "The timeout duration for a request.",
+            "type": "duration",
+            "default": "3s",
+            "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
         }
     },
     "definitions": {

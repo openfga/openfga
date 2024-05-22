@@ -16,7 +16,7 @@ jobs:
       image: returntocorp/semgrep
     if: (github.repository_owner == 'openfga' && github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
     steps:
-    - uses: actions/checkout@9bb56186c3b09b4f86b1c65136769dd318469633 # v3.5.2
+    - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
     - run: semgrep ci --no-suppress-errors
       env:
         SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}

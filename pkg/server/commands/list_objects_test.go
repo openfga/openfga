@@ -4,18 +4,18 @@ import (
 	"context"
 	"testing"
 
-	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
-
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
-
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestNewListObjectsQuery(t *testing.T) {
@@ -34,16 +34,20 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestListObjectsDispatchCount(t *testing.T) {
 	ds := memory.New()
+	t.Cleanup(ds.Close)
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockThrottler := mocks.NewMockThrottler(ctrl)
 	tests := []struct {
-		name                  string
-		model                 string
-		tuples                []*openfgav1.TupleKey
-		objectType            string
-		relation              string
-		user                  string
-		expectedDispatchCount uint32
+		name                    string
+		model                   string
+		tuples                  []string
+		objectType              string
+		relation                string
+		user                    string
+		expectedDispatchCount   uint32
+		expectedThrottlingValue int
 	}{
 		{
 			name: "test_direct_relation",
@@ -56,15 +60,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				relations
 					define viewer: [user] 
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
+			tuples: []string{
+				"folder:C#viewer@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
-			objectType:            "folder",
-			relation:              "viewer",
-			user:                  "user:jon",
-			expectedDispatchCount: 3,
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    "user:jon",
+			expectedDispatchCount:   3,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "test_union_relation",
@@ -78,15 +83,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define viewer: [user] or editor 
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:C", "editor", "user:jon"),
-				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
+			tuples: []string{
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
-			objectType:            "folder",
-			relation:              "viewer",
-			user:                  "user:jon",
-			expectedDispatchCount: 4,
+			objectType:              "folder",
+			relation:                "viewer",
+			user:                    "user:jon",
+			expectedDispatchCount:   4,
+			expectedThrottlingValue: 1,
 		},
 		{
 			name: "test_intersection_relation",
@@ -100,15 +106,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define can_delete: [user] and editor 
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:C", "can_delete", "user:jon"),
-				tuple.NewTupleKey("folder:B", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:A", "viewer", "user:jon"),
+			tuples: []string{
+				"folder:C#can_delete@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
 			},
-			objectType:            "folder",
-			relation:              "can_delete",
-			user:                  "user:jon",
-			expectedDispatchCount: 2,
+			objectType:              "folder",
+			relation:                "can_delete",
+			user:                    "user:jon",
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "no_tuples",
@@ -122,11 +129,12 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					  define editor: [user]
 					  define can_delete: [user] and editor 
 			`,
-			tuples:                []*openfgav1.TupleKey{},
-			objectType:            "folder",
-			relation:              "can_delete",
-			user:                  "user:jon",
-			expectedDispatchCount: 0,
+			tuples:                  []string{},
+			objectType:              "folder",
+			relation:                "can_delete",
+			user:                    "user:jon",
+			expectedDispatchCount:   0,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "direct_userset_dispatch",
@@ -139,14 +147,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			  relations
 				define member: [user, group#member]
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:eng#member", "member", "group:fga#member"),
-				tuple.NewTupleKey("group:fga", "member", "user:jon"),
+			tuples: []string{
+				"group:eng#member@group:fga#member",
+				"group:fga#member@user:jon",
 			},
-			objectType:            "group",
-			relation:              "member",
-			user:                  "user:jon",
-			expectedDispatchCount: 2,
+			objectType:              "group",
+			relation:                "member",
+			user:                    "user:jon",
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
 		},
 		{
 			name: "computed_userset_dispatch",
@@ -160,30 +169,25 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				define editor: [user]
 				define viewer: editor
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "editor", "user:jon"),
+			tuples: []string{
+				"document:1#editor@user:jon",
 			},
-			objectType:            "document",
-			relation:              "viewer",
-			user:                  "user:jon",
-			expectedDispatchCount: 2,
+			objectType:              "document",
+			relation:                "viewer",
+			user:                    "user:jon",
+			expectedDispatchCount:   2,
+			expectedThrottlingValue: 0,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			storeID := ulid.Make().String()
-			model := parser.MustTransformDSLToProto(test.model)
-
-			err := ds.Write(ctx, storeID, nil, test.tuples)
-			require.NoError(t, err)
-
-			typesys, err := typesystem.NewAndValidate(
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+			ts, err := typesystem.NewAndValidate(
 				context.Background(),
 				model,
 			)
 			require.NoError(t, err)
-
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker := graph.NewLocalCheckerWithCycleDetection(
 				graph.WithMaxConcurrentReads(1),
@@ -192,7 +196,14 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
+				WithDispatchThrottlerConfig(threshold.Config{
+					Throttler:    mockThrottler,
+					Enabled:      true,
+					Threshold:    3,
+					MaxThreshold: 0,
+				}),
 			)
+			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
@@ -203,7 +214,8 @@ func TestListObjectsDispatchCount(t *testing.T) {
 
 			require.NoError(t, err)
 
-			require.Equal(t, test.expectedDispatchCount, *resp.ResolutionMetadata.DispatchCount)
+			require.Equal(t, test.expectedDispatchCount, resp.ResolutionMetadata.DispatchCounter.Load())
+			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.WasThrottled.Load())
 		})
 	}
 }
