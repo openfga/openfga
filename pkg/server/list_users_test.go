@@ -202,7 +202,10 @@ func TestModelIdNotFound(t *testing.T) {
 		WithDatastore(mockDatastore),
 		WithExperimentals(ExperimentalEnableListUsers),
 	)
-	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		server.Close()
+	})
 
 	resp, err := server.ListUsers(ctx, req)
 	require.Nil(t, resp)
@@ -237,7 +240,10 @@ func TestExperimentalListUsers(t *testing.T) {
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
-	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		server.Close()
+	})
 
 	t.Run("list_users_errors_if_not_experimentally_enabled", func(t *testing.T) {
 		_, err := server.ListUsers(ctx, req)
@@ -431,6 +437,7 @@ func TestListUsers_Deadline(t *testing.T) {
 				nil,
 			).
 			Times(1)
+		mockDatastore.EXPECT().Close().Times(1)
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, gomock.Any()).
@@ -494,6 +501,7 @@ func TestListUsers_Deadline(t *testing.T) {
 				return nil, context.Canceled
 			}).
 			Times(1)
+		mockDatastore.EXPECT().Close().Times(1)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
