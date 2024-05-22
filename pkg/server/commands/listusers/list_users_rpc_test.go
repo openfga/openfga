@@ -2853,7 +2853,8 @@ func TestListUsersStorageErrors(t *testing.T) {
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, fmt.Errorf("storage err")).
-				Times(2) // each relation consists of two handlers
+				MinTimes(1).
+				MaxTimes(2) // Because DB errors will immediately halt the execution of the API function, it's possible that only one read is made
 
 			model := testutils.MustTransformDSLToProtoWithID(`
 			model
