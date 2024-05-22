@@ -231,8 +231,7 @@ type Config struct {
 	// Check queries
 	MaxConcurrentReadsForCheck uint32
 
-	// MaxConditionEvaluationCost defines the maximum cost for CEL condition evaluation before a request
-	// will return an error to the client
+	// MaxConditionEvaluationCost defines the maximum cost for CEL condition evaluation before a request returns an error
 	MaxConditionEvaluationCost uint64
 
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur
