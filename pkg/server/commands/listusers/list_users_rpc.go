@@ -244,8 +244,6 @@ func (l *listUsersQuery) dispatch(
 	foundUsersChan chan<- *openfgav1.User,
 ) expandResponse {
 	req.dispatchCount.Add(1)
-	// Once https://github.com/openfga/openfga/pull/1571 is merged
-	// We can get the value from above call and pass it to `throttle` to implement dispatch throttling
 	return l.expand(ctx, req, foundUsersChan)
 }
 

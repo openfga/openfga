@@ -111,9 +111,8 @@ type listUsersResponse struct {
 type listUsersResponseMetadata struct {
 	DatastoreQueryCount uint32
 
-	// The number of times we are expanding from each node to find set of users
-	// We are using atomic here to be consistent with the initial Check implementation which influenced ListObjects as well
-	// https://github.com/openfga/openfga/pull/1571#discussion_r1588483500
+	// The number of times we are recursively expanding to find users.
+	// Atomic is used to be consistent with the Check and ListObjects.
 	DispatchCounter *atomic.Uint32
 }
 
