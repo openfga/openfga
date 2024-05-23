@@ -1296,7 +1296,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
 		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
-		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
+		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
 
 		return nil
 	}
