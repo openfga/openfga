@@ -11,10 +11,9 @@ import (
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	"github.com/openfga/openfga/pkg/tuple"
-
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
@@ -36,6 +35,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
+	t.Run("TestRelationshipTupleReader", func(t *testing.T) { RelationshipTupleReaderTest(t, ds) })
 
 	// TODO I suspect there is overlap in test scenarios. Consolidate them into one
 	t.Run("ReadPageTestCorrectnessOfContinuationTokens", func(t *testing.T) { ReadPageTestCorrectnessOfContinuationTokens(t, ds) })
@@ -57,6 +57,42 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
 }
 
+func BootstrapFGATuples(
+	t require.TestingT,
+	ds storage.OpenFGADatastore,
+	tupleStrs []string,
+) string {
+	return BootstrapFGATuplesWithStoreID(
+		t,
+		ds,
+		ulid.Make().String(),
+		tupleStrs,
+	)
+}
+
+func BootstrapFGATuplesWithStoreID(
+	t require.TestingT,
+	ds storage.OpenFGADatastore,
+	storeID string,
+	tupleStrs []string,
+) string {
+	if storeID == "" {
+		storeID = ulid.Make().String()
+	}
+
+	tuples := tuple.MustParseTupleStrings(tupleStrs...)
+
+	batchSize := ds.MaxTuplesPerWrite()
+	for batch := 0; batch < len(tuples); batch += batchSize {
+		batchEnd := min(batch+batchSize, len(tuples))
+
+		err := ds.Write(context.Background(), storeID, nil, tuples[batch:batchEnd])
+		require.NoError(t, err)
+	}
+
+	return storeID
+}
+
 // BootstrapFGAStore is a utility to write an FGA model and relationship tuples to a datastore.
 // It doesn't validate the model. It validates the format of the tuples, but not the types within them.
 // It returns the store_id and FGA AuthorizationModel, respectively.
@@ -72,15 +108,7 @@ func BootstrapFGAStore(
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, fgaModel)
 	require.NoError(t, err)
 
-	tuples := tuple.MustParseTupleStrings(tupleStrs...)
-
-	batchSize := ds.MaxTuplesPerWrite()
-	for batch := 0; batch < len(tuples); batch += batchSize {
-		batchEnd := min(batch+batchSize, len(tuples))
-
-		err := ds.Write(context.Background(), storeID, nil, tuples[batch:batchEnd])
-		require.NoError(t, err)
-	}
+	BootstrapFGATuplesWithStoreID(t, ds, storeID, tupleStrs)
 
 	return storeID, fgaModel
 }

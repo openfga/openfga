@@ -762,3 +762,13 @@ func (p *Postgres) ReadChanges(
 func (p *Postgres) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, p.db)
 }
+
+// ReadRelationshipTuples implements storage.RelationshipTupleReader#ReadRelationshipTuples.
+func (p *Postgres) ReadRelationshipTuples(
+	ctx context.Context,
+	storeID string,
+	filter storage.ReadRelationshipTuplesFilter,
+	opts ...storage.ReadRelationshipTuplesOpt,
+) (storage.RelationshipTupleIterator, error) {
+	return nil, fmt.Errorf("not implemented")
+}

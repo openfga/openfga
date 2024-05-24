@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/openfga/openfga/internal/types"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
@@ -27,6 +29,32 @@ type Iterator[T any] interface {
 // It is closed by explicitly calling [Iterator.Stop] or by calling
 // [Iterator.Next] until it returns an [ErrIteratorDone] error.
 type TupleIterator = Iterator[*openfgav1.Tuple]
+
+type RelationshipTupleIterator = Iterator[*types.RelationshipTuple]
+
+// RelationshipTupleIteratorToStringSlice consumes the provided RelationshipTupleIterator and foreach
+// RelationshipTuple in it produces the string formatted equivalent of the tuple
+// and appends it to a slice. The slice of all tuples consumed from the iterator
+// are returned.
+//
+// This method is provided as a utility/helper for testing purposes. It is not
+// advised to consume an iterator entirely in critical code paths. For those cases
+// the iterator should be consumed as normal.
+func RelationshipTupleIteratorToStringSlice(r RelationshipTupleIterator) []string {
+	var tuples []string
+	for {
+		relationshipTuple, err := r.Next(context.Background())
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				break
+			}
+		}
+
+		tuples = append(tuples, relationshipTuple.String())
+	}
+
+	return tuples
+}
 
 // TupleKeyIterator is an iterator for [*openfgav1.TupleKey](s). It is closed by
 // explicitly calling [Iterator.Stop] or by calling [Iterator.Next] until it

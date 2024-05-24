@@ -798,3 +798,13 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 func (s *MemoryBackend) IsReady(context.Context) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{IsReady: true}, nil
 }
+
+// ReadRelationshipTuples implements storage.RelationshipTupleReader#ReadRelationshipTuples.
+func (s *MemoryBackend) ReadRelationshipTuples(
+	ctx context.Context,
+	storeID string,
+	filter storage.ReadRelationshipTuplesFilter,
+	opts ...storage.ReadRelationshipTuplesOpt,
+) (storage.RelationshipTupleIterator, error) {
+	return nil, fmt.Errorf("not implemented")
+}
