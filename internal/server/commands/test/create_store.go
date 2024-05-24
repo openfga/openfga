@@ -8,7 +8,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/internal/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -28,14 +28,11 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	s := server.MustNewServerWithOpts(server.WithDatastore(datastore))
-	t.Cleanup(s.Close)
-
 	ctx := context.Background()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			resp, err := s.CreateStore(ctx, test.request)
+			resp, err := commands.NewCreateStoreCommand(datastore).Execute(ctx, test.request)
 			require.NoError(t, err)
 
 			require.Equal(t, test.request.GetName(), resp.GetName())

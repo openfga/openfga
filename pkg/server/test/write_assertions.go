@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -39,6 +40,9 @@ type repo
 	define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
+
+	s := server.MustNewServerWithOpts(server.WithDatastore(datastore))
+	t.Cleanup(s.Close)
 
 	var tests = []writeAssertionsTestSettings{
 		{
@@ -144,25 +148,28 @@ type repo
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 
-			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
-
-			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
+			writeModelResp, err := s.WriteAuthorizationModel(ctx, model)
 			require.NoError(t, err)
+
+			modelID := writeModelResp.GetAuthorizationModelId()
+
 			request := &openfgav1.WriteAssertionsRequest{
 				StoreId:              store,
 				Assertions:           test.assertions,
-				AuthorizationModelId: modelID.GetAuthorizationModelId(),
+				AuthorizationModelId: modelID,
 			}
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
-			_, err = writeAssertionCmd.Execute(ctx, request)
+			_, err = s.WriteAssertions(ctx, request)
 			require.NoError(t, err)
-			query := commands.NewReadAssertionsQuery(datastore)
-			actualResponse, actualError := query.Execute(ctx, store, modelID.GetAuthorizationModelId())
-			require.NoError(t, actualError)
+
+			actualResponse, err := s.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
+				StoreId:              store,
+				AuthorizationModelId: modelID,
+			})
+			require.NoError(t, err)
 
 			expectedResponse := &openfgav1.ReadAssertionsResponse{
-				AuthorizationModelId: modelID.GetAuthorizationModelId(),
+				AuthorizationModelId: modelID,
 				Assertions:           test.assertions,
 			}
 			if diff := cmp.Diff(expectedResponse, actualResponse, protocmp.Transform()); diff != "" {

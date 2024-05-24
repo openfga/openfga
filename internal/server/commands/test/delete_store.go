@@ -7,17 +7,15 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/internal/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
 func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	s := server.MustNewServerWithOpts(server.WithDatastore(datastore))
-	t.Cleanup(s.Close)
-
-	createStoreResponse, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+	createStoreCmd := commands.NewCreateStoreCommand(datastore)
+	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgav1.CreateStoreRequest{
 		Name: "acme",
 	})
 	require.NoError(t, err)
@@ -42,9 +40,11 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
+	deleteCmd := commands.NewDeleteStoreCommand(datastore)
+
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			_, err := s.DeleteStore(ctx, test.request)
+			_, err := deleteCmd.Execute(ctx, test.request)
 
 			if test.err != nil {
 				require.ErrorIs(t, err, test.err)
