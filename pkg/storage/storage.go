@@ -103,6 +103,7 @@ type RelationshipTupleReader interface {
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory pagination options (pageSize can be zero :/)
 	// and returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
+	// There is NO guarantee on the order returned on the iterator.
 	ReadPage(
 		ctx context.Context,
 		store string,

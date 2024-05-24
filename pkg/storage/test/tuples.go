@@ -298,7 +298,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			{
 				Object:   "doc:readme",
 				Relation: "viewer",
-				User:     "org:openfgapb#viewer",
+				User:     "org:openfga#viewer",
 			},
 		}
 		expectedError := storage.InvalidWriteInputError(tks[2], openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
@@ -319,6 +319,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		)
 		require.EqualError(t, err, expectedError.Error())
 
+		// Since the write didn't succeed, we expect all tuples back
 		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 50})
 		require.NoError(t, err)
 		require.Equal(t, len(tks), len(tuples))
@@ -886,24 +887,23 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk0, tk1})
 	require.NoError(t, err)
 
-	t.Run("readPage_pagination_works_properly", func(t *testing.T) {
+	t.Run("readPage_pagination_works_properly_with_filter", func(t *testing.T) {
 		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples0, 1)
 		require.NotEmpty(t, contToken0)
-
-		if diff := cmp.Diff(tk0, tuples0[0].GetKey(), cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
 
 		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		require.NoError(t, err)
 		require.Len(t, tuples1, 1)
 		require.Empty(t, contToken1)
 
-		if diff := cmp.Diff(tk1, tuples1[0].GetKey(), cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
+		// Assert that the combination of both pages yields all tuples.
+		expectedValues := []*openfgav1.TupleKey{tk0, tk1}
+		var actualValues []*openfgav1.Tuple
+		actualValues = append(actualValues, tuples0...)
+		actualValues = append(actualValues, tuples1...)
+		require.ElementsMatch(t, expectedValues, testutils.ConvertTuplesToTupleKeys(actualValues))
 	})
 
 	t.Run("reading_a_page_completely_does_not_return_a_continuation_token", func(t *testing.T) {
@@ -920,24 +920,23 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 		require.NotEmpty(t, contToken)
 	})
 
-	t.Run("ReadPaginationWorks", func(t *testing.T) {
+	t.Run("readPage_pagination_works_properly_without_filter", func(t *testing.T) {
 		tuple0, contToken0, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuple0, 1)
 		require.NotEmpty(t, contToken0)
-
-		if diff := cmp.Diff(tk0, tuple0[0].GetKey(), cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
 
 		tuple1, contToken1, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		require.NoError(t, err)
 		require.Len(t, tuple1, 1)
 		require.Empty(t, contToken1)
 
-		if diff := cmp.Diff(tk1, tuple1[0].GetKey(), cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
+		// Assert that the combination of both pages yields all tuples.
+		expectedValues := []*openfgav1.TupleKey{tk0, tk1}
+		var actualValues []*openfgav1.Tuple
+		actualValues = append(actualValues, tuple0...)
+		actualValues = append(actualValues, tuple1...)
+		require.ElementsMatch(t, expectedValues, testutils.ConvertTuplesToTupleKeys(actualValues))
 	})
 
 	t.Run("reading_by_storeID_completely_does_not_return_a_continuation_token", func(t *testing.T) {
