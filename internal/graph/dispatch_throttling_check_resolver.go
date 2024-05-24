@@ -2,20 +2,17 @@ package graph
 
 import (
 	"context"
-	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 )
 
 // DispatchThrottlingCheckResolverConfig encapsulates configuration for dispatch throttling check resolver.
 type DispatchThrottlingCheckResolverConfig struct {
-	Frequency        time.Duration
 	DefaultThreshold uint32
 	MaxThreshold     uint32
 }
@@ -27,37 +24,44 @@ type DispatchThrottlingCheckResolverConfig struct {
 // in the throttling queue. One item form the throttling queue will be processed ticker.
 // This allows a check / list objects request to be gradually throttled.
 type DispatchThrottlingCheckResolver struct {
-	delegate        CheckResolver
-	config          DispatchThrottlingCheckResolverConfig
-	ticker          *time.Ticker
-	throttlingQueue chan struct{}
-	done            chan struct{}
+	delegate  CheckResolver
+	config    *DispatchThrottlingCheckResolverConfig
+	throttler throttler.Throttler
 }
 
 var _ CheckResolver = (*DispatchThrottlingCheckResolver)(nil)
 
-var (
-	dispatchThrottlingResolverDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:                       build.ProjectName,
-		Name:                            "dispatch_throttling_resolver_delay_ms",
-		Help:                            "Time spent waiting for dispatch throttling resolver",
-		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // Milliseconds. Upper bound is config.UpstreamTimeout.
-		NativeHistogramBucketFactor:     1.1,
-		NativeHistogramMaxBucketNumber:  100,
-		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method"})
-)
+// DispatchThrottlingCheckResolverOpt defines an option that can be used to change the behavior of DispatchThrottlingCheckResolver
+// instance.
+type DispatchThrottlingCheckResolverOpt func(checkResolver *DispatchThrottlingCheckResolver)
 
-func NewDispatchThrottlingCheckResolver(
-	config DispatchThrottlingCheckResolverConfig) *DispatchThrottlingCheckResolver {
+// WithDispatchThrottlingCheckResolverConfig sets the config to be used for DispatchThrottlingCheckResolver.
+func WithDispatchThrottlingCheckResolverConfig(config DispatchThrottlingCheckResolverConfig) DispatchThrottlingCheckResolverOpt {
+	return func(r *DispatchThrottlingCheckResolver) {
+		r.config = &config
+	}
+}
+
+// WithThrottler sets the throttler to be used for DispatchThrottlingCheckResolver.
+func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolverOpt {
+	return func(r *DispatchThrottlingCheckResolver) {
+		r.throttler = throttler
+	}
+}
+
+func NewDispatchThrottlingCheckResolver(opts ...DispatchThrottlingCheckResolverOpt) *DispatchThrottlingCheckResolver {
 	dispatchThrottlingCheckResolver := &DispatchThrottlingCheckResolver{
-		config:          config,
-		ticker:          time.NewTicker(config.Frequency),
-		throttlingQueue: make(chan struct{}),
-		done:            make(chan struct{}),
+		config: &DispatchThrottlingCheckResolverConfig{
+			DefaultThreshold: config.DefaultCheckDispatchThrottlingDefaultThreshold,
+			MaxThreshold:     config.DefaultCheckDispatchThrottlingMaxThreshold,
+		},
+		throttler: throttler.NewNoopThrottler(),
 	}
 	dispatchThrottlingCheckResolver.delegate = dispatchThrottlingCheckResolver
-	go dispatchThrottlingCheckResolver.runTicker()
+
+	for _, opt := range opts {
+		opt(dispatchThrottlingCheckResolver)
+	}
 	return dispatchThrottlingCheckResolver
 }
 
@@ -70,30 +74,7 @@ func (r *DispatchThrottlingCheckResolver) GetDelegate() CheckResolver {
 }
 
 func (r *DispatchThrottlingCheckResolver) Close() {
-	r.done <- struct{}{}
-}
-
-func (r *DispatchThrottlingCheckResolver) nonBlockingSend(signalChan chan struct{}) {
-	select {
-	case signalChan <- struct{}{}:
-		// message sent
-	default:
-		// message dropped
-	}
-}
-
-func (r *DispatchThrottlingCheckResolver) runTicker() {
-	for {
-		select {
-		case <-r.done:
-			r.ticker.Stop()
-			close(r.done)
-			close(r.throttlingQueue)
-			return
-		case <-r.ticker.C:
-			r.nonBlockingSend(r.throttlingQueue)
-		}
-	}
+	r.throttler.Close()
 }
 
 func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
@@ -103,37 +84,20 @@ func (r *DispatchThrottlingCheckResolver) ResolveCheck(ctx context.Context,
 
 	currentNumDispatch := req.GetRequestMetadata().DispatchCounter.Load()
 
-	threshold := r.config.DefaultThreshold
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		r.config.DefaultThreshold,
+		r.config.MaxThreshold,
+	)
 
-	maxThreshold := r.config.MaxThreshold
-	if maxThreshold == 0 {
-		maxThreshold = r.config.DefaultThreshold
-	}
-
-	thresholdInCtx := telemetry.DispatchThrottlingThresholdFromContext(ctx)
-
-	if thresholdInCtx > 0 {
-		threshold = min(thresholdInCtx, maxThreshold)
-	}
-
-	isThrottled := currentNumDispatch > threshold
 	span.SetAttributes(
 		attribute.Int("dispatch_count", int(currentNumDispatch)),
-		attribute.Bool("is_throttled", isThrottled))
-	if isThrottled {
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
 		req.GetRequestMetadata().WasThrottled.Store(true)
-
-		start := time.Now()
-		<-r.throttlingQueue
-		end := time.Now()
-		timeWaiting := end.Sub(start).Milliseconds()
-
-		rpcInfo := telemetry.RPCInfoFromContext(ctx)
-		dispatchThrottlingResolverDelayMsHistogram.WithLabelValues(
-			rpcInfo.Service,
-			rpcInfo.Method,
-		).Observe(float64(timeWaiting))
+		r.throttler.Throttle(ctx)
 	}
-
 	return r.delegate.ResolveCheck(ctx, req)
 }

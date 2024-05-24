@@ -19,6 +19,8 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -113,6 +115,8 @@ type ReverseExpandQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
+	dispatchThrottlerConfig threshold.Config
+
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
@@ -124,6 +128,12 @@ type ReverseExpandQueryOption func(d *ReverseExpandQuery)
 func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeLimit = limit
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -140,8 +150,14 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		candidateObjectsMap:     new(sync.Map),
-		visitedUsersetsMap:      new(sync.Map),
+		dispatchThrottlerConfig: threshold.Config{
+			Throttler:    throttler.NewNoopThrottler(),
+			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+		},
+		candidateObjectsMap: new(sync.Map),
+		visitedUsersetsMap:  new(sync.Map),
 	}
 
 	for _, opt := range opts {
@@ -167,13 +183,17 @@ type ResolutionMetadata struct {
 	DatastoreQueryCount *uint32
 
 	// The number of times we are expanding from each node to find set of objects
-	DispatchCount *uint32
+	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
-		DispatchCount:       new(uint32),
+		DispatchCounter:     new(atomic.Uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 
@@ -208,6 +228,20 @@ func (c *ReverseExpandQuery) Execute(
 
 	close(resultChan)
 	return nil
+}
+
+func (c *ReverseExpandQuery) dispatch(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	newcount := resolutionMetadata.DispatchCounter.Add(1)
+	if c.dispatchThrottlerConfig.Enabled {
+		c.throttle(ctx, newcount, resolutionMetadata)
+	}
+	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -325,8 +359,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				break LoopOnEdges
@@ -525,8 +558,7 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			return c.execute(ctx, &ReverseExpandRequest{
+			return c.dispatch(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
 				Relation:   req.Relation,
@@ -579,4 +611,24 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 	}
 
 	return nil
+}
+
+func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
+	span := trace.SpanFromContext(ctx)
+
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		c.dispatchThrottlerConfig.Threshold,
+		c.dispatchThrottlerConfig.MaxThreshold,
+	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
+		metadata.WasThrottled.Store(true)
+		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
+	}
 }

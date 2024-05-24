@@ -166,7 +166,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 	})
 
 	t.Run("invalid_dispatch_throttle_threshold", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
@@ -201,6 +201,58 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 			require.False(t, status.IsReady)
 		})
 	}
+}
+
+func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithRequestDurationByQueryHistogramBuckets([]uint{}),
+		)
+	})
+}
+
+func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
+		)
+	})
+}
+
+func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithDispatchThrottlingCheckResolverEnabled(true),
+			WithDispatchThrottlingCheckResolverThreshold(100),
+			WithDispatchThrottlingCheckResolverMaxThreshold(80),
+		)
+	})
+}
+
+func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithListObjectsDispatchThrottlingEnabled(true),
+			WithListObjectsDispatchThrottlingThreshold(100),
+			WithListObjectsDispatchThrottlingMaxThreshold(80),
+		)
+	})
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
@@ -1610,7 +1662,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
+		require.False(t, cfg.CheckDispatchThrottling.Enabled)
 		require.False(t, cfg.DispatchThrottling.Enabled)
+		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
 
 		ds := memory.New()
@@ -1620,7 +1674,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		require.Nil(t, s.dispatchThrottlingCheckResolver)
-		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
@@ -1650,9 +1704,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1683,9 +1737,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1718,9 +1772,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, maxDispatchThreshold, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1745,7 +1799,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.False(t, s.checkDispatchThrottlingEnabled)
 		require.Nil(t, s.dispatchThrottlingCheckResolver)
 
 		require.True(t, s.checkQueryCacheEnabled)
@@ -1776,9 +1830,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, 50, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 100, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)

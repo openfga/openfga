@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -12,7 +13,7 @@ import (
 )
 
 const (
-	requestIDCtxKey   = "request-id-context-key"
+	requestIDKey      = "request_id"
 	requestIDTraceKey = "request_id"
 
 	// RequestIDHeader defines the HTTP header that is set in each HTTP response
@@ -20,15 +21,16 @@ const (
 	RequestIDHeader = "X-Request-Id"
 )
 
-// FromContext extracts the request-id from the context, if it exists.
-func FromContext(ctx context.Context) (string, bool) {
-	if md, ok := metadata.FromOutgoingContext(ctx); ok {
-		if vals := md.Get(requestIDCtxKey); len(vals) > 0 {
-			return vals[0], true
-		}
+// InitRequestID returns the ID to be used to identify the request.
+// If tracing is enabled, returns trace ID, e.g. "1e20da43269fe07e3d2ac018c0aad2d1".
+// Otherwise returns a new UUID, e.g. "38fee7ac-4bfe-4cf6-baa2-8b5ec296b485".
+func InitRequestID(ctx context.Context) string {
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if spanCtx.TraceID().IsValid() {
+		return spanCtx.TraceID().String()
 	}
-
-	return "", false
+	id, _ := uuid.NewRandom()
+	return id.String()
 }
 
 // NewUnaryInterceptor creates a grpc.UnaryServerInterceptor which must
@@ -45,15 +47,13 @@ func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 
 func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
-		// TODO use ulid library?
-		id, _ := uuid.NewRandom()
-		requestID := id.String()
+		requestID := InitRequestID(ctx)
 
-		ctx = metadata.AppendToOutgoingContext(ctx, requestIDCtxKey, requestID)
-
-		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
+		grpc_ctxtags.Extract(ctx).Set(requestIDKey, requestID) // CtxTags used by other middlewares
 
 		_ = grpc.SetHeader(ctx, metadata.Pairs(RequestIDHeader, requestID))
+
+		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
 
 		return interceptors.NoopReporter{}, ctx
 	}
