@@ -8,11 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/pkg/server"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
-func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore, s *server.Server) {
 	type readAssertionsQueryTest struct {
 		_name            string
 		request          *openfgav1.ReadAssertionsRequest

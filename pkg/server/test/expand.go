@@ -11,12 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	parser "github.com/openfga/language/pkg/go/transformer"
-
 	"github.com/openfga/openfga/internal/server/commands"
-	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -24,20 +22,20 @@ import (
 func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	tests := []struct {
 		name     string
-		model    string
+		model    *openfgav1.AuthorizationModel
 		tuples   []*openfgav1.TupleKey
 		request  *openfgav1.ExpandRequest
 		expected *openfgav1.ExpandResponse
 	}{
 		{
 			name: "1.1_simple_direct",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
 				type repo
 					relations
-						define admin: [user]`,
+						define admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -70,14 +68,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_computed_userset",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
 				type repo
 					relations
 						define admin: [user]
-						define writer: admin`,
+						define writer: admin`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey(
@@ -104,7 +102,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_tuple_to_userset",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -114,7 +112,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						define manager: [org]
 				type org
 					relations
-						define repo_admin: [user]`,
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -157,7 +155,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_tuple_to_userset_II",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -167,7 +165,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						define manager: [org]
 				type org
 					relations
-						define repo_admin: [user]`,
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -215,7 +213,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_tuple_to_userset_implicit",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -225,7 +223,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						define manager: [org]
 				type org
 					relations
-						define repo_admin: [user]`,
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -268,7 +266,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_simple_union",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -278,7 +276,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						define writer: [user] or admin
 				type org
 					relations
-						define repo_admin: [user]`,
+						define repo_admin: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -332,7 +330,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_simple_difference",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -340,7 +338,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					relations
 						define admin: [user]
 						define banned: [user]
-						define active_admin: admin but not banned`,
+						define active_admin: admin but not banned`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey(
@@ -386,14 +384,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_intersection",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 				  schema 1.1
 				type user
 				type repo
 					relations
 						define admin: [user]
-						define writer: [user] and admin`,
+						define writer: [user] and admin`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey(
@@ -441,7 +439,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_complex_tree",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 				  schema 1.1
 				type user
@@ -453,7 +451,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						define writer: ([user] or repo_writer from owner) but not banned_writer
 				type org
 					relations
-						define repo_writer: [user]`,
+						define repo_writer: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				{
 					Object:   "repo:openfga/foo",
@@ -534,14 +532,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "1.1_Tuple_involving_userset_that_is_not_involved_in_TTU_rewrite",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 				model
 				  schema 1.1
 				type user
 				type document
 					relations
 						define parent: [document#editor]
-						define editor: [user]`,
+						define editor: [user]`),
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
 			},
@@ -567,14 +565,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "self_defined_userset_not_returned",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
 			type user
 			type group
 				relations
 					define viewer: [user]
-			`,
+			`),
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
 				TupleKey: tuple.NewExpandRequestTupleKey("group:1", "viewer"),
@@ -599,14 +597,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "self_defined_userset_not_returned_even_if_tuple_written",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
 			type user
 			type group
 				relations
 					define viewer: [user]
-			`,
+			`),
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "viewer", "group:1#viewer"), // invalid, so should be skipped over
 			},
@@ -630,14 +628,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "self_defined_userset_returned_if_tuple_written",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
 			type user
 			type group
 				relations
 					define viewer: [user, group#viewer]
-			`,
+			`),
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "viewer", "group:1#viewer"),
 			},
@@ -663,14 +661,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "cyclical_tuples",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
 			type user
 			type group
 				relations
 					define viewer: [user, group#viewer]
-			`,
+			`),
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:2", "viewer", "group:3#viewer"),
 				tuple.NewTupleKey("group:1", "viewer", "group:2#viewer"),
@@ -698,7 +696,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "nested_groups_I",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 			model
 			  schema 1.1
 
@@ -711,7 +709,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			  relations
 				define approver: can_manage from submitter
 				define submitter: [employee]
-			`,
+			`),
 			tuples: []*openfgav1.TupleKey{
 				// employee:d has no manager
 				tuple.NewTupleKey("employee:c", "manager", "employee:d"),
@@ -741,7 +739,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "nested_groups_II",
-			model: `
+			model: testutils.MustTransformDSLToProtoWithID(`
 			model
 			  schema 1.1
 
@@ -754,7 +752,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			  relations
 				define approver: can_manage from submitter
 				define submitter: [employee]
-			`,
+			`),
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("employee:c", "manager", "employee:d"),
 				tuple.NewTupleKey("employee:b", "manager", "employee:c"),
@@ -784,38 +782,31 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	ctx := context.Background()
 
-	s := server.MustNewServerWithOpts(server.WithDatastore(datastore))
-	t.Cleanup(s.Close)
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// arrange
 			store := ulid.Make().String()
-
-			model := parser.MustTransformDSLToProto(test.model)
-
-			writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-				StoreId:         store,
-				TypeDefinitions: model.GetTypeDefinitions(),
-				SchemaVersion:   model.GetSchemaVersion(),
-				Conditions:      model.GetConditions(),
-			})
-			require.NoError(t, err)
-			require.NotNil(t, writeModelResp)
-
-			_, err = s.Write(ctx, &openfgav1.WriteRequest{
-				StoreId: store,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: test.tuples,
-				},
-			})
+			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(t, err)
 
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
+			require.NoError(t, err)
+
+			require.NoError(t, err)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = writeModelResp.GetAuthorizationModelId()
+			test.request.AuthorizationModelId = test.model.GetId()
 
-			got, err := s.Expand(ctx, test.request)
+			// act
+			query := commands.NewExpandQuery(datastore)
+			got, err := query.Execute(ctx, test.request)
 			require.NoError(t, err)
 
+			// assert
 			if diff := cmp.Diff(test.expected, got, protocmp.Transform()); diff != "" {
 				t.Errorf("mismatch (-want, +got):\n%s", diff)
 			}

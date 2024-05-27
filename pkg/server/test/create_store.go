@@ -9,11 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/server"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
-func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestCreateStore(t *testing.T, s *server.Server) {
 	type createStoreTestSettings struct {
 		name    string
 		request *openfgav1.CreateStoreRequest
@@ -27,9 +26,6 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 	}
-
-	s := server.MustNewServerWithOpts(server.WithDatastore(datastore))
-	t.Cleanup(s.Close)
 
 	ctx := context.Background()
 

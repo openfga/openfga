@@ -2,20 +2,18 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/server"
-	"github.com/openfga/openfga/pkg/storage"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
-func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestDeleteStore(t *testing.T, s *server.Server) {
 	ctx := context.Background()
-
-	s := server.MustNewServerWithOpts(server.WithDatastore(datastore))
-	t.Cleanup(s.Close)
 
 	createStoreResponse, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 		Name: "acme",
@@ -33,6 +31,8 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgav1.DeleteStoreRequest{
 				StoreId: "unknownstore",
 			},
+			err: serverErrors.InvalidArgumentError(
+				fmt.Errorf(`invalid DeleteStoreRequest.StoreId: value does not match regex pattern "^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$"`)),
 		},
 		{
 			_name: "Execute_Succeeds",

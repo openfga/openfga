@@ -3,15 +3,16 @@ package test
 import (
 	"testing"
 
+	"github.com/openfga/openfga/pkg/server"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
-	RunQueryTests(t, ds)
+func RunAllTests(t *testing.T, ds storage.OpenFGADatastore, s *server.Server) {
+	RunQueryTests(t, ds, s)
 	RunCommandTests(t, ds)
 }
 
-func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
+func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore, s *server.Server) {
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
 	t.Run("TestSuccessfulReadAuthorizationModelQuery", func(t *testing.T) { TestSuccessfulReadAuthorizationModelQuery(t, ds) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { ReadAuthorizationModelTest(t, ds) })
@@ -22,7 +23,7 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestGetStoreSucceeds", func(t *testing.T) { TestGetStoreSucceeds(t, ds) })
 	t.Run("TestListStores", func(t *testing.T) { TestListStores(t, ds) })
 
-	t.Run("TestReadAssertionQuery", func(t *testing.T) { TestReadAssertionQuery(t, ds) })
+	t.Run("TestReadAssertionQuery", func(t *testing.T) { TestReadAssertionQuery(t, ds, s) })
 	t.Run("TestReadQuerySuccess", func(t *testing.T) { ReadQuerySuccessTest(t, ds) })
 	t.Run("TestReadQueryError", func(t *testing.T) { ReadQueryErrorTest(t, ds) })
 	t.Run("TestReadAllTuples", func(t *testing.T) { ReadAllTuplesTest(t, ds) })

@@ -259,6 +259,7 @@ func TestCheckResolverOuterLayerDefault(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -277,6 +278,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -380,6 +382,7 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -442,6 +445,7 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -535,6 +539,7 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	const dispatchThreshold = 5
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
@@ -1339,8 +1344,10 @@ type document
 	})
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
+		m := memory.New()
+		t.Cleanup(m.Close)
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(m),
 			WithResolveNodeLimit(2),
 		)
 		t.Cleanup(s.Close)
@@ -1544,8 +1551,11 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
 
+	m := memory.New()
+	t.Cleanup(m.Close)
+
 	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
+		WithDatastore(m),
 	)
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)

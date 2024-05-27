@@ -7,11 +7,11 @@ import (
 	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/pkg/server"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	"github.com/openfga/openfga/pkg/storage/test"
 
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 )
@@ -22,7 +22,10 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
 
-	test.RunAllTests(t, ds)
+	s := server.MustNewServerWithOpts(server.WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	RunAllTests(t, ds, s)
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
@@ -40,9 +43,11 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 		),
 	)
 	require.NoError(t, err)
-	defer ds.Close()
 
-	test.RunAllTests(t, ds)
+	s := server.MustNewServerWithOpts(server.WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	RunAllTests(t, ds, s)
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
@@ -51,7 +56,10 @@ func TestServerWithMemoryDatastore(t *testing.T) {
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
-	test.RunAllTests(t, ds)
+	s := server.MustNewServerWithOpts(server.WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	RunAllTests(t, ds, s)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
@@ -59,8 +67,10 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
+	s := server.MustNewServerWithOpts(server.WithDatastore(ds))
+	t.Cleanup(s.Close)
 
-	test.RunAllTests(t, ds)
+	RunAllTests(t, ds, s)
 }
 
 func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
@@ -78,9 +88,10 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 		),
 	)
 	require.NoError(t, err)
-	defer ds.Close()
+	s := server.MustNewServerWithOpts(server.WithDatastore(ds))
+	t.Cleanup(s.Close)
 
-	test.RunAllTests(t, ds)
+	RunAllTests(t, ds, s)
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
