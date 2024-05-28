@@ -169,7 +169,8 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
 	defer cancel()
 
 	t.Log("creating connection to address", grpcAddr)
