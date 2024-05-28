@@ -8,6 +8,37 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.4] - 2024-05-29
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.3...v1.5.4)
+
+### Added
+
+* ListUsers API which answers the question "what users are related to a specific object?". This feature is experimental and can be enabled by configuring `OPENFGA_EXPERIMENTALS=enable-list-users`. Also see [Performing a ListUsers call](https://openfga.dev/docs/getting-started/perform-list-users) and [ListUsers API docs](https://openfga.dev/api/service#/Relationship%20Queries/ListUsers). **Known Limitation:** Child usersets that are negated from their parent are currently not returned as `excluded_users` [#1433](https://github.com/openfga/openfga/pull/1433)
+* ListObjects throttling to manage resource usage of expensive queries. Throttling improves overall query performance by limiting the number of dispatches, which are the recursive sub-operations of a ListObjects query [#1571](https://github.com/openfga/openfga/pull/1571)
+* Self-defining usersets for Check, ListObjects and ListUsers. These are implicit tuples that exist by virtue of set theory. For example, the userset `document:1#viewer` implicitly possess the `viewer` relation for `document:1` [#147](https://github.com/openfga/openfga/pull/147)
+* Contextual tuples support in Assertions API [#1610](https://github.com/openfga/openfga/pull/1610)
+* Panic recovery handling for all APIs [#1557](https://github.com/openfga/openfga/pull/1557)
+* Logging of non-sensitive server configuration on startup [#1609](https://github.com/openfga/openfga/pull/1609)
+* Appropriate error codes for throttled requests indicating if a request should be retried [#1552](https://github.com/openfga/openfga/pull/1552)
+* `store_id` span attribute for Check tracing [#1554](https://github.com/openfga/openfga/pull/1554)
+
+### Fixed
+
+* Goroutine leak occurring during initial server validation [#1617](https://github.com/openfga/openfga/pull/1617)
+* Stricter filtering of invalid tuples with ListObjects [#1563](https://github.com/openfga/openfga/pull/1563)
+* Panic on server close if caching is enabled [#1568](https://github.com/openfga/openfga/pull/1568)
+
+### Changed
+
+* `request_id` is now same as `trace_id` for easier debugging [#1576](https://github.com/openfga/openfga/pull/1576) - thank you, @00chorch
+
+### Removed
+
+* Deprecated and redundant `craigpastro/openfga-dsl-parse` DSL parser dependency [#1578](https://github.com/openfga/openfga/pull/1578)
+* `request_duration_by_query_count_ms` metric [#1579](https://github.com/openfga/openfga/pull/1579)
+
+
 ## [1.5.3] - 2024-04-16
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.2...v1.5.3)
@@ -1010,7 +1041,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.4...HEAD
+[1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.4
 [1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
 [1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2
 [1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
