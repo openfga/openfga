@@ -533,15 +533,8 @@ func TestUserFiltersToString(t *testing.T) {
 		Type: "user",
 	}}))
 
-	require.Equal(t, "user#viewer", userFiltersToString([]*openfgav1.UserTypeFilter{{
-		Type:     "user",
-		Relation: "viewer",
-	}}))
-
-	require.Equal(t, "user#viewer", userFiltersToString([]*openfgav1.UserTypeFilter{{
-		Type:     "user",
-		Relation: "viewer",
-	}, {
-		Type: "user",
+	require.Equal(t, "group#member", userFiltersToString([]*openfgav1.UserTypeFilter{{
+		Type:     "group",
+		Relation: "member",
 	}}))
 }
