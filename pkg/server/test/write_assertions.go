@@ -414,19 +414,15 @@ func TestWriteAssertionsFailure(t *testing.T, s *server.Server) {
 			})
 			require.NoError(t, err)
 
-			if test.modelID != "" {
-				_, err = s.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
-					StoreId:              store,
-					AuthorizationModelId: test.modelID,
-					Assertions:           test.assertions,
-				})
-			} else {
-				_, err = s.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
-					StoreId:              store,
-					AuthorizationModelId: modelID.GetAuthorizationModelId(),
-					Assertions:           test.assertions,
-				})
+			if test.modelID == "" {
+				test.modelID = modelID.GetAuthorizationModelId()
 			}
+
+			_, err = s.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
+				StoreId:              store,
+				AuthorizationModelId: test.modelID,
+				Assertions:           test.assertions,
+			})
 			require.ErrorIs(t, test.err, err)
 		})
 	}
