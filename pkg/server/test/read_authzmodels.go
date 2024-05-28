@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -9,15 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	"github.com/openfga/openfga/internal/server/commands"
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
+	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestReadAuthorizationModelsWithoutPaging(t *testing.T, s *server.Server) {
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -34,7 +32,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 			name: "non-empty_type_definitions",
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "document",
@@ -48,12 +46,18 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if test.model != nil {
-				err := datastore.WriteAuthorizationModel(ctx, store, test.model)
+				_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         store,
+					TypeDefinitions: test.model.GetTypeDefinitions(),
+					SchemaVersion:   test.model.GetSchemaVersion(),
+					Conditions:      test.model.GetConditions(),
+				})
 				require.NoError(t, err)
 			}
 
-			query := commands.NewReadAuthorizationModelsQuery(datastore)
-			resp, err := query.Execute(ctx, &openfgav1.ReadAuthorizationModelsRequest{StoreId: store})
+			resp, err := s.ReadAuthorizationModels(ctx, &openfgav1.ReadAuthorizationModelsRequest{
+				StoreId: store,
+			})
 			require.NoError(t, err)
 
 			require.Len(t, resp.GetAuthorizationModels(), test.expectedNumModelsReturned)
@@ -62,98 +66,83 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 	}
 }
 
-func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestReadAuthorizationModelsWithPaging(t *testing.T, s *server.Server) {
 	ctx := context.Background()
 	store := ulid.Make().String()
 
-	model1 := &openfgav1.AuthorizationModel{
-		Id:            ulid.Make().String(),
-		SchemaVersion: typesystem.SchemaVersion1_0,
+	resp1, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:       store,
+		SchemaVersion: typesystem.SchemaVersion1_1,
 		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "repo",
 			},
 		},
-	}
-	err := datastore.WriteAuthorizationModel(ctx, store, model1)
+		Conditions: map[string]*openfgav1.Condition{},
+	})
 	require.NoError(t, err)
 
-	model2 := &openfgav1.AuthorizationModel{
-		Id:            ulid.Make().String(),
-		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgav1.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	}
-	err = datastore.WriteAuthorizationModel(ctx, store, model2)
-	require.NoError(t, err)
-
-	encrypter, err := encrypter.NewGCMEncrypter("key")
-	require.NoError(t, err)
-
-	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
-
-	query := commands.NewReadAuthorizationModelsQuery(datastore,
-		commands.WithReadAuthModelsQueryEncoder(encoder),
-	)
-
-	firstRequest := &openfgav1.ReadAuthorizationModelsRequest{
+	firstResponse, err := s.ReadAuthorizationModels(ctx, &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
-	}
-	firstResponse, err := query.Execute(ctx, firstRequest)
+	})
 	require.NoError(t, err)
 	require.Len(t, firstResponse.GetAuthorizationModels(), 1)
-	require.Equal(t, firstResponse.GetAuthorizationModels()[0].GetId(), model2.GetId())
-	require.NotEmpty(t, firstResponse.GetContinuationToken(), "Expected continuation token")
+	require.Equal(t, firstResponse.GetAuthorizationModels()[0].GetId(), resp1.GetAuthorizationModelId())
+	require.Empty(t, firstResponse.GetContinuationToken(), "Expected continuation token")
 
-	secondRequest := &openfgav1.ReadAuthorizationModelsRequest{
+	resp2, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:       store,
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "repo",
+			},
+		},
+		Conditions: map[string]*openfgav1.Condition{},
+	})
+	require.NoError(t, err)
+	secondResponse, err := s.ReadAuthorizationModels(ctx, &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: firstResponse.GetContinuationToken(),
-	}
-	secondResponse, err := query.Execute(ctx, secondRequest)
+		ContinuationToken: "",
+	})
 	require.NoError(t, err)
 	require.Len(t, secondResponse.GetAuthorizationModels(), 1)
-	require.Equal(t, secondResponse.GetAuthorizationModels()[0].GetId(), model1.GetId())
-	require.Empty(t, secondResponse.GetContinuationToken(), "Expected empty continuation token")
+	require.Equal(t, secondResponse.GetAuthorizationModels()[0].GetId(), resp2.GetAuthorizationModelId())
+	require.NotEmpty(t, secondResponse.GetContinuationToken(), "Expected continuation token")
 
-	thirdRequest := &openfgav1.ReadAuthorizationModelsRequest{
+	_, err = s.ReadAuthorizationModels(ctx, &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "bad",
-	}
-	_, err = query.Execute(ctx, thirdRequest)
+	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Invalid continuation token")
 
-	validToken := "eyJwayI6IkxBVEVTVF9OU0NPTkZJR19hdXRoMHN0b3JlIiwic2siOiIxem1qbXF3MWZLZExTcUoyN01MdTdqTjh0cWgifQ=="
-	invalidStoreRequest := &openfgav1.ReadAuthorizationModelsRequest{
+	_, err = s.ReadAuthorizationModels(ctx, &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           "non-existent",
-		ContinuationToken: validToken,
-	}
-	_, err = query.Execute(ctx, invalidStoreRequest)
+		ContinuationToken: "eyJwayI6IkxBVEVTVF9OU0NPTkZJR19hdXRoMHN0b3JlIiwic2siOiIxem1qbXF3MWZLZExTcUoyN01MdTdqTjh0cWgifQ==",
+	})
 	require.Error(t, err)
-	require.ErrorContains(t, err, "Invalid continuation token")
+	require.ErrorIs(t, err, serverErrors.InvalidArgumentError(
+		fmt.Errorf(`invalid ReadAuthorizationModelsRequest.StoreId: value does not match regex pattern "^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$"`)))
 }
 
-func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, s *server.Server) {
 	ctx := context.Background()
 	store := ulid.Make().String()
 
-	model := &openfgav1.AuthorizationModel{
-		Id:              ulid.Make().String(),
-		SchemaVersion:   typesystem.SchemaVersion1_0,
+	_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         store,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "repo"}},
-	}
-	err := datastore.WriteAuthorizationModel(ctx, store, model)
+		Conditions:      map[string]*openfgav1.Condition{},
+	})
 	require.NoError(t, err)
 
-	_, err = commands.NewReadAuthorizationModelsQuery(datastore).Execute(ctx,
-		&openfgav1.ReadAuthorizationModelsRequest{
-			StoreId:           store,
-			ContinuationToken: "foo",
-		})
+	_, err = s.ReadAuthorizationModels(ctx, &openfgav1.ReadAuthorizationModelsRequest{
+		StoreId:           store,
+		ContinuationToken: "foobar",
+	})
 	require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
 }
