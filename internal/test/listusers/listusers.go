@@ -47,10 +47,10 @@ func FromObjectOrUsersetProto(u []*openfgav1.ObjectOrUserset) []string {
 }
 
 func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
-	var protoFilters []*openfgav1.UserTypeFilter
+	var userTypeFilters []*openfgav1.UserTypeFilter
 
 	for _, filterString := range t.Filters {
-		protoFilters = append(protoFilters, toProtoFilter(filterString))
+		userTypeFilters = append(userTypeFilters, toProtoUserTypeFilter(filterString))
 	}
 
 	objectType, objectID := tuple.SplitObject(t.Object)
@@ -60,12 +60,14 @@ func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
 			Id:   objectID,
 		},
 		Relation:    t.Relation,
-		UserFilters: protoFilters,
+		UserFilters: userTypeFilters,
 	}
 }
 
-func toProtoFilter(user string) *openfgav1.UserTypeFilter {
-	userObjType, userRel := tuple.SplitObjectRelation(user)
+// toProtoUserTypeFilter returns the protobuf representation of a UserFilter. It is
+// a helper to convert a string-represented UserFilter to a protobuf.
+func toProtoUserTypeFilter(userFilter string) *openfgav1.UserTypeFilter {
+	userObjType, userRel := tuple.SplitObjectRelation(userFilter)
 
 	sourceUserRef := openfgav1.UserTypeFilter{
 		Type: userObjType,

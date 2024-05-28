@@ -527,3 +527,21 @@ func TestListUsers_Deadline(t *testing.T) {
 		require.Empty(t, resp.GetUsers())
 	})
 }
+
+func TestUserFiltersToString(t *testing.T) {
+	require.Equal(t, "user", userFiltersToString([]*openfgav1.UserTypeFilter{{
+		Type: "user",
+	}}))
+
+	require.Equal(t, "user#viewer", userFiltersToString([]*openfgav1.UserTypeFilter{{
+		Type:     "user",
+		Relation: "viewer",
+	}}))
+
+	require.Equal(t, "user#viewer", userFiltersToString([]*openfgav1.UserTypeFilter{{
+		Type:     "user",
+		Relation: "viewer",
+	}, {
+		Type: "user",
+	}}))
+}
