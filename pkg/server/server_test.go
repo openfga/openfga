@@ -1956,29 +1956,35 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 }
 
 func TestIsExperimentallyEnabled(t *testing.T) {
+	ds := memory.New() // Datastore required for server instantiation
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
 
-	server := Server{}
-
 	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
-		require.False(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+		s := MustNewServerWithOpts(WithDatastore(ds))
+		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
 	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
-		server.experimentals = []ExperimentalFeatureFlag{someExperimentalFlag}
-
-		require.True(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(someExperimentalFlag),
+		)
+		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
 	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
-		server.experimentals = []ExperimentalFeatureFlag{someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")}
-
-		require.True(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
+		)
+		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
 	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
-		server.experimentals = []ExperimentalFeatureFlag{ExperimentalFeatureFlag("some-other-feature")}
-
-		require.False(t, server.IsExperimentallyEnabled(someExperimentalFlag))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+		)
+		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 }

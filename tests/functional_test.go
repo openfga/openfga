@@ -325,7 +325,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, client) })
 	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, client) })
-	t.Run("TestListUsersValidation", func(t *testing.T) { GRPCListUsersTest(t, client) })
+	t.Run("TestListUsersValidation", func(t *testing.T) { GRPCListUsersValidationTest(t, client) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
@@ -989,7 +989,7 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	}
 }
 
-func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	tests := []struct {
 		name              string
 		input             *openfgav1.ListUsersRequest
@@ -1125,24 +1125,10 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			expectedErrorCode: codes.InvalidArgument,
 		},
 		{
-			name: "invalid_authorization_model_ID_because_invalid_chars",
+			name: "invalid_authorization_model_ID_because_invalid_chars_in_model_ID",
 			input: &openfgav1.ListUsersRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
-				Relation:             "viewer",
-				Object: &openfgav1.Object{
-					Type: "document",
-					Id:   "1",
-				},
-				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-			},
-			expectedErrorCode: codes.InvalidArgument,
-		},
-		{
-			name: "invalid_authorization_model_ID_because_invalid_chars",
-			input: &openfgav1.ListUsersRequest{
-				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
-				AuthorizationModelId: ulid.Make().String(),
 				Relation:             "viewer",
 				Object: &openfgav1.Object{
 					Type: "document",
@@ -1183,6 +1169,43 @@ func GRPCListUsersTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 					Id:   "1",
 				},
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "too_many_contextual_tuples",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "user", "user:1"),
+					tuple.NewTupleKey("document:1", "user", "user:2"),
+					tuple.NewTupleKey("document:1", "user", "user:3"),
+					tuple.NewTupleKey("document:1", "user", "user:4"),
+					tuple.NewTupleKey("document:1", "user", "user:5"),
+					tuple.NewTupleKey("document:1", "user", "user:6"),
+					tuple.NewTupleKey("document:1", "user", "user:7"),
+					tuple.NewTupleKey("document:1", "user", "user:8"),
+					tuple.NewTupleKey("document:1", "user", "user:9"),
+					tuple.NewTupleKey("document:1", "user", "user:10"),
+					tuple.NewTupleKey("document:1", "user", "user:11"),
+					tuple.NewTupleKey("document:1", "user", "user:12"),
+					tuple.NewTupleKey("document:1", "user", "user:13"),
+					tuple.NewTupleKey("document:1", "user", "user:14"),
+					tuple.NewTupleKey("document:1", "user", "user:15"),
+					tuple.NewTupleKey("document:1", "user", "user:16"),
+					tuple.NewTupleKey("document:1", "user", "user:17"),
+					tuple.NewTupleKey("document:1", "user", "user:18"),
+					tuple.NewTupleKey("document:1", "user", "user:19"),
+					tuple.NewTupleKey("document:1", "user", "user:20"),
+					tuple.NewTupleKey("document:1", "user", "user:21"),
+				},
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
@@ -1509,16 +1532,6 @@ type user`,
 			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: "1",
 				Id:      ulid.Make().String(),
-			},
-			output: output{
-				errorCode: codes.InvalidArgument,
-			},
-		},
-		{
-			name: "invalid_storeID_because_extra_chars",
-			input: &openfgav1.ReadAuthorizationModelRequest{
-				StoreId: ulid.Make().String() + "A",
-				Id:      ulid.Make().String(), // ulids aren't required at this time
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,

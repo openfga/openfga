@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -387,12 +388,7 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 }
 
 func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
-	for _, e := range s.experimentals {
-		if e == flag {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s.experimentals, flag)
 }
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.

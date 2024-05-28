@@ -44,7 +44,7 @@ type ClientInterface interface {
 	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
 }
 
-// RunAllTests will invoke all list users tests.
+// RunAllTests will invoke all ListUsers tests.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {

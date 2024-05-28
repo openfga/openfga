@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -20,14 +19,15 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// ListUsers returns all subjects (users) of a specified terminal type
-// that are relate via specific relation to a specific object.
+// ListUsers returns all users (e.g. subjects) matching a specific user filter criteria
+// that have a specific relation with some object.
 func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
@@ -35,7 +35,7 @@ func (s *Server) ListUsers(
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
-		attribute.String("object", fmt.Sprintf("%s:%s", req.GetObject().GetType(), req.GetObject().GetId())),
+		attribute.String("object", tuple.BuildObject(req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user_filters", userFiltersToString(req.GetUserFilters())),
 	))
@@ -54,13 +54,11 @@ func (s *Server) ListUsers(
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
 	err = listusers.ValidateListUsersRequest(ctx, req, typesys)
 	if err != nil {
-		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -95,7 +93,7 @@ func (s *Server) ListUsers(
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
 		s.serviceName,
-		"list-users",
+		methodName,
 	).Observe(datastoreQueryCount)
 
 	dispatchCount := float64(resp.Metadata.DispatchCounter.Load())

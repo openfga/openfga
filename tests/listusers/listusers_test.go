@@ -18,10 +18,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )
@@ -62,7 +62,6 @@ func TestListUsersLogs(t *testing.T) {
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := config.MustDefaultConfig()
 	cfg.Trace.Enabled = true
@@ -119,8 +118,8 @@ type document
 		StoreId: storeID,
 		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				{Object: "group:fga", Relation: "member", User: "user:anne"},
-				{Object: "document:1", Relation: "viewer", User: "group:fga#member"},
+				tuple.NewTupleKey("group:fga", "member", "user:anne"),
+				tuple.NewTupleKey("document:1", "viewer", "group:fga#member"),
 			},
 		},
 	})
