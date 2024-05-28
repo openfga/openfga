@@ -2,20 +2,20 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/pkg/server"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/pkg/storage"
 )
 
-func TestDeleteStore(t *testing.T, s *server.Server) {
+func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	createStoreResponse, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+	createStoreCmd := commands.NewCreateStoreCommand(datastore)
+	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgav1.CreateStoreRequest{
 		Name: "acme",
 	})
 	require.NoError(t, err)
@@ -31,8 +31,6 @@ func TestDeleteStore(t *testing.T, s *server.Server) {
 			request: &openfgav1.DeleteStoreRequest{
 				StoreId: "unknownstore",
 			},
-			err: serverErrors.InvalidArgumentError(
-				fmt.Errorf(`invalid DeleteStoreRequest.StoreId: value does not match regex pattern "^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$"`)),
 		},
 		{
 			_name: "Execute_Succeeds",
@@ -42,9 +40,11 @@ func TestDeleteStore(t *testing.T, s *server.Server) {
 		},
 	}
 
+	deleteCmd := commands.NewDeleteStoreCommand(datastore)
+
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			_, err := s.DeleteStore(ctx, test.request)
+			_, err := deleteCmd.Execute(ctx, test.request)
 
 			if test.err != nil {
 				require.ErrorIs(t, err, test.err)

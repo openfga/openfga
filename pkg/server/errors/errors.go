@@ -63,6 +63,10 @@ func NewInternalError(public string, internal error) InternalError {
 	}
 }
 
+func InvalidArgumentError(cause error) error {
+	return status.Error(codes.InvalidArgument, cause.Error())
+}
+
 func ValidationError(cause error) error {
 	return status.Error(codes.Code(openfgav1.ErrorCode_validation_error), cause.Error())
 }

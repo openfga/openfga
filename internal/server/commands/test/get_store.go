@@ -11,26 +11,24 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/openfga/openfga/internal/server/commands"
-	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
-func TestGetStoreQuery(t *testing.T, s *server.Server) {
+func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	type getStoreQueryTest struct {
 		_name            string
+		request          *openfgav1.GetStoreRequest
 		expectedResponse *openfgav1.GetStoreResponse
 		err              error
 	}
 
 	var tests = []getStoreQueryTest{
 		{
-			_name: "ReturnsNotFound",
-			expectedResponse: &openfgav1.GetStoreResponse{
-				Name: "ReturnsNotFound",
-			},
-			err: serverErrors.StoreIDNotFound,
+			_name:   "ReturnsNotFound",
+			request: &openfgav1.GetStoreRequest{StoreId: "non-existent store"},
+			err:     serverErrors.StoreIDNotFound,
 		},
 	}
 
@@ -40,18 +38,17 @@ func TestGetStoreQuery(t *testing.T, s *server.Server) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			store, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{
-				Name: test.expectedResponse.GetName(),
-			})
-			require.NoError(t, err)
-			test.expectedResponse.Id = store.GetId()
+			query := commands.NewGetStoreQuery(datastore)
+			resp, err := query.Execute(ctx, test.request)
 
-			actualRespense, err := s.GetStore(ctx, &openfgav1.GetStoreRequest{
-				StoreId: store.GetId(),
-			})
-			require.NoError(t, err)
-			if diff := cmp.Diff(test.expectedResponse, actualRespense, ignoreStoreFields, protocmp.Transform()); diff != "" {
-				t.Errorf("store mismatch (-want +got):\n%s", diff)
+			if test.err != nil {
+				require.ErrorIs(t, err, test.err)
+				require.Nil(t, resp)
+			} else {
+				require.NoError(t, err)
+				if diff := cmp.Diff(test.expectedResponse, resp, ignoreStoreFields, protocmp.Transform()); diff != "" {
+					t.Errorf("store mismatch (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}

@@ -28,13 +28,11 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/commands"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -255,79 +253,13 @@ func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(
 	})
 }
 
-func TestServerWithPostgresDatastore(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
-
-	test.RunAllTests(t, ds)
-}
-
-func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-
-	uri := testDatastore.GetConnectionURI(false)
-	ds, err := postgres.New(
-		uri,
-		sqlcommon.NewConfig(
-			sqlcommon.WithUsername(testDatastore.GetUsername()),
-			sqlcommon.WithPassword(testDatastore.GetPassword()),
-		),
-	)
-	require.NoError(t, err)
-	defer ds.Close()
-
-	test.RunAllTests(t, ds)
-}
-
-func TestServerWithMemoryDatastore(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-
-	test.RunAllTests(t, ds)
-}
-
-func TestServerWithMySQLDatastore(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
-
-	test.RunAllTests(t, ds)
-}
-
-func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
-
-	uri := testDatastore.GetConnectionURI(false)
-	ds, err := mysql.New(
-		uri,
-		sqlcommon.NewConfig(
-			sqlcommon.WithUsername(testDatastore.GetUsername()),
-			sqlcommon.WithPassword(testDatastore.GetPassword()),
-		),
-	)
-	require.NoError(t, err)
-	defer ds.Close()
-
-	test.RunAllTests(t, ds)
-}
-
 func TestCheckResolverOuterLayerDefault(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -346,6 +278,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -449,6 +382,7 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -511,6 +445,7 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -604,6 +539,7 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	const dispatchThreshold = 5
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
@@ -669,41 +605,6 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 		TupleKey:             tuple.NewCheckRequestTupleKey("group:x", "member", "user:anne"),
 	})
 	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
-}
-
-func BenchmarkOpenFGAServer(b *testing.B) {
-	b.Cleanup(func() {
-		goleak.VerifyNone(b,
-			// https://github.com/uber-go/goleak/discussions/89
-			goleak.IgnoreTopFunction("testing.(*B).run1"),
-			goleak.IgnoreTopFunction("testing.(*B).doBench"),
-		)
-	})
-	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
-
-		uri := testDatastore.GetConnectionURI(true)
-		ds, err := postgres.New(uri, sqlcommon.NewConfig())
-		require.NoError(b, err)
-		b.Cleanup(ds.Close)
-		test.RunAllBenchmarks(b, ds)
-	})
-
-	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
-		ds := memory.New()
-		b.Cleanup(ds.Close)
-		test.RunAllBenchmarks(b, ds)
-	})
-
-	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
-
-		uri := testDatastore.GetConnectionURI(true)
-		ds, err := mysql.New(uri, sqlcommon.NewConfig())
-		require.NoError(b, err)
-		b.Cleanup(ds.Close)
-		test.RunAllBenchmarks(b, ds)
-	})
 }
 
 func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
@@ -1443,8 +1344,10 @@ type document
 	})
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
+		m := memory.New()
+		t.Cleanup(m.Close)
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(m),
 			WithResolveNodeLimit(2),
 		)
 		t.Cleanup(s.Close)
@@ -1648,8 +1551,11 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
 
+	m := memory.New()
+	t.Cleanup(m.Close)
+
 	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
+		WithDatastore(m),
 	)
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
