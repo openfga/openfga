@@ -75,7 +75,6 @@ func TestReadAssertionQuery(t *testing.T, s *server.Server) {
 				AuthorizationModelId: modelID.GetAuthorizationModelId(),
 			})
 			require.NoError(t, err)
-
 			require.Equal(t, test.expectedResponse, actualResponse)
 		})
 	}
