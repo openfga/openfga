@@ -107,6 +107,9 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 		// Replace CLI uri with the one we just updated.
 		uri = dbURI.String()
+	case "sqlite":
+		driver = "sqlite"
+		migrationsPath = assets.SqliteMigrationDir
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:
