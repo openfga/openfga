@@ -1042,7 +1042,7 @@ no tuple key instead.
 * Early support for preshared key or OIDC authentication methods
 
 [Unreleased]: https://github.com/openfga/openfga/compare/v1.5.4...HEAD
-[1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.4
+[1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
 [1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
 [1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2
 [1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
