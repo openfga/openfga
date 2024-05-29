@@ -21,7 +21,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Panic recovery handling for all APIs [#1557](https://github.com/openfga/openfga/pull/1557)
 * Logging of non-sensitive server configuration on startup [#1609](https://github.com/openfga/openfga/pull/1609)
 * Appropriate error codes for throttled requests indicating if a request should be retried [#1552](https://github.com/openfga/openfga/pull/1552)
-* Minor performance improvements by reducing quantity of spans created [#1550](https://github.com/openfga/openfga/pull/1550), [#1589](https://github.com/openfga/openfga/pull/1589)
+* Minor performance improvements in Check API by reducing quantity of spans created [#1550](https://github.com/openfga/openfga/pull/1550), [#1589](https://github.com/openfga/openfga/pull/1589)
 
 ### Fixed
 
