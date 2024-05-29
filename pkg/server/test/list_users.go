@@ -26,7 +26,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		inputRequest          *openfgav1.ListUsersRequest
 		expectedResults       int
 	}{
-		`one_result_without_conditions`: {
+		`one_found_without_conditions`: {
 			inputModel: `model
 							schema 1.1
 						type user
@@ -41,12 +41,10 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the next benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
-				for i := 0; i < 100; i++ {
-					for j := 0; j < 50; j++ {
-						user := fmt.Sprintf("user:%s", ulid.Make().String())
-						// one document accessible by many users
-						tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
-					}
+				for j := 0; j < 2_500; j++ {
+					user := fmt.Sprintf("user:%s", ulid.Make().String())
+					// one document accessible by many users
+					tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
 				}
 				return tuples
 			},
@@ -58,7 +56,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			inputConfigMaxResults: 1,
 			expectedResults:       1,
 		},
-		`all_results_without_conditions`: {
+		`all_found_without_conditions`: {
 			inputModel: `model
 							schema 1.1
 						type user
@@ -73,12 +71,10 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the previous benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
-				for i := 0; i < 100; i++ {
-					for j := 0; j < 50; j++ {
-						user := fmt.Sprintf("user:%s", ulid.Make().String())
-						// one document accessible by many users
-						tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
-					}
+				for j := 0; j < 2_500; j++ {
+					user := fmt.Sprintf("user:%s", ulid.Make().String())
+					// one document accessible by many users
+					tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
 				}
 				return tuples
 			},
@@ -88,9 +84,9 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			inputConfigMaxResults: 0, // infinite
-			expectedResults:       100 * 50,
+			expectedResults:       2_500,
 		},
-		`all_results_with_conditions`: {
+		`all_found_with_conditions`: {
 			inputModel: `model
 							schema 1.1
 						type user
@@ -108,12 +104,10 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 						}`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				var tuples []*openfgav1.TupleKey
-				for i := 0; i < 100; i++ {
-					for j := 0; j < 50; j++ {
-						// one document accessible by many users
-						user := fmt.Sprintf("user:%s", ulid.Make().String())
-						tuples = append(tuples, tuple.NewTupleKeyWithCondition("document:1", "viewer", user, "condTrue", nil))
-					}
+				for j := 0; j < 2_500; j++ {
+					// one document accessible by many users
+					user := fmt.Sprintf("user:%s", ulid.Make().String())
+					tuples = append(tuples, tuple.NewTupleKeyWithCondition("document:1", "viewer", user, "condTrue", nil))
 				}
 				return tuples
 			},
@@ -124,7 +118,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				Context:     testutils.MustNewStruct(b, map[string]interface{}{"param": true}),
 			},
 			inputConfigMaxResults: 0, // infinite
-			expectedResults:       100 * 50,
+			expectedResults:       2_500,
 		},
 		`exclusion_without_conditions`: {
 			inputModel: `model
@@ -187,9 +181,9 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				require.NotNil(b, resp)
 				require.Len(b, resp.GetUsers(), bm.expectedResults)
 			}
-			if name == "all_results_without_conditions" {
+			if name == "all_found_without_conditions" {
 				allResultsIterations = b.N
-			} else if name == "one_result_without_conditions" {
+			} else if name == "one_found_without_conditions" {
 				oneResultIterations = b.N
 			}
 		})
