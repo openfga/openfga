@@ -81,6 +81,7 @@ func TestUnaryPanicInterceptor(t *testing.T) {
 		grpc.WithContextDialer(dialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials())}
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.DialContext(ctx, "", opts...)
 	require.NoError(t, err)
 
@@ -134,6 +135,7 @@ func TestStreamPanicInterceptor(t *testing.T) {
 		grpc.WithContextDialer(dialer),
 		grpc.WithTransportCredentials(insecure.NewCredentials())}
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.DialContext(ctx, "", opts...)
 	require.NoError(t, err)
 
