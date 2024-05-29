@@ -247,9 +247,6 @@ func (l *listUsersQuery) ListUsers(
 		if foundUser.relationshipStatus == NoRelationship {
 			continue
 		}
-		if _, userIsExcluded := excludedUsersUnique[foundUserKey]; userIsExcluded {
-			continue
-		}
 
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
 	}
