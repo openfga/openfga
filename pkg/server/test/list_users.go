@@ -41,7 +41,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the next benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
-				for j := 0; j < 2_500; j++ {
+				for j := 0; j < 1000; j++ {
 					user := fmt.Sprintf("user:%s", ulid.Make().String())
 					// one document accessible by many users
 					tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
@@ -71,9 +71,12 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the previous benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
-				for j := 0; j < 2_500; j++ {
+				for j := 0; j < 1000; j++ {
 					user := fmt.Sprintf("user:%s", ulid.Make().String())
-					// one document accessible by many users
+					folder := fmt.Sprintf("folder:%s", ulid.Make().String())
+					// one document accessible by many users, but this benchmark will incur more reads, so it should take longer and result in less iterations
+					tuples = append(tuples, tuple.NewTupleKey(folder, "viewer", user))
+					tuples = append(tuples, tuple.NewTupleKey("document:1", "parent", folder))
 					tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
 				}
 				return tuples
@@ -84,7 +87,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
 			},
 			inputConfigMaxResults: 0, // infinite
-			expectedResults:       2_500,
+			expectedResults:       1000,
 		},
 		`all_found_with_conditions`: {
 			inputModel: `model
@@ -175,7 +178,8 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				resp, err := listusers.NewListUsersQuery(ds,
-					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults)).
+					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults),
+					listusers.WithListUsersMaxConcurrentReads(50)).
 					ListUsers(ctx, bm.inputRequest)
 				require.NoError(b, err)
 				require.NotNil(b, resp)
