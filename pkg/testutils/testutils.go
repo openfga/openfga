@@ -142,6 +142,7 @@ func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOpt
 
 	defaultOptions = append(defaultOptions, opts...)
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.Dial(
 		grpcAddress, defaultOptions...,
 	)
@@ -173,6 +174,7 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	defer cancel()
 
 	t.Log("creating connection to address", grpcAddr)
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.DialContext(
 		ctx,
 		grpcAddr,
