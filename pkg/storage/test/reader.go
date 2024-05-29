@@ -10,9 +10,7 @@ import (
 )
 
 func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	t.Run("ReadRelationshipTuples", func(t *testing.T) {
-
 		tuples := []string{
 			"document:1#viewer@user:jon",
 			"document:1#viewer@group:eng#member",
