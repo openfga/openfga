@@ -638,6 +638,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		dialOpts := []grpc.DialOption{
+			// nolint:staticcheck // ignoring gRPC deprecations
 			grpc.WithBlock(),
 		}
 		if config.GRPC.TLS.Enabled {
@@ -653,6 +654,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
+		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
 			s.Logger.Fatal("", zap.Error(err))
