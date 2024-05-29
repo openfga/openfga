@@ -1273,7 +1273,6 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 
 	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		telemetry.TraceError(span, err)
 		if errors.Is(err, typesystem.ErrModelNotFound) {
 			if modelID == "" {
 				return nil, serverErrors.LatestAuthorizationModelNotFound(storeID)
@@ -1286,7 +1285,9 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		return nil, serverErrors.HandleError("", err)
+		err = serverErrors.HandleError("", err)
+		telemetry.TraceError(span, err)
+		return nil, err
 	}
 
 	resolvedModelID := typesys.GetAuthorizationModelID()
