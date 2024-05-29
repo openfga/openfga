@@ -107,7 +107,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 						}`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				var tuples []*openfgav1.TupleKey
-				for j := 0; j < 2_500; j++ {
+				for j := 0; j < 1000; j++ {
 					// one document accessible by many users
 					user := fmt.Sprintf("user:%s", ulid.Make().String())
 					tuples = append(tuples, tuple.NewTupleKeyWithCondition("document:1", "viewer", user, "condTrue", nil))
@@ -121,7 +121,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				Context:     testutils.MustNewStruct(b, map[string]interface{}{"param": true}),
 			},
 			inputConfigMaxResults: 0, // infinite
-			expectedResults:       2_500,
+			expectedResults:       1000,
 		},
 		`exclusion_without_conditions`: {
 			inputModel: `model
