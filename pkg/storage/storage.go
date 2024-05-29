@@ -98,7 +98,7 @@ type ReadRelationshipTupleOpts struct {
 // ReadRelationshipTuplesOpt is a type which can be implemented to provide changes
 // to query behvaior of ReadRelationshipTuples queries. These includes things like
 // limits, offsets (for pagination), ordering, and so on...
-type ReadRelationshipTuplesOpt func(ReadRelationshipTupleOpts)
+type ReadRelationshipTuplesOpt func(*ReadRelationshipTupleOpts)
 
 // SubjectsFilter provides a way to specify the predicates which should be used to filter
 // relationship tuples by with respect to the users/subjects included in the tuples.
