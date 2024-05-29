@@ -192,12 +192,10 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQb2IpWsCzug=
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
-github.com/openfga/api/proto v0.0.0-20240509182947-591c8fa7765c h1:9eVNx4MTB7XmjzZkEs/QL5wcogIUoG5wZWsx9MtdSQE=
-github.com/openfga/api/proto v0.0.0-20240509182947-591c8fa7765c/go.mod h1:3geSv9HPiWV54uUX8FprWCQejCDGFKKhh5JMpcgTblg=
-github.com/openfga/api/proto v0.0.0-20240528152008-016839b7eea9 h1:A9eXAYl6tlXM0i8QCJuju1JbJZN9g7gHMvdKch88MQg=
-github.com/openfga/api/proto v0.0.0-20240528152008-016839b7eea9/go.mod h1:3geSv9HPiWV54uUX8FprWCQejCDGFKKhh5JMpcgTblg=
-github.com/openfga/language/pkg/go v0.0.0-20240508080213-a861f06327b6 h1:iyNcZojsdGW065vyug95/ojj+Iwt/SEl+DgCNEFYIoA=
-github.com/openfga/language/pkg/go v0.0.0-20240508080213-a861f06327b6/go.mod h1:mCwEY2IQvyNgfEwbfH0C0ERUwtL8z6UjSAF8zgn5Xbg=
+github.com/openfga/api/proto v0.0.0-20240528160929-03aaac2ff923 h1:wdByA6I4EdW+7baYAT6ccbJ7A22+mk9bolk1LLK+ZxQ=
+github.com/openfga/api/proto v0.0.0-20240528160929-03aaac2ff923/go.mod h1:3geSv9HPiWV54uUX8FprWCQejCDGFKKhh5JMpcgTblg=
+github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d h1:n44DfITs+CLCYJIgsryJkG2ElwOZJ3huekPZKydPi7U=
+github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d/go.mod h1:wkI4GcY3yNNuFMU2ncHPWqBaF7XylQTkJYfBi2pIpK8=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/pelletier/go-toml/v2 v2.1.1 h1:LWAJwfNvjQZCFIDKWYQaM62NcYeYViCmWIwmOStowAI=
