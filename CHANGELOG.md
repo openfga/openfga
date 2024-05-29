@@ -21,7 +21,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Panic recovery handling for all APIs [#1557](https://github.com/openfga/openfga/pull/1557)
 * Logging of non-sensitive server configuration on startup [#1609](https://github.com/openfga/openfga/pull/1609)
 * Appropriate error codes for throttled requests indicating if a request should be retried [#1552](https://github.com/openfga/openfga/pull/1552)
-* `store_id` span attribute for Check tracing [#1554](https://github.com/openfga/openfga/pull/1554)
 
 ### Fixed
 
