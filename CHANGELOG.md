@@ -27,6 +27,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Goroutine leak occurring during initial server validation [#1617](https://github.com/openfga/openfga/pull/1617)
 * Stricter filtering of invalid tuples with ListObjects [#1563](https://github.com/openfga/openfga/pull/1563)
 * Panic on server close if caching is enabled [#1568](https://github.com/openfga/openfga/pull/1568)
+* Prevent calling datastore if context has error [#1593](https://github.com/openfga/openfga/pull/1593)
 
 ### Changed
 
