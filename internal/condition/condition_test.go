@@ -201,6 +201,50 @@ func TestEvaluate(t *testing.T) {
 			},
 		},
 		{
+			name: "mix_of_missing_params_and_truthy_eval",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok' || param2 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+					"param2": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"param1": "ok",
+			},
+			result: condition.EvaluationResult{
+				ConditionMet:      true,
+				MissingParameters: []string{"param2"},
+			},
+		},
+		{
+			name: "mix_of_missing_params_and_falsey_eval",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok' && param2 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+					"param2": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"param1": "ok",
+			},
+			result: condition.EvaluationResult{
+				ConditionMet:      false,
+				MissingParameters: []string{"param2"},
+			},
+		},
+		{
 			name: "fail_unexpected_type",
 			condition: &openfgav1.Condition{
 				Name:       "condition1",
