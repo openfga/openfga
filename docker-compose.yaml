@@ -11,7 +11,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -41,6 +41,7 @@ services:
       - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
       - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100 #see postgres container
       - OPENFGA_PLAYGROUND_ENABLED=true
+      - OPENFGA_EXPERIMENTALS=enable-list-users
     networks:
       - default
     ports:
@@ -49,7 +50,12 @@ services:
       - "3000:3000" #playground
       - "2112:2112" #prometheus metrics
     healthcheck:
-      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8081"]
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/grpc_health_probe",
+          "-addr=openfga:8081"
+        ]
       interval: 5s
       timeout: 30s
       retries: 3

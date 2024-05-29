@@ -1022,6 +1022,9 @@ type document
 }
 
 func TestCheckDatastoreQueryCount(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ds := memory.New()
 	defer ds.Close()
 
