@@ -32,7 +32,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 
-* `request_id` is now same as `trace_id` for easier debugging [#1576](https://github.com/openfga/openfga/pull/1576) - thank you, @00chorch
+* `request_id` is now same as `trace_id` (e.g. `1e20da43269fe07e3d2ac018c0aad2d1`) if tracing is enabled. Otherwise, remains an UUID (e.g. `38fee7ac-4bfe-4cf6-baa2-8b5ec296b485`) [#1576](https://github.com/openfga/openfga/pull/1576) - thank you, @00chorch
 
 ### Removed
 
