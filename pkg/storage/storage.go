@@ -88,10 +88,17 @@ type TupleBackend interface {
 	RelationshipTupleWriter
 }
 
+// ReadRelationshipTupleOpts is a functional option type that allows us to parameters.
+type ReadRelationshipTupleOpts struct {
+	Limit         int64             // limits the number of items retrieved in a request
+	Ordering      bool              // true = ascending, false = descending
+	PaginationOpt PaginationOptions // split database responses into pages
+}
+
 // ReadRelationshipTuplesOpt is a type which can be implemented to provide changes
 // to query behvaior of ReadRelationshipTuples queries. These includes things like
 // limits, offsets (for pagination), ordering, and so on...
-type ReadRelationshipTuplesOpt func()
+type ReadRelationshipTuplesOpt func(ReadRelationshipTupleOpts)
 
 // SubjectsFilter provides a way to specify the predicates which should be used to filter
 // relationship tuples by with respect to the users/subjects included in the tuples.
@@ -107,7 +114,7 @@ type ReadRelationshipTuplesOpt func()
 //
 // should produce the following SQL expression:
 //
-// WHERE subject_type='group' AND subject_id IN ('eng', 'fga') AND subject_relation='member'
+// WHERE subject_type='group' AND subject_id IN ('eng', 'fga') AND subject_relation='member'.
 type SubjectsFilter struct {
 	SubjectType     string
 	SubjectIDs      []string
