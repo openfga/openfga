@@ -75,7 +75,10 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 
 	options := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(tracer.endpoint),
-		otlptracegrpc.WithDialOption(grpc.WithBlock()),
+		otlptracegrpc.WithDialOption(
+			// nolint:staticcheck // ignoring gRPC deprecations
+			grpc.WithBlock(),
+		),
 	}
 
 	if tracer.insecure {
