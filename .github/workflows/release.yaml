@@ -159,7 +159,7 @@ jobs:
         run: |
           set -euo pipefail
           gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" \
-            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom"
+            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom.json"
 
       - name: Verify assets
         env:
@@ -169,7 +169,7 @@ jobs:
             --provenance-path "$PROVENANCE" \
             --source-uri "github.com/$GITHUB_REPOSITORY" \
             --source-tag "$GITHUB_REF_NAME" \
-            *.tar.gz *.tar.gz.sbom
+            *.tar.gz *.tar.gz.sbom.json
 
   verification-with-cosign:
     needs: [ goreleaser, image-provenance ]
