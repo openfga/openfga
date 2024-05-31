@@ -747,15 +747,16 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		checker := NewLocalCheckerWithCycleDetection()
 		t.Cleanup(checker.Close)
 
-		model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-	type user
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			schema 1.1
+			type user
 
 
-	type document
-	  relations
-		define viewer: [user] but not restricted
-		define restricted: [user, document#viewer]`)
+			type document
+				relations
+					define viewer: [user] but not restricted
+					define restricted: [user, document#viewer]`)
 
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
@@ -787,17 +788,18 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		checker := NewLocalCheckerWithCycleDetection()
 		t.Cleanup(checker.Close)
 
-		model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-	type user
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			schema 1.1
+			type user
 
 
-	type document
-	  relations
-		define viewer: [user] but not restricteda
-		define restricteda: restrictedb
-		define restrictedb: [user, document#viewer]
-	`)
+			type document
+				relations
+					define viewer: [user] but not restricteda
+					define restricteda: restrictedb
+					define restrictedb: [user, document#viewer]
+			`)
 
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
@@ -839,19 +841,20 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		checker := NewLocalCheckerWithCycleDetection()
 		t.Cleanup(checker.Close)
 
-		model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			schema 1.1
+			type user
 
-type group
-  relations
-	define member: [user, group#member]
+			type group
+				relations
+					define member: [user, group#member]
 
-type document
-  relations
-	define allowed: [user]
-	define viewer: [group#member] or editor
-	define editor: [group#member] and allowed`)
+			type document
+				relations
+					define allowed: [user]
+					define viewer: [group#member] or editor
+					define editor: [group#member] and allowed`)
 
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
@@ -890,19 +893,20 @@ type document
 		})
 		require.NoError(t, err)
 
-		model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+			schema 1.1
+			type user
 
-type document
-  relations
-	define admin: [user:*]
-	define viewer: [user with condX] but not admin
+			type document
+				relations
+					define admin: [user:*]
+					define viewer: [user with condX] but not admin
 
-condition condX(x: int) {
-	x < 100
-}
-`)
+			condition condX(x: int) {
+				x < 100
+			}
+			`)
 
 		checker := NewLocalCheckerWithCycleDetection()
 		t.Cleanup(checker.Close)
@@ -938,19 +942,20 @@ condition condX(x: int) {
 		})
 		require.NoError(t, err)
 
-		model := testutils.MustTransformDSLToProtoWithID(`model
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
 			schema 1.1
-		type user
+			type user
 
-		type document
-		  relations
-			define admin: [user with condX]
-			define viewer: [user] but not admin
+			type document
+				relations
+					define admin: [user with condX]
+					define viewer: [user] but not admin
 
-		condition condX(x: int) {
-			x < 100
-		}
-		`)
+			condition condX(x: int) {
+				x < 100
+			}
+			`)
 
 		checker := NewLocalCheckerWithCycleDetection()
 		t.Cleanup(checker.Close)
@@ -996,15 +1001,16 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	checker := NewLocalCheckerWithCycleDetection(WithResolveNodeBreadthLimit(concurrencyLimit))
 	t.Cleanup(checker.Close)
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
-type group
-  relations
-	define member: [user, group#member]
-type document
-  relations
-	define viewer: [group#member]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+		schema 1.1
+		type user
+		type group
+			relations
+				define member: [user, group#member]
+		type document
+			relations
+				define viewer: [group#member]`)
 
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
@@ -1044,35 +1050,36 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+		schema 1.1
+		type user
 
-type company
-  relations
-	define member: [user]
+		type company
+			relations
+				define member: [user]
 
-type org
-  relations
-	define member: [user]
+		type org
+			relations
+				define member: [user]
 
-type document
-  relations
-	define wildcard: [user:*]
-	define userset: [org#member]
-	define multiple_userset: [org#member, company#member]
-	define a: [user]
-	define b: [user]
-	define union: a or b
-	define union_rewrite: union
-	define intersection: a and b
-	define difference: a but not b
-	define ttu: member from parent
-	define union_and_ttu: union and ttu
-	define union_or_ttu: union or ttu or union_rewrite
-	define intersection_of_ttus: union_or_ttu and union_and_ttu
-	define parent: [org]
-`)
+		type document
+			relations
+				define wildcard: [user:*]
+				define userset: [org#member]
+				define multiple_userset: [org#member, company#member]
+				define a: [user]
+				define b: [user]
+				define union: a or b
+				define union_rewrite: union
+				define intersection: a and b
+				define difference: a but not b
+				define ttu: member from parent
+				define union_and_ttu: union and ttu
+				define union_or_ttu: union or ttu or union_rewrite
+				define intersection_of_ttus: union_or_ttu and union_and_ttu
+				define parent: [org]
+		`)
 
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
@@ -1301,27 +1308,28 @@ func TestCheckConditions(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	model := parser.MustTransformDSLToProto(`model
-  schema 1.1
+	model := parser.MustTransformDSLToProto(`
+		model
+		schema 1.1
 
-type user
+		type user
 
-type folder
-  relations
-    define viewer: [user]
+		type folder
+			relations
+				define viewer: [user]
 
-type group
-  relations
-    define member: [user, group#member with condition1]
+		type group
+			relations
+				define member: [user, group#member with condition1]
 
-type document
-  relations
-    define parent: [folder with condition1]
-	define viewer: [group#member] or viewer from parent
+			type document
+				relations
+				define parent: [folder with condition1]
+					define viewer: [group#member] or viewer from parent
 
-condition condition1(param1: string) {
-  param1 == "ok"
-}`)
+		condition condition1(param1: string) {
+			param1 == "ok"
+		}`)
 
 	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKeyWithCondition("document:x", "parent", "folder:x", "condition1", tkConditionContext),
@@ -1391,21 +1399,22 @@ func TestCheckDispatchCount(t *testing.T) {
 	t.Run("dispatch_count_ttu", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		model := parser.MustTransformDSLToProto(`model
-  schema 1.1
+		model := parser.MustTransformDSLToProto(`
+			model
+			schema 1.1
 
-type user
+			type user
 
-type folder
-  	relations
-		define viewer: [user] or viewer from parent
-		define parent: [folder]
+			type folder
+				relations
+					define viewer: [user] or viewer from parent
+					define parent: [folder]
 
-type doc
-	relations
-		define viewer: [user] or viewer from parent
-		define parent: [folder]
-`)
+			type doc
+				relations
+					define viewer: [user] or viewer from parent
+					define parent: [folder]
+			`)
 
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
@@ -1457,19 +1466,20 @@ type doc
 	t.Run("dispatch_count_multiple_direct_userset_lookups", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		model := parser.MustTransformDSLToProto(`model
-	  schema 1.1
+		model := parser.MustTransformDSLToProto(`
+			model
+			schema 1.1
 
-	type user
+			type user
 
-	type group
-	  relations
-	    define member: [user, group#member]
+			type group
+				relations
+					define member: [user, group#member]
 
-	type document
-	  relations
-		define viewer: [group#member]
-	`)
+			type document
+				relations
+					define viewer: [group#member]
+			`)
 
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("group:1", "member", "user:jon"),
@@ -1520,15 +1530,16 @@ type doc
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		model := parser.MustTransformDSLToProto(`model
-		schema 1.1
+		model := parser.MustTransformDSLToProto(`
+			model
+			schema 1.1
 
-		type user
+			type user
 
-		type document
-			relations
-		   		define owner: [user]
-		   		define editor: [user] or owner`)
+			type document
+				relations
+					define owner: [user]
+					define editor: [user] or owner`)
 
 		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "owner", "user:jon"),
