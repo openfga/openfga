@@ -85,7 +85,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-list-users`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-list-users`, `enable-consistency-params`")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -421,6 +421,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var experimentals []server.ExperimentalFeatureFlag
 	for _, feature := range config.Experimentals {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+		s.Logger.Info(fmt.Sprintf("🧪 experimentals: %v", experimentals))
 	}
 
 	datastore, err := s.datastoreConfig(config)
