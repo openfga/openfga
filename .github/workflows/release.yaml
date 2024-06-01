@@ -102,7 +102,7 @@ jobs:
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
-        uses: snyk/actions/docker@8349f9043a8b7f0f3ee8885bf28f0b388d2446e8 # pin@master
+        uses: snyk/actions/docker@d406fd286b663eb8c6f8adcced4f7bcd199c0a3f # pin@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -159,7 +159,7 @@ jobs:
         run: |
           set -euo pipefail
           gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" \
-            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom"
+            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom.json"
 
       - name: Verify assets
         env:
@@ -169,7 +169,7 @@ jobs:
             --provenance-path "$PROVENANCE" \
             --source-uri "github.com/$GITHUB_REPOSITORY" \
             --source-tag "$GITHUB_REF_NAME" \
-            *.tar.gz *.tar.gz.sbom
+            *.tar.gz *.tar.gz.sbom.json
 
   verification-with-cosign:
     needs: [ goreleaser, image-provenance ]

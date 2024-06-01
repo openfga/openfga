@@ -338,6 +338,7 @@ func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceCl
 
 	tests.StartServer(b, cfg)
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
