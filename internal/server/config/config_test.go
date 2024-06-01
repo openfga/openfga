@@ -287,12 +287,12 @@ func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	})
 	t.Run("max_condition_evaluation_cost_valid", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.MaxConditionEvaluationCost = 120
+		cfg.MaxConditionEvaluationCost = uint64(120)
 
 		err := cfg.Verify()
 		require.NoError(t, err)
 	})
-	require.Equal(t, 120, MaxConditionEvaluationCost())
+	require.Equal(t, uint64(120), MaxConditionEvaluationCost())
 }
 
 func TestDefaultContextTimeout(t *testing.T) {
