@@ -288,6 +288,7 @@ func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	t.Run("max_condition_evaluation_cost_valid", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.MaxConditionEvaluationCost = uint64(120)
+		viper.Set("maxConditionEvaluationCost", uint64(120))
 
 		err := cfg.Verify()
 		require.NoError(t, err)

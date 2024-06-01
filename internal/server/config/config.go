@@ -501,7 +501,7 @@ func DefaultConfig() *Config {
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
 		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,
 		MaxConditionEvaluationCost:                DefaultMaxConditionEvaluationCost,
-    ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
+		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
