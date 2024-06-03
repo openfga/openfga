@@ -3,10 +3,11 @@ package test
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/internal/graph"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"

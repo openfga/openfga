@@ -1,12 +1,14 @@
 package graph
 
 import (
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
 )
 
 func TestNewLayeredCheckResolver(t *testing.T) {
