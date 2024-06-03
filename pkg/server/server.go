@@ -506,7 +506,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		))
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingEnabled())
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithCacheEnabled())
 	}
 
 	if s.checkDispatchThrottlingEnabled {
