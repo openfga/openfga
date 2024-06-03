@@ -449,10 +449,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	var checkBuilderOpts []graph.CheckQueryBuilderOpt
-	checkBuilderOpts = append(checkBuilderOpts, graph.WithLocalCheckerOpts(
+	checkBuilderOpts := []graph.CheckQueryBuilderOpt{graph.WithLocalCheckerOpts(
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-	))
+	)}
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
