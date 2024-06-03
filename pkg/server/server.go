@@ -492,21 +492,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	checkBuilderOpts := []graph.CheckQueryBuilderOpt{graph.WithLocalCheckerOpts(
-		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-	)}
+	checkBuilderOpts := []graph.CheckQueryBuilderOpt{}
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
 
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithCachedCheckResolverOpts(
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithCachedCheckResolver(
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		))
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithCacheEnabled())
 	}
 
 	if s.checkDispatchThrottlingEnabled {
@@ -516,7 +513,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.checkDispatchThrottlingMaxThreshold),
 		)
 
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingCheckResolverOpts(
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingCheckResolver(
 			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
 				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
@@ -524,8 +521,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
 				"check_dispatch_throttle")),
 		))
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingEnabled())
 	}
+
+	checkBuilderOpts = append(checkBuilderOpts, graph.WithLocalChecker(
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+	))
 
 	s.checkResolver, s.checkResolverCloser = graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
 

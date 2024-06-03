@@ -499,10 +499,8 @@ condition condition1(x: int) {
 				graph.WithCacheTTL(10 * time.Second),
 			}
 			checkBuilderOpts := []graph.CheckQueryBuilderOpt{
-				graph.WithLocalCheckerOpts(localCheckOpts...),
-				graph.WithCachedCheckResolverOpts(cacheOpts...),
-				graph.WithCacheEnabled(),
-				graph.WithDispatchThrottlingEnabled(),
+				graph.WithCachedCheckResolver(cacheOpts...),
+				graph.WithLocalChecker(localCheckOpts...),
 			}
 			checkResolver, closer := graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
 			t.Cleanup(closer)

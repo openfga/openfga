@@ -42,11 +42,12 @@ func TestNewLayeredCheckResolver(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			opts := []CheckQueryBuilderOpt{}
 			if test.cacheEnabled {
-				opts = append(opts, WithCacheEnabled())
+				opts = append(opts, WithCachedCheckResolver())
 			}
 			if test.dispatchThrottlingEnabled {
-				opts = append(opts, WithDispatchThrottlingEnabled())
+				opts = append(opts, WithDispatchThrottlingCheckResolver())
 			}
+			opts = append(opts, WithLocalChecker())
 			builder := NewCheckQueryBuilder(opts...)
 			var cacheCheckResolver *CachedCheckResolver
 			var dispatchCheckResolver *DispatchThrottlingCheckResolver
@@ -110,11 +111,9 @@ func TestOptsBeingPassed(t *testing.T) {
 	}
 
 	checkResolver, checkCloser := NewCheckQueryBuilder(
-		WithCachedCheckResolverOpts(cacheOpts...),
-		WithDispatchThrottlingCheckResolverOpts(dispatchOpts...),
-		WithLocalCheckerOpts(localCheckerOpts...),
-		WithCacheEnabled(),
-		WithDispatchThrottlingEnabled(),
+		WithCachedCheckResolver(cacheOpts...),
+		WithDispatchThrottlingCheckResolver(dispatchOpts...),
+		WithLocalChecker(localCheckerOpts...),
 	).Build()
 	t.Cleanup(func() {
 		mockThrottler.EXPECT().Close().Times(2)

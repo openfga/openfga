@@ -1,13 +1,6 @@
 package graph
 
 type CheckResolverBuilder struct {
-	localCheckerOpts       []LocalCheckerOption
-	cacheOpts              []CachedCheckResolverOpt
-	dispatchThrottlingOpts []DispatchThrottlingCheckResolverOpt
-
-	cacheEnabled              bool
-	dispatchThrottlingEnabled bool
-
 	resolvers []CheckResolver
 }
 
@@ -15,45 +8,34 @@ type CheckResolverBuilder struct {
 // instance.
 type CheckQueryBuilderOpt func(checkResolver *CheckResolverBuilder)
 
-// WithLocalCheckerOpts sets the opts to be used to build LocalChecker.
-func WithLocalCheckerOpts(opts ...LocalCheckerOption) CheckQueryBuilderOpt {
+// WithLocalChecker sets the opts to be used to build LocalChecker.
+func WithLocalChecker(opts ...LocalCheckerOption) CheckQueryBuilderOpt {
 	return func(r *CheckResolverBuilder) {
-		r.localCheckerOpts = opts
+		r.resolvers = append(r.resolvers, NewLocalChecker(opts...))
 	}
 }
 
-// WithCachedCheckResolverOpts sets the opts to be used to build CachedCheckResolver.
-func WithCachedCheckResolverOpts(opts ...CachedCheckResolverOpt) CheckQueryBuilderOpt {
+// WithCachedCheckResolver sets the opts to be used to build CachedCheckResolver.
+func WithCachedCheckResolver(opts ...CachedCheckResolverOpt) CheckQueryBuilderOpt {
 	return func(r *CheckResolverBuilder) {
-		r.cacheOpts = opts
+		r.resolvers = append(r.resolvers, NewCachedCheckResolver(opts...))
 	}
 }
 
-// WithDispatchThrottlingCheckResolverOpts sets the opts to be used to build DispatchThrottlingCheckResolver.
-func WithDispatchThrottlingCheckResolverOpts(opts ...DispatchThrottlingCheckResolverOpt) CheckQueryBuilderOpt {
+// WithDispatchThrottlingCheckResolver sets the opts to be used to build DispatchThrottlingCheckResolver.
+func WithDispatchThrottlingCheckResolver(opts ...DispatchThrottlingCheckResolverOpt) CheckQueryBuilderOpt {
 	return func(r *CheckResolverBuilder) {
-		r.dispatchThrottlingOpts = opts
-	}
-}
-
-func WithCacheEnabled() CheckQueryBuilderOpt {
-	return func(r *CheckResolverBuilder) {
-		r.cacheEnabled = true
-	}
-}
-
-func WithDispatchThrottlingEnabled() CheckQueryBuilderOpt {
-	return func(r *CheckResolverBuilder) {
-		r.dispatchThrottlingEnabled = true
+		r.resolvers = append(r.resolvers, NewDispatchThrottlingCheckResolver(opts...))
 	}
 }
 
 func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckResolverBuilder {
-	checkQueryBuilder := &CheckResolverBuilder{}
+	checkResolverBuilder := &CheckResolverBuilder{}
+	checkResolverBuilder.resolvers = []CheckResolver{NewCycleDetectionCheckResolver()}
 	for _, opt := range opts {
-		opt(checkQueryBuilder)
+		opt(checkResolverBuilder)
 	}
-	return checkQueryBuilder
+	return checkResolverBuilder
 }
 
 // Build constructs a CheckResolver that is composed of various CheckResolver layers.
@@ -68,23 +50,6 @@ func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckResolverBuilder {
 // The returned CheckResolverCloser should be used to close all resolvers involved in the
 // composition after you are done with the CheckResolver.
 func (c *CheckResolverBuilder) Build() (CheckResolver, CheckResolverCloser) {
-	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
-	checkResolvers := []CheckResolver{cycleDetectionCheckResolver}
-
-	if c.cacheEnabled {
-		cachedCheckResolver := NewCachedCheckResolver(c.cacheOpts...)
-		checkResolvers = append(checkResolvers, cachedCheckResolver)
-	}
-
-	if c.dispatchThrottlingEnabled {
-		dispatchThrottlingCheckResolver := NewDispatchThrottlingCheckResolver(c.dispatchThrottlingOpts...)
-		checkResolvers = append(checkResolvers, dispatchThrottlingCheckResolver)
-	}
-
-	localCheckResolver := NewLocalChecker(c.localCheckerOpts...)
-	checkResolvers = append(checkResolvers, localCheckResolver)
-	c.resolvers = checkResolvers
-
 	for i, resolver := range c.resolvers {
 		if i == len(c.resolvers)-1 {
 			resolver.SetDelegate(c.resolvers[0])
@@ -93,7 +58,7 @@ func (c *CheckResolverBuilder) Build() (CheckResolver, CheckResolverCloser) {
 		resolver.SetDelegate(c.resolvers[i+1])
 	}
 
-	return cycleDetectionCheckResolver, c.close
+	return c.resolvers[0], c.close
 }
 
 // close will ensure all the CheckResolver constructed are closed.
