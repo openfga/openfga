@@ -39,13 +39,12 @@ func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckResolverBuilder {
 }
 
 // Build constructs a CheckResolver that is composed of various CheckResolver layers.
-// Specifically, it constructs a CheckResolver with the following composition:
-//
+// Specifically, it constructs a CheckResolver with the order in which the Opts are provided.
+// CycleDetectionCheckResolver is always the first resolver in the composition.
+
 //	CycleDetectionCheckResolver  <-----|
-//		CachedCheckResolver              |
-//			DispatchThrottlingCheckResolver |
-//				LocalChecker                   |
-//					CycleDetectionCheckResolver -|
+//		[...Other resolvers depending on the opts order]
+//			CycleDetectionCheckResolver
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the
 // composition after you are done with the CheckResolver.
