@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/graph/check"
 	"net/http"
 	"slices"
 	"sort"
@@ -492,7 +493,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	checkBuilderOpts := []graph.CheckQueryBuilderOpt{graph.WithLocalCheckerOpts(
+	checkBuilderOpts := []check.CheckQueryBuilderOpt{check.WithLocalCheckerOpts(
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)}
 
@@ -501,7 +502,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
 
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithCachedCheckResolverOpts(
+		checkBuilderOpts = append(checkBuilderOpts, check.WithCachedCheckResolverOpts(
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
@@ -515,7 +516,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.checkDispatchThrottlingMaxThreshold),
 		)
 
-		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingCheckResolverOpts(
+		checkBuilderOpts = append(checkBuilderOpts, check.WithDispatchThrottlingCheckResolverOpts(
 			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
 				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
@@ -525,8 +526,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		))
 	}
 
-	s.checkResolver, s.checkResolverCloser = graph.
-		NewCheckQueryBuilder(checkBuilderOpts...).
+	s.checkResolver, s.checkResolverCloser = check.NewCheckQueryBuilder(checkBuilderOpts...).
 		NewLayeredCheckResolver(s.checkQueryCacheEnabled, s.checkDispatchThrottlingEnabled)
 
 	if s.listObjectsDispatchThrottlingEnabled {

@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/internal/graph/check"
 	"strconv"
 	"testing"
 	"time"
@@ -498,10 +499,10 @@ condition condition1(x: int) {
 				graph.WithMaxCacheSize(100),
 				graph.WithCacheTTL(10 * time.Second),
 			}
-			checkBuilderOpts := []graph.CheckQueryBuilderOpt{
-				graph.WithLocalCheckerOpts(localCheckOpts...),
-				graph.WithCachedCheckResolverOpts(cacheOpts...)}
-			checkResolver, closer := graph.NewCheckQueryBuilder(checkBuilderOpts...).NewLayeredCheckResolver(
+			checkBuilderOpts := []check.CheckQueryBuilderOpt{
+				check.WithLocalCheckerOpts(localCheckOpts...),
+				check.WithCachedCheckResolverOpts(cacheOpts...)}
+			checkResolver, closer := check.NewCheckQueryBuilder(checkBuilderOpts...).NewLayeredCheckResolver(
 				test.useCheckCache,
 				false,
 			)

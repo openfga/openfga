@@ -1,14 +1,16 @@
-package graph
+package check
+
+import "github.com/openfga/openfga/internal/graph"
 
 type CheckResolverBuilder struct {
-	localCheckerOpts       []LocalCheckerOption
-	cacheOpts              []CachedCheckResolverOpt
-	dispatchThrottlingOpts []DispatchThrottlingCheckResolverOpt
+	localCheckerOpts       []graph.LocalCheckerOption
+	cacheOpts              []graph.CachedCheckResolverOpt
+	dispatchThrottlingOpts []graph.DispatchThrottlingCheckResolverOpt
 
-	cycleDetectionCheckResolver     *CycleDetectionCheckResolver
-	cachedCheckResolver             *CachedCheckResolver
-	dispatchThrottlingCheckResolver *DispatchThrottlingCheckResolver
-	localCheckResolver              *LocalChecker
+	cycleDetectionCheckResolver     *graph.CycleDetectionCheckResolver
+	cachedCheckResolver             *graph.CachedCheckResolver
+	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
+	localCheckResolver              *graph.LocalChecker
 }
 
 // CheckQueryBuilderOpt defines an option that can be used to change the behavior of CheckResolverBuilder
@@ -16,21 +18,21 @@ type CheckResolverBuilder struct {
 type CheckQueryBuilderOpt func(checkResolver *CheckResolverBuilder)
 
 // WithLocalCheckerOpts sets the opts to be used to build LocalChecker.
-func WithLocalCheckerOpts(opts ...LocalCheckerOption) CheckQueryBuilderOpt {
+func WithLocalCheckerOpts(opts ...graph.LocalCheckerOption) CheckQueryBuilderOpt {
 	return func(r *CheckResolverBuilder) {
 		r.localCheckerOpts = opts
 	}
 }
 
 // WithCachedCheckResolverOpts sets the opts to be used to build CachedCheckResolver.
-func WithCachedCheckResolverOpts(opts ...CachedCheckResolverOpt) CheckQueryBuilderOpt {
+func WithCachedCheckResolverOpts(opts ...graph.CachedCheckResolverOpt) CheckQueryBuilderOpt {
 	return func(r *CheckResolverBuilder) {
 		r.cacheOpts = opts
 	}
 }
 
 // WithDispatchThrottlingCheckResolverOpts sets the opts to be used to build DispatchThrottlingCheckResolver.
-func WithDispatchThrottlingCheckResolverOpts(opts ...DispatchThrottlingCheckResolverOpt) CheckQueryBuilderOpt {
+func WithDispatchThrottlingCheckResolverOpts(opts ...graph.DispatchThrottlingCheckResolverOpt) CheckQueryBuilderOpt {
 	return func(r *CheckResolverBuilder) {
 		r.dispatchThrottlingOpts = opts
 	}
@@ -58,22 +60,22 @@ func NewCheckQueryBuilder(opts ...CheckQueryBuilderOpt) *CheckResolverBuilder {
 func (c *CheckResolverBuilder) NewLayeredCheckResolver(
 	cacheEnabled bool,
 	dispatchThrottlingEnabled bool,
-) (CheckResolver, CheckResolverCloser) {
-	c.cycleDetectionCheckResolver = NewCycleDetectionCheckResolver()
-	c.localCheckResolver = NewLocalChecker(c.localCheckerOpts...)
+) (graph.CheckResolver, graph.CheckResolverCloser) {
+	c.cycleDetectionCheckResolver = graph.NewCycleDetectionCheckResolver()
+	c.localCheckResolver = graph.NewLocalChecker(c.localCheckerOpts...)
 
 	c.cycleDetectionCheckResolver.SetDelegate(c.localCheckResolver)
 	c.localCheckResolver.SetDelegate(c.cycleDetectionCheckResolver)
 
 	if cacheEnabled {
-		c.cachedCheckResolver = NewCachedCheckResolver(c.cacheOpts...)
+		c.cachedCheckResolver = graph.NewCachedCheckResolver(c.cacheOpts...)
 
 		c.cachedCheckResolver.SetDelegate(c.localCheckResolver)
 		c.cycleDetectionCheckResolver.SetDelegate(c.cachedCheckResolver)
 	}
 
 	if dispatchThrottlingEnabled {
-		c.dispatchThrottlingCheckResolver = NewDispatchThrottlingCheckResolver(c.dispatchThrottlingOpts...)
+		c.dispatchThrottlingCheckResolver = graph.NewDispatchThrottlingCheckResolver(c.dispatchThrottlingOpts...)
 		c.dispatchThrottlingCheckResolver.SetDelegate(c.localCheckResolver)
 		if cacheEnabled {
 			c.cachedCheckResolver.SetDelegate(c.dispatchThrottlingCheckResolver)
