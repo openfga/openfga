@@ -79,6 +79,14 @@ var (
 	})
 )
 
+func ConvertTuplesToTupleKeys(input []*openfgav1.Tuple) []*openfgav1.TupleKey {
+	converted := make([]*openfgav1.TupleKey, len(input))
+	for i := range input {
+		converted[i] = input[i].GetKey()
+	}
+	return converted
+}
+
 func CreateRandomString(n int) string {
 	b := make([]byte, n)
 	for i := range b {
@@ -142,6 +150,7 @@ func CreateGrpcConnection(t *testing.T, grpcAddress string, opts ...grpc.DialOpt
 
 	defaultOptions = append(defaultOptions, opts...)
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.Dial(
 		grpcAddress, defaultOptions...,
 	)
@@ -173,6 +182,7 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 	defer cancel()
 
 	t.Log("creating connection to address", grpcAddr)
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.DialContext(
 		ctx,
 		grpcAddr,

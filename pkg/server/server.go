@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -48,8 +49,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                          = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalEnableListUsers ExperimentalFeatureFlag = "enable-list-users"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -72,7 +74,7 @@ var (
 	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            datastoreQueryCountHistogramName,
-		Help:                            "The number of database queries required to resolve a query (e.g. Check or ListObjects).",
+		Help:                            "The number of database queries required to resolve a query (e.g. Check, ListObjects or ListUsers).",
 		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -106,13 +108,17 @@ type Server struct {
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
+	listUsersDeadline                time.Duration
+	listUsersMaxResults              uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
+	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
@@ -175,7 +181,7 @@ func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	}
 }
 
-// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check or ListObjects call will allow.
+// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check, ListObjects or ListUsers call will allow.
 // Thinking of a request as a tree of evaluations, this option controls
 // how many levels we will evaluate before throwing an error that the authorization model is too complex.
 func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
@@ -185,7 +191,7 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 }
 
 // WithResolveNodeBreadthLimit sets a limit on the number of goroutines that can be created
-// when evaluating a subtree of a Check or ListObjects call.
+// when evaluating a subtree of a Check, ListObjects or ListUsers call.
 // Thinking of a Check request as a tree of evaluations, this option controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
@@ -222,6 +228,23 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithListUsersDeadline affect the ListUsers API only.
+// It sets the maximum amount of time that the server will spend gathering results.
+func WithListUsersDeadline(deadline time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDeadline = deadline
+	}
+}
+
+// WithListUsersMaxResults affects the ListUsers API only.
+// It sets the maximum number of results that this API will return.
+// If it's zero, all results will be attempted to be returned.
+func WithListUsersMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersMaxResults = limit
+	}
+}
+
 // WithMaxConcurrentReadsForListObjects sets a limit on the number of datastore reads that can be in flight for a given ListObjects call.
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
@@ -245,6 +268,19 @@ func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForCheck = max
+	}
+}
+
+// WithMaxConcurrentReadsForListUsers sets a limit on the number of datastore reads that can be in flight for a given ListUsers call.
+// This number should be set depending on the RPS expected for all query APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. If Datastore.MaxOpenConns = 100 and assuming that each ListUsers call takes 1 second and no traffic to other query APIs:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+func WithMaxConcurrentReadsForListUsers(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForListUsers = max
 	}
 }
 
@@ -349,6 +385,10 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	return s
 }
 
+func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
+	return slices.Contains(s.experimentals, flag)
+}
+
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
 // Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
 // threshold over requests whose dispatch count exceeds the configured threshold.
@@ -399,8 +439,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
 		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
+		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
@@ -1225,7 +1268,9 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		return nil, serverErrors.HandleError("", err)
+		err = serverErrors.HandleError("", err)
+		telemetry.TraceError(span, err)
+		return nil, err
 	}
 
 	resolvedModelID := typesys.GetAuthorizationModelID()
