@@ -4,6 +4,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -13,6 +14,7 @@ func TestNewLayeredCheckResolver(t *testing.T) {
 		name                      string
 		cacheEnabled              bool
 		dispatchThrottlingEnabled bool
+		expectedResolverOrder     []CheckResolver
 	}
 
 	tests := []Test{
@@ -20,21 +22,25 @@ func TestNewLayeredCheckResolver(t *testing.T) {
 			name:                      "when_nothing_is_enabled",
 			cacheEnabled:              false,
 			dispatchThrottlingEnabled: false,
+			expectedResolverOrder:     []CheckResolver{&CycleDetectionCheckResolver{}, &LocalChecker{}},
 		},
 		{
 			name:                      "when_cache_alone_is_enabled",
 			cacheEnabled:              true,
 			dispatchThrottlingEnabled: false,
+			expectedResolverOrder:     []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &LocalChecker{}},
 		},
 		{
 			name:                      "when_dispatch_throttling_alone_is_enabled",
 			cacheEnabled:              false,
 			dispatchThrottlingEnabled: true,
+			expectedResolverOrder:     []CheckResolver{&CycleDetectionCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
 		{
 			name:                      "when_both_are_enabled",
 			cacheEnabled:              true,
 			dispatchThrottlingEnabled: true,
+			expectedResolverOrder:     []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
 	}
 
@@ -49,38 +55,11 @@ func TestNewLayeredCheckResolver(t *testing.T) {
 			}
 			opts = append(opts, WithLocalChecker())
 			builder := NewCheckQueryBuilder(opts...)
-			var cacheCheckResolver *CachedCheckResolver
-			var dispatchCheckResolver *DispatchThrottlingCheckResolver
-
-			checkResolver, checkCloser := builder.Build()
+			_, checkCloser := builder.Build()
 			t.Cleanup(checkCloser)
-			cycleDetectionCheckResolver, ok := checkResolver.(*CycleDetectionCheckResolver)
-			require.True(t, ok)
 
-			if test.cacheEnabled {
-				cacheCheckResolver, ok = cycleDetectionCheckResolver.GetDelegate().(*CachedCheckResolver)
-				require.True(t, ok)
-			}
-
-			if test.dispatchThrottlingEnabled {
-				if !test.cacheEnabled {
-					dispatchCheckResolver, ok = cycleDetectionCheckResolver.GetDelegate().(*DispatchThrottlingCheckResolver)
-					require.True(t, ok)
-				} else {
-					dispatchCheckResolver, ok = cacheCheckResolver.GetDelegate().(*DispatchThrottlingCheckResolver)
-					require.True(t, ok)
-				}
-
-				_, ok = dispatchCheckResolver.GetDelegate().(*LocalChecker)
-				require.True(t, ok)
-			} else {
-				if test.cacheEnabled {
-					_, ok = cacheCheckResolver.GetDelegate().(*LocalChecker)
-					require.True(t, ok)
-				} else {
-					_, ok = cycleDetectionCheckResolver.GetDelegate().(*LocalChecker)
-					require.True(t, ok)
-				}
+			for i, resolver := range builder.resolvers {
+				require.Equal(t, reflect.TypeOf(test.expectedResolverOrder[i]), reflect.TypeOf(resolver))
 			}
 		})
 	}
