@@ -1,14 +1,11 @@
-package check
+package graph
 
 import (
-	"github.com/openfga/openfga/internal/graph"
-	"testing"
-	"time"
-
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/openfga/openfga/internal/mocks"
+	"testing"
+	"time"
 )
 
 func TestNewLayeredCheckResolver(t *testing.T) {
@@ -43,37 +40,44 @@ func TestNewLayeredCheckResolver(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			builder := NewCheckQueryBuilder()
-			var cacheCheckResolver *graph.CachedCheckResolver
-			var dispatchCheckResolver *graph.DispatchThrottlingCheckResolver
+			opts := []CheckQueryBuilderOpt{}
+			if test.cacheEnabled {
+				opts = append(opts, WithCacheEnabled())
+			}
+			if test.dispatchThrottlingEnabled {
+				opts = append(opts, WithDispatchThrottlingEnabled())
+			}
+			builder := NewCheckQueryBuilder(opts...)
+			var cacheCheckResolver *CachedCheckResolver
+			var dispatchCheckResolver *DispatchThrottlingCheckResolver
 
-			checkResolver, checkCloser := builder.NewLayeredCheckResolver(test.cacheEnabled, test.dispatchThrottlingEnabled)
+			checkResolver, checkCloser := builder.Build()
 			t.Cleanup(checkCloser)
-			cycleDetectionCheckResolver, ok := checkResolver.(*graph.CycleDetectionCheckResolver)
+			cycleDetectionCheckResolver, ok := checkResolver.(*CycleDetectionCheckResolver)
 			require.True(t, ok)
 
 			if test.cacheEnabled {
-				cacheCheckResolver, ok = cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+				cacheCheckResolver, ok = cycleDetectionCheckResolver.GetDelegate().(*CachedCheckResolver)
 				require.True(t, ok)
 			}
 
 			if test.dispatchThrottlingEnabled {
 				if !test.cacheEnabled {
-					dispatchCheckResolver, ok = cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+					dispatchCheckResolver, ok = cycleDetectionCheckResolver.GetDelegate().(*DispatchThrottlingCheckResolver)
 					require.True(t, ok)
 				} else {
-					dispatchCheckResolver, ok = cacheCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+					dispatchCheckResolver, ok = cacheCheckResolver.GetDelegate().(*DispatchThrottlingCheckResolver)
 					require.True(t, ok)
 				}
 
-				_, ok = dispatchCheckResolver.GetDelegate().(*graph.LocalChecker)
+				_, ok = dispatchCheckResolver.GetDelegate().(*LocalChecker)
 				require.True(t, ok)
 			} else {
 				if test.cacheEnabled {
-					_, ok = cacheCheckResolver.GetDelegate().(*graph.LocalChecker)
+					_, ok = cacheCheckResolver.GetDelegate().(*LocalChecker)
 					require.True(t, ok)
 				} else {
-					_, ok = cycleDetectionCheckResolver.GetDelegate().(*graph.LocalChecker)
+					_, ok = cycleDetectionCheckResolver.GetDelegate().(*LocalChecker)
 					require.True(t, ok)
 				}
 			}
@@ -87,38 +91,40 @@ func TestOptsBeingPassed(t *testing.T) {
 
 	mockThrottler := mocks.NewMockThrottler(ctrl)
 
-	cacheOpts := []graph.CachedCheckResolverOpt{
-		graph.WithCacheTTL(1 * time.Second),
-		graph.WithMaxCacheSize(2),
+	cacheOpts := []CachedCheckResolverOpt{
+		WithCacheTTL(1 * time.Second),
+		WithMaxCacheSize(2),
 	}
 
-	dispatchOpts := []graph.DispatchThrottlingCheckResolverOpt{
-		graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+	dispatchOpts := []DispatchThrottlingCheckResolverOpt{
+		WithDispatchThrottlingCheckResolverConfig(DispatchThrottlingCheckResolverConfig{
 			DefaultThreshold: 3,
 			MaxThreshold:     4,
 		}),
-		graph.WithThrottler(mockThrottler),
+		WithThrottler(mockThrottler),
 	}
 
-	localCheckerOpts := []graph.LocalCheckerOption{
-		graph.WithMaxConcurrentReads(6),
-		graph.WithResolveNodeBreadthLimit(7),
+	localCheckerOpts := []LocalCheckerOption{
+		WithMaxConcurrentReads(6),
+		WithResolveNodeBreadthLimit(7),
 	}
 
 	checkResolver, checkCloser := NewCheckQueryBuilder(
 		WithCachedCheckResolverOpts(cacheOpts...),
 		WithDispatchThrottlingCheckResolverOpts(dispatchOpts...),
 		WithLocalCheckerOpts(localCheckerOpts...),
-	).NewLayeredCheckResolver(true, true)
+		WithCacheEnabled(),
+		WithDispatchThrottlingEnabled(),
+	).Build()
 	t.Cleanup(func() {
 		mockThrottler.EXPECT().Close().Times(2)
 		checkCloser()
 	})
 
-	cycleDetectionCheckResolver := checkResolver.(*graph.CycleDetectionCheckResolver)
-	cacheCheckResolver := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
-	dispatchCheckResolver := cacheCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
-	localCheckResolver := dispatchCheckResolver.GetDelegate().(*graph.LocalChecker)
+	cycleDetectionCheckResolver := checkResolver.(*CycleDetectionCheckResolver)
+	cacheCheckResolver := cycleDetectionCheckResolver.GetDelegate().(*CachedCheckResolver)
+	dispatchCheckResolver := cacheCheckResolver.GetDelegate().(*DispatchThrottlingCheckResolver)
+	localCheckResolver := dispatchCheckResolver.GetDelegate().(*LocalChecker)
 
 	require.Equal(t, 1*time.Second, cacheCheckResolver.cacheTTL)
 	require.Equal(t, int64(2), cacheCheckResolver.maxCacheSize)

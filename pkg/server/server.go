@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/graph/check"
+	"github.com/openfga/openfga/internal/graph"
 	"net/http"
 	"slices"
 	"sort"
@@ -29,7 +29,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
@@ -493,7 +492,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	checkBuilderOpts := []check.CheckQueryBuilderOpt{check.WithLocalCheckerOpts(
+	checkBuilderOpts := []graph.CheckQueryBuilderOpt{graph.WithLocalCheckerOpts(
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)}
 
@@ -502,11 +501,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
 
-		checkBuilderOpts = append(checkBuilderOpts, check.WithCachedCheckResolverOpts(
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithCachedCheckResolverOpts(
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		))
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingEnabled())
 	}
 
 	if s.checkDispatchThrottlingEnabled {
@@ -516,7 +516,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.checkDispatchThrottlingMaxThreshold),
 		)
 
-		checkBuilderOpts = append(checkBuilderOpts, check.WithDispatchThrottlingCheckResolverOpts(
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingCheckResolverOpts(
 			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
 				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
@@ -524,10 +524,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
 				"check_dispatch_throttle")),
 		))
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingEnabled())
 	}
 
-	s.checkResolver, s.checkResolverCloser = check.NewCheckQueryBuilder(checkBuilderOpts...).
-		NewLayeredCheckResolver(s.checkQueryCacheEnabled, s.checkDispatchThrottlingEnabled)
+	s.checkResolver, s.checkResolverCloser = graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.logger.Info("Enabling ListObjects dispatch throttling",

@@ -3,7 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/internal/graph/check"
+	"github.com/openfga/openfga/internal/graph"
 	"strconv"
 	"testing"
 	"time"
@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -499,13 +498,13 @@ condition condition1(x: int) {
 				graph.WithMaxCacheSize(100),
 				graph.WithCacheTTL(10 * time.Second),
 			}
-			checkBuilderOpts := []check.CheckQueryBuilderOpt{
-				check.WithLocalCheckerOpts(localCheckOpts...),
-				check.WithCachedCheckResolverOpts(cacheOpts...)}
-			checkResolver, closer := check.NewCheckQueryBuilder(checkBuilderOpts...).NewLayeredCheckResolver(
-				test.useCheckCache,
-				false,
-			)
+			checkBuilderOpts := []graph.CheckQueryBuilderOpt{
+				graph.WithLocalCheckerOpts(localCheckOpts...),
+				graph.WithCachedCheckResolverOpts(cacheOpts...),
+				graph.WithCacheEnabled(),
+				graph.WithDispatchThrottlingEnabled(),
+			}
+			checkResolver, closer := graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
 			t.Cleanup(closer)
 
 			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
