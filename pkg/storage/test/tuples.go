@@ -785,7 +785,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(0, ""), 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -870,7 +870,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(0, ""), 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
