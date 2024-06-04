@@ -1066,7 +1066,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Uint(), cfg.MaxConditionEvaluationCost)
 
-  val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
 
