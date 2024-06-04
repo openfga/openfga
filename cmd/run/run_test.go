@@ -974,6 +974,36 @@ func TestHTTPServerEnabled(t *testing.T) {
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }
 
+func TestPlaygroundEnabled(t *testing.T) {
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Playground.Enabled = true
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
+	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
+	resp, err := retryablehttp.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+	require.NoError(t, err, "http playground endpoint not healthy")
+	
+	for i:=1; i<3 && resp.StatusCode == http.StatusNotFound; i++ {
+		resp, err = retryablehttp.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
+		require.NoError(t, err, "http playground endpoint not healthy")
+	}
+
+	t.Cleanup(func() {
+		err := resp.Body.Close()
+		require.NoError(t, err)
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)

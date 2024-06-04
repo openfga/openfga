@@ -379,31 +379,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 	return authenticator, nil
 }
 
-// Run returns an error if the server was unable to start successfully.
-// If it started and terminated successfully, it returns a nil error.
-func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	tracerProviderCloser := s.telemetryConfig(config)
-
-	if len(config.Experimentals) > 0 {
-		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-	}
-
-	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
-	}
-
-	datastore, err := s.datastoreConfig(config)
-	if err != nil {
-		return err
-	}
-
-	authenticator, err := s.authenticatorConfig(config)
-
-	if err != nil {
-		return err
-	}
-
+func (s *ServerContext) buildServerOpts(config *serverconfig.Config, authenticator authn.Authenticator) ([]grpc.ServerOption, error) {
 	serverOpts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
 		grpc.ChainUnaryInterceptor(
@@ -483,11 +459,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
-			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+			return nil, errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 		}
 		creds, err := credentials.NewServerTLSFromFile(config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		serverOpts = append(serverOpts, grpc.Creds(creds))
@@ -495,6 +471,192 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("gRPC TLS is enabled, serving connections using the provided certificate")
 	} else {
 		s.Logger.Warn("gRPC TLS is disabled, serving connections using insecure plaintext")
+	}
+
+	return serverOpts, nil
+}
+
+func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc, error) {
+	dialOpts := []grpc.DialOption{
+		grpc.WithBlock(),
+	}
+	if config.GRPC.TLS.Enabled {
+		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
+		if err != nil {
+			s.Logger.Fatal("", zap.Error(err))
+		}
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+	} else {
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+	if err != nil {
+		s.Logger.Fatal("", zap.Error(err))
+	}
+	return conn, cancel, err
+}
+
+func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.Config, grpcConn *grpc.ClientConn) (*http.Server, error) {
+	muxOpts := []runtime.ServeMuxOption{
+		runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
+		runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
+			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
+			httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
+		}),
+		runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
+			intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
+			encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
+			return status.Convert(encodedErr)
+		}),
+		runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(grpcConn)),
+		runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+	}
+	mux := runtime.NewServeMux(muxOpts...)
+	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, err
+	}
+
+	httpServer := &http.Server{
+		Addr: config.HTTP.Addr,
+		Handler: recovery.HTTPPanicRecoveryHandler(cors.New(cors.Options{
+			AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
+			AllowCredentials: true,
+			AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
+			AllowedMethods: []string{http.MethodGet, http.MethodPost,
+				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
+		}).Handler(mux), s.Logger),
+	}
+
+	go func() {
+		s.Logger.Info(fmt.Sprintf("🚀 starting HTTP server on '%s'...", httpServer.Addr))
+		var err error
+		if config.HTTP.TLS.Enabled {
+			if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
+				s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
+			}
+			err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
+		} else {
+			s.Logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
+			err = httpServer.ListenAndServe()
+		}
+		if err != http.ErrServerClosed {
+			s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+		}
+		s.Logger.Info("HTTP server shut down.")
+	}()
+	return httpServer, nil
+}
+
+func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.Server, error) {
+	if !config.HTTP.Enabled {
+		return nil, errors.New("the HTTP server must be enabled to run the openfga playground")
+	}
+
+	authMethod := config.Authn.Method
+	if !(authMethod == "none" || authMethod == "preshared") {
+		return nil, errors.New("the playground only supports authn methods 'none' and 'preshared'")
+	}
+
+	playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
+	s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
+
+	tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse playground index.html as Go template: %w", err)
+	}
+
+	fileServer := http.FileServer(http.FS(assets.EmbedPlayground))
+
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 3 * time.Second
+
+	var conn net.Conn
+	err = backoff.Retry(
+		func() error {
+			conn, err = net.Dial("tcp", config.HTTP.Addr)
+			return err
+		},
+		policy,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to establish playground connection to HTTP server: %w", err)
+	}
+
+	playgroundAPIToken := ""
+	if authMethod == "preshared" {
+		playgroundAPIToken = config.Authn.AuthnPresharedKeyConfig.Keys[0]
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/playground") {
+			if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
+				err = tmpl.Execute(w, struct {
+					HTTPServerURL      string
+					PlaygroundAPIToken string
+				}{
+					HTTPServerURL:      conn.RemoteAddr().String(),
+					PlaygroundAPIToken: playgroundAPIToken,
+				})
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					s.Logger.Error("failed to execute/render the playground web template", zap.Error(err))
+				}
+
+				return
+			}
+
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		http.NotFound(w, r)
+	}))
+
+	playground := &http.Server{Addr: playgroundAddr, Handler: mux}
+
+	go func() {
+		err = playground.ListenAndServe()
+		if err != http.ErrServerClosed {
+			s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
+		}
+		s.Logger.Info("shutdown the openfga playground server")
+	}()
+
+	return playground, nil
+}
+
+// Run returns an error if the server was unable to start successfully.
+// If it started and terminated successfully, it returns a nil error.
+func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+	tracerProviderCloser := s.telemetryConfig(config)
+
+	if len(config.Experimentals) > 0 {
+		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	}
+
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	}
+
+	datastore, err := s.datastoreConfig(config)
+	if err != nil {
+		return err
+	}
+
+	authenticator, err := s.authenticatorConfig(config)
+
+	if err != nil {
+		return err
+	}
+
+	serverOpts, err := s.buildServerOpts(config, authenticator)
+	if err != nil {
+		return err
 	}
 
 	var profilerServer *http.Server
@@ -598,153 +760,25 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		dialOpts := []grpc.DialOption{
-			grpc.WithBlock(),
-		}
-		if config.GRPC.TLS.Enabled {
-			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
-			if err != nil {
-				s.Logger.Fatal("", zap.Error(err))
-			}
-			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-		} else {
-			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		}
-
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-
-		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+		grpcConn, ctxCancel, err := s.dialGrpc(config)
 		if err != nil {
 			s.Logger.Fatal("", zap.Error(err))
 		}
-		defer conn.Close()
+		defer ctxCancel()
+		defer grpcConn.Close()
 
-		muxOpts := []runtime.ServeMuxOption{
-			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
-				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
-			}),
-			runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
-				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
-				return status.Convert(encodedErr)
-			}),
-			runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(conn)),
-			runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
-		}
-		mux := runtime.NewServeMux(muxOpts...)
-		if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
+		httpServer, err = s.runHTTPServer(ctx, config, grpcConn)
+		if err != nil {
 			return err
 		}
-
-		httpServer = &http.Server{
-			Addr: config.HTTP.Addr,
-			Handler: recovery.HTTPPanicRecoveryHandler(cors.New(cors.Options{
-				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
-				AllowCredentials: true,
-				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
-				AllowedMethods: []string{http.MethodGet, http.MethodPost,
-					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux), s.Logger),
-		}
-
-		go func() {
-			s.Logger.Info(fmt.Sprintf("🚀 starting HTTP server on '%s'...", httpServer.Addr))
-			var err error
-			if config.HTTP.TLS.Enabled {
-				if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
-					s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
-				}
-				err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
-			} else {
-				s.Logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
-				err = httpServer.ListenAndServe()
-			}
-			if err != http.ErrServerClosed {
-				s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
-			}
-			s.Logger.Info("HTTP server shut down.")
-		}()
 	}
 
 	var playground *http.Server
 	if config.Playground.Enabled {
-		if !config.HTTP.Enabled {
-			return errors.New("the HTTP server must be enabled to run the openfga playground")
-		}
-
-		authMethod := config.Authn.Method
-		if !(authMethod == "none" || authMethod == "preshared") {
-			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
-		}
-
-		playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-		s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
-
-		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
+		playground, err = s.runPlaygroundServer(config)
 		if err != nil {
-			return fmt.Errorf("failed to parse playground index.html as Go template: %w", err)
+			return err
 		}
-
-		fileServer := http.FileServer(http.FS(assets.EmbedPlayground))
-
-		policy := backoff.NewExponentialBackOff()
-		policy.MaxElapsedTime = 3 * time.Second
-
-		var conn net.Conn
-		err = backoff.Retry(
-			func() error {
-				conn, err = net.Dial("tcp", config.HTTP.Addr)
-				return err
-			},
-			policy,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to establish playground connection to HTTP server: %w", err)
-		}
-
-		playgroundAPIToken := ""
-		if authMethod == "preshared" {
-			playgroundAPIToken = config.Authn.AuthnPresharedKeyConfig.Keys[0]
-		}
-
-		mux := http.NewServeMux()
-		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/playground") {
-				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
-					err = tmpl.Execute(w, struct {
-						HTTPServerURL      string
-						PlaygroundAPIToken string
-					}{
-						HTTPServerURL:      conn.RemoteAddr().String(),
-						PlaygroundAPIToken: playgroundAPIToken,
-					})
-					if err != nil {
-						w.WriteHeader(http.StatusInternalServerError)
-						s.Logger.Error("failed to execute/render the playground web template", zap.Error(err))
-					}
-
-					return
-				}
-
-				fileServer.ServeHTTP(w, r)
-				return
-			}
-
-			http.NotFound(w, r)
-		}))
-
-		playground = &http.Server{Addr: playgroundAddr, Handler: mux}
-
-		go func() {
-			err = playground.ListenAndServe()
-			if err != http.ErrServerClosed {
-				s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
-			}
-			s.Logger.Info("playground shut down.")
-		}()
 	}
 
 	done := make(chan os.Signal, 1)
