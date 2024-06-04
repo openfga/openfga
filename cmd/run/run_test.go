@@ -991,8 +991,8 @@ func TestPlaygroundEnabled(t *testing.T) {
 	playgroundPort := fmt.Sprintf(":%d", cfg.Playground.Port)
 	resp, err := retryablehttp.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
 	require.NoError(t, err, "http playground endpoint not healthy")
-	
-	for i:=1; i<3 && resp.StatusCode == http.StatusNotFound; i++ {
+
+	for i := 1; i < 3 && resp.StatusCode == http.StatusNotFound; i++ {
 		resp, err = retryablehttp.Get(fmt.Sprintf("http://localhost%s/playground", playgroundPort))
 		require.NoError(t, err, "http playground endpoint not healthy")
 	}

@@ -508,7 +508,7 @@ func (s *ServerContext) buildServerOpts(config *serverconfig.Config, authenticat
 
 func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn, context.CancelFunc, error) {
 	dialOpts := []grpc.DialOption{
-    // nolint:staticcheck // ignoring gRPC deprecations
+		// nolint:staticcheck // ignoring gRPC deprecations
 		grpc.WithBlock(),
 	}
 	if config.GRPC.TLS.Enabled {
@@ -523,7 +523,7 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn,
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 
-  // nolint:staticcheck // ignoring gRPC deprecations
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 	if err != nil {
 		s.Logger.Fatal("", zap.Error(err))
