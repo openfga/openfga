@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/openfga/openfga/internal/types"
+	"github.com/openfga/openfga/pkg/types"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
