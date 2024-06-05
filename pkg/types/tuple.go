@@ -13,7 +13,7 @@ type Object struct {
 
 type Subject interface {
 	GetType() string
-	isSubject()
+	isSubject() bool
 }
 
 type RelationshipTuple struct {
@@ -23,6 +23,18 @@ type RelationshipTuple struct {
 	Condition openfgav1.Condition
 }
 
+type RelationshipSubject struct {
+	Type string
+}
+
+func (rs RelationshipSubject) GetType() string {
+	return rs.Type
+}
+
+func (rs RelationshipSubject) isSubject() bool {
+	return rs.Type != ""
+}
+
 func (r *RelationshipTuple) String() string {
-	return fmt.Sprintf("%s#%s@%s", r.Object.String(), r.Relation, r.Subject)
+	return fmt.Sprintf("%s:%s#%s@%s", r.Object.Type, r.Object.Id, r.Relation, r.Subject.GetType())
 }
