@@ -64,7 +64,7 @@ type PaginationOptions struct {
 // it uses DefaultPageSize.
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
-	if ps <= 0 {
+	if ps > 0 {
 		pageSize = int(ps)
 	}
 
