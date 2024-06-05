@@ -124,7 +124,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
 		tuple.NewTupleKey("doc:", "relation", ""),
-		storage.NewPaginationOptions(0, ""))
+		storage.NewPaginationOptions(storage.DefaultPageSize, ""))
 	require.NoError(t, err)
 
 	require.Len(t, tuples, 2)
@@ -246,7 +246,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	changes, _, err := ds.ReadChanges(ctx, "store", "folder", storage.NewPaginationOptions(0, ""), 0)
+	changes, _, err := ds.ReadChanges(ctx, "store", "folder", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 	require.NoError(t, err)
 	require.Len(t, changes, 2)
 	require.Equal(t, tk, changes[0].GetTupleKey())
