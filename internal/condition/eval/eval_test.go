@@ -29,7 +29,8 @@ func TestEvaluateTupleCondition(t *testing.T) {
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
 			model: parser.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -48,7 +49,8 @@ func TestEvaluateTupleCondition(t *testing.T) {
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
 			model: parser.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -67,7 +69,8 @@ func TestEvaluateTupleCondition(t *testing.T) {
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
 			model: parser.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -123,7 +126,8 @@ func TestDefaultCELEvaluationCost(t *testing.T) {
 			name: "list_comprehension",
 			model: parser.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -146,7 +150,8 @@ func TestDefaultCELEvaluationCost(t *testing.T) {
 			name: "string_contains",
 			model: parser.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document

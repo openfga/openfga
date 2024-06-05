@@ -206,6 +206,7 @@ func TestValidateWriteRequest(t *testing.T) {
 						TypeDefinitions: parser.MustTransformDSLToProto(`
 								model
 									schema 1.1
+
 								type user
 								
 								type document
@@ -240,7 +241,8 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 		Return(
 			testutils.MustTransformDSLToProtoWithID(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document

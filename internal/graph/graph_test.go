@@ -99,7 +99,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 			name: "basic_intersection",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -120,7 +121,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 			name: "basic_intersection_through_ttu_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type folder
@@ -146,7 +148,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 			name: "basic_intersection_through_ttu_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type organization
@@ -178,7 +181,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 			name: "basic_exclusion_through_ttu_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type folder
@@ -205,7 +209,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 			name: "basic_exclusion_through_ttu_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type folder
@@ -233,7 +238,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 			name: "ttu_with_indirect",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 				type repo
 					relations
@@ -290,7 +296,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "direct_edge_through_ComputedUserset_with_multiple_type_restrictions",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -320,7 +327,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "direct_edge_through_ComputedUserset",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -341,7 +349,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "direct_edge_through_TupleToUserset_with_multiple_type_restrictions",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -380,7 +389,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "direct_edge_with_union_involving_self_and_computed_userset",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -415,7 +425,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "circular_reference",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type team
@@ -439,7 +450,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "cyclical_parent/child_definition",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type folder
@@ -460,7 +472,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "no_graph_relationship_connectivity",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type team
@@ -474,7 +487,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "test1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -508,7 +522,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "test2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -537,7 +552,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "test3",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type folder
@@ -563,7 +579,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "undefined_relation_on_one_type_involved_in_a_ttu",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 				type organization
 
@@ -589,7 +606,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "nested_group_membership_returns_only_top-level_edge",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -609,7 +627,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "edges_for_non-assignable_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type organization
 					relations
 						define viewer: [organization]
@@ -633,7 +652,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "user_is_a_subset_of_user_*",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -653,7 +673,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "user_*_is_not_a_subset_of_user",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -667,7 +688,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "user_*_is_related_to_user_*",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -687,7 +709,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "edges_involving_wildcard_in_types",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -708,7 +731,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "edges_involving_wildcard_in_source",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -723,7 +747,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "edges_involving_wildcards_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 				type employee
 				type group
@@ -753,7 +778,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "edges_involving_wildcards_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -774,7 +800,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_typed_wildcard",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -798,7 +825,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_multiple_levels_deep",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type team
@@ -836,7 +864,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_multiple_levels_deep_no_connectivity",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 				type employee
 
@@ -859,7 +888,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "edge_through_ttu_on_non-assignable_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type organization
 					relations
 						define viewer: [organization]
@@ -884,7 +914,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relation_through_ttu_on_non-assignable_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type organization
 					relations
 						define viewer: [organization]
@@ -908,7 +939,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "ttu_on_non-assignable_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type organization
 					relations
 						define viewer: [organization]
@@ -933,7 +965,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "multiple_indirect_non-assignable_relations_through_ttu",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type organization
 					relations
 						define viewer: [organization]
@@ -964,7 +997,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "multiple_directly_assignable_relationships_through_unions",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type team
@@ -1011,7 +1045,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "multiple_assignable_and_non-assignable_computed_usersets",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type team
@@ -1038,7 +1073,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_through_assignable_computed_userset",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type team
@@ -1059,7 +1095,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_through_non-assignable_computed_userset",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -1084,7 +1121,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_through_non-assignable_ttu_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type org
@@ -1113,7 +1151,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_through_non-assignable_ttu_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type org
@@ -1143,7 +1182,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "indirect_relationship_through_non-assignable_ttu_3",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type org
@@ -1172,7 +1212,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "unrelated_source_and_target_relationship_involving_ttu",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type folder
@@ -1192,7 +1233,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "simple_computeduserset_indirect_ref",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -1220,7 +1262,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "follow_computed_relation_of_ttu_to_computed_userset",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 				type folder
 					relations
@@ -1245,7 +1288,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "computed_target_of_ttu_related_to_same_type",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type folder
 					relations
 						define viewer: [folder]
@@ -1269,7 +1313,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "basic_relation_with_intersection_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -1295,7 +1340,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "basic_relation_with_intersection_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -1377,7 +1423,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "basic_relation_with_exclusion_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -1403,7 +1450,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "basic_relation_with_exclusion_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -1478,7 +1526,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "ttu_through_direct_rewrite_1",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type folder
 					relations
 						define viewer: [folder]
@@ -1502,7 +1551,8 @@ func TestRelationshipEdges(t *testing.T) {
 			name: "ttu_through_direct_rewrite_2",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
+
 				type folder
 					relations
 						define viewer: [folder]

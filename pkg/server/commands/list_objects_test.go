@@ -53,7 +53,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			name: "test_direct_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
 
 				type user
 
@@ -76,7 +76,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			name: "test_union_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
 
 				type user
 
@@ -100,7 +100,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			name: "test_intersection_relation",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
 
 				type user
 
@@ -124,7 +124,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			name: "no_tuples",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
 
 				type user
 
@@ -144,7 +144,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			name: "direct_userset_dispatch",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
 
 				type user
 
@@ -166,7 +166,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			name: "computed_userset_dispatch",
 			model: `
 				model
-				schema 1.1
+					schema 1.1
 
 				type user
 

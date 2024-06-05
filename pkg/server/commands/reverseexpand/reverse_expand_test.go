@@ -36,6 +36,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type document
 			relations
@@ -103,6 +104,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type document
 			relations
@@ -186,6 +188,7 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type document
 			relations
@@ -244,6 +247,7 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type document
 			relations
@@ -318,6 +322,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type document
 			relations
@@ -378,6 +383,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type group
 			relations

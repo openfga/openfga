@@ -43,12 +43,13 @@ func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := `model
-	schema 1.1
-	type user
-	type document
-		relations
-			define viewer: [user]`
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
 
 	tests := ListUsersTests{
 		{
@@ -82,12 +83,13 @@ func TestListUsersDirectRelationship(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type group
-				relations
-					define member: [user, group#member]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 				tuple.NewTupleKey("group:fga", "member", "group:fga-backend#member"),
@@ -168,13 +170,14 @@ func TestListUsersComputedRelationship(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define owner: [user]
-					define viewer: owner`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define owner: [user]
+						define viewer: owner`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
 				tuple.NewTupleKey("document:1", "owner", "user:maria"),
@@ -193,14 +196,15 @@ func TestListUsersComputedRelationship(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define owner: [user]
-					define editor: [user] or owner
-					define viewer: owner or editor`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define owner: [user]
+						define editor: [user] or owner
+						define viewer: owner or editor`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
 				tuple.NewTupleKey("document:1", "editor", "user:maria"),
@@ -224,13 +228,14 @@ func TestListUsersComputedRelationship(t *testing.T) {
 					tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define owner: [user]
-					define viewer: owner`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define owner: [user]
+						define viewer: owner`,
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
@@ -242,15 +247,16 @@ func TestListUsersUsersets(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := `model
-	schema 1.1
-	type user
-	type group
-		relations
-			define member: [user]
-	type document
-		relations
-			define viewer: [group#member]`
+	model := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [group#member]`
 
 	tests := ListUsersTests{
 		{
@@ -327,15 +333,16 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type document
-				relations
-					define viewer: [ user, group#member ]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [ user, group#member ]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:will"),
 				tuple.NewTupleKey("group:eng", "member", "user:maria"),
@@ -357,15 +364,16 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-			type user
-			type group
-			  relations
-			    define member: [user, group#member]
-			type document
-			  relations
-			    define viewer: [group#member]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+				type document
+					relations
+						define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:hawker"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
@@ -388,15 +396,16 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-			type user
-			type group
-			  relations
-			    define member: [user, group#member]
-			type document
-			  relations
-			    define viewer: [group#member]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+				type document
+					relations
+						define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:hawker"),
 				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
@@ -460,12 +469,13 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-			type user
-			type document
-			  relations
-			    define viewer: [user]
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user]
 			`,
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{},
@@ -482,12 +492,13 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-			type user
-			type document
-			  relations
-			    define viewer: [user]
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user]
 			`,
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{"document:1#viewer"},
@@ -504,19 +515,20 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type org
-			relations
-			  define member: [user]
-			  define admin: [org#member]
+				type org
+					relations
+						define member: [user]
+						define admin: [org#member]
 
-		  type repo
-			relations
-			  define owner: [org]
-			  define reader: admin from owner`,
+				type repo
+					relations
+						define owner: [org]
+						define reader: admin from owner`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:fga", "owner", "org:x"),
 				tuple.NewTupleKey("org:x", "admin", "org:x#member"),
@@ -536,19 +548,20 @@ func TestListUsersUsersets(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-          type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-          type org
-            relations
-              define member: [user]
-              define admin: [org#member]
-		  type repo
-			relations
-			  define owner: [org]
-			  define allowed: [user]
-			  define reader: admin from owner and allowed`,
+				type org
+					relations
+						define member: [user]
+						define admin: [org#member]
+				type repo
+					relations
+						define owner: [org]
+						define allowed: [user]
+						define reader: admin from owner and allowed`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:x", "owner", "org:fga"),
 				tuple.NewTupleKey("org:fga", "admin", "org:fga#member"),
@@ -564,18 +577,19 @@ func TestListUsersTTU(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := `model
-	schema 1.1
-  type user
+	model := `
+		model
+			schema 1.1
+		type user
 
-  type folder
-	relations
-	  define viewer: [user]
+		type folder
+			relations
+				define viewer: [user]
 
-  type document
-	relations
-	  define parent: [folder]
-	  define viewer: viewer from parent`
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent`
 
 	tests := ListUsersTests{
 		{
@@ -627,21 +641,22 @@ func TestListUsersTTU(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type folder
-			relations
-				define owner: [user]
-				define editor: [user] or owner
-				define viewer: [user] or owner or editor
-				define unrelated_not_computed: [user]
+				type folder
+					relations
+						define owner: [user]
+						define editor: [user] or owner
+						define viewer: [user] or owner or editor
+						define unrelated_not_computed: [user]
 
-		  type document
-			relations
-			  define parent: [folder]
-			  define viewer: viewer from parent`,
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
@@ -666,13 +681,14 @@ func TestListUsersTTU(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type folder
-				relations
-					define parent: [folder]
-					define viewer: [user] or viewer from parent`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define parent: [folder]
+						define viewer: [user] or viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:a", "viewer", "user:will"),
 				tuple.NewTupleKey("folder:b", "parent", "folder:a"),
@@ -704,12 +720,13 @@ func TestListUsersCycles(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define viewer: [user, document#viewer]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "document:1#viewer"),
 			},
@@ -726,14 +743,15 @@ func TestListUsersCycles(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define viewer1: [user, document#viewer1]
-					define viewer2: [user, document#viewer2]
-					define can_view: viewer1 or viewer2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer1: [user, document#viewer1]
+						define viewer2: [user, document#viewer2]
+						define can_view: viewer1 or viewer2`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer1", "document:1#viewer1"),
 				tuple.NewTupleKey("document:1", "viewer2", "document:1#viewer2"),
@@ -751,14 +769,15 @@ func TestListUsersCycles(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define viewer1: [user, document#viewer1]
-					define viewer2: [user, document#viewer2]
-					define can_view: viewer1 and viewer2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer1: [user, document#viewer1]
+						define viewer2: [user, document#viewer2]
+						define can_view: viewer1 and viewer2`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer1", "document:1#viewer1"),
 				tuple.NewTupleKey("document:1", "viewer2", "document:1#viewer2"),
@@ -777,23 +796,23 @@ func TestListUsersCycles(t *testing.T) {
 				},
 			},
 			model: `
-			model
-				schema 1.1
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type state
-				relations
-					define can_view: [user] or can_view_3 from associated_transition
-					define associated_transition: [transition]
+				type state
+					relations
+						define can_view: [user] or can_view_3 from associated_transition
+						define associated_transition: [transition]
 
-			type transition
-				relations
-					define start: [state]
-					define end: [state]
-					define can_view: can_view from start or can_view from end
-					define can_view_2: can_view
-					define can_view_3: can_view_2`,
+				type transition
+					relations
+						define start: [state]
+						define end: [state]
+						define can_view: can_view from start or can_view from end
+						define can_view_2: can_view
+						define can_view_3: can_view_2`,
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{},
 		},
@@ -873,22 +892,22 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
 			model: `
-			model
-				schema 1.1
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type group
-				relations
-					define member: [user]
+				type group
+					relations
+						define member: [user]
 
-			type document
-				relations
-					define viewer: [group#member with isTrue, user]
+				type document
+					relations
+						define viewer: [group#member with isTrue, user]
 
-			condition isTrue(param: bool) {
-				param
-			}`,
+				condition isTrue(param: bool) {
+					param
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:eng#member", "isTrue", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "isTrue", nil),
@@ -911,24 +930,24 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
 			model: `
-			model
-				schema 1.1
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type group
-				relations
-					define member: [user]
+				type group
+					relations
+						define member: [user]
 
-			type document
-				relations
-					define owner: [user]
-					define editor: [user] or owner
-					define viewer: [user with isTrue] or editor or owner
+				type document
+					relations
+						define owner: [user]
+						define editor: [user] or owner
+						define viewer: [user with isTrue] or editor or owner
 
-			condition isTrue(param: bool) {
-				param
-			}`,
+				condition isTrue(param: bool) {
+					param
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
@@ -949,22 +968,22 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
 			},
 			model: `
-			model
-				schema 1.1
-			type user
+				model
+					schema 1.1
+				type user
 
-			type folder
-				relations
-					define viewer: [user]
+				type folder
+					relations
+						define viewer: [user]
 
-			type document
-				relations
-				define parent: [folder with isTrue]
-				define viewer: viewer from parent
+				type document
+					relations
+					define parent: [folder with isTrue]
+					define viewer: viewer from parent
 
-			condition isTrue(param: bool) {
-				param
-			}`,
+				condition isTrue(param: bool) {
+					param
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "isTrue", nil),
 				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
@@ -986,22 +1005,22 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{}),
 			},
 			model: `
-			model
-				schema 1.1
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type document
-				relations
-					define viewer: [user]
+				type document
+					relations
+						define viewer: [user]
 
-			condition isEqualToFive(param1: int) {
-				param1 == 5
-			}
+				condition isEqualToFive(param1: int) {
+					param1 == 5
+				}
 
-			condition isEqualToTen(param2: int) {
-				param2 == 10
-			}`,
+				condition isEqualToTen(param2: int) {
+					param2 == 10
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
@@ -1021,21 +1040,21 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5}),
 			},
 			model: `
-			model
-				schema 1.1
-			type user
+				model
+					schema 1.1
+				type user
 
-			type document
-				relations
-					define viewer: [user with isEqualToFive, user with isEqualToTen]
+				type document
+					relations
+						define viewer: [user with isEqualToFive, user with isEqualToTen]
 
-			condition isEqualToFive(param1: int) {
-				param1 == 5
-			}
+				condition isEqualToFive(param1: int) {
+					param1 == 5
+				}
 
-			condition isEqualToTen(param2: int) {
-				param2 == 10
-			}`,
+				condition isEqualToTen(param2: int) {
+					param2 == 10
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
@@ -1055,21 +1074,21 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": 5, "param2": 10}),
 			},
 			model: `
-			model
-				schema 1.1
-			type user
+				model
+					schema 1.1
+				type user
 
-			type document
-				relations
-					define viewer: [user with isEqualToFive, user with isEqualToTen]
+				type document
+					relations
+						define viewer: [user with isEqualToFive, user with isEqualToTen]
 
-			condition isEqualToFive(param1: int) {
-				param1 == 5
-			}
+				condition isEqualToFive(param1: int) {
+					param1 == 5
+				}
 
-			condition isEqualToTen(param2: int) {
-				param2 == 10
-			}`,
+				condition isEqualToTen(param2: int) {
+					param2 == 10
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
@@ -1089,17 +1108,17 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
 			},
 			model: `
-			model
-				schema 1.1
-			type user
+				model
+					schema 1.1
+				type user
 
-			type document
-				relations
-					define viewer: [user with condFloat]
+				type document
+					relations
+						define viewer: [user with condFloat]
 
-			condition condFloat(x: double) {
-				x > 0.0
-			}`,
+				condition condFloat(x: double) {
+					x > 0.0
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condFloat", nil),
 			},
@@ -1118,20 +1137,20 @@ func TestListUsersConditions(t *testing.T) {
 				Context: testutils.MustNewStruct(t, map[string]interface{}{"x": "1.79769313486231570814527423731704356798070e+309"}),
 			},
 			model: `
-			model
-				schema 1.1
-			type user
-			type folder
-				relations
-					define viewer: [user with condFloat]
-			type document
-				relations
-					define parent: [folder with condFloat]
-					define viewer: viewer from parent
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user with condFloat]
+				type document
+					relations
+						define parent: [folder with condFloat]
+						define viewer: viewer from parent
 
-			condition condFloat(x: double) {
-				x > 0.0
-			}`,
+				condition condFloat(x: double) {
+					x > 0.0
+				}`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:1", "parent", "folder:x", "condFloat", nil),
 			},
@@ -1157,14 +1176,15 @@ func TestListUsersIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define required: [user]
-					define required_other: [user]
-					define viewer: required and required_other`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required: [user]
+						define required_other: [user]
+						define viewer: required and required_other`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required", "user:will"),
@@ -1186,15 +1206,16 @@ func TestListUsersIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define required_1: [user]
-					define required_2: [user]
-					define required_3: [user]
-					define viewer: [user] and required_1 and required_2 and required_3`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required_1: [user]
+						define required_2: [user]
+						define required_3: [user]
+						define viewer: [user] and required_1 and required_2 and required_3`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
@@ -1224,15 +1245,16 @@ func TestListUsersIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		type user
-		type document
-			relations
-				define required: [user]
-				define owner: [user] and required
-				define editor: [user] and owner
-				define viewer: [user] and editor`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required: [user]
+						define owner: [user] and required
+						define editor: [user] and owner
+						define viewer: [user] and editor`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required", "user:will"),
 				tuple.NewTupleKey("document:1", "owner", "user:will"),
@@ -1260,17 +1282,18 @@ func TestListUsersIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
-		  type folder
-			relations
-			  define viewer: [user]
-		  type document
-			relations
-			  define required: [user]
-			  define parent: [folder]
-			  define viewer: (viewer from parent) and required`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define required: [user]
+						define parent: [folder]
+						define viewer: (viewer from parent) and required`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required", "user:will"),
@@ -1293,16 +1316,17 @@ func TestListUsersIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type document
-			relations
-				define viewer: viewer1 and viewer2
-				define viewer1: [user,user:*] but not blocked
-			  	define viewer2: [user,user:*] but not blocked
-			  	define blocked: [user,user:*]`,
+				type document
+					relations
+						define viewer: viewer1 and viewer2
+						define viewer1: [user,user:*] but not blocked
+						define viewer2: [user,user:*] but not blocked
+						define blocked: [user,user:*]`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
@@ -1325,17 +1349,17 @@ func TestListUsersIntersection(t *testing.T) {
 				},
 			},
 			model: `
-			model
-			  schema 1.1
+				model
+					schema 1.1
 
-			type user
-			type document
-				relations
-					define b: [user:*] but not b1
-					define b1: [user]
-					define a: [user:*] but not a1
-					define a1: [user]
-					define viewer: a and b`,
+				type user
+				type document
+					relations
+						define b: [user:*] but not b1
+						define b1: [user]
+						define a: [user:*] but not a1
+						define a1: [user]
+						define viewer: a and b`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "b", "user:*"),
@@ -1357,17 +1381,18 @@ func TestListUsersIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type document
-			relations
-				define viewer: viewer1 and viewer2
-				define viewer1: [user,user:*] but not blocked1
-			  	define viewer2: [user,user:*] but not blocked2
-			  	define blocked1: [user,user:*]
-				define blocked2: [user,user:*]`,
+				type document
+					relations
+						define viewer: viewer1 and viewer2
+						define viewer1: [user,user:*] but not blocked1
+						define viewer2: [user,user:*] but not blocked2
+						define blocked1: [user,user:*]
+						define blocked2: [user,user:*]`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
@@ -1401,14 +1426,15 @@ func TestListUsersUnion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define optional_1: [user]
-					define optional_2: [user]
-					define viewer: optional_1 or optional_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define optional_1: [user]
+						define optional_2: [user]
+						define viewer: optional_1 or optional_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "optional_1", "user:will"),
@@ -1430,17 +1456,18 @@ func TestListUsersUnion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
-		  type folder
-			relations
-			  define viewer: [user]
-		  type document
-			relations
-			  define optional: [user]
-			  define parent: [folder]
-			  define viewer: (viewer from parent) or optional`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define optional: [user]
+						define parent: [folder]
+						define viewer: (viewer from parent) or optional`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "optional", "user:will"),
@@ -1463,17 +1490,18 @@ func TestListUsersUnion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  	type user
-			type folder
-				relations
-					define viewer: [user]
-			type document
-				relations
-					define parent: [folder]
-					define editor: [user]
-					define viewer: [user] or editor or viewer from parent`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define editor: [user]
+						define viewer: [user] or editor or viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:x", "viewer", "user:will"),
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
@@ -1494,16 +1522,17 @@ func TestListUsersUnion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type document
-			relations
-				define viewer: viewer1 or viewer2
-				define viewer1: [user,user:*] but not blocked
-			  	define viewer2: [user,user:*] but not blocked
-			  	define blocked: [user,user:*]`,
+				type document
+					relations
+						define viewer: viewer1 or viewer2
+						define viewer1: [user,user:*] but not blocked
+						define viewer2: [user,user:*] but not blocked
+						define blocked: [user,user:*]`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
@@ -1525,17 +1554,18 @@ func TestListUsersUnion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type document
-			relations
-				define viewer: viewer1 or viewer2
-				define viewer1: [user,user:*] but not blocked1
-			  	define viewer2: [user,user:*] but not blocked2
-			  	define blocked1: [user]
-				define blocked2: [user]`,
+				type document
+					relations
+						define viewer: viewer1 or viewer2
+						define viewer1: [user,user:*] but not blocked1
+						define viewer2: [user,user:*] but not blocked2
+						define blocked1: [user]
+						define blocked2: [user]`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer1", "user:*"),
@@ -1569,13 +1599,14 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define blocked: [user]
-					define viewer: [user] but not blocked`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define blocked: [user]
+						define viewer: [user] but not blocked`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:blocked_user"),
@@ -1596,14 +1627,15 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
-		  type document
-			relations
-			  define blocked_1: [user]
-			  define blocked_2: [user]
-			  define viewer: ([user] but not blocked_1) but not blocked_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define blocked_1: [user]
+						define blocked_2: [user]
+						define viewer: ([user] but not blocked_1) but not blocked_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
@@ -1631,22 +1663,23 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-		  type org
-			relations
-			  define blocked: [user]
+				type org
+					relations
+						define blocked: [user]
 
-		  type user
+				type user
 
-		  type document
-			relations
-			  define parent: [org]
-			  define owner: [user]
-			  define blocked: blocked from parent
-			  define editor: owner but not blocked
-			  define viewer: editor`,
+				type document
+					relations
+						define parent: [org]
+						define owner: [user]
+						define blocked: blocked from parent
+						define editor: owner but not blocked
+						define viewer: editor`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "org:x"),
@@ -1668,26 +1701,27 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-		  type user
+				type user
 
-		  type org
-			relations
-			  define blocked: [user]
+				type org
+					relations
+						define blocked: [user]
 
-		  type folder
-			relations
-			  define blocked: blocked from org
-			  define org: [org]
-			  define viewer: [user]
+				type folder
+					relations
+						define blocked: blocked from org
+						define org: [org]
+						define viewer: [user]
 
-		  type document
-			relations
-			  define parent: [folder]
-			  define viewer: viewer from parent but not blocked from parent
-		  `,
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent but not blocked from parent
+			`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:x", "org", "org:x"),
@@ -1711,15 +1745,16 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-		  type user
+				type user
 
-		  type group
-			relations
-			  define member: [user, group#member] but not blocked
-			  define blocked: [user, group#member]`,
+				type group
+					relations
+						define member: [user, group#member] but not blocked
+						define blocked: [user, group#member]`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "blocked", "group:1#member"),
@@ -1738,16 +1773,17 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			  schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type document
-			  relations
-			    define unblocked: [user]
-				define blocked: [user, document#viewer] but not unblocked
-				define viewer: [user, document#blocked] but not blocked
+				type document
+					relations
+						define unblocked: [user]
+						define blocked: [user, document#viewer] but not unblocked
+						define viewer: [user, document#blocked] but not blocked
 			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
@@ -1769,15 +1805,16 @@ func TestListUsersExclusion(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-				schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type document
-				relations
-				define blocked: [user, document#viewer]
-				define viewer: [user, document#blocked] but not blocked
+				type document
+					relations
+						define blocked: [user, document#viewer]
+						define viewer: [user, document#blocked] but not blocked
 			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
@@ -1794,15 +1831,16 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	model := `model
-	schema 1.1
+	model := `
+		model
+			schema 1.1
 
-  type user
+		type user
 
-  type document
-	relations
-	  define blocked: [user:*,user]
-	  define viewer: [user:*,user] but not blocked`
+		type document
+			relations
+				define blocked: [user:*,user]
+				define viewer: [user:*,user] but not blocked`
 
 	tests := ListUsersTests{
 		{
@@ -1911,15 +1949,16 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-		  type user
+				type user
 
-		  type document
-			relations
-			  define blocked: [user:*,user]
-			  define viewer: [user:*,user] but not blocked`,
+				type document
+					relations
+						define blocked: [user:*,user]
+						define viewer: [user:*,user] but not blocked`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"), // base wildcard
 				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
@@ -1950,12 +1989,13 @@ func TestListUsersWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define viewer: [user:*]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user:*]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
@@ -1973,12 +2013,13 @@ func TestListUsersWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type document
-				relations
-					define viewer: [user:*,user]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user:*,user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:1", "viewer", "user:will"),
@@ -1997,13 +2038,14 @@ func TestListUsersWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type group
-			type document
-				relations
-					define viewer: [ group:*, user:*]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+				type document
+					relations
+						define viewer: [ group:*, user:*]`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
@@ -2022,15 +2064,16 @@ func TestListUsersWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-			type user
-			type group
-				relations
-					define member: [user:*]
-			type document
-				relations
-					define viewer: [group#member]`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user:*]
+				type document
+					relations
+						define viewer: [group#member]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
@@ -2048,21 +2091,22 @@ func TestListUsersWildcards(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-          type user
-          type group
-            relations
-              define member: [user:*]
-          type folder
-            relations
-              define can_view: viewer or can_view from parent
-              define parent: [folder]
-              define viewer: [group#member]
-          type document
-            relations
-              define parent: [folder]
-              define viewer: can_view from parent`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user:*]
+				type folder
+					relations
+						define can_view: viewer or can_view from parent
+						define parent: [folder]
+						define viewer: [group#member]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: can_view from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 				tuple.NewTupleKey("folder:eng", "viewer", "group:eng#member"),
@@ -2092,13 +2136,14 @@ func TestListUsersEdgePruning(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
+			model: `
+				model
+					schema 1.1
+				type user
 
-		  type document
-			relations
-			  define viewer: [user]`,
+				type document
+					relations
+						define viewer: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			},
@@ -2115,15 +2160,16 @@ func TestListUsersEdgePruning(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		  type user
-		  type document
-			relations
-				define parent: [user]
-				define owner: parent
-				define editor: owner
-				define viewer: editor`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define parent: [user]
+						define owner: parent
+						define editor: owner
+						define viewer: editor`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "user:maria"),
 			},
@@ -2141,16 +2187,17 @@ func TestListUsersEdgePruning(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		type user
-		type folder
-			relations
-				define viewer: [user]
-		type document
-			relations
-				define parent: [folder]
-				define viewer: viewer from parent`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
 				tuple.NewTupleKey("folder:x", "viewer", "user:1"),
@@ -2168,16 +2215,17 @@ func TestListUsersEdgePruning(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		type user
-		type folder
-			relations
-				define viewer: [user]
-		type document
-			relations
-				define parent: [folder]
-				define viewer: viewer from parent`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:x"),
 				tuple.NewTupleKey("folder:x", "viewer", "user:maria"),
@@ -2195,16 +2243,17 @@ func TestListUsersEdgePruning(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
-		type user
-		type folder
-			relations
-				define viewer: [user]
-		type document
-			relations
-				define parent: [folder]
-				define viewer: viewer from parent`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent`,
 			expectedErrorMsg: "'document#INVALID_RELATION' relation is undefined",
 		},
 	}
@@ -2228,14 +2277,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-          type user
-          type document
-            relations
-              define allowed: [user]
-              define viewer: [user:*,user] and allowed
-              define can_view: viewer`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define allowed: [user]
+						define viewer: [user:*,user] and allowed
+						define can_view: viewer`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "allowed", "user:jon"),
@@ -2255,14 +2305,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-            schema 1.1
-          type user
-          type document
-            relations
-			  define public_1: [user:*,user]
-			  define public_2: [user:*,user]
-			  define is_public: public_1 and public_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define public_1: [user:*,user]
+						define public_2: [user:*,user]
+						define is_public: public_1 and public_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "public_1", "user:maria"),
@@ -2286,14 +2337,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-		    schema 1.1
-		  type user
-		  type document
-		    relations
-		      define viewer: [user:*,user]
-		      define this_is_not_assigned_to_any_user: [user]
-		      define can_view: viewer and this_is_not_assigned_to_any_user`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user:*,user]
+						define this_is_not_assigned_to_any_user: [user]
+						define can_view: viewer and this_is_not_assigned_to_any_user`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
@@ -2312,14 +2364,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-		    schema 1.1
-		  type user
-		  type document
-		    relations
-		      define viewer: [user:*,user]
-		      define required: [user:*,user]
-		      define can_view: viewer and required`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [user:*,user]
+						define required: [user:*,user]
+						define can_view: viewer and required`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
@@ -2340,14 +2393,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-		    schema 1.1
-		  type user
-		  type document
-		    relations
-		      define required_1: [user]
-		      define required_2: [user]
-		      define can_view: required_1 and required_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required_1: [user]
+						define required_2: [user]
+						define can_view: required_1 and required_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required_1", "user:*"), // Invalid tuple, wildcard not allowed
@@ -2369,14 +2423,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-		    schema 1.1
-		  type user
-		  type document
-		    relations
-		      define required_1: [user]
-		      define required_2: [user:*]
-		      define can_view: required_1 and required_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required_1: [user]
+						define required_2: [user:*]
+						define can_view: required_1 and required_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
@@ -2395,14 +2450,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-		    schema 1.1
-		  type user
-		  type document
-		    relations
-		      define required_1: [user]
-		      define required_2: [user]
-		      define can_view: required_1 and required_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required_1: [user]
+						define required_2: [user]
+						define can_view: required_1 and required_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
@@ -2427,14 +2483,15 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-		    schema 1.1
-		  type user
-		  type document
-		    relations
-		      define required_1: [user,user:*]
-		      define required_2: [user,user:*]
-		      define can_view: required_1 and required_2`,
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required_1: [user,user:*]
+						define required_2: [user,user:*]
+						define can_view: required_1 and required_2`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
@@ -2455,20 +2512,21 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 					},
 				},
 			},
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-		  type user
+				type user
 
-		  type group
-			relations
-			  define member: [user:*, user]
+				type group
+					relations
+						define member: [user:*, user]
 
-		  type document
-			relations
-			  define group: [group]
-			  define viewer: [group#member] and member from group
-			  define can_view: viewer`,
+				type document
+					relations
+						define group: [group]
+						define viewer: [group#member] and member from group
+						define can_view: viewer`,
 
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:y#member"),
@@ -2502,13 +2560,13 @@ func TestListUsersCycleDetection(t *testing.T) {
 	channelWithResults := make(chan foundUser)
 	channelWithError := make(chan error, 1)
 	model := testutils.MustTransformDSLToProtoWithID(`
-	model
-		schema 1.1
-	type user
-	type document
-		relations
-			define viewer: [user]
-	`)
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]
+		`)
 	typesys := typesystem.New(model)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
@@ -2561,14 +2619,15 @@ func TestListUsersChainedNegation(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	model := `model
-		schema 1.1
-	type user
-	type document
-		relations
-			define viewer: [user, user:*] but not blocked
-			define blocked: [user, user:*] but not unblocked
-			define unblocked: [user, user:*]`
+	model := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user, user:*] but not blocked
+				define blocked: [user, user:*] but not unblocked
+				define unblocked: [user, user:*]`
 
 	tests := ListUsersTests{
 		{
@@ -2734,14 +2793,15 @@ func TestListUsersDepthExceeded(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := `model
-	schema 1.1
+	model := `
+		model
+			schema 1.1
 		type user
 
-	type folder
-		relations
-			define parent: [folder]
-			define viewer: [user] or viewer from parent`
+		type folder
+			relations
+				define parent: [folder]
+				define viewer: [user] or viewer from parent`
 
 	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("folder:26", "viewer", "user:maria"),
@@ -2857,17 +2917,17 @@ func TestListUsersStorageErrors(t *testing.T) {
 				MaxTimes(2) // Because DB errors will immediately halt the execution of the API function, it's possible that only one read is made
 
 			model := testutils.MustTransformDSLToProtoWithID(`
-			model
-				schema 1.1
-			type user
+				model
+					schema 1.1
+				type user
 
-			type document
-				relations
-					define a: [user]
-					define b: [user]
-					define union: a or b
-					define exclusion: a but not b
-					define intersection: a and b`)
+				type document
+					relations
+						define a: [user]
+						define b: [user]
+						define union: a or b
+						define exclusion: a but not b
+						define intersection: a and b`)
 			typesys := typesystem.New(model)
 
 			l := NewListUsersQuery(mockDatastore)
@@ -3060,35 +3120,36 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	model := parser.MustTransformDSLToProto(`model
-		schema 1.1
-	type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-	type company
-	  relations
-		define member: [user]
+		type company
+			relations
+				define member: [user]
 
-	type org
-	  relations
-		define member: [user]
+		type org
+			relations
+				define member: [user]
 
-	type document
-	  relations
-		define wildcard: [user:*]
-		define userset: [org#member]
-		define multiple_userset: [org#member, company#member]
-		define a: [user]
-		define b: [user]
-		define union: a or b
-		define union_rewrite: union
-		define intersection: a and b
-		define difference: a but not b
-		define ttu: member from parent
-		define union_and_ttu: union and ttu
-		define union_or_ttu: union or ttu or union_rewrite
-		define intersection_of_ttus: union_or_ttu and union_and_ttu
-		define parent: [org]
-	`)
+		type document
+			relations
+				define wildcard: [user:*]
+				define userset: [org#member]
+				define multiple_userset: [org#member, company#member]
+				define a: [user]
+				define b: [user]
+				define union: a or b
+				define union_rewrite: union
+				define intersection: a and b
+				define difference: a but not b
+				define ttu: member from parent
+				define union_and_ttu: union and ttu
+				define union_or_ttu: union or ttu or union_rewrite
+				define intersection_of_ttus: union_or_ttu and union_and_ttu
+				define parent: [org]
+		`)
 
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
@@ -3674,16 +3735,16 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 
 	t.Run("avoid_producing_explicitly_negated_subjects", func(t *testing.T) {
 		modelStr := `
-		model
-		  schema 1.1
+			model
+				schema 1.1
 
-		type user
+			type user
 
-		type document
-		  relations
-		    define restricted: [user, user:*]
-		    define viewer: [user, user:*] but not restricted
-	`
+			type document
+				relations
+					define restricted: [user, user:*]
+					define viewer: [user, user:*] but not restricted
+		`
 		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelStr, []string{
 			"document:1#viewer@user:*",
 			"document:1#viewer@user:jon",

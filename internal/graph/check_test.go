@@ -749,7 +749,8 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
-			schema 1.1
+				schema 1.1
+
 			type user
 
 
@@ -790,7 +791,8 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
-			schema 1.1
+				schema 1.1
+
 			type user
 
 
@@ -843,7 +845,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
-			schema 1.1
+				schema 1.1
+
 			type user
 
 			type group
@@ -895,7 +898,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
-			schema 1.1
+				schema 1.1
+
 			type user
 
 			type document
@@ -944,7 +948,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
-			schema 1.1
+				schema 1.1
+
 			type user
 
 			type document
@@ -1003,7 +1008,8 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 		type group
 			relations
@@ -1052,7 +1058,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 
 	model := parser.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type company
@@ -1310,7 +1317,7 @@ func TestCheckConditions(t *testing.T) {
 
 	model := parser.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
 
 		type user
 
@@ -1401,7 +1408,7 @@ func TestCheckDispatchCount(t *testing.T) {
 
 		model := parser.MustTransformDSLToProto(`
 			model
-			schema 1.1
+				schema 1.1
 
 			type user
 
@@ -1468,7 +1475,7 @@ func TestCheckDispatchCount(t *testing.T) {
 
 		model := parser.MustTransformDSLToProto(`
 			model
-			schema 1.1
+				schema 1.1
 
 			type user
 
@@ -1532,7 +1539,7 @@ func TestCheckDispatchCount(t *testing.T) {
 
 		model := parser.MustTransformDSLToProto(`
 			model
-			schema 1.1
+				schema 1.1
 
 			type user
 

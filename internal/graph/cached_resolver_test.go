@@ -566,7 +566,8 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type org

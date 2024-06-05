@@ -76,6 +76,7 @@ func ExampleNewServerWithOpts() {
 	model := language.MustTransformDSLToProto(`
 	model
 		schema 1.1
+
 	type user
 
 	type document
@@ -361,7 +362,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
-		schema 1.1
+			schema 1.1
 
 		type user
 
@@ -465,7 +466,7 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
-		schema 1.1
+			schema 1.1
 
 		type user
 
@@ -530,7 +531,7 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
-		schema 1.1
+			schema 1.1
 
 		type user
 		type module
@@ -624,7 +625,7 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
-		schema 1.1
+			schema 1.1
 
 		type user
 
@@ -720,7 +721,8 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 
 	typedefs := language.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type repo
@@ -803,7 +805,8 @@ func TestReleasesConnections(t *testing.T) {
 		StoreId: storeID,
 		TypeDefinitions: language.MustTransformDSLToProto(`
 			model
-			schema 1.1
+				schema 1.1
+
 			type user
 
 			type document
@@ -905,7 +908,8 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	// The model is invalid
 	typedefs := language.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type repo
@@ -1010,7 +1014,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 
 	typedefs := language.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type repo
@@ -1090,7 +1095,8 @@ func TestCheckWithCachedResolution(t *testing.T) {
 
 	typedefs := language.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type repo
@@ -1161,7 +1167,8 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 
 	typedefs := language.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type repo
@@ -1391,7 +1398,8 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 
 	typedefs := language.MustTransformDSLToProto(`
 		model
-		schema 1.1
+			schema 1.1
+
 		type user
 
 		type repo
@@ -1467,7 +1475,8 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: language.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type document
@@ -1521,7 +1530,8 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: language.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type user
 
 				type group
@@ -1682,7 +1692,8 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: language.MustTransformDSLToProto(`
 				model
-				schema 1.1
+					schema 1.1
+
 				type repo
 				`).GetTypeDefinitions(),
 		})
