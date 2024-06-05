@@ -236,8 +236,7 @@ type ChangelogBackend interface {
 	// You can optionally provide a filter to filter out changes for objects of a specific type.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond
 	// and should be interpreted as a millisecond duration.
-	// If no changes are found, it will return storage.ErrNotFound.  In this case,
-	// the API layer will return the original if it was provided.
+	// If no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	ReadChanges(
 		ctx context.Context,
 		store,
