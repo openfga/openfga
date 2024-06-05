@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,16 +18,11 @@ import (
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/memory")
-
-type staticIterator struct {
-	records           []*storage.TupleRecord
-	continuationToken []byte
-	mu                sync.Mutex
-}
 
 // match returns true if all the fields in t [*storage.TupleRecord] are equal to
 // the same field in the target [*openfgav1.TupleKey]. If the input Object
@@ -52,42 +48,6 @@ func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
 		return false
 	}
 	return true
-}
-
-// Next see [storage.Iterator].Next.
-func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if len(s.records) == 0 {
-		return nil, storage.ErrIteratorDone
-	}
-
-	next, rest := s.records[0], s.records[1:]
-	s.records = rest
-	return next.AsTuple(), nil
-}
-
-// Stop does not do anything for staticIterator.
-func (s *staticIterator) Stop() {}
-
-// ToArray converts the entire sequence of tuples in the staticIterator to an array format.
-func (s *staticIterator) ToArray(ctx context.Context) ([]*openfgav1.Tuple, []byte, error) {
-	var res []*openfgav1.Tuple
-	for range s.records {
-		t, err := s.Next(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		res = append(res, t)
-	}
-
-	return res, s.continuationToken, nil
 }
 
 // StorageOption defines a function type used for configuring a [MemoryBackend] instance.
@@ -193,7 +153,7 @@ func (s *MemoryBackend) ReadPage(
 		return nil, nil, err
 	}
 
-	return it.ToArray(ctx)
+	return it.ToSlice(ctx)
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
@@ -266,7 +226,12 @@ func (s *MemoryBackend) ReadChanges(
 	return res, []byte(continuationToken), nil
 }
 
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(
+	ctx context.Context,
+	store string,
+	tk *openfgav1.TupleKey,
+	paginationOptions storage.PaginationOptions,
+) (*storage.TupleRecordSliceIterator[*openfgav1.Tuple], error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
@@ -301,10 +266,10 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 
 	to := paginationOptions.PageSize
 	if to != 0 && to < len(matches) {
-		return &staticIterator{records: matches[:to], continuationToken: []byte(strconv.Itoa(from + to))}, nil
+		return storage.NewTupleRecordSliceIterator(matches[:to], []byte(strconv.Itoa(from+to)), storage.MapTupleRecordToTupleProtobuf), nil
 	}
 
-	return &staticIterator{records: matches}, nil
+	return storage.NewTupleRecordSliceIterator(matches, nil, storage.MapTupleRecordToTupleProtobuf), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -359,12 +324,18 @@ Write:
 
 		objectType, objectID := tupleUtils.SplitObject(t.GetObject())
 
+		subject, subjectRelation := tuple.SplitObjectRelation(t.GetUser())
+		subjectType, subjectID := tuple.SplitObject(subject)
+
 		records = append(records, &storage.TupleRecord{
 			Store:            store,
 			ObjectType:       objectType,
 			ObjectID:         objectID,
 			Relation:         t.GetRelation(),
 			User:             t.GetUser(),
+			SubjectType:      subjectType,
+			SubjectID:        subjectID,
+			SubjectRelation:  subjectRelation,
 			ConditionName:    conditionName,
 			ConditionContext: conditionContext,
 			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
@@ -470,7 +441,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 		}
 	}
 
-	return &staticIterator{records: matches}, nil
+	return storage.NewTupleRecordSliceIterator(matches, nil, storage.MapTupleRecordToTupleProtobuf), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -506,7 +477,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 			}
 		}
 	}
-	return &staticIterator{records: matches}, nil
+	return storage.NewTupleRecordSliceIterator(matches, nil, storage.MapTupleRecordToTupleProtobuf), nil
 }
 
 func findAuthorizationModelByID(
@@ -806,5 +777,63 @@ func (s *MemoryBackend) ReadRelationshipTuples(
 	filter storage.ReadRelationshipTuplesFilter,
 	opts ...storage.ReadRelationshipTuplesOpt,
 ) (storage.RelationshipTupleIterator, error) {
-	return nil, fmt.Errorf("not implemented")
+	_, span := tracer.Start(ctx, "memory.ReadRelationshipTuples")
+	defer span.End()
+
+	if storeID == "" {
+		return nil, fmt.Errorf("store id should not be an empty string")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var matches []*storage.TupleRecord
+	for _, t := range s.tuples[storeID] {
+		if filter.ObjectType != "" && t.ObjectType != filter.ObjectType {
+			continue
+		}
+
+		if filter.ObjectIDs != nil {
+			if !slices.Contains(filter.ObjectIDs, t.ObjectID) {
+				continue
+			}
+		}
+
+		if filter.Relation != "" && t.Relation != filter.Relation {
+			continue
+		}
+
+		if filter.SubjectsFilter != nil {
+			subject, subjectRelation := tuple.SplitObjectRelation(t.User)
+			subjectType, subjectID := tuple.SplitObject(subject)
+
+			subjectMatchesFilter := false
+
+			for _, subjectFilter := range filter.SubjectsFilter {
+				if subjectFilter.SubjectType != "" && subjectType != subjectFilter.SubjectType {
+					continue
+				}
+
+				if subjectFilter.SubjectIDs != nil {
+					if !slices.Contains(subjectFilter.SubjectIDs, subjectID) {
+						continue
+					}
+				}
+
+				if subjectFilter.SubjectRelation != "" && subjectRelation != subjectFilter.SubjectRelation {
+					continue
+				}
+
+				subjectMatchesFilter = true
+			}
+
+			if !subjectMatchesFilter {
+				continue
+			}
+		}
+
+		matches = append(matches, t)
+	}
+
+	return storage.NewTupleRecordSliceIterator(matches, nil, storage.MapTupleRecordToRelationshipTupleMapper), nil
 }

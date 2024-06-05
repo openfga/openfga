@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/openfga/openfga/pkg/types"
 
@@ -227,3 +228,59 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 		filter,
 	}
 }
+
+type TupleRecordSliceIterator[T any] struct {
+	records           []*TupleRecord
+	continuationToken []byte
+	mapper            func(r *TupleRecord) T
+	mu                sync.Mutex
+}
+
+func NewTupleRecordSliceIterator[T any](
+	records []*TupleRecord,
+	continuationToken []byte,
+	mapper func(r *TupleRecord) T,
+) *TupleRecordSliceIterator[T] {
+	return &TupleRecordSliceIterator[T]{
+		records:           records,
+		continuationToken: continuationToken,
+		mapper:            mapper,
+	}
+}
+
+// Next see [storage.Iterator].Next.
+func (s *TupleRecordSliceIterator[T]) Next(ctx context.Context) (T, error) {
+	var val T
+	if ctx.Err() != nil {
+		return val, ctx.Err()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.records) == 0 {
+		return val, ErrIteratorDone
+	}
+
+	next, rest := s.records[0], s.records[1:]
+	s.records = rest
+
+	return s.mapper(next), nil
+}
+
+// ToSlice converts the entire sequence of records in the TupleRecordSliceIterator to an array format.
+func (s *TupleRecordSliceIterator[T]) ToSlice(ctx context.Context) ([]T, []byte, error) {
+	var res []T
+	for range s.records {
+		t, err := s.Next(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		res = append(res, t)
+	}
+
+	return res, s.continuationToken, nil
+}
+
+func (s *TupleRecordSliceIterator[T]) Stop() {}

@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -170,27 +171,26 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 	return &token, nil
 }
 
-// SQLTupleIterator is a struct that implements the storage.TupleIterator
-// interface for iterating over tuples fetched from a SQL database.
-type SQLTupleIterator struct {
+// SQLIterator is a struct that implements a generic interface
+// for iterating over TupleRecords fetched from the FGA storage
+// layer and applying a mapping function to the records returned.
+type SQLIterator[T any] struct {
 	rows     *sql.Rows
 	resultCh chan *storage.TupleRecord
 	errCh    chan error
+	mapper   func(r *storage.TupleRecord) T
 }
 
-// Ensures that SQLTupleIterator implements the TupleIterator interface.
-var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
-
-// NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
-	return &SQLTupleIterator{
+func NewSQLIterator[T any](rows *sql.Rows, mapper func(r *storage.TupleRecord) T) *SQLIterator[T] {
+	return &SQLIterator[T]{
 		rows:     rows,
 		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
+		mapper:   mapper,
 	}
 }
 
-func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
+func (t *SQLIterator[T]) next() (*storage.TupleRecord, error) {
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
 			return nil, err
@@ -216,6 +216,12 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		return nil, err
 	}
 
+	subject, subjectRelation := tuple.SplitObjectRelation(record.User)
+	subjectType, subjectID := tuple.SplitObject(subject)
+	record.SubjectType = subjectType
+	record.SubjectID = subjectID
+	record.SubjectRelation = subjectRelation
+
 	record.ConditionName = conditionName.String
 
 	if conditionContext != nil {
@@ -229,12 +235,31 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	return &record, nil
 }
 
-// ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token.
+func (t *SQLIterator[T]) Next(ctx context.Context) (T, error) {
+	var val T
+	if ctx.Err() != nil {
+		return val, ctx.Err()
+	}
+
+	record, err := t.next()
+	if err != nil {
+		return val, err
+	}
+
+	return t.mapper(record), nil
+}
+
+// Stop terminates iteration.
+func (t *SQLIterator[T]) Stop() {
+	t.rows.Close()
+}
+
+// ToSlice converts the SQLIterator to a slice and a possibly empty continuation token.
 // If the continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(
+func (t *SQLIterator[T]) ToSlice(
 	opts storage.PaginationOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
-	var res []*openfgav1.Tuple
+) ([]T, []byte, error) {
+	var res []T
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
@@ -243,7 +268,7 @@ func (t *SQLTupleIterator) ToArray(
 			}
 			return nil, nil, err
 		}
-		res = append(res, tupleRecord.AsTuple())
+		res = append(res, t.mapper(tupleRecord))
 	}
 
 	// Check if we are at the end of the iterator.
@@ -265,24 +290,7 @@ func (t *SQLTupleIterator) ToArray(
 	return res, contToken, nil
 }
 
-// Next will return the next available item.
-func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
-	record, err := t.next()
-	if err != nil {
-		return nil, err
-	}
-
-	return record.AsTuple(), nil
-}
-
-// Stop terminates iteration.
-func (t *SQLTupleIterator) Stop() {
-	t.rows.Close()
-}
+var _ storage.TupleIterator = (*SQLIterator[*openfgav1.Tuple])(nil)
 
 // HandleSQLError processes an SQL error and converts it into a more
 // specific error type based on the nature of the SQL error.
