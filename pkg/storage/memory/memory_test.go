@@ -1,16 +1,10 @@
 package memory
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -20,100 +14,6 @@ import (
 func TestMemdbStorage(t *testing.T) {
 	ds := New()
 	test.RunAllTests(t, ds)
-}
-
-func TestStaticTupleIteratorNoRace(t *testing.T) {
-	now := timestamppb.Now()
-
-	iter := &staticIterator{
-		records: []*storage.TupleRecord{
-			{
-				Store:      "store",
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-				Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-				InsertedAt: now.AsTime(),
-			},
-			{
-				Store:            "store",
-				ObjectType:       "document",
-				ObjectID:         "1",
-				Relation:         "viewer",
-				User:             "user:jon",
-				ConditionName:    "condition",
-				ConditionContext: &structpb.Struct{},
-				Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-				InsertedAt:       now.AsTime(),
-			},
-		},
-	}
-	defer iter.Stop()
-
-	var wg errgroup.Group
-
-	wg.Go(func() error {
-		_, err := iter.Next(context.Background())
-		return err
-	})
-
-	wg.Go(func() error {
-		_, err := iter.Next(context.Background())
-		return err
-	})
-
-	err := wg.Wait()
-	require.NoError(t, err)
-}
-
-func TestStaticTupleIteratorContextCanceled(t *testing.T) {
-	iter := &staticIterator{
-		records: []*storage.TupleRecord{
-			{
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-			},
-		},
-	}
-	defer iter.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	_, err := iter.Next(ctx)
-	require.NoError(t, err)
-
-	cancel()
-
-	_, err = iter.Next(ctx)
-	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestStaticTupleIteratorContextDeadlineExceeded(t *testing.T) {
-	iter := &staticIterator{
-		records: []*storage.TupleRecord{
-			{
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-			},
-		},
-	}
-	defer iter.Stop()
-
-	deadlineCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	_, err := iter.Next(deadlineCtx)
-	require.NoError(t, err)
-
-	time.Sleep(2 * time.Second)
-
-	_, err = iter.Next(deadlineCtx)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestTupleRecordMatchTupleKey(t *testing.T) {

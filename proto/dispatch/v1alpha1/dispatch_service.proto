@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package dispatch.v1alpha1;
+
+import "google/protobuf/empty.proto";
+
+// DispatchCheckRequest represents a single dispatchable Check request.
+message DispatchCheckRequest {
+    string store_id = 1;
+    string authorization_model_id = 2;
+    string object_type = 3;
+    repeated string object_ids = 4;
+    string relation = 5;
+    string subject_type = 6;
+    string subject_id = 7;
+    string subject_relation = 8;
+
+    DispatchCheckRequestMetadata request_metadata = 9;
+
+	enum ResolutionBehavior {
+		RESOLUTION_BEHAVIOR_UNSPECIFIED = 0;
+
+		// RESOLUTION_BEHAVIOR_RESOLVE_ANY will return a response as soon as any of the dispatched requests
+		// resolve to a permittable decision.
+		//
+		// RESOLVE_ANY should be used to search for a single resolution path among one or
+		// more branches of resolution.
+		RESOLUTION_BEHAVIOR_RESOLVE_ANY = 1;
+
+		// RESOLUTION_BEHAVIOR_RESOLVE_ALL will force the dispatched request to resolve all
+		// results before returning a response.
+		RESOLUTION_BEHAVIOR_RESOLVE_ALL = 2;
+	}
+
+	ResolutionBehavior resolution_behavior = 10;
+}
+
+message DispatchCheckResponse {
+	// ResultsForeachObjectID represents the map of objectIDs and the Check result/outcome for
+	// the given user/subject whose relationship was being evaluated.
+	//
+	// For example,
+	//   "1": {Allowed: true},
+	//   "2": {Allowed: false},
+	// indicates that the subject has a relationship with objectID "1" but not with objectID "2".
+    map<string, DispatchCheckResult> results_foreach_object_id = 1;
+
+	// ResolutionMetadata reports the aggregate of the resolution metadata values that were required
+	// to solve the dispatched Check request.
+    DispatchCheckResolutionMetadata resolution_metadata = 2;
+}
+
+message DispatchCheckRequestMetadata {
+	// Depth is the current level in the evaluation tree w.r.t. the current branch being evaluated.
+	// When we traverse one level, we decrement by 1. If the depth hits 0, we throw an ErrResolutionDepthExceeded
+	// error.
+	uint32 depth = 1;
+
+	// The number of database queries that have accumulated up to the point of this subproblem being dispatched.
+	//
+	// If the dispatched suproblem involves multiple child subproblems, then this count will increase
+	// as a function of the number of direct database lookups for the dispatched child subproblems
+	// that were not cached.
+	uint32 datastore_query_count = 2;
+
+	// The number of dispatched subproblems that have accumulated up to the point of this subproblem being dispatched.
+	//
+	// We subsequently add to this count to accumulate the aggregate sum of the dispatch count between this dispatched
+	// subproblem and it's parent subproblem.
+	uint32 dispatch_count = 3;
+
+	// WasThrottled indicates whether the request was throttled at some point in its resolution.
+	bool was_throttled = 4;
+
+	// VisitedParentSubproblems is a map whose keys indicate the set of parent subproblems which have
+	// already been visited w.r.t. this subproblem being dispatched.
+	//
+	// If this subproblem being dispatched has already been visited, then an ErrCyleDetected error
+	// will be raised.
+	map<string, google.protobuf.Empty> visited_parent_subproblems = 5;
+}
+
+message DispatchCheckResolutionMetadata {
+
+	// The maximum depth of the Check resolution path required to resolve the dispatched subproblem.
+	uint32 depth = 1;
+
+	// The number of database queries that were required to resolve the dispatched subproblem.
+	//
+	// If the dispatched suproblem involves multiple child subproblems, then this count will increase
+	// as a function of the number of direct database lookups for the dispatched child subproblems
+	// that were not cached.
+	uint32 datastore_query_count = 2;
+
+	// For a given dispatched subproblem, the dispatch count is the number of child subproblems that
+	// had to be dispatched to resolve the parent subproblem.
+	uint32 dispatch_count = 3;
+
+	// Indicates if the dispatched subproblem that was evaluated involved
+	// a cycle in the evaluation.
+	bool cycle_detected = 4;
+}
+
+// DispatchCheckResult represents an individual Check outcome for a single object.
+message DispatchCheckResult {
+	// Allowed indicates if the subject in question was allowed (permit decision) or denied.
+	bool allowed = 1;
+}

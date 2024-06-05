@@ -88,6 +88,61 @@ type TupleBackend interface {
 	RelationshipTupleWriter
 }
 
+// ReadRelationshipTuplesOpt is a type which can be implemented to provide changes
+// to query behvaior of ReadRelationshipTuples queries. These includes things like
+// limits, offsets (for pagination), ordering, and so on...
+type ReadRelationshipTuplesOpt func()
+
+// SubjectsFilter provides a way to specify the predicates which should be used to filter
+// relationship tuples by with respect to the users/subjects included in the tuples.
+//
+// If a field is an empty string, then the query predicate for that field should be omitted
+// from the filtered read. The fields of the filter are joined with intersection.
+//
+// For example,
+//
+// SubjectType: "group"
+// SubjectIDs: []string{"eng", "fga"}
+// SubjectRelation: "member"
+//
+// should produce the following SQL expression:
+//
+// WHERE subject_type='group' AND subject_id IN ('eng', 'fga') AND subject_relation='member'
+type SubjectsFilter struct {
+	SubjectType     string
+	SubjectIDs      []string
+	SubjectRelation string
+}
+
+// ReadRelationshipTuplesFilter provides a way to specify the predicates which should be used
+// to filter relationship tuples by.
+//
+// If a field is an empty string, then the query predicate for that field should be omitted from the
+// filtered read. The fields of the filter are joined (intersection) and the SubjectsFilter should unioned.
+//
+// For example,
+//
+//		ObjectType: "document"
+//		ObjectsIDs: []string{"1", "2"}
+//		Relation:   "viewer"
+//		SubjectsFilter: []SubjectsFilter{
+//		  {SubjectType: "user", SubjectIDs: []string{"jon", "jose"}},
+//	   {SubjectType: "group", SubjectIDs: []string{"eng", "fga"}, SubjectRelation: "member"},
+//		}
+//
+// should produce the following SQL expression:
+//
+//	WHERE object_type='document' AND object_id IN ('1', '2') AND relation='viewer' AND (
+//	    subject_type='user' AND subject_id IN ('jon', 'jose') AND subject_relation='' OR
+//	    subject_type='group' AND subject_id IN ('eng', 'fga') AND subject_relation='member'
+//	)
+type ReadRelationshipTuplesFilter struct {
+	ObjectType     string
+	ObjectIDs      []string
+	Relation       string
+	SubjectsFilter []SubjectsFilter
+}
+
 // RelationshipTupleReader is an interface that defines the set of
 // methods required to read relationship tuples from a data store.
 type RelationshipTupleReader interface {
@@ -118,6 +173,20 @@ type RelationshipTupleReader interface {
 		tupleKey *openfgav1.TupleKey,
 	) (*openfgav1.Tuple, error)
 
+	// ReadRelationshipTuples provides a filtered read of relationship tuples and returns a RelationshipTupleIterator.
+	//
+	// If all fields of the provided filter are empty values, then this will return an iterator which iterates over all relationship
+	// tuples in the FGA store. Otherwise it will return only those relationship tuples which match the combination of filters
+	// provided.
+	//
+	// The options provided can be used to provide additional pagination and limiting etc..
+	ReadRelationshipTuples(
+		ctx context.Context,
+		store string,
+		filter ReadRelationshipTuplesFilter,
+		opts ...ReadRelationshipTuplesOpt,
+	) (RelationshipTupleIterator, error)
+
 	// ReadUsersetTuples returns all userset tuples for a specified object and relation.
 	// For example, given the following relationship tuples:
 	//	document:doc1, viewer, user:*
@@ -129,7 +198,7 @@ type RelationshipTupleReader interface {
 	// There is NO guarantee on the order returned on the iterator.
 	ReadUsersetTuples(
 		ctx context.Context,
-		store string,
+		storeID string,
 		filter ReadUsersetTuplesFilter,
 	) (TupleIterator, error)
 

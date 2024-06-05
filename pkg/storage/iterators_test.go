@@ -5,11 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -103,4 +108,92 @@ func ExampleNewFilteredTupleKeyIterator() {
 
 	fmt.Println(filtered)
 	// Output: [document:doc1#editor@user:elbuo]
+}
+
+func TestTupleRecordIteratorNoRace(t *testing.T) {
+	now := timestamppb.Now()
+
+	iter := NewTupleRecordSliceIterator([]*TupleRecord{
+		{
+			Store:      "store",
+			ObjectType: "document",
+			ObjectID:   "1",
+			Relation:   "viewer",
+			User:       "user:jon",
+			Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+			InsertedAt: now.AsTime(),
+		},
+		{
+			Store:            "store",
+			ObjectType:       "document",
+			ObjectID:         "1",
+			Relation:         "viewer",
+			User:             "user:jon",
+			ConditionName:    "condition",
+			ConditionContext: &structpb.Struct{},
+			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+			InsertedAt:       now.AsTime(),
+		},
+	}, nil, MapTupleRecordToTupleProtobuf)
+	defer iter.Stop()
+
+	var wg errgroup.Group
+
+	wg.Go(func() error {
+		_, err := iter.Next(context.Background())
+		return err
+	})
+
+	wg.Go(func() error {
+		_, err := iter.Next(context.Background())
+		return err
+	})
+
+	err := wg.Wait()
+	require.NoError(t, err)
+}
+
+func TestTupleRecordIteratorContextCanceled(t *testing.T) {
+	iter := NewTupleRecordSliceIterator([]*TupleRecord{
+		{
+			ObjectType: "document",
+			ObjectID:   "1",
+			Relation:   "viewer",
+			User:       "user:jon",
+		},
+	}, nil, MapTupleRecordToTupleProtobuf)
+	defer iter.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	_, err := iter.Next(ctx)
+	require.NoError(t, err)
+
+	cancel()
+
+	_, err = iter.Next(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestTupleRecordIteratorContextDeadlineExceeded(t *testing.T) {
+	iter := NewTupleRecordSliceIterator([]*TupleRecord{
+		{
+			ObjectType: "document",
+			ObjectID:   "1",
+			Relation:   "viewer",
+			User:       "user:jon",
+		},
+	}, nil, MapTupleRecordToTupleProtobuf)
+	defer iter.Stop()
+
+	deadlineCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	_, err := iter.Next(deadlineCtx)
+	require.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
+
+	_, err = iter.Next(deadlineCtx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -160,10 +161,10 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(opts)
+	return iter.ToSlice(opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLIterator[*openfgav1.Tuple], error) {
 	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
@@ -207,7 +208,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLIterator(rows, storage.MapTupleRecordToTupleProtobuf), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -318,7 +319,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLIterator(rows, storage.MapTupleRecordToTupleProtobuf), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -351,7 +352,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLIterator(rows, storage.MapTupleRecordToTupleProtobuf), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -761,4 +762,85 @@ func (p *Postgres) ReadChanges(
 // IsReady see [sqlcommon.IsReady].
 func (p *Postgres) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, p.db)
+}
+
+// ReadRelationshipTuples implements storage.RelationshipTupleReader#ReadRelationshipTuples.
+func (p *Postgres) ReadRelationshipTuples(
+	ctx context.Context,
+	storeID string,
+	filter storage.ReadRelationshipTuplesFilter,
+	opts ...storage.ReadRelationshipTuplesOpt,
+) (storage.RelationshipTupleIterator, error) {
+	ctx, span := tracer.Start(ctx, "postgres.ReadRelationshipTuples")
+	defer span.End()
+
+	if storeID == "" {
+		return nil, fmt.Errorf("store id should not be an empty string")
+	}
+
+	sb := p.stbl.
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context",
+			"ulid", "inserted_at",
+		).
+		From("tuple").
+		Where(sq.Eq{"store": storeID})
+
+	if filter.ObjectType != "" {
+		sb = sb.Where(sq.Eq{"object_type": filter.ObjectType})
+	}
+
+	if filter.ObjectIDs != nil {
+		sb = sb.Where(sq.Eq{"object_id": filter.ObjectIDs})
+	}
+
+	if filter.Relation != "" {
+		sb = sb.Where(sq.Eq{"relation": filter.Relation})
+	}
+
+	if filter.SubjectsFilter != nil {
+		joinedSubjectFilter := sq.Or{}
+
+		for _, subjectFilter := range filter.SubjectsFilter {
+			// todo: after the migration
+			// joinedSubjectFilter = append(joinedSubjectFilter, sq.Eq{
+			// 	"subject_type":     subjectFilter.SubjectType,
+			// 	"subject_id":       subjectFilter.SubjectIDs,
+			// 	"subject_relation": subjectFilter.SubjectRelation,
+			// })
+
+			subjectType := subjectFilter.SubjectType
+			subjectRelation := subjectFilter.SubjectRelation
+
+			for _, subjectID := range subjectFilter.SubjectIDs {
+				var subjectStr string
+
+				if subjectRelation == "" {
+					subjectStr = fmt.Sprintf("%s:%s", subjectType, subjectID)
+				}
+
+				if subjectRelation != "" {
+					subjectStr = tuple.ToObjectRelationString(
+						tuple.BuildObject(subjectType, subjectID),
+						subjectRelation,
+					)
+				}
+
+				joinedSubjectFilter = append(joinedSubjectFilter, sq.Eq{
+					"_user":     subjectStr,
+					"user_type": tuple.GetUserTypeFromUser(subjectStr),
+				})
+			}
+		}
+
+		sb = sb.Where(joinedSubjectFilter)
+	}
+
+	rows, err := sb.QueryContext(ctx)
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	return sqlcommon.NewSQLIterator(rows, storage.MapTupleRecordToRelationshipTupleMapper), nil
 }

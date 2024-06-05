@@ -3,6 +3,9 @@ package storage
 import (
 	"context"
 	"errors"
+	"sync"
+
+	"github.com/openfga/openfga/pkg/types"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
@@ -27,6 +30,32 @@ type Iterator[T any] interface {
 // It is closed by explicitly calling [Iterator.Stop] or by calling
 // [Iterator.Next] until it returns an [ErrIteratorDone] error.
 type TupleIterator = Iterator[*openfgav1.Tuple]
+
+type RelationshipTupleIterator = Iterator[*types.RelationshipTuple]
+
+// RelationshipTupleIteratorToStringSlice consumes the provided RelationshipTupleIterator and foreach
+// RelationshipTuple in it produces the string formatted equivalent of the tuple
+// and appends it to a slice. The slice of all tuples consumed from the iterator
+// are returned.
+//
+// This method is provided as a utility/helper for testing purposes. It is not
+// advised to consume an iterator entirely in critical code paths. For those cases
+// the iterator should be consumed as normal.
+func RelationshipTupleIteratorToStringSlice(r RelationshipTupleIterator) []string {
+	var tuples []string
+	for {
+		relationshipTuple, err := r.Next(context.Background())
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				break
+			}
+		}
+
+		tuples = append(tuples, relationshipTuple.String())
+	}
+
+	return tuples
+}
 
 // TupleKeyIterator is an iterator for [*openfgav1.TupleKey](s). It is closed by
 // explicitly calling [Iterator.Stop] or by calling [Iterator.Next] until it
@@ -199,3 +228,59 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 		filter,
 	}
 }
+
+type TupleRecordSliceIterator[T any] struct {
+	records           []*TupleRecord
+	continuationToken []byte
+	mapper            func(r *TupleRecord) T
+	mu                sync.Mutex
+}
+
+func NewTupleRecordSliceIterator[T any](
+	records []*TupleRecord,
+	continuationToken []byte,
+	mapper func(r *TupleRecord) T,
+) *TupleRecordSliceIterator[T] {
+	return &TupleRecordSliceIterator[T]{
+		records:           records,
+		continuationToken: continuationToken,
+		mapper:            mapper,
+	}
+}
+
+// Next see [storage.Iterator].Next.
+func (s *TupleRecordSliceIterator[T]) Next(ctx context.Context) (T, error) {
+	var val T
+	if ctx.Err() != nil {
+		return val, ctx.Err()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.records) == 0 {
+		return val, ErrIteratorDone
+	}
+
+	next, rest := s.records[0], s.records[1:]
+	s.records = rest
+
+	return s.mapper(next), nil
+}
+
+// ToSlice converts the entire sequence of records in the TupleRecordSliceIterator to an array format.
+func (s *TupleRecordSliceIterator[T]) ToSlice(ctx context.Context) ([]T, []byte, error) {
+	var res []T
+	for range s.records {
+		t, err := s.Next(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		res = append(res, t)
+	}
+
+	return res, s.continuationToken, nil
+}
+
+func (s *TupleRecordSliceIterator[T]) Stop() {}

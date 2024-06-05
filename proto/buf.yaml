@@ -1,0 +1,6 @@
+---
+version: v1
+deps:
+  - buf.build/googleapis/googleapis
+breaking:
+  ignore_unstable_packages: true
