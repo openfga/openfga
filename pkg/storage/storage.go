@@ -53,9 +53,7 @@ func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleR
 	return reader, ok
 }
 
-// PaginationOptions holds the settings for pagination in data retrieval operations. It defines
-// the number of items to be included on each page (PageSize) and a marker from where to start
-// the page (From).
+// PaginationOptions should not be instantiated directly. Use NewPaginationOptions.
 type PaginationOptions struct {
 	PageSize int
 	From     string
@@ -66,7 +64,7 @@ type PaginationOptions struct {
 // it uses DefaultPageSize.
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
-	if ps != 0 {
+	if ps <= 0 {
 		pageSize = int(ps)
 	}
 

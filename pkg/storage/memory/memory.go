@@ -175,7 +175,7 @@ func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.T
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, key, storage.PaginationOptions{})
+	return s.read(ctx, store, key, storage.NewPaginationOptions(storage.DefaultPageSize, ""))
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
