@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/abac
+      - stronger-consistency-options
 
 permissions:
   contents: read
