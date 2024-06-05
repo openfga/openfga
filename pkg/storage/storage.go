@@ -88,10 +88,16 @@ type TupleBackend interface {
 	RelationshipTupleWriter
 }
 
+// ReadRelationshipTupleOpts is a functional option type that allows us to pass parameters.
+type ReadRelationshipTupleOpts struct {
+	Limit         int64             // limits number of items/rows returned
+	PaginationOpt PaginationOptions // split database responses into pages
+}
+
 // ReadRelationshipTuplesOpt is a type which can be implemented to provide changes
 // to query behvaior of ReadRelationshipTuples queries. These includes things like
 // limits, offsets (for pagination), ordering, and so on...
-type ReadRelationshipTuplesOpt func()
+type ReadRelationshipTuplesOpt func(*ReadRelationshipTupleOpts)
 
 // SubjectsFilter provides a way to specify the predicates which should be used to filter
 // relationship tuples by with respect to the users/subjects included in the tuples.
