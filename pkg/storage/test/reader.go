@@ -229,7 +229,7 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 
 		t.Run("all_filter_fields_provided_with_large_object_id_list", func(t *testing.T) {
 			// this test is for the scenario(s) where the number of elements in the ObjectID slice
-			// is roughly approaching the size that some range filters can efficiently support.
+			// is roughly approaching the size that some range filter can efficiently support.
 
 			var tuples []string
 			for i := 0; i < 5000; i++ {
@@ -266,6 +266,80 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 
 			actual := storage.RelationshipTupleIteratorToStringSlice(iter)
 			require.ElementsMatch(t, expected, actual)
+		})
+
+		t.Run("all_filter_fields_provided_with_large_object_id_list_and_subject_id_list", func(t *testing.T) {
+			// depending on the implementation, the number of reads may be proportional to:
+			// 	len(ObjectIDs) * len(SubjectFilters[0].SubjectIDs) * ... * len(SubjectFilters[N].SubjectIDs)
+			//
+			// in this example (500) * (5) * (5) = 12,500
+
+			var objectIDs []string
+			for i := 0; i < 500; i++ {
+				objectIDs = append(objectIDs, strconv.Itoa(i))
+			}
+
+			var tuples []string
+
+			// jon, andres - view access to documents [0-99]
+			for i := 0; i < 99; i++ {
+				objectID := strconv.Itoa(i)
+
+				tuples = append(tuples, []string{
+					fmt.Sprintf("document:%s#viewer@user:jon", objectID),
+					fmt.Sprintf("document:%s#viewer@user:andres", objectID),
+				}...)
+			}
+
+			// will, maria, adrian - view access to documents [100-200]
+			for i := 100; i < 201; i++ {
+				objectID := strconv.Itoa(i)
+
+				tuples = append(tuples, []string{
+					fmt.Sprintf("document:%s#viewer@user:will", objectID),
+					fmt.Sprintf("document:%s#viewer@user:maria", objectID),
+					fmt.Sprintf("document:%s#viewer@user:maria", objectID),
+				}...)
+			}
+
+			// eng, product, marketing - have access to all documents [201-300]
+			for i := 201; i < 301; i++ {
+				objectID := strconv.Itoa(i)
+
+				tuples = append(tuples, []string{
+					fmt.Sprintf("document:%s#viewer@group:eng#member", objectID),
+					fmt.Sprintf("document:%s#viewer@group:product#member", objectID),
+					fmt.Sprintf("document:%s#viewer@group:marketing#member", objectID),
+				}...)
+			}
+
+			// sales, finance - have access to no documents
+
+			storeID := BootstrapFGATuples(t, datastore, tuples)
+
+			filter := storage.ReadRelationshipTuplesFilter{
+				ObjectType: "document",
+				ObjectIDs:  objectIDs,
+				Relation:   "viewer",
+				SubjectsFilter: []storage.SubjectsFilter{
+					{
+						SubjectType:     "user",
+						SubjectIDs:      []string{"jon", "will", "andres", "maria", "adrian"},
+						SubjectRelation: "",
+					},
+					{
+						SubjectType:     "group",
+						SubjectIDs:      []string{"eng", "marketing", "sales", "product", "finance"},
+						SubjectRelation: "member",
+					},
+				},
+			}
+
+			iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
+			require.NoError(t, err)
+
+			actual := storage.RelationshipTupleIteratorToStringSlice(iter)
+			require.ElementsMatch(t, tuples, actual) // all of the tuples in the store match the whole query directly
 		})
 	})
 }
