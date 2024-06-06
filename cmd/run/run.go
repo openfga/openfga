@@ -421,7 +421,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	var experimentals []server.ExperimentalFeatureFlag
 	for _, feature := range config.Experimentals {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
-		s.Logger.Info(fmt.Sprintf("🧪 experimentals: %v", experimentals))
 	}
 
 	datastore, err := s.datastoreConfig(config)
