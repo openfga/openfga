@@ -188,5 +188,41 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 			}
 			require.ElementsMatch(t, expected, actual)
 		})
+
+		t.Run("all_filter_fields_provided", func(t *testing.T) {
+			filter := storage.ReadRelationshipTuplesFilter{
+				ObjectType: "document",
+				ObjectIDs:  []string{"1", "3"},
+				Relation:   "viewer",
+				SubjectsFilter: []storage.SubjectsFilter{
+					{
+						SubjectType:     "user",
+						SubjectIDs:      []string{"will", "andres"},
+						SubjectRelation: "",
+					},
+					{
+						SubjectType:     "user",
+						SubjectIDs:      []string{"*"},
+						SubjectRelation: "",
+					},
+					{
+						SubjectType:     "group",
+						SubjectIDs:      []string{"eng"},
+						SubjectRelation: "member",
+					},
+				},
+			}
+
+			iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
+			require.NoError(t, err)
+
+			actual := storage.RelationshipTupleIteratorToStringSlice(iter)
+			expected := []string{
+				"document:3#viewer@user:will",
+				"document:1#viewer@group:eng#member",
+				"document:1#viewer@user:*",
+			}
+			require.ElementsMatch(t, expected, actual)
+		})
 	})
 }
