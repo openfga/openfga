@@ -24,6 +24,35 @@ import (
 func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
+	t.Run("read_changes_returns_non_empty_timestamp", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne",
+		}
+		tk1WithCond := &openfgav1.TupleKeyWithoutCondition{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne",
+		}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{tk1WithCond}, nil)
+		require.NoError(t, err)
+
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(2, ""), 0)
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		for _, change := range changes {
+			require.True(t, change.GetTimestamp().IsValid())
+			require.False(t, change.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
 	t.Run("read_changes_with_continuation_token", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
@@ -41,7 +70,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: 1}, 0)
+		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(1, ""), 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
@@ -56,10 +85,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
-		changes, continuationToken, err = datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{
-			PageSize: 2,
-			From:     string(continuationToken),
-		},
+		changes, continuationToken, err = datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(2, string(continuationToken)),
 			0,
 		)
 		require.NoError(t, err)
@@ -79,7 +105,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		_, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		_, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -100,7 +126,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		_, _, err = datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 1*time.Minute)
+		_, _, err = datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 1*time.Minute)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -121,7 +147,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "folder", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "folder", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
@@ -152,10 +178,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		var continuationToken []byte
 		var err error
 		for {
-			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.PaginationOptions{
-				PageSize: 10,
-				From:     string(continuationToken),
-			}, 1*time.Millisecond)
+			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.NewPaginationOptions(10, string(continuationToken)), 1*time.Millisecond)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					break
@@ -202,7 +225,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
@@ -256,7 +279,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{tk2}, nil)
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
@@ -320,7 +343,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 
 		// Since the write didn't succeed, we expect all tuples back
-		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 50})
+		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(50, ""))
 		require.NoError(t, err)
 		require.Equal(t, len(tks), len(tuples))
 	})
@@ -748,9 +771,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.PaginationOptions{
-			PageSize: 2,
-		})
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Nil(t, tuples[0].GetKey().GetCondition())
@@ -785,7 +806,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -833,9 +854,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 		require.Empty(t, tp.GetKey().GetCondition().GetContext())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.PaginationOptions{
-			PageSize: 2,
-		})
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.NotNil(t, tuples[0].GetKey().GetCondition().GetContext())
@@ -870,7 +889,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
@@ -888,12 +907,13 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 	require.NoError(t, err)
 
 	t.Run("readPage_pagination_works_properly_with_filter", func(t *testing.T) {
-		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.NewPaginationOptions(1, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples0, 1)
 		require.NotEmpty(t, contToken0)
 
-		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"},
+			storage.NewPaginationOptions(1, string(contToken0)))
 		require.NoError(t, err)
 		require.Len(t, tuples1, 1)
 		require.Empty(t, contToken1)
@@ -907,26 +927,26 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 	})
 
 	t.Run("reading_a_page_completely_does_not_return_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.NewPaginationOptions(2, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Empty(t, contToken)
 	})
 
 	t.Run("reading_a_page_partially_returns_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.NewPaginationOptions(1, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 1)
 		require.NotEmpty(t, contToken)
 	})
 
 	t.Run("readPage_pagination_works_properly_without_filter", func(t *testing.T) {
-		tuple0, contToken0, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
+		tuple0, contToken0, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(1, ""))
 		require.NoError(t, err)
 		require.Len(t, tuple0, 1)
 		require.NotEmpty(t, contToken0)
 
-		tuple1, contToken1, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuple1, contToken1, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(1, string(contToken0)))
 		require.NoError(t, err)
 		require.Len(t, tuple1, 1)
 		require.Empty(t, contToken1)
@@ -940,14 +960,14 @@ func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage
 	})
 
 	t.Run("reading_by_storeID_completely_does_not_return_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(2, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Empty(t, contToken)
 	})
 
 	t.Run("reading_by_storeID_partially_returns_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(1, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 1)
 		require.NotEmpty(t, contToken)
@@ -1102,6 +1122,46 @@ func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastor
 
 	err := datastore.Write(ctx, storeID, nil, tuples)
 	require.NoError(t, err)
+
+	t.Run("read_with_no_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("", "", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		for {
+			next, err := tupleIterator.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				return
+			}
+			require.True(t, next.GetTimestamp().IsValid())
+			require.False(t, next.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
+	t.Run("read_with_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:", "", "user:bob"),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		for {
+			next, err := tupleIterator.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				return
+			}
+			require.True(t, next.GetTimestamp().IsValid())
+			require.False(t, next.GetTimestamp().AsTime().IsZero())
+		}
+	})
 
 	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
@@ -1260,9 +1320,7 @@ func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore stora
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", "user:anne"),
-			storage.PaginationOptions{
-				PageSize: 2,
-			},
+			storage.NewPaginationOptions(2, ""),
 		)
 		require.NoError(t, err)
 
@@ -1280,9 +1338,7 @@ func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore stora
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", "user:anne"),
-			storage.PaginationOptions{
-				PageSize: 1,
-			},
+			storage.NewPaginationOptions(1, ""),
 		)
 		require.NoError(t, err)
 
@@ -1297,10 +1353,7 @@ func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore stora
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", "user:anne"),
-			storage.PaginationOptions{
-				PageSize: 50, // fetch the remainder
-				From:     string(contToken),
-			},
+			storage.NewPaginationOptions(50, string(contToken)),
 		)
 		require.NoError(t, err)
 
@@ -1334,14 +1387,37 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 	err := datastore.Write(ctx, storeID, nil, tuples)
 	require.NoError(t, err)
 
+	t.Run("read_page_with_no_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		gotTuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(4, ""))
+		require.NoError(t, err)
+		require.Len(t, gotTuples, 4)
+		for _, tuple := range gotTuples {
+			require.True(t, tuple.GetTimestamp().IsValid())
+			require.False(t, tuple.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
+	t.Run("read_page_with_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		gotTuples, _, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", ""),
+			storage.NewPaginationOptions(3, ""),
+		)
+		require.NoError(t, err)
+		require.Len(t, gotTuples, 3)
+		for _, tuple := range gotTuples {
+			require.True(t, tuple.GetTimestamp().IsValid())
+			require.False(t, tuple.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
 	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
 		gotTuples, contToken, err := datastore.ReadPage(
 			ctx,
 			storeID,
 			tuple.NewTupleKey("", "", ""),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
@@ -1361,9 +1437,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
@@ -1380,9 +1454,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:", "reader", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
@@ -1399,9 +1471,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:", "", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
@@ -1419,9 +1489,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "reader", ""),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
@@ -1439,9 +1507,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", ""),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
@@ -1460,9 +1526,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			ctx,
 			storeID,
 			tuple.NewTupleKey("document:1", "", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
+			storage.NewPaginationOptions(50, ""),
 		)
 		require.NoError(t, err)
 
