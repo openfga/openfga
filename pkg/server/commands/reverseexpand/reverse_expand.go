@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
@@ -16,13 +15,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/pkg/logger"
-
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -78,7 +78,7 @@ func (u *UserRefTypedWildcard) GetObjectType() string {
 }
 
 func (u *UserRefTypedWildcard) String() string {
-	return fmt.Sprintf("%s:*", u.Type)
+	return tuple.TypedPublicWildcard(u.Type)
 }
 
 type UserRefObjectRelation struct {
@@ -115,6 +115,8 @@ type ReverseExpandQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
+	dispatchThrottlerConfig threshold.Config
+
 	// visitedUsersetsMap map prevents visiting the same userset through the same edge twice
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
@@ -126,6 +128,12 @@ type ReverseExpandQueryOption func(d *ReverseExpandQuery)
 func WithResolveNodeLimit(limit uint32) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.resolveNodeLimit = limit
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -142,8 +150,14 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		candidateObjectsMap:     new(sync.Map),
-		visitedUsersetsMap:      new(sync.Map),
+		dispatchThrottlerConfig: threshold.Config{
+			Throttler:    throttler.NewNoopThrottler(),
+			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+		},
+		candidateObjectsMap: new(sync.Map),
+		visitedUsersetsMap:  new(sync.Map),
 	}
 
 	for _, opt := range opts {
@@ -169,13 +183,17 @@ type ResolutionMetadata struct {
 	DatastoreQueryCount *uint32
 
 	// The number of times we are expanding from each node to find set of objects
-	DispatchCount *uint32
+	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
-		DispatchCount:       new(uint32),
+		DispatchCounter:     new(atomic.Uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 
@@ -192,7 +210,7 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // This function respects context timeouts and cancellations. If an
 // error is encountered (e.g. context timeout) before resolving all
 // objects, then the provided channel will NOT be closed, and it will
-// send the error through the channel.
+// return the error.
 //
 // If no errors occur, then Execute will yield all of the objects on
 // the provided channel and then close the channel to signal that it
@@ -210,6 +228,20 @@ func (c *ReverseExpandQuery) Execute(
 
 	close(resultChan)
 	return nil
+}
+
+func (c *ReverseExpandQuery) dispatch(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	newcount := resolutionMetadata.DispatchCounter.Add(1)
+	if c.dispatchThrottlerConfig.Enabled {
+		c.throttle(ctx, newcount, resolutionMetadata)
+	}
+	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -273,13 +305,14 @@ func (c *ReverseExpandQuery) execute(
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
 			}
+		}
 
-			sourceUserRel := val.ObjectRelation.GetRelation()
+		sourceUserRel := val.ObjectRelation.GetRelation()
 
-			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-					return err
-				}
+		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
+		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
+				return err
 			}
 		}
 	}
@@ -297,7 +330,8 @@ func (c *ReverseExpandQuery) execute(
 	pool.WithCancelOnError()
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
-	var errs *multierror.Error
+
+	var errs error
 
 LoopOnEdges:
 	for _, edge := range edges {
@@ -325,10 +359,9 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			err = c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
-				errs = multierror.Append(errs, err)
+				errs = errors.Join(errs, err)
 				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
@@ -340,13 +373,10 @@ LoopOnEdges:
 		}
 	}
 
-	err = pool.Wait()
-	if err != nil {
-		errs = multierror.Append(errs, err)
-	}
-	if errs.ErrorOrNil() != nil {
-		telemetry.TraceError(span, errs.ErrorOrNil())
-		return errs.ErrorOrNil()
+	errs = errors.Join(errs, pool.Wait())
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
 	}
 
 	return nil
@@ -428,7 +458,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		if publiclyAssignable {
 			// e.g. 'user:*'
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: fmt.Sprintf("%s:*", targetUserObjectType),
+				Object: tuple.TypedPublicWildcard(targetUserObjectType),
 			})
 		}
 
@@ -474,9 +504,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	// filter out invalid tuples yielded by the database iterator
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		func(tupleKey *openfgav1.TupleKey) bool {
-			return validation.ValidateCondition(c.typesystem, tupleKey) == nil
-		},
+		validation.FilterInvalidTuples(c.typesystem),
 	)
 	defer filteredIter.Stop()
 
@@ -485,7 +513,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
-	var errs *multierror.Error
+	var errs error
 
 LoopOnIterator:
 	for {
@@ -494,19 +522,19 @@ LoopOnIterator:
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			break LoopOnIterator
 		}
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
-			errs = multierror.Append(errs, err)
+			errs = errors.Join(errs, err)
 			continue
 		}
 
 		if !condEvalResult.ConditionMet {
 			if len(condEvalResult.MissingParameters) > 0 {
-				errs = multierror.Append(errs, condition.NewEvaluationError(
+				errs = errors.Join(errs, condition.NewEvaluationError(
 					tk.GetCondition().GetName(),
 					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
 						tuple.TupleKeyToString(tk),
@@ -530,8 +558,7 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			atomic.AddUint32(resolutionMetadata.DispatchCount, 1)
-			return c.execute(ctx, &ReverseExpandRequest{
+			return c.dispatch(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
 				Relation:   req.Relation,
@@ -549,9 +576,9 @@ LoopOnIterator:
 		})
 	}
 
-	errs = multierror.Append(errs, pool.Wait())
-	if errs.ErrorOrNil() != nil {
-		telemetry.TraceError(span, errs.ErrorOrNil())
+	errs = errors.Join(errs, pool.Wait())
+	if errs != nil {
+		telemetry.TraceError(span, errs)
 		return errs
 	}
 
@@ -584,4 +611,24 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 	}
 
 	return nil
+}
+
+func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
+	span := trace.SpanFromContext(ctx)
+
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		c.dispatchThrottlerConfig.Threshold,
+		c.dispatchThrottlerConfig.MaxThreshold,
+	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
+		metadata.WasThrottled.Store(true)
+		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
+	}
 }

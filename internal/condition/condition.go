@@ -196,6 +196,7 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // constructed from the condition's parameter type definitions and using the context maps provided.
 // If more than one source map of context is provided, and if the keys provided in those map
 // context(s) are overlapping, then the overlapping key for the last most context wins.
+// If there are parameters missing, ConditionMet will always be set as false.
 func (e *EvaluableCondition) Evaluate(
 	ctx context.Context,
 	contextMaps ...map[string]*structpb.Value,
@@ -304,7 +305,7 @@ func (e *EvaluableCondition) WithMaxEvaluationCost(cost uint64) *EvaluableCondit
 }
 
 // WithInterruptCheckFrequency defines the upper limit on the number of iterations within a CEL comprehension to evaluate before CEL will interrupt evaluation and check for cancellation.
-// within a comprehension on the EvaluableCondition and returns the mutated EvaluableCondition.
+// Within a comprehension on the EvaluableCondition and returns the mutated EvaluableCondition.
 // The expectation is that this is called on the Uncompiled condition because it modifies
 // the behavior of the CEL program that is constructed after Compile.
 func (e *EvaluableCondition) WithInterruptCheckFrequency(checkFrequency uint) *EvaluableCondition {

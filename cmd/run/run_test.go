@@ -27,12 +27,12 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-
-	"github.com/openfga/openfga/pkg/testutils"
+	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -48,7 +48,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -188,7 +187,10 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{}
 
@@ -197,7 +199,10 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -207,7 +212,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -219,7 +224,10 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -234,7 +242,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	tests := []authTest{{
 		_name:      "Header_with_incorrect_key_fails",
@@ -275,37 +283,49 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 }
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
 	otlpServer := mocks.NewMockTracingServer(t, otlpServerPort)
 
 	// create OpenFGA server with tracing enabled
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Trace.OTLP.TLS.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
+	serverDone := make(chan error)
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
+		serverDone <- runServer(ctx, cfg)
 	}()
-
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
-	_, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	response, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
 
-	// wait for trace exporting
-	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
+
+	cancel()
+	select {
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "timed out")
+	case err := <-serverDone:
+		require.NoError(t, err)
+	}
+
+	// at this point, all spans should have been forcefully exported
 
 	require.Equal(t, 1, otlpServer.GetExportCount())
 }
@@ -359,8 +379,13 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
-	_, err = retryClient.Do(req)
+	response, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute create authorization model request")
+
+	t.Cleanup(func() {
+		err := response.Body.Close()
+		require.NoError(t, err)
+	})
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)
@@ -404,7 +429,7 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -421,7 +446,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	type args struct {
 		origin string
@@ -500,10 +525,10 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
+	oidcServerPort, oidcServerPortReleaser := testutils.TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
 		Audience: "openfga.dev",
@@ -514,6 +539,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer.Stop)
 
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -527,7 +553,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	tests := []authTest{
 		{
@@ -568,12 +594,12 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
-	oidcServerPort1, oidcServerPortReleaser1 := TCPRandomPort()
-	oidcServerPort2, oidcServerPortReleaser2 := TCPRandomPort()
+	oidcServerPort1, oidcServerPortReleaser1 := testutils.TCPRandomPort()
+	oidcServerPort2, oidcServerPortReleaser2 := testutils.TCPRandomPort()
 	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
 	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
 		Audience:      "openfga.dev",
@@ -586,8 +612,10 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer1.Stop)
 
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+	t.Cleanup(trustedIssuerServer2.Stop)
 
 	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -601,7 +629,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	retryClient := retryablehttp.NewClient()
 	test := authTest{
@@ -619,11 +647,14 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 }
 
 func TestHTTPServingTLS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -638,14 +669,14 @@ func TestHTTPServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 	})
 
 	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
@@ -672,17 +703,22 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
+		resp, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
+		resp.Body.Close()
+		client.HTTPClient.CloseIdleConnections()
 	})
 }
 
 func TestGRPCServingTLS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("enable_grpc_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
@@ -698,14 +734,14 @@ func TestGRPCServingTLS(t *testing.T) {
 			}
 		}()
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil)
 	})
 
 	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := MustDefaultConfigWithRandomPorts()
+		cfg := testutils.MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
@@ -728,11 +764,14 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+		testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", creds)
 	})
 }
 
 func TestServerMetricsReporting(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")
 	})
@@ -744,13 +783,13 @@ func TestServerMetricsReporting(t *testing.T) {
 func testServerMetricsReporting(t *testing.T, engine string) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine
 	cfg.Datastore.URI = testDatastore.GetConnectionURI(true)
 	cfg.Datastore.Metrics.Enabled = true
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.EnableRPCHistograms = true
-	metricsPort, metricsPortReleaser := TCPRandomPort()
+	metricsPort, metricsPortReleaser := testutils.TCPRandomPort()
 	metricsPortReleaser()
 
 	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
@@ -767,7 +806,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -876,7 +915,6 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	expectedMetrics := []string{
 		"openfga_datastore_query_count",
-		"openfga_request_duration_by_query_count_ms",
 		"openfga_request_duration_ms",
 		"grpc_server_handling_seconds",
 		"openfga_datastore_bounded_read_delay_ms",
@@ -896,7 +934,10 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -908,7 +949,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil, false)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, "", nil)
 
 	_, err := http.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.Error(t, err)
@@ -916,7 +957,10 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -927,7 +971,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }
 
 func TestDefaultConfig(t *testing.T) {
@@ -1018,6 +1062,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
@@ -1045,6 +1093,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.listUsersDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
+
+	val = res.Get("properties.listUsersMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersMaxResults)
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
@@ -1099,6 +1155,54 @@ func TestDefaultConfig(t *testing.T) {
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
+
+	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
+
+	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.checkDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.requestTimeout.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1180,6 +1284,10 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
+	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1191,6 +1299,11 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
+		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
+		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
+		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
+		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
+
 		return nil
 	}
 
@@ -1201,8 +1314,11 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 }
 
 func TestHTTPHeaders(t *testing.T) {
-	t.Parallel()
-	cfg := MustDefaultConfigWithRandomPorts()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -1212,7 +1328,7 @@ func TestHTTPHeaders(t *testing.T) {
 		}
 	}()
 
-	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -1241,6 +1357,7 @@ type document
 	authorizationModelID := writeModelResp.GetAuthorizationModelId()
 
 	httpClient := retryablehttp.NewClient()
+	t.Cleanup(httpClient.HTTPClient.CloseIdleConnections)
 
 	var testCases = map[string]struct {
 		httpVerb      string
@@ -1263,6 +1380,11 @@ type document
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
 			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
+		`listusers`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-users", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"object": { "type": "document", "id": "1" } , "relation": "viewer", "user_filters": [ {"type":"user"} ]}`,
+		},
 		`expand`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
@@ -1284,6 +1406,7 @@ type document
 
 			httpResponse, err := httpClient.Do(req)
 			require.NoError(t, err)
+			defer httpResponse.Body.Close()
 
 			// These are set in the server RPCs
 			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
@@ -1294,6 +1417,8 @@ type document
 			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
 			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
+
+			httpResponse.Body.Close()
 		})
 	}
 }

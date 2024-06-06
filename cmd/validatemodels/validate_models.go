@@ -98,10 +98,8 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 	for {
 		// fetch a page of stores
-		stores, tokenStores, err := db.ListStores(ctx, storage.PaginationOptions{
-			PageSize: 100,
-			From:     continuationTokenStores,
-		})
+		stores, tokenStores, err := db.ListStores(ctx,
+			storage.NewPaginationOptions(100, continuationTokenStores))
 		if err != nil {
 			return nil, fmt.Errorf("error reading stores: %w", err)
 		}
@@ -117,10 +115,8 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 			for {
 				// fetch a page of models for that store
-				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.GetId(), storage.PaginationOptions{
-					PageSize: 100,
-					From:     continuationTokenModels,
-				})
+				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.GetId(),
+					storage.NewPaginationOptions(100, continuationTokenModels))
 				if err != nil {
 					return nil, fmt.Errorf("error reading authorization models: %w", err)
 				}

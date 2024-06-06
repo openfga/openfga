@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -42,21 +43,23 @@ var (
 	}
 
 	depthExceededHandler = func(context.Context) (*ResolveCheckResponse, error) {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 2,
-			},
-		}, ErrResolutionDepthExceeded
+		return nil, ErrResolutionDepthExceeded
 	}
 
 	cyclicErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 2,
+				DatastoreQueryCount: 1,
+				CycleDetected:       true,
 			},
-		}, ErrCycleDetected
+		}, nil
+	}
+
+	simulatedDBErrorMessage = "simulated db error"
+
+	generalErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
+		return nil, errors.New(simulatedDBErrorMessage)
 	}
 )
 
@@ -87,67 +90,178 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		})
 	})
 
-	t.Run("base_handler_is_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
+	t.Run("true_butnot_true_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
 		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("base_handler_is_falsy_subtract_handler_with_error_return_allowed:false", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
+	t.Run("true_butnot_false_return_true", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
+		require.Equal(t, uint32(1+1), resp.GetResolutionMetadata().DatastoreQueryCount)
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("base_handler_with_error_subtract_handler_is_truthy_return_allowed:false", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
+	t.Run("false_butnot_true_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, trueHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
+		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("base_handler_with_error_subtract_handler_with_error_return_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
+	t.Run("false_butnot_false_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("true_butnot_err_return_err", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, generalErrorHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("true_butnot_errResolutionDepth_return_errResolutionDepth", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, depthExceededHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
+		require.Nil(t, resp)
 	})
 
-	t.Run("base_handler_with_cycle_subtract_handler_is_falsy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
-	})
-
-	t.Run("base_handler_with_cycle_subtract_handler_is_truthy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+1))
-	})
-
-	t.Run("base_handler_is_falsy_subtract_handler_with_cycle_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("base_handler_is_truthy_subtract_handler_with_cycle_return_allowed:true_with_a_nil_error", func(t *testing.T) {
+	t.Run("true_butnot_cycle_return_false", func(t *testing.T) {
 		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler)
 		require.NoError(t, err)
-		require.True(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
 	})
 
-	t.Run("base_handler_with_cycle_subtract_handler_with_cycle_return_allowed:false_with_a_nil_error", func(t *testing.T) {
+	t.Run("false_butnot_err_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, generalErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_butnot_errResolutionDepth_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_butnot_cycle_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("err_butnot_true_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, generalErrorHandler, trueHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("errResolutionDepth_butnot_true_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_butnot_true_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("err_butnot_false_return_err", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, generalErrorHandler, falseHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_butnot_false_return_errResolutionDepth", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("cycle_butnot_false_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_butnot_err_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, generalErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_butnot_errResolutionDepth_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, depthExceededHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("err_butnot_cycle_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, generalErrorHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("errResolutionDepth_butnot_cycle_return_false", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_butnot_cycle_return_false", func(t *testing.T) {
 		resp, err := exclusion(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2+2))
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("err_butnot_err_return_err", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, generalErrorHandler, generalErrorHandler)
+		require.ErrorContains(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_butnot_errResolutionDepth_return_errResolutionDepth", func(t *testing.T) {
+		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
 	})
 
 	t.Run("aggregate_truthy_and_falsy_handlers_datastore_query_count", func(t *testing.T) {
@@ -186,6 +300,54 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
+	t.Run("return_allowed:false_if_sub_handler_evaluated_before_context_cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, trueHandler)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+
+		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("return_allowed:false_if_sub_handler_evaluated_before_base_cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		var wg sync.WaitGroup
+
+		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		resp, err := exclusion(ctx, concurrencyLimit, slowTrueHandler, trueHandler)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+
+		wg.Wait() // just to make sure to avoid test leaks
+	})
+
 	t.Run("return_allowed:false_if_subtract_handler_evaluated_before_context_cancelled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
@@ -210,14 +372,23 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		t.Cleanup(cancel)
 
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
+		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
-			return nil, nil
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
 		}
 
-		resp, err := exclusion(ctx, concurrencyLimit, slowHandler, slowHandler)
+		slowFalseHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, slowTrueHandler, slowFalseHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.False(t, resp.GetAllowed())
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
@@ -235,12 +406,12 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
-			return nil, nil
+			return &ResolveCheckResponse{}, nil
 		}
 
 		resp, err := exclusion(ctx, concurrencyLimit, slowHandler, slowHandler)
 		require.ErrorIs(t, err, context.Canceled)
-		require.False(t, resp.GetAllowed())
+		require.Nil(t, resp)
 
 		wg.Wait() // just to make sure to avoid test leaks
 	})
@@ -255,74 +426,209 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	concurrencyLimit := uint32(10)
 
-	t.Run("no_handlers_return_allowed:false", func(t *testing.T) {
+	t.Run("no_handlers_return_false", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.NotNil(t, resp.GetResolutionMetadata())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("one_handler_is_falsy_return_allowed:false", func(t *testing.T) {
+	t.Run("false_return_false", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("one_handler_is_truthy_and_others_are_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
+	t.Run("true_and_true_return_true", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+		require.Equal(t, uint32(2), resp.GetResolutionMetadata().DatastoreQueryCount)
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("true_and_false_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2))
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("all_handlers_are_falsy_return_allowed:false", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
+	t.Run("false_and_true_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2))
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_and_false_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("all_handlers_with_error_return_error", func(t *testing.T) {
-		_, err := intersection(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
+	t.Run("true_and_err_return_err", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, generalErrorHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("true_and_errResolutionDepth_return_err", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, depthExceededHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
 	})
 
-	t.Run("one_handler_returns_error_but_other_handler_is_truthy_return_error_and_allowed:false", func(t *testing.T) {
-		_, err := intersection(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
+	t.Run("true_and_cycle_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_and_err_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, falseHandler, generalErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_and_errResolutionDepth_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_and_cycle_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("err_and_true_return_err", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, trueHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_and_true_return_err", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
 	})
 
-	t.Run("one_handler_returns_error_but_other_handler_is_falsy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("one_handler_errors_with_cycle_but_other_handler_is_falsy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+2))
-	})
-
-	t.Run("one_handler_errors_with_cycle_but_other_handler_is_truthy_return_allowed:false_with_a_nil_error", func(t *testing.T) {
+	t.Run("cycle_and_true_return_false", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1))
+		require.True(t, resp.GetCycleDetected())
 	})
 
-	t.Run("both_handlers_errors_with_cycle_return_allowed:false_with_a_nil_error", func(t *testing.T) {
+	t.Run("err_and_false_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, falseHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("errResolutionDepth_and_false_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_and_false_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("cycle_and_err_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, generalErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_and_errResolutionDepth_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, depthExceededHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("err_and_cycle_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("errResolutionDepth_and_cycle_return_false", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_and_cycle_return_false", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("err_and_err_return_err", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, generalErrorHandler, generalErrorHandler)
+		require.ErrorContains(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_and_errResolutionDepth_return_errResolutionDepth", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("true_and_cycle_and_err_return_err", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler, generalErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
 	})
 
 	t.Run("aggregate_truthy_and_falsy_handlers_datastore_query_count", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
+	})
+
+	t.Run("cycle_and_false_reports_correct_datastore_query_count", func(t *testing.T) {
+		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
 		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
@@ -335,6 +641,31 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("return_true_if_truthy_handler_evaluated_before_context_deadline", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("return_error_if_context_deadline_before_truthy_handler", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
+		}
+
+		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_allowed:false_if_falsy_handler_evaluated_before_context_cancelled", func(t *testing.T) {
@@ -361,14 +692,16 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		t.Cleanup(cancel)
 
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
+		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
-			return nil, nil
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, slowHandler)
+		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.False(t, resp.GetAllowed())
+		require.Nil(t, resp)
 	})
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
@@ -384,16 +717,102 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 			cancel()
 		}()
 
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
+		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
-			return nil, nil
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
 		}
 
-		resp, err := intersection(ctx, concurrencyLimit, slowHandler)
+		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
 		require.ErrorIs(t, err, context.Canceled)
-		require.False(t, resp.GetAllowed())
+		require.Nil(t, resp)
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+}
+
+func TestNonStratifiableCheckQueries(t *testing.T) {
+	t.Run("example_1", func(t *testing.T) {
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			tuple.NewTupleKey("document:1", "restricted", "document:1#viewer"),
+		})
+		require.NoError(t, err)
+
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
+
+		model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+	type user
+
+
+	type document
+	  relations
+		define viewer: [user] but not restricted
+		define restricted: [user, document#viewer]`)
+
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			RequestMetadata: NewCheckRequestMetadata(10),
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
+	})
+
+	t.Run("example_2", func(t *testing.T) {
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			tuple.NewTupleKey("document:1", "restrictedb", "document:1#viewer"),
+		})
+		require.NoError(t, err)
+
+		checker := NewLocalCheckerWithCycleDetection()
+		t.Cleanup(checker.Close)
+
+		model := testutils.MustTransformDSLToProtoWithID(`model
+	schema 1.1
+	type user
+
+
+	type document
+	  relations
+		define viewer: [user] but not restricteda
+		define restricteda: restrictedb
+		define restrictedb: [user, document#viewer]
+	`)
+
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			RequestMetadata: NewCheckRequestMetadata(10),
+		})
+		require.NoError(t, err)
+		require.False(t, resp.GetAllowed())
 	})
 }
 
@@ -603,6 +1022,9 @@ type document
 }
 
 func TestCheckDatastoreQueryCount(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ds := memory.New()
 	defer ds.Close()
 
@@ -614,6 +1036,11 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		tuple.NewTupleKey("document:x", "b", "user:maria"),
 		tuple.NewTupleKey("document:x", "parent", "org:fga"),
 		tuple.NewTupleKey("org:fga", "member", "user:maria"),
+		tuple.NewTupleKey("company:fga", "member", "user:maria"),
+		tuple.NewTupleKey("document:x", "userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
+		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
+		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
 	})
 	require.NoError(t, err)
 
@@ -621,12 +1048,19 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	schema 1.1
 type user
 
+type company
+  relations
+	define member: [user]
+
 type org
   relations
 	define member: [user]
 
 type document
   relations
+	define wildcard: [user:*]
+	define userset: [org#member]
+	define multiple_userset: [org#member, company#member]
 	define a: [user]
 	define b: [user]
 	define union: a or b
@@ -650,8 +1084,8 @@ type document
 		check            *openfgav1.TupleKey
 		contextualTuples []*openfgav1.TupleKey
 		allowed          bool
-		minDBReads       uint32
-		maxDBReads       uint32
+		minDBReads       uint32 // expected lowest value for number returned in the metadata
+		maxDBReads       uint32 // expected highest value for number returned in the metadata. Actual db reads may be higher
 	}{
 		{
 			name:       "no_direct_access",
@@ -731,6 +1165,55 @@ type document
 			minDBReads: 2, // one read to find org:fga + (one direct check) to see if user:jon is a member of org:fga
 			maxDBReads: 2,
 		},
+		{
+			name:       "userset_no_access_1",
+			check:      tuple.NewTupleKey("document:no_access", "userset", "user:maria"),
+			allowed:    false,
+			minDBReads: 1, // 1 userset read (none found)
+			maxDBReads: 1,
+		},
+		{
+			name:       "userset_no_access_2",
+			check:      tuple.NewTupleKey("document:x", "userset", "user:no_access"),
+			allowed:    false,
+			minDBReads: 2, // 1 userset read (1 found) follow by 1 direct tuple check (not found)
+			maxDBReads: 2,
+		},
+		{
+			name:       "userset_access",
+			check:      tuple.NewTupleKey("document:x", "userset", "user:maria"),
+			allowed:    true,
+			minDBReads: 2, // 1 userset read (1 found) follow by 1 direct tuple check (found)
+			maxDBReads: 2,
+		},
+		{
+			name:       "multiple_userset_no_access",
+			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:no_access"),
+			allowed:    false,
+			minDBReads: 3, // 1 userset read (2 found) follow by 2 direct tuple check (not found)
+			maxDBReads: 3,
+		},
+		{
+			name:       "multiple_userset_access",
+			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:maria"),
+			allowed:    true,
+			minDBReads: 2, // 1 userset read (2 found) follow by 1 direct tuple check (found, returns immediately)
+			maxDBReads: 2,
+		},
+		{
+			name:       "wildcard_no_access",
+			check:      tuple.NewTupleKey("document:x", "wildcard", "user:maria"),
+			allowed:    false,
+			minDBReads: 1, // 1 direct tuple read (not found)
+			maxDBReads: 1,
+		},
+		{
+			name:       "wildcard_access",
+			check:      tuple.NewTupleKey("document:public", "wildcard", "user:maria"),
+			allowed:    true,
+			minDBReads: 1, // 1 direct tuple read (found)
+			maxDBReads: 1,
+		},
 		// more complex scenarios
 		{
 			name:       "union_and_ttu",
@@ -804,101 +1287,6 @@ type document
 					require.LessOrEqual(t, res.ResolutionMetadata.DatastoreQueryCount, test.maxDBReads)
 				})
 			}
-		})
-	}
-}
-
-// TestCheckWithUnexpectedCycle tests the LocalChecker to make sure that if a model includes a cycle
-// that should have otherwise been invalid according to the typesystem, then the check resolution will
-// consider the cycle a falsey allowed result and not bubble-up a cycle detected error.
-func TestCheckWithUnexpectedCycle(t *testing.T) {
-	ds := memory.New()
-	defer ds.Close()
-
-	storeID := ulid.Make().String()
-
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("resource:1", "parent", "resource:1"),
-	})
-	require.NoError(t, err)
-
-	tests := []struct {
-		name     string
-		model    string
-		tupleKey *openfgav1.TupleKey
-	}{
-		{
-			name: "test_1",
-			model: `model
-	schema 1.1
-type user
-
-type resource
-  relations
-	define x: [user] but not y
-	define y: [user] but not z
-	define z: [user] or x`,
-			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
-		},
-		{
-			name: "test_2",
-			model: `model
-	schema 1.1
-type user
-
-type resource
-  relations
-	define x: [user] and y
-	define y: [user] and z
-	define z: [user] or x`,
-			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
-		},
-		{
-			name: "test_3",
-			model: `model
-	schema 1.1
-type resource
-  relations
-	define x: y
-	define y: x`,
-			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
-		},
-		{
-			name: "test_4",
-			model: `model
-	schema 1.1
-type resource
-  relations
-	define parent: [resource]
-	define x: [user] or x from parent`,
-			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
-		},
-	}
-
-	checker := NewLocalCheckerWithCycleDetection()
-	t.Cleanup(checker.Close)
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			model := testutils.MustTransformDSLToProtoWithID(test.model)
-
-			ctx := typesystem.ContextWithTypesystem(
-				context.Background(),
-				typesystem.New(model),
-			)
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:         storeID,
-				TupleKey:        test.tupleKey,
-				RequestMetadata: NewCheckRequestMetadata(25),
-			})
-
-			require.NoError(t, err)
-			require.False(t, resp.GetAllowed())
-
-			require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(0)) // min of 0 (x) if x is cycle. TODO: accurately report datastore query count of cycle branches
-			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
 		})
 	}
 }
@@ -1037,28 +1425,32 @@ type doc
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+		checkRequestMetadata := NewCheckRequestMetadata(5)
+
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("doc:readme", "viewer", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(3), resp.GetResolutionMetadata().DispatchCount)
+		require.Equal(t, uint32(3), checkRequestMetadata.DispatchCounter.Load())
 
 		t.Run("direct_lookup_requires_no_dispatch", func(t *testing.T) {
+			checkRequestMetadata := NewCheckRequestMetadata(5)
+
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
-				RequestMetadata:      NewCheckRequestMetadata(5),
+				RequestMetadata:      checkRequestMetadata,
 			})
 			require.NoError(t, err)
 			require.True(t, resp.Allowed)
 
-			require.Zero(t, resp.GetResolutionMetadata().DispatchCount)
+			require.Zero(t, checkRequestMetadata.DispatchCounter.Load())
 		})
 	})
 
@@ -1067,9 +1459,9 @@ type doc
 
 		model := parser.MustTransformDSLToProto(`model
 	  schema 1.1
-	
+
 	type user
-	
+
 	type group
 	  relations
 	    define member: [user, group#member]
@@ -1097,29 +1489,32 @@ type doc
 		require.NoError(t, err)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		checkRequestMetadata := NewCheckRequestMetadata(5)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(2))
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(4))
+		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(2))
+		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(4))
+
+		checkRequestMetadata = NewCheckRequestMetadata(5)
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:other"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
 
-		require.Equal(t, uint32(4), resp.GetResolutionMetadata().DispatchCount)
+		require.Equal(t, uint32(4), checkRequestMetadata.DispatchCounter.Load())
 	})
 
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
@@ -1129,7 +1524,7 @@ type doc
 		schema 1.1
 
 		type user
-  	
+
 		type document
 			relations
 		   		define owner: [user]
@@ -1150,39 +1545,42 @@ type doc
 		require.NoError(t, err)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
+		checkRequestMetadata := NewCheckRequestMetadata(5)
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "owner", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Zero(t, resp.GetResolutionMetadata().DispatchCount)
+		require.Zero(t, checkRequestMetadata.DispatchCounter.Load())
+
+		checkRequestMetadata = NewCheckRequestMetadata(5)
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:will"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(1))
-		require.GreaterOrEqual(t, resp.GetResolutionMetadata().DispatchCount, uint32(0))
+		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(1))
+		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(0))
 
+		checkRequestMetadata = NewCheckRequestMetadata(5)
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:2", "editor", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(5),
+			RequestMetadata:      checkRequestMetadata,
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DispatchCount)
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 	})
 }
 
@@ -1209,75 +1607,177 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		}, nil
 	}
 
-	t.Run("if_no_handlers_return_allowed_false", func(t *testing.T) {
+	t.Run("no_handlers_return_allowed_false", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("if_one_handler_is_truthy_and_others_are_falsey_return_allowed_true", func(t *testing.T) {
-		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler, falseHandler)
+	t.Run("true_or_true_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("if_all_handlers_are_falsey_return_allowed_false", func(t *testing.T) {
-		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
+	t.Run("true_or_false_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-	})
-
-	t.Run("if_a_handler_errors_but_other_handler_are_truthy_return_allowed_true", func(t *testing.T) {
-		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return nil, ErrResolutionDepthExceeded
-		}
-
-		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, trueHandler)
-		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("if_a_handler_errors_but_other_handler_is_falsey_return_error_and_allowed_false", func(t *testing.T) {
-		depthExceededHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return nil, ErrResolutionDepthExceeded
-		}
-
-		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
-		require.ErrorIs(t, ErrResolutionDepthExceeded, err)
-		require.False(t, resp.GetAllowed())
-	})
-
-	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_falsey_return_allowed_false_with_a_nil_error", func(t *testing.T) {
-		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return nil, ErrCycleDetected
-		}
-
-		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+	t.Run("false_or_true_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, trueHandler)
 		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("both_handlers_with_cycle_return_allowed_false_with_nil_error", func(t *testing.T) {
-		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return nil, ErrCycleDetected
-		}
-
-		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
+	t.Run("false_or_false_return_false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("if_a_handler_errors_with_cycle_but_other_handler_is_truthy_return_allowed_true_with_a_nil_error", func(t *testing.T) {
-		cyclicErrorHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return nil, ErrCycleDetected
-		}
+	t.Run("true_or_err_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueHandler, generalErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
 
+	t.Run("true_or_errResolutionDepth_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueHandler, depthExceededHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("true_or_cycle_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, trueHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_or_err_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, generalErrorHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("false_or_errResolutionDepth_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, depthExceededHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("false_or_cycle_return_false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("err_or_true_return_true", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, generalErrorHandler, trueHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_or_true_return_true", func(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, trueHandler)
 		require.NoError(t, err)
+		require.NotNil(t, resp)
 		require.True(t, resp.GetAllowed())
+		require.False(t, resp.GetCycleDetected())
 	})
 
-	t.Run("should_aggregate_DatastoreQueryCount_of_non_error handlers", func(t *testing.T) {
+	t.Run("err_or_false_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, generalErrorHandler, falseHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_or_false_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, falseHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("cycle_or_false_return_false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("cycle_or_err_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, generalErrorHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("cycle_or_errResolutionDepth_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, depthExceededHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("err_or_cycle_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, generalErrorHandler, cyclicErrorHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_or_cycle_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, depthExceededHandler, cyclicErrorHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("cycle_or_cycle_return_false", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, cyclicErrorHandler, cyclicErrorHandler)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+	})
+
+	t.Run("false_or_cycle_or_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, cyclicErrorHandler, generalErrorHandler)
+		require.EqualError(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("err_or_err_return_err", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, generalErrorHandler, generalErrorHandler)
+		require.ErrorContains(t, err, simulatedDBErrorMessage)
+		require.Nil(t, resp)
+	})
+
+	t.Run("errResolutionDepth_or_errResolutionDepth_return_errResolutionDepth", func(t *testing.T) {
+		resp, err := union(ctx, concurrencyLimit, falseHandler, depthExceededHandler, depthExceededHandler)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
+	})
+
+	t.Run("should_aggregate_DatastoreQueryCount_of_non_error_handlers", func(t *testing.T) {
 		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
 			return &ResolveCheckResponse{
@@ -1341,12 +1841,12 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			time.Sleep(50 * time.Millisecond)
-			return nil, nil
+			return &ResolveCheckResponse{}, nil
 		}
 
 		resp, err := union(ctx, concurrencyLimit, slowHandler, falseHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.False(t, resp.GetAllowed())
+		require.Nil(t, resp)
 	})
 
 	t.Run("should_handle_context_timeouts_even_with_eventual_truthy_handler", func(t *testing.T) {
@@ -1362,6 +1862,103 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
-		require.False(t, resp.GetAllowed())
+		require.Nil(t, resp)
 	})
+
+	t.Run("should_return_true_with_slow_falsey_handler", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+		t.Cleanup(cancel)
+
+		falseSlowHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(25 * time.Millisecond)
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, trueHandler, falseSlowHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			time.Sleep(50 * time.Millisecond)
+			return &ResolveCheckResponse{
+				Allowed: true,
+			}, nil
+		}
+
+		resp, err := union(ctx, concurrencyLimit, slowTrueHandler)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
+
+		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("return_allowed:true_if_truthy_handler_evaluated_before_context_cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		resp, err := intersection(ctx, concurrencyLimit, trueHandler)
+		require.NoError(t, err)
+		require.True(t, resp.GetAllowed())
+
+		wg.Wait() // just to make sure to avoid test leaks
+	})
+}
+
+func TestCloneResolveCheckResponse(t *testing.T) {
+	resp1 := &ResolveCheckResponse{
+		Allowed: true,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: 1,
+			CycleDetected:       false,
+		},
+	}
+	clonedResp1 := CloneResolveCheckResponse(resp1)
+
+	require.Equal(t, resp1, clonedResp1)
+	require.NotSame(t, resp1, clonedResp1)
+
+	// mutate the clone and ensure the original reference is
+	// unchanged
+	clonedResp1.Allowed = false
+	clonedResp1.ResolutionMetadata.DatastoreQueryCount = 2
+	clonedResp1.ResolutionMetadata.CycleDetected = true
+	require.True(t, resp1.GetAllowed())
+	require.Equal(t, uint32(1), resp1.GetResolutionMetadata().DatastoreQueryCount)
+	require.False(t, resp1.GetResolutionMetadata().CycleDetected)
+
+	resp2 := &ResolveCheckResponse{
+		Allowed: true,
+	}
+	clonedResp2 := CloneResolveCheckResponse(resp2)
+
+	require.NotSame(t, resp2, clonedResp2)
+	require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
+	require.NotNil(t, clonedResp2.ResolutionMetadata)
+	require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
+	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 }

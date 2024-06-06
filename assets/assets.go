@@ -8,11 +8,17 @@ const (
 	PostgresMigrationDir = "migrations/postgres"
 )
 
+// EmbedMigrations within the openfga binary.
+//
 //go:embed migrations/*
 var EmbedMigrations embed.FS
 
+// EmbedPlayground within the openfga binary.
+//
 //go:embed playground/*
 var EmbedPlayground embed.FS
 
+// EmbedTests within the openfga binary.
+//
 //go:embed tests/*
 var EmbedTests embed.FS

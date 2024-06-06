@@ -360,3 +360,266 @@ func TestGetObjectRelationAsString(t *testing.T) {
 		})
 	}
 }
+
+func TestFromUserProto(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    *openfgav1.User
+		expected string
+	}{
+		{
+			name: "user_with_id",
+			input: &openfgav1.User{
+				User: &openfgav1.User_Object{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "id-123",
+					},
+				},
+			},
+			expected: "user:id-123",
+		},
+		{
+			name: "user_with_id_and_relation",
+			input: &openfgav1.User{
+				User: &openfgav1.User_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     "user",
+						Id:       "id-123",
+						Relation: "member",
+					},
+				},
+			},
+			expected: "user:id-123#member",
+		},
+		{
+			name: "user_with_wildcard",
+			input: &openfgav1.User{
+				User: &openfgav1.User_Wildcard{
+					Wildcard: &openfgav1.TypedWildcard{
+						Type: "user",
+					},
+				},
+			},
+			expected: "user:*",
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			actual := UserProtoToString(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestToUserProto(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected *openfgav1.User
+	}{
+		{
+			name:  "user_with_id",
+			input: "user:id-123",
+			expected: &openfgav1.User{
+				User: &openfgav1.User_Object{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "id-123",
+					},
+				},
+			},
+		},
+		{
+			name:  "user_with_id_and_relation",
+			input: "user:id-123#member",
+			expected: &openfgav1.User{
+				User: &openfgav1.User_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     "user",
+						Id:       "id-123",
+						Relation: "member",
+					},
+				},
+			},
+		},
+		{
+			name:  "user_with_wildcard",
+			input: "user:*",
+			expected: &openfgav1.User{
+				User: &openfgav1.User_Wildcard{
+					Wildcard: &openfgav1.TypedWildcard{
+						Type: "user",
+					},
+				},
+			},
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			actual := StringToUserProto(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestTypedPublicWildcard(t *testing.T) {
+	require.Equal(t, "user:*", TypedPublicWildcard("user"))
+	require.Equal(t, "group:*", TypedPublicWildcard("group"))
+	require.Equal(t, ":*", TypedPublicWildcard("")) // Does not panic
+}
+
+func TestParseTupleString(t *testing.T) {
+	tests := []struct {
+		name        string
+		str         string
+		tuple       *openfgav1.TupleKey
+		expectedErr bool
+	}{
+		{
+			name:  "well_formed_user_object",
+			str:   "document:1#viewer@user:jon",
+			tuple: NewTupleKey("document:1", "viewer", "user:jon"),
+		},
+		{
+			name:  "well_formed_user_userset",
+			str:   "document:1#viewer@group:eng#member",
+			tuple: NewTupleKey("document:1", "viewer", "group:eng#member"),
+		},
+		{
+			name:  "well_formed_user_wildcard",
+			str:   "document:1#viewer@user:*",
+			tuple: NewTupleKey("document:1", "viewer", "user:*"),
+		},
+		{
+			name:        "missing_user_field",
+			str:         "document:1#viewer",
+			expectedErr: true,
+		},
+		{
+			name:        "missing_relation_separator",
+			str:         "document:1viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "missing_object_id",
+			str:         "document#viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_object_type",
+			str:         "docu#ment:1#viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_object_id",
+			str:         "document:#1#viewer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_relation",
+			str:         "document:1#vie:wer@user:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_user_type",
+			str:         "document:1#viewer@use#r:jon",
+			expectedErr: true,
+		},
+		{
+			name:        "malformed_user_userset",
+			str:         "document:1#viewer@group:e:eng#member",
+			expectedErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tuple, err := ParseTupleString(test.str)
+			require.Equal(t, test.expectedErr, err != nil)
+
+			if !test.expectedErr {
+				require.NotNil(t, tuple)
+				require.Equal(t, test.tuple, tuple)
+			}
+		})
+	}
+}
+
+func TestFromObjectOrUsersetProto(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    *openfgav1.ObjectOrUserset
+		expected string
+	}{
+		{
+			name: "user_with_id",
+			input: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Object{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "id-123",
+					},
+				},
+			},
+			expected: "user:id-123",
+		},
+		{
+			name: "user_with_id_and_relation",
+			input: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     "user",
+						Id:       "id-123",
+						Relation: "member",
+					},
+				},
+			},
+			expected: "user:id-123#member",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := FromObjectOrUsersetProto(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestToObjectOrUsersetProto(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected *openfgav1.ObjectOrUserset
+	}{
+		{
+			name:  "user_with_id",
+			input: "user:id-123",
+			expected: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Object{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "id-123",
+					},
+				},
+			},
+		},
+		{
+			name:  "user_with_id_and_relation",
+			input: "user:id-123#member",
+			expected: &openfgav1.ObjectOrUserset{
+				User: &openfgav1.ObjectOrUserset_Userset{
+					Userset: &openfgav1.UsersetUser{
+						Type:     "user",
+						Id:       "id-123",
+						Relation: "member",
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := StringToObjectOrUserset(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}

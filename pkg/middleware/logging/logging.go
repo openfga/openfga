@@ -17,7 +17,6 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/middleware/requestid"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
@@ -134,10 +133,6 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
-		}
-
-		if requestID, ok := requestid.FromContext(ctx); ok {
-			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
 		if userAgent, ok := userAgentFromContext(ctx); ok {

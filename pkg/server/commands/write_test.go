@@ -7,6 +7,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
@@ -111,9 +112,15 @@ func TestValidateWriteRequest(t *testing.T) {
 		expectedError error
 	}
 
+	implicitTk := tuple.NewTupleKey("document:1", "viewer", "document:1#viewer")
+	implicitTkUnconditioned := &openfgav1.TupleKeyWithoutCondition{
+		Object:   implicitTk.GetObject(),
+		Relation: implicitTk.GetRelation(),
+		User:     implicitTk.GetUser(),
+	}
 	badItemTk := &openfgav1.TupleKey{
-		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(20)),
-		Relation: testutils.CreateRandomString(50),
+		Object:   "document:1",
+		Relation: "viewer",
 		User:     "",
 	}
 	badItemUnconditionedTk := &openfgav1.TupleKeyWithoutCondition{
@@ -159,6 +166,27 @@ func TestValidateWriteRequest(t *testing.T) {
 				},
 			),
 		},
+		{
+			name: "write_of_implicit_tuple_should_fail",
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{implicitTk},
+			},
+			deletes: nil,
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidTupleError{
+					Cause:    fmt.Errorf("cannot write a tuple that is implicit"),
+					TupleKey: implicitTk,
+				},
+			),
+		},
+		{
+			name: "delete_of_implicit_tuple_should_succeed",
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{implicitTkUnconditioned},
+			},
+			writes:        nil,
+			expectedError: nil,
+		},
 	}
 
 	for _, test := range tests {
@@ -175,6 +203,14 @@ func TestValidateWriteRequest(t *testing.T) {
 					ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(&openfgav1.AuthorizationModel{
 						SchemaVersion: typesystem.SchemaVersion1_1,
+						TypeDefinitions: parser.MustTransformDSLToProto(`
+								model
+									schema 1.1
+								type user
+								
+								type document
+									relations
+										define viewer: [document#viewer]`).GetTypeDefinitions(),
 					}, nil)
 			}
 

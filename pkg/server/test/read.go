@@ -4,13 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/protoadapt"
-	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -42,11 +39,11 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		//				SchemaVersion: typesystem.SchemaVersion1_0,
 		//				TypeDefinitions: parser.MustTransformDSLToProto(`model
 		//  schema 1.0
-		//type user
+		// type user
 		//
-		//type team
+		// type team
 		//
-		//type repo
+		// type repo
 		//  relations
 		//	define owner: [team]
 		//	define admin: [user]`).GetTypeDefinitions(),
@@ -173,7 +170,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 		//{
 		//	_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
 		//	// state
@@ -235,7 +232,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
@@ -356,7 +353,7 @@ type repo
 		//			}},
 		//		},
 		//	},
-		//},
+		// },
 	}
 
 	ctx := context.Background()
@@ -565,6 +562,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	cmd := commands.NewReadQuery(datastore)
 
+	// Request 1 page with 1 result.
 	firstRequest := &openfgav1.ReadRequest{
 		StoreId:           store,
 		PageSize:          wrapperspb.Int32(1),
@@ -576,11 +574,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	require.Len(t, firstResponse.GetTuples(), 1)
 	require.NotEmpty(t, firstResponse.GetContinuationToken())
 
-	var receivedTuples []*openfgav1.TupleKey
-	for _, tuple := range firstResponse.GetTuples() {
-		receivedTuples = append(receivedTuples, tuple.GetKey())
-	}
-
+	// Request 1 page with all the remaining results.
 	secondRequest := &openfgav1.ReadRequest{StoreId: store, ContinuationToken: firstResponse.GetContinuationToken()}
 	secondResponse, err := cmd.Execute(ctx, secondRequest)
 	require.NoError(t, err)
@@ -588,20 +582,12 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	require.Len(t, secondResponse.GetTuples(), 2)
 	require.Empty(t, secondResponse.GetContinuationToken())
 
-	for _, tuple := range secondResponse.GetTuples() {
-		receivedTuples = append(receivedTuples, tuple.GetKey())
-	}
+	// Assert that the combination of both pages yields all tuples.
+	var receivedTuples []*openfgav1.Tuple
+	receivedTuples = append(receivedTuples, firstResponse.GetTuples()...)
+	receivedTuples = append(receivedTuples, secondResponse.GetTuples()...)
 
-	cmpOpts := []cmp.Option{
-		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
-		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
-		protocmp.Transform(),
-		testutils.TupleKeyCmpTransformer,
-	}
-
-	if diff := cmp.Diff(writes, receivedTuples, cmpOpts...); diff != "" {
-		t.Errorf("Tuple mismatch (-want +got):\n%s", diff)
-	}
+	require.ElementsMatch(t, writes, testutils.ConvertTuplesToTupleKeys(receivedTuples))
 }
 
 func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.OpenFGADatastore) {

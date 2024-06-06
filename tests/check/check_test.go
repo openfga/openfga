@@ -21,11 +21,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -49,16 +49,17 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
-	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
-	// defer goleak.VerifyNone(t)
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 
 	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
+	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -223,8 +224,10 @@ type document
 
 				httpReq.Header.Set("User-Agent", "test-user-agent")
 				client := &http.Client{}
+				var resp *http.Response
 
-				_, err = client.Do(httpReq)
+				resp, err = client.Do(httpReq)
+				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
 				require.Error(t, err)
@@ -248,6 +251,7 @@ type document
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
+			require.Equal(t, fields["request_id"], fields["trace_id"])
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
@@ -263,7 +267,7 @@ func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
@@ -287,6 +291,13 @@ func BenchmarkCheckMySQL(b *testing.B) {
 }
 
 func benchmarkAll(b *testing.B, engine string) {
+	b.Cleanup(func() {
+		goleak.VerifyNone(b,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+		)
+	})
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
 	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
 	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
@@ -321,12 +332,13 @@ type organization
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
 // and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
 	tests.StartServer(b, cfg)
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

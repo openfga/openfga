@@ -8,11 +8,105 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.4] - 2024-05-29
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.3...v1.5.4)
+
+### Added
+
+* ListUsers API which answers the question "what users are related to a specific object?". This feature is experimental and can be enabled by configuring `OPENFGA_EXPERIMENTALS=enable-list-users`. Also see [Performing a ListUsers call](https://openfga.dev/docs/getting-started/perform-list-users) and [ListUsers API docs](https://openfga.dev/api/service#/Relationship%20Queries/ListUsers). **Known Limitation:** Child usersets that are negated from their parent are currently not returned as `excluded_users` [#1433](https://github.com/openfga/openfga/pull/1433)
+* ListObjects throttling to manage resource usage of expensive queries. Throttling improves overall query performance by limiting the number of dispatches, which are the recursive sub-operations of a ListObjects query [#1571](https://github.com/openfga/openfga/pull/1571)
+* Per-request dispatch throttling threshold configuration via context [#1546](https://github.com/openfga/openfga/pull/1546)
+* Self-defining usersets for Check, ListObjects and ListUsers. These are implicit tuples that exist by virtue of set theory. For example, the userset `document:1#viewer` implicitly possess the `viewer` relation for `document:1` [#1521](https://github.com/openfga/openfga/pull/1521)
+* Panic recovery handling for all APIs [#1557](https://github.com/openfga/openfga/pull/1557)
+* Logging of non-sensitive server configuration on startup [#1609](https://github.com/openfga/openfga/pull/1609)
+* Appropriate error codes for throttled requests indicating if a request should be retried [#1552](https://github.com/openfga/openfga/pull/1552)
+* Minor performance improvements in Check API by reducing quantity of spans created [#1550](https://github.com/openfga/openfga/pull/1550), [#1589](https://github.com/openfga/openfga/pull/1589)
+
+### Fixed
+
+* Goroutine leak occurring during initial server validation [#1617](https://github.com/openfga/openfga/pull/1617)
+* Stricter filtering of invalid tuples with ListObjects [#1563](https://github.com/openfga/openfga/pull/1563)
+* Panic on server close if caching is enabled [#1568](https://github.com/openfga/openfga/pull/1568)
+* Prevent calling datastore if context has error [#1593](https://github.com/openfga/openfga/pull/1593)
+
+### Changed
+
+* `request_id` is now same as `trace_id` (e.g. `1e20da43269fe07e3d2ac018c0aad2d1`) if tracing is enabled. Otherwise, remains an UUID (e.g. `38fee7ac-4bfe-4cf6-baa2-8b5ec296b485`) [#1576](https://github.com/openfga/openfga/pull/1576) - thank you, @00chorch
+
+### Removed
+
+* `request_duration_by_query_count_ms` metric [#1579](https://github.com/openfga/openfga/pull/1579)
+
+
+## [1.5.3] - 2024-04-16
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.2...v1.5.3)
+
+### Added
+
+* Apply tags to requests that have been intentionally throttled (https://github.com/openfga/openfga/pull/1531). This will add a new log field titled "throttled" to such requests.
+
+### Fixed
+
+* Panic that occurred on Check API with some authorization models and tuples (https://github.com/openfga/openfga/pull/1517)
+
+### Changed
+
+* [Modular Models (Schema 1.2)](https://openfga.dev/docs/modeling/modular-models) support is enabled by default and the experimental flag for it has been dropped (https://github.com/openfga/openfga/pull/1520)
+* Bumped to Go 1.21.9 (https://github.com/openfga/openfga/pull/1523)
+
+### Security
+
+* Patch [CVE-2024-31452](https://github.com/openfga/openfga/security/advisories/GHSA-8cph-m685-6v6r) - a critical issue where Check and ListObjects APIs returns incorrect results for some models and tuples. See the CVE report for more details.
+
+## [1.5.2] - 2024-04-03
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.1...v1.5.2)
+
+### Fixed
+
+* Fix the count of datastore reads in the Check API ([#1452](https://github.com/openfga/openfga/pull/1452))
+* Fix the correct default used for dispatch throttling ([#1479](https://github.com/openfga/openfga/pull/1479))
+
+### Security
+
+* Bumped up the `grpc-health-probe` dependency in the published Docker image to the latest release which fixes some vulnerabilities ([#1507](https://github.com/openfga/openfga/pull/1507))
+
+### Contributions
+
+* Add homebrew release job by @chenrui333 ([#780](https://github.com/openfga/openfga/pull/780))
+
+## [1.5.1] - 2024-03-19
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.0...v1.5.1)
+
+### Added
+
+- Include calls to ListObjects and StreamedListObjects methods in the `dispatch_count` histogram ([#1427](https://github.com/openfga/openfga/pull/1427))
+- Added `request_duration_ms` histogram which has `datastore_query_count` and `dispatch_count` as dimensions ([#1444](https://github.com/openfga/openfga/pull/1444))
+- Added new flag `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` to specify oidc issuer aliases ([#1354](https://github.com/openfga/openfga/pull/1354)) - Thanks @le-yams!
+- Added experimental support for modular models via `OPENFGA_EXPERIMENTALS=enable-modular-models` ([#1443](https://github.com/openfga/openfga/pull/1443)). This will enable writing models that are split across multiple files.
+- Added support for throttling dispatches ([#1440](https://github.com/openfga/openfga/pull/1440)). This will throttle Check requests that are overly complex. You can turn on this feature via OPENFGA_DISPATCH_THROTTLING_ENABLED and configured via OPENFGA_DISPATCH_THROTTLING_THRESHOLD and OPENFGA_DISPATCH_THROTTLING_FREQUENCY
+
+### Fixed
+
+- Throw HTTP 400 when tuple condition is invalid instead of HTTP 500 ([#1420](https://github.com/openfga/openfga/pull/1420))
+- Fix model validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
+
+### Deprecation :warning:
+
+- Histogram `request_duration_by_query_count_ms` will be removed in the next release, in favour of `request_duration_ms` ([#1450](https://github.com/openfga/openfga/pull/1450))
+
+### Contribution
+
+- Thanks @lekaf974 for enhancing NewLogger with builder pattern options ([#1413](https://github.com/openfga/openfga/pull/1413))
+
 ## [1.5.0] - 2024-03-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
 
-### Added 
+### Added
 
 - Override option for timestamp in JSON logs ([#1330](https://github.com/openfga/openfga/pull/1330)) - thank you, @raj-saxena!
 - OpenTelemetry tracing and attributes to check algorithm ([#1331](https://github.com/openfga/openfga/pull/1331), [#1388](https://github.com/openfga/openfga/pull/1388))
@@ -947,7 +1041,11 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.4...HEAD
+[1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
+[1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
+[1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2
+[1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
 [1.5.0]: https://github.com/openfga/openfga/releases/tag/v1.5.0
 [1.4.3]: https://github.com/openfga/openfga/releases/tag/v1.4.3
 [1.4.2]: https://github.com/openfga/openfga/releases/tag/v1.4.2
