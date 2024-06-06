@@ -2,6 +2,8 @@ package test
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -222,6 +224,47 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 				"document:1#viewer@group:eng#member",
 				"document:1#viewer@user:*",
 			}
+			require.ElementsMatch(t, expected, actual)
+		})
+
+		t.Run("all_filter_fields_provided_with_large_object_id_list", func(t *testing.T) {
+			// this test is for the scenario(s) where the number of elements in the ObjectID slice
+			// exceeds
+
+			var tuples []string
+			for i := 0; i < 5000; i++ {
+				tuples = append(tuples, fmt.Sprintf("document:%d#viewer@user:jon", i))
+			}
+
+			storeID := BootstrapFGATuples(t, datastore, tuples)
+
+			var objectIDs []string
+			var expected []string
+			for i := 0; i < 5000; i++ {
+				if i%2 == 0 {
+					objectID := strconv.Itoa(i)
+					objectIDs = append(objectIDs, objectID) // only the even objectIDs (e.g. 2500 of them)
+					expected = append(expected, fmt.Sprintf("document:%s#viewer@user:jon", objectID))
+				}
+			}
+
+			filter := storage.ReadRelationshipTuplesFilter{
+				ObjectType: "document",
+				ObjectIDs:  objectIDs,
+				Relation:   "viewer",
+				SubjectsFilter: []storage.SubjectsFilter{
+					{
+						SubjectType:     "user",
+						SubjectIDs:      []string{"jon"},
+						SubjectRelation: "",
+					},
+				},
+			}
+
+			iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
+			require.NoError(t, err)
+
+			actual := storage.RelationshipTupleIteratorToStringSlice(iter)
 			require.ElementsMatch(t, expected, actual)
 		})
 	})
