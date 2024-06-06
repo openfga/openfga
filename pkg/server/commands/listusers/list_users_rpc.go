@@ -483,6 +483,24 @@ LoopOnIterator:
 			}
 			continue
 		}
+		if userRelation == "" {
+			for _, f := range req.GetUserFilters() {
+				if f.GetType() == userObjectType {
+					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
+
+					trySendResult(ctx, foundUser{
+						user: user,
+					}, foundUsersChan)
+				}
+			}
+			continue
+		} else {
+			if req.nestedUsersetTracking == nil {
+				req.nestedUsersetTracking = make(map[string]uint16)
+			}
+
+			req.nestedUsersetTracking[tupleKeyUser] = uint16(req.depth)
+		}
 
 		pool.Go(func(ctx context.Context) error {
 			rewrittenReq := req.clone()
@@ -724,17 +742,34 @@ func (l *listUsersQuery) expandExclusion(
 		close(subtractFoundUsersCh)
 	}()
 
-	baseFoundUsersMap := make(map[string]foundUser, 0)
-	for fu := range baseFoundUsersCh {
-		key := tuple.UserProtoToString(fu.user)
-		baseFoundUsersMap[key] = fu
-	}
-
-	subtractFoundUsersMap := make(map[string]foundUser, len(baseFoundUsersMap))
+	subtractFoundUsersMap := make(map[string]foundUser, 0)
 
 	for fu := range subtractFoundUsersCh {
 		key := tuple.UserProtoToString(fu.user)
 		subtractFoundUsersMap[key] = fu
+	}
+
+	baseFoundUsersMap := make(map[string]foundUser, 1000)
+	for fu := range baseFoundUsersCh {
+		key := tuple.UserProtoToString(fu.user)
+		baseFoundUsersMap[key] = fu
+
+		mightHaveNestedUsersets := fu.user.GetUserset().GetRelation() != "" && len(req.nestedUsersetTracking) > 0
+		if mightHaveNestedUsersets {
+			for subtractedUserSetKey, subtractedUserset := range subtractFoundUsersMap {
+				if req.nestedUsersetTracking[subtractedUserSetKey] < req.nestedUsersetTracking[key] {
+					if subtractedUserset.relationshipStatus == HasRelationship {
+						trySendResult(ctx, foundUser{
+							user:               tuple.StringToUserProto(subtractedUserSetKey),
+							relationshipStatus: NoRelationship,
+							excludedUsers: []*openfgav1.User{
+								tuple.StringToUserProto(subtractedUserSetKey),
+							},
+						}, foundUsersChan)
+					}
+				}
+			}
+		}
 	}
 
 	if subtractHasCycle {

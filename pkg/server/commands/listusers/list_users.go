@@ -25,6 +25,9 @@ type internalListUsersRequest struct {
 	// It prevents stack overflows by preventing visiting the same userset twice.
 	visitedUsersetsMap map[string]struct{}
 
+	// Stored is the value of the depth which can determine nesting of usersets.
+	nestedUsersetTracking map[string]uint16
+
 	// depth is the current depths of the traversal expressed as a positive, incrementing integer.
 	// When expansion of list users recursively traverses one level, we increment by one. If this
 	// counter hits the limit, we throw ErrResolutionDepthExceeded. This protects against a potentially deep
@@ -155,10 +158,11 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 			ContextualTuples:     o.GetContextualTuples(),
 			Context:              o.GetContext(),
 		},
-		visitedUsersetsMap:  make(map[string]struct{}),
-		depth:               0,
-		datastoreQueryCount: datastoreQueryCount,
-		dispatchCount:       dispatchCount,
+		visitedUsersetsMap:    make(map[string]struct{}),
+		nestedUsersetTracking: make(map[string]uint16),
+		depth:                 0,
+		datastoreQueryCount:   datastoreQueryCount,
+		dispatchCount:         dispatchCount,
 	}
 }
 
@@ -166,6 +170,7 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 func (r *internalListUsersRequest) clone() *internalListUsersRequest {
 	v := fromListUsersRequest(r, r.datastoreQueryCount, r.dispatchCount)
 	v.visitedUsersetsMap = maps.Clone(r.visitedUsersetsMap)
+	v.nestedUsersetTracking = maps.Clone(r.nestedUsersetTracking)
 	v.depth = r.depth
 	return v
 }
