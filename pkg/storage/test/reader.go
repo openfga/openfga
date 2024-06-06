@@ -229,7 +229,7 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 
 		t.Run("all_filter_fields_provided_with_large_object_id_list", func(t *testing.T) {
 			// this test is for the scenario(s) where the number of elements in the ObjectID slice
-			// exceeds
+			// is roughly approaching the size that some range filters can efficiently support.
 
 			var tuples []string
 			for i := 0; i < 5000; i++ {
