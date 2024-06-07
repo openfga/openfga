@@ -59,6 +59,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 		RequestMetadata:      req.GetRequestMetadata(),
 		VisitedPaths:         req.VisitedPaths,
 		Context:              req.GetContext(),
+		Consistency:          req.GetConsistency(),
 	})
 }
 
