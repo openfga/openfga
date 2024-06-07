@@ -1758,7 +1758,7 @@ func TestListUsersExclusion(t *testing.T) {
 			expectedUsers: []string{"user:jon"},
 		},
 		{
-			name: "non_stratifiable_exclusion_containing_cycle_1",
+			name: "non_stratifiable_exclusion_containing_cycle",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1784,11 +1784,253 @@ func TestListUsersExclusion(t *testing.T) {
 				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
 			},
 			expectedUsers: []string{"document:2#blocked"},
+			butNot:        []string{"document:1#blocked"},
 		},
 	}
 	tests.runListUsersTestCases(t)
 }
 
+func TestListUsersNestedNegatedUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := `
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [group#member, user]
+	type document
+		relations
+			define viewer: [group#member] but not blocked
+			define blocked: [group#member] but not unblocked
+			define unblocked: [group#member]`
+
+	tests := ListUsersTests{
+		{
+			name: "basic_case",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:B#member"),
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+			},
+			expectedUsers: []string{"group:A#member"},
+			butNot:        []string{"group:B#member"},
+		},
+		{
+			name: "unexcluded",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:B#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:B#member"),
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+			},
+			expectedUsers: []string{"group:A#member", "group:B#member"},
+			butNot:        []string{},
+		},
+		{
+			name: "multiple_nested_1",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:B#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:C#member"),
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+				tuple.NewTupleKey("group:B", "member", "group:C#member"),
+			},
+			expectedUsers: []string{"group:A#member", "group:C#member"},
+			butNot:        []string{"group:B#member"}, // not supported yet
+		},
+		{
+			name: "multiple_nested_2",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:B#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:C#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:D#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:E#member"),
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+				tuple.NewTupleKey("group:B", "member", "group:C#member"),
+				tuple.NewTupleKey("group:C", "member", "group:D#member"),
+				tuple.NewTupleKey("group:D", "member", "group:E#member"),
+			},
+			expectedUsers: []string{"group:A#member", "group:C#member", "group:D#member", "group:E#member"},
+			butNot:        []string{"group:B#member"},
+		},
+		{
+			name: "multiple_nested_3",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:B#member"),
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+				tuple.NewTupleKey("group:B", "member", "group:C#member"),
+				tuple.NewTupleKey("group:C", "member", "group:D#member"),
+				tuple.NewTupleKey("group:D", "member", "group:E#member"),
+			},
+			expectedUsers: []string{"group:A#member"},
+			butNot:        []string{"group:B#member", "group:C#member", "group:D#member", "group:E#member"},
+		},
+		{
+			name: "multiple_nested_4",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked", "group:A#member"),
+				tuple.NewTupleKey("document:1", "unblocked", "group:B#member"),
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+				tuple.NewTupleKey("group:B", "member", "group:C#member"),
+				tuple.NewTupleKey("group:C", "member", "group:D#member"),
+				tuple.NewTupleKey("group:D", "member", "group:E#member"),
+			},
+			expectedUsers: []string{"group:B#member", "group:C#member", "group:D#member", "group:E#member"},
+			butNot:        []string{},
+		},
+		{
+			name: "intersection_excluded",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [group#member, user]
+			type document
+				relations
+					define viewer: viewer1 and viewer2
+					define viewer1: [group#member] but not blocked1
+					define viewer2: [group#member] but not blocked2
+					define blocked1: [group#member]
+					define blocked2: [group#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked1", "group:B#member"),
+
+				tuple.NewTupleKey("document:1", "viewer2", "group:A#member"),
+				tuple.NewTupleKey("document:1", "blocked2", "group:B#member"),
+
+				tuple.NewTupleKey("group:A", "member", "group:B#member"),
+			},
+			expectedUsers: []string{"group:A#member"},
+			butNot:        []string{"group:B#member"},
+		},
+		{
+			name: "union_excluded",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [group#member, user]
+			type document
+				relations
+					define viewer: viewer1 or viewer2
+					define viewer1: [group#member] but not blocked1
+					define viewer2: [group#member] but not blocked2
+					define blocked1: [group#member]
+					define blocked2: [group#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer1", "group:A1#member"),
+				tuple.NewTupleKey("document:1", "blocked1", "group:B1#member"),
+
+				tuple.NewTupleKey("document:1", "viewer2", "group:A2#member"),
+				tuple.NewTupleKey("document:1", "blocked2", "group:B2#member"),
+
+				tuple.NewTupleKey("group:A1", "member", "group:B1#member"),
+				tuple.NewTupleKey("group:A2", "member", "group:B2#member"),
+			},
+			expectedUsers: []string{"group:A1#member", "group:A2#member"},
+			butNot:        []string{},
+		},
+	}
+	tests.runListUsersTestCases(t)
+}
 func TestListUsersExclusionWildcards(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

@@ -754,8 +754,8 @@ func (l *listUsersQuery) expandExclusion(
 		key := tuple.UserProtoToString(fu.user)
 		baseFoundUsersMap[key] = fu
 
-		mightHaveNestedUsersets := fu.user.GetUserset().GetRelation() != "" && len(req.nestedUsersetTracking) > 0
-		if mightHaveNestedUsersets {
+		mayHaveNestedUsersets := fu.user.GetUserset().GetRelation() != "" && len(req.nestedUsersetTracking) > 0
+		if mayHaveNestedUsersets {
 			for subtractedUserSetKey, subtractedUserset := range subtractFoundUsersMap {
 				if req.nestedUsersetTracking[subtractedUserSetKey] < req.nestedUsersetTracking[key] {
 					if subtractedUserset.relationshipStatus == HasRelationship {
