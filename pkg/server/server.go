@@ -49,9 +49,10 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader                          = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey                             = "authorization_model_id"
-	ExperimentalEnableListUsers ExperimentalFeatureFlag = "enable-list-users"
+	AuthorizationModelIDHeader                                  = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                                     = "authorization_model_id"
+	ExperimentalEnableListUsers         ExperimentalFeatureFlag = "enable-list-users"
+	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -509,10 +510,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
 
+		enableConsistencyParams := slices.Contains(s.experimentals, ExperimentalEnableConsistencyParams)
+
 		cachedCheckResolver := graph.NewCachedCheckResolver(
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithEnabledConsistencyParams(enableConsistencyParams),
 		)
 		s.cachedCheckResolver = cachedCheckResolver
 
@@ -902,6 +906,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
 		RequestMetadata:      checkRequestMetadata,
+		Consistency:          req.GetConsistency(),
 	}
 
 	resp, err := s.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
