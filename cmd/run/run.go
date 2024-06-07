@@ -86,7 +86,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-list-users`")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -182,6 +182,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-authorization-model-size-in-bytes", defaultConfig.MaxAuthorizationModelSizeInBytes, "the maximum size in bytes allowed for persisting an Authorization Model.")
 
+	flags.Uint32("max-concurrent-reads-for-list-users", defaultConfig.MaxConcurrentReadsForListUsers, "the maximum allowed number of concurrent datastore reads in a single ListUsers query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
+
 	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects or StreamedListObjects query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
 	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
@@ -196,6 +198,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
+	flags.Duration("listUsers-deadline", defaultConfig.ListUsersDeadline, "the timeout deadline for serving ListUsers requests. If 0, there is no deadline")
+
+	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
+
 	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
 
 	flags.Uint32("check-query-cache-limit", defaultConfig.CheckQueryCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
@@ -207,13 +213,37 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms.")
 
-	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, "enable throttling when request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+	flags.Bool("check-dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, "enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
 
-	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, "defines how frequent dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch requests are dispatched.")
+	flags.Duration("check-dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, "defines how frequent Check dispatch throttling will be evaluated. This controls how frequently throttled dispatch Check requests are dispatched.")
 
-	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, "define the default threshold on number of dispatches above which requests will be throttled.")
+	flags.Uint32("check-dispatch-throttling-threshold", defaultConfig.CheckDispatchThrottling.Threshold, "define the number of dispatches above which Check requests will be throttled.")
 
-	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum")
+	flags.Uint32("check-dispatch-throttling-max-threshold", defaultConfig.CheckDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a Check requests will be throttled. 0 will use the 'check-dispatch-throttling-threshold' value as maximum")
+
+	flags.Bool("listObjects-dispatch-throttling-enabled", defaultConfig.ListObjectsDispatchThrottling.Enabled, "enable throttling when a ListObjects request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
+
+	flags.Duration("listObjects-dispatch-throttling-frequency", defaultConfig.ListObjectsDispatchThrottling.Frequency, "defines how frequent ListObjects dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch ListObjects requests are dispatched.")
+
+	flags.Uint32("listObjects-dispatch-throttling-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "defines the number of dispatches above which ListObjects requests will be throttled.")
+
+	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
+
+	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
+    
+    Enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.`)
+
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead. 
+    
+    Defines how frequent Check dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch Check requests are dispatched.`)
+
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead. 
+
+	Define the default threshold on number of dispatches above which requests will be throttled.`)
+
+	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead. 
+
+	Define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum`)
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
@@ -539,6 +569,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}()
 	}
 
+	checkDispatchThrottlingConfig := serverconfig.GetCheckDispatchThrottlingConfig(s.Logger, config)
+
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
@@ -549,18 +581,25 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithChangelogHorizonOffset(config.ChangelogHorizonOffset),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithListUsersDeadline(config.ListUsersDeadline),
+		server.WithListUsersMaxResults(config.ListUsersMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
+		server.WithMaxConcurrentReadsForListUsers(config.MaxConcurrentReadsForListUsers),
 		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
-		server.WithDispatchThrottlingCheckResolverEnabled(config.DispatchThrottling.Enabled),
-		server.WithDispatchThrottlingCheckResolverFrequency(config.DispatchThrottling.Frequency),
-		server.WithDispatchThrottlingCheckResolverThreshold(config.DispatchThrottling.Threshold),
-		server.WithDispatchThrottlingCheckResolverMaxThreshold(config.DispatchThrottling.MaxThreshold),
+		server.WithDispatchThrottlingCheckResolverEnabled(checkDispatchThrottlingConfig.Enabled),
+		server.WithDispatchThrottlingCheckResolverFrequency(checkDispatchThrottlingConfig.Frequency),
+		server.WithDispatchThrottlingCheckResolverThreshold(checkDispatchThrottlingConfig.Threshold),
+		server.WithDispatchThrottlingCheckResolverMaxThreshold(checkDispatchThrottlingConfig.MaxThreshold),
+		server.WithListObjectsDispatchThrottlingEnabled(config.ListObjectsDispatchThrottling.Enabled),
+		server.WithListObjectsDispatchThrottlingFrequency(config.ListObjectsDispatchThrottling.Frequency),
+		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
+		server.WithListObjectsDispatchThrottlingMaxThreshold(config.ListObjectsDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
 	)
 
@@ -600,6 +639,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		dialOpts := []grpc.DialOption{
+			// nolint:staticcheck // ignoring gRPC deprecations
 			grpc.WithBlock(),
 		}
 		if config.Trace.Enabled {
@@ -618,6 +658,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
+		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
 			s.Logger.Fatal("", zap.Error(err))

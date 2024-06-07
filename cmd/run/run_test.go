@@ -1062,6 +1062,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
@@ -1089,6 +1093,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.listUsersDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
+
+	val = res.Get("properties.listUsersMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersMaxResults)
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
@@ -1146,19 +1158,47 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
 
 	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.DispatchThrottling.Frequency.String())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
 
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
 
-	val = res.Get("properties.dispatchThrottling.properties.maxThreshold.default")
+	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MaxThreshold)
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.checkDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
 
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
@@ -1278,6 +1318,7 @@ func TestHTTPHeaders(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -1339,6 +1380,11 @@ type document
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
 			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
+		`listusers`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-users", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"object": { "type": "document", "id": "1" } , "relation": "viewer", "user_filters": [ {"type":"user"} ]}`,
+		},
 		`expand`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
@@ -1360,6 +1406,7 @@ type document
 
 			httpResponse, err := httpClient.Do(req)
 			require.NoError(t, err)
+			defer httpResponse.Body.Close()
 
 			// These are set in the server RPCs
 			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
