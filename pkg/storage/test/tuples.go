@@ -305,6 +305,34 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
+	t.Run("lots_of_writes_and_read_returns_all", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		countWrites := 0
+		for i := 0; i < storage.DefaultPageSize*50; i++ {
+			object := fmt.Sprintf("document:%d", i)
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey(object, "viewer", "user:jon")})
+			require.NoError(t, err)
+			countWrites++
+		}
+
+		tupleIterator, err := datastore.Read(ctx, storeID, tuple.NewTupleKey("", "", ""))
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		seen := []*openfgav1.Tuple{}
+		for {
+			next, err := tupleIterator.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				break
+			}
+			seen = append(seen, next)
+		}
+
+		require.Len(t, seen, countWrites)
+	})
+
 	t.Run("deletes_would_succeed_and_write_would_fail,_fails_and_introduces_no_changes", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tks := []*openfgav1.TupleKey{
