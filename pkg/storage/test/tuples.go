@@ -24,6 +24,35 @@ import (
 func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
+	t.Run("read_changes_returns_non_empty_timestamp", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne",
+		}
+		tk1WithCond := &openfgav1.TupleKeyWithoutCondition{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne",
+		}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{tk1WithCond}, nil)
+		require.NoError(t, err)
+
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(2, ""), 0)
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		for _, change := range changes {
+			require.True(t, change.GetTimestamp().IsValid())
+			require.False(t, change.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
 	t.Run("read_changes_with_continuation_token", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
@@ -275,6 +304,34 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
+
+	t.Run("lots_of_writes_and_read_returns_all", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		countWrites := 0
+		for i := 0; i < storage.DefaultPageSize*50; i++ {
+			object := fmt.Sprintf("document:%d", i)
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{tuple.NewTupleKey(object, "viewer", "user:jon")})
+			require.NoError(t, err)
+			countWrites++
+		}
+
+		tupleIterator, err := datastore.Read(ctx, storeID, tuple.NewTupleKey("", "", ""))
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		seen := []*openfgav1.Tuple{}
+		for {
+			next, err := tupleIterator.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				break
+			}
+			seen = append(seen, next)
+		}
+
+		require.Len(t, seen, countWrites)
+	})
 
 	t.Run("deletes_would_succeed_and_write_would_fail,_fails_and_introduces_no_changes", func(t *testing.T) {
 		storeID := ulid.Make().String()
@@ -1094,6 +1151,46 @@ func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastor
 	err := datastore.Write(ctx, storeID, nil, tuples)
 	require.NoError(t, err)
 
+	t.Run("read_with_no_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("", "", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		for {
+			next, err := tupleIterator.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				return
+			}
+			require.True(t, next.GetTimestamp().IsValid())
+			require.False(t, next.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
+	t.Run("read_with_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:", "", "user:bob"),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		for {
+			next, err := tupleIterator.Next(ctx)
+			if err != nil {
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				return
+			}
+			require.True(t, next.GetTimestamp().IsValid())
+			require.False(t, next.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
 	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
@@ -1317,6 +1414,31 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 
 	err := datastore.Write(ctx, storeID, nil, tuples)
 	require.NoError(t, err)
+
+	t.Run("read_page_with_no_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		gotTuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.NewPaginationOptions(4, ""))
+		require.NoError(t, err)
+		require.Len(t, gotTuples, 4)
+		for _, tuple := range gotTuples {
+			require.True(t, tuple.GetTimestamp().IsValid())
+			require.False(t, tuple.GetTimestamp().AsTime().IsZero())
+		}
+	})
+
+	t.Run("read_page_with_filter_returns_non_empty_timestamps", func(t *testing.T) {
+		gotTuples, _, err := datastore.ReadPage(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", ""),
+			storage.NewPaginationOptions(3, ""),
+		)
+		require.NoError(t, err)
+		require.Len(t, gotTuples, 3)
+		for _, tuple := range gotTuples {
+			require.True(t, tuple.GetTimestamp().IsValid())
+			require.False(t, tuple.GetTimestamp().AsTime().IsZero())
+		}
+	})
 
 	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
 		gotTuples, contToken, err := datastore.ReadPage(
