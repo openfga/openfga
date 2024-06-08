@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -641,6 +642,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			// nolint:staticcheck // ignoring gRPC deprecations
 			grpc.WithBlock(),
 		}
+		if config.Trace.Enabled {
+			dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+		}
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
@@ -679,6 +683,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
 			return err
 		}
+		handler := http.Handler(mux)
+
+		if config.Trace.Enabled {
+			handler = otelhttp.NewHandler(handler, "grpc-gateway")
+		}
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
@@ -688,7 +697,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux), s.Logger),
+			}).Handler(handler), s.Logger),
 		}
 
 		go func() {
