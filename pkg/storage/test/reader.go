@@ -273,7 +273,6 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 			// 	len(ObjectIDs) * len(SubjectFilters[0].SubjectIDs) * ... * len(SubjectFilters[N].SubjectIDs)
 			//
 			// in this example (500) * (5) * (5) = 12,500
-
 			var objectIDs []string
 			for i := 0; i < 500; i++ {
 				objectIDs = append(objectIDs, strconv.Itoa(i))
@@ -282,7 +281,7 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 			var tuples []string
 
 			// jon, andres - view access to documents [0-99]
-			for i := 0; i < 99; i++ {
+			for i := 0; i < 100; i++ {
 				objectID := strconv.Itoa(i)
 
 				tuples = append(tuples, []string{
@@ -292,18 +291,18 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 			}
 
 			// will, maria, adrian - view access to documents [100-200]
-			for i := 100; i < 201; i++ {
+			for i := 100; i <= 200; i++ {
 				objectID := strconv.Itoa(i)
 
 				tuples = append(tuples, []string{
 					fmt.Sprintf("document:%s#viewer@user:will", objectID),
-					fmt.Sprintf("document:%s#viewer@user:maria", objectID),
+					fmt.Sprintf("document:%s#viewer@user:jon", objectID),
 					fmt.Sprintf("document:%s#viewer@user:maria", objectID),
 				}...)
 			}
 
 			// eng, product, marketing - have access to all documents [201-300]
-			for i := 201; i < 301; i++ {
+			for i := 201; i <= 300; i++ {
 				objectID := strconv.Itoa(i)
 
 				tuples = append(tuples, []string{
