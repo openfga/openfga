@@ -278,7 +278,22 @@ func TestVerifyConfig(t *testing.T) {
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
-	require.GreaterOrEqual(t, DefaultMaxConditionEvaluationCost, 100)
+	t.Run("max_condition_evaluation_cost_too_low", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = 99
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+	t.Run("max_condition_evaluation_cost_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = uint64(120)
+		viper.Set("maxConditionEvaluationCost", uint64(120))
+
+		err := cfg.Verify()
+		require.NoError(t, err)
+	})
+	require.Equal(t, uint64(120), MaxConditionEvaluationCost())
 }
 
 func TestDefaultContextTimeout(t *testing.T) {
