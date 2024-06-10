@@ -175,7 +175,7 @@ func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.T
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, key, storage.PaginationOptions{})
+	return s.read(ctx, store, key, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -188,7 +188,7 @@ func (s *MemoryBackend) ReadPage(
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
-	it, err := s.read(ctx, store, key, paginationOptions)
+	it, err := s.read(ctx, store, key, &paginationOptions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -266,7 +266,9 @@ func (s *MemoryBackend) ReadChanges(
 	return res, []byte(continuationToken), nil
 }
 
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
+// read returns an iterator of a store's tuples with a given tuple as filter.
+// A nil paginationOptions input means the returned iterator will iterate through all values.
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions *storage.PaginationOptions) (*staticIterator, error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
@@ -287,7 +289,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 
 	var err error
 	var from int
-	if paginationOptions.From != "" {
+	if paginationOptions != nil && paginationOptions.From != "" {
 		from, err = strconv.Atoi(paginationOptions.From)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -299,7 +301,10 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 		matches = matches[from:]
 	}
 
-	to := paginationOptions.PageSize
+	to := 0 // fetch everything
+	if paginationOptions != nil {
+		to = paginationOptions.PageSize
+	}
 	if to != 0 && to < len(matches) {
 		return &staticIterator{records: matches[:to], continuationToken: []byte(strconv.Itoa(from + to))}, nil
 	}

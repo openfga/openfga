@@ -156,8 +156,14 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("maxConcurrentReadsForListObjects", flags.Lookup("max-concurrent-reads-for-list-objects"))
 		util.MustBindEnv("maxConcurrentReadsForListObjects", "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_OBJECTS", "OPENFGA_MAXCONCURRENTREADSFORLISTOBJECTS")
 
+		util.MustBindPFlag("maxConcurrentReadsForListUsers", flags.Lookup("max-concurrent-reads-for-list-users"))
+		util.MustBindEnv("maxConcurrentReadsForListUsers", "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_USERS", "OPENFGA_MAXCONCURRENTREADSFORLISTUSERS")
+
 		util.MustBindPFlag("maxConcurrentReadsForCheck", flags.Lookup("max-concurrent-reads-for-check"))
 		util.MustBindEnv("maxConcurrentReadsForCheck", "OPENFGA_MAX_CONCURRENT_READS_FOR_CHECK", "OPENFGA_MAXCONCURRENTREADSFORCHECK")
+
+		util.MustBindPFlag("maxConditionEvaluationCost", flags.Lookup("max-condition-evaluation-cost"))
+		util.MustBindEnv("maxConditionEvaluationCost", "OPENFGA_MAX_CONDITION_EVALUATION_COST", "OPENFGA_MAXCONDITIONEVALUATIONCOST")
 
 		util.MustBindPFlag("changelogHorizonOffset", flags.Lookup("changelog-horizon-offset"))
 		util.MustBindEnv("changelogHorizonOffset", "OPENFGA_CHANGELOG_HORIZON_OFFSET", "OPENFGA_CHANGELOGHORIZONOFFSET")
@@ -174,6 +180,12 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 		util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 
+		util.MustBindPFlag("listUsersDeadline", flags.Lookup("listUsers-deadline"))
+		util.MustBindEnv("listUsersDeadline", "OPENFGA_LIST_USERS_DEADLINE", "OPENFGA_LISTUSERSDEADLINE")
+
+		util.MustBindPFlag("listUsersMaxResults", flags.Lookup("listUsers-max-results"))
+		util.MustBindEnv("listUsersMaxResults", "OPENFGA_LIST_USERS_MAX_RESULTS", "OPENFGA_LISTUSERSMAXRESULTS")
+
 		util.MustBindPFlag("checkQueryCache.enabled", flags.Lookup("check-query-cache-enabled"))
 		util.MustBindEnv("checkQueryCache.enabled", "OPENFGA_CHECK_QUERY_CACHE_ENABLED")
 
@@ -189,15 +201,43 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("requestDurationDispatchCountBuckets", flags.Lookup("request-duration-dispatch-count-buckets"))
 		util.MustBindEnv("requestDurationDispatchCountBuckets", "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS")
 
+		util.MustBindPFlag("checkDispatchThrottling.enabled", flags.Lookup("check-dispatch-throttling-enabled"))
+		util.MustBindEnv("checkDispatchThrottling.enabled", "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("checkDispatchThrottling.frequency", flags.Lookup("check-dispatch-throttling-frequency"))
+		util.MustBindEnv("checkDispatchThrottling.frequency", "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("checkDispatchThrottling.threshold", flags.Lookup("check-dispatch-throttling-threshold"))
+		util.MustBindEnv("checkDispatchThrottling.threshold", "OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("checkDispatchThrottling.maxThreshold", flags.Lookup("check-dispatch-throttling-max-threshold"))
+		util.MustBindEnv("checkDispatchThrottling.maxThreshold", "OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.enabled", flags.Lookup("listObjects-dispatch-throttling-enabled"))
+		util.MustBindEnv("listObjectsDispatchThrottling.enabled", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.frequency", flags.Lookup("listObjects-dispatch-throttling-frequency"))
+		util.MustBindEnv("listObjectsDispatchThrottling.frequency", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.threshold", flags.Lookup("listObjects-dispatch-throttling-threshold"))
+		util.MustBindEnv("listObjectsDispatchThrottling.threshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("listObjectsDispatchThrottling.maxThreshold", flags.Lookup("listObjects-dispatch-throttling-max-threshold"))
+		util.MustBindEnv("listObjectsDispatchThrottling.maxThreshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD")
+
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED
 		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
 		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
 
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY
 		util.MustBindPFlag("dispatchThrottling.frequency", flags.Lookup("dispatch-throttling-frequency"))
 		util.MustBindEnv("dispatchThrottling.frequency", "OPENFGA_DISPATCH_THROTTLING_FREQUENCY")
 
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD
 		util.MustBindPFlag("dispatchThrottling.threshold", flags.Lookup("dispatch-throttling-threshold"))
 		util.MustBindEnv("dispatchThrottling.threshold", "OPENFGA_DISPATCH_THROTTLING_THRESHOLD")
 
+		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD
 		util.MustBindPFlag("dispatchThrottling.maxThreshold", flags.Lookup("dispatch-throttling-max-threshold"))
 		util.MustBindEnv("dispatchThrottling.maxThreshold", "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD")
 

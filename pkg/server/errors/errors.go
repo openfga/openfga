@@ -50,6 +50,10 @@ func (e InternalError) Internal() error {
 	return e.internal
 }
 
+func (e InternalError) GRPCStatus() *status.Status {
+	return status.New(codes.Code(openfgav1.InternalErrorCode_internal_error), e.public.Error())
+}
+
 // NewInternalError returns an error that is decorated with a public-facing error message.
 // It is only meant to be called by HandleError.
 func NewInternalError(public string, internal error) InternalError {
