@@ -838,6 +838,32 @@ func (m *MySQL) ReadRelationshipTuples(
 			subjectType := subjectFilter.SubjectType
 			subjectRelation := subjectFilter.SubjectRelation
 
+			if len(subjectFilter.SubjectIDs) == 0 {
+				if subjectRelation == "" {
+					// e.g. user - LIKE user:% AND user_type='user'
+					joinedSubjectFilter = append(joinedSubjectFilter, sq.And{
+						sq.Like{
+							"_user": fmt.Sprintf("%s:%%", subjectType),
+						},
+						sq.Eq{
+							"user_type": tuple.User,
+						},
+					})
+				} else {
+					// e.g. group#member - LIKE group:%#member AND user_type='userset'
+					joinedSubjectFilter = append(joinedSubjectFilter, sq.And{
+						sq.Like{
+							"_user": fmt.Sprintf("%s:%%#%s", subjectType, subjectRelation),
+						},
+						sq.Eq{
+							"user_type": tuple.UserSet,
+						},
+					})
+				}
+
+				continue
+			}
+
 			for _, subjectID := range subjectFilter.SubjectIDs {
 				var subjectStr string
 

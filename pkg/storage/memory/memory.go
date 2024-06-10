@@ -820,7 +820,7 @@ func (s *MemoryBackend) ReadRelationshipTuples(
 					}
 				}
 
-				if subjectFilter.SubjectRelation != "" && subjectRelation != subjectFilter.SubjectRelation {
+				if subjectRelation != subjectFilter.SubjectRelation {
 					continue
 				}
 

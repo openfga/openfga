@@ -340,5 +340,52 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 			actual := storage.RelationshipTupleIteratorToStringSlice(iter)
 			require.ElementsMatch(t, tuples, actual) // all of the tuples in the store match the whole query directly
 		})
+
+		t.Run("filters_out_unrelated_subject_types", func(t *testing.T) {
+			storeID := BootstrapFGATuples(t, datastore, []string{
+				"document:1#parent@folder:x#viewer",
+				"document:1#parent@folder:y#editor",
+				"document:1#parent@org:acme",
+				"document:1#parent@folder:1",
+				"document:1#parent@folder:2",
+				"document:1#parent@project:1",
+				"document:1#parent@project:2",
+				"document:1#parent@group:eng#member",
+			})
+
+			filter := storage.ReadRelationshipTuplesFilter{
+				ObjectType: "document",
+				ObjectIDs:  []string{"1"},
+				Relation:   "parent",
+				SubjectsFilter: []storage.SubjectsFilter{
+					{
+						SubjectType:     "folder",
+						SubjectRelation: "",
+					},
+					{
+						SubjectType:     "project",
+						SubjectRelation: "",
+					},
+					{
+						SubjectType:     "group",
+						SubjectRelation: "member",
+					},
+				},
+			}
+
+			iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
+			require.NoError(t, err)
+
+			actual := storage.RelationshipTupleIteratorToStringSlice(iter)
+
+			expected := []string{
+				"document:1#parent@folder:1",
+				"document:1#parent@folder:2",
+				"document:1#parent@project:1",
+				"document:1#parent@project:2",
+				"document:1#parent@group:eng#member",
+			}
+			require.ElementsMatch(t, expected, actual)
+		})
 	})
 }
