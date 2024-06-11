@@ -1492,6 +1492,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 				Name: "condition",
 			},
 		},
+		tuple.NewTupleKey("document:3|special", "writer", "user:github.com|charlie@test.com"),
 	}
 
 	storeID := ulid.Make().String()
@@ -1538,6 +1539,7 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
 			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
 			{Key: tuple.NewTupleKeyWithCondition("document:2", "viewer", "user:anne", "condition", nil)},
+			{Key: tuple.NewTupleKey("document:3|special", "writer", "user:github.com|charlie@test.com")},
 		}
 
 		requireEqualTuples(t, expectedTuples, gotTuples)
@@ -1649,6 +1651,38 @@ func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGAData
 
 		requireEqualTuples(t, expectedTuples, gotTuples)
 		require.Empty(t, contToken)
+	})
+
+	t.Run("filter_by_object_type_and_user_with_special_character", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:", "", "user:github.com|charlie@test.com"),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:3|special", "writer", "user:github.com|charlie@test.com"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_object_with_special_character", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:3|special", "", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:3|special", "writer", "user:github.com|charlie@test.com"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 }
 
