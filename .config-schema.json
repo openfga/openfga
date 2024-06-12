@@ -30,6 +30,18 @@
             "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_OBJECTS"
         },
+        "maxConcurrentReadsForListUsers": {
+            "description": "The maximum allowed number of concurrent reads in a single ListUsers query (default is MaxUint32).",
+            "type": "integer",
+            "default": 4294967295,
+            "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_USERS"
+        },
+        "maxConditionEvaluationCost": {
+            "description": "The maximum cost for CEL condition evaluation before a request returns an error (default is 100).",
+            "type": "integer",
+            "default": 100,
+            "x-env-variable": "OPENFGA_MAX_CONDITION_EVALUATION_COST"
+        },
         "changelogHorizonOffset": {
             "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
             "type": "integer",
@@ -62,6 +74,20 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
+        "listUsersDeadline": {
+            "description": "The timeout deadline for serving ListUsers requests. If 0s, there is no deadline",
+            "type": "string",
+            "format": "duration",
+            "default": "3s",
+            "x-env-variable": "OPENFGA_LIST_USERS_DEADLINE"
+        },
+        "listUsersMaxResults": {
+            "description": "The maximum results to return in ListUsers API response. If 0, all results can be returned",
+            "type": "integer",
+            "minimum": 0,
+            "default": 1000,
+            "x-env-variable": "OPENFGA_LIST_USERS_MAX_RESULTS"
+        },
         "requestDurationDatastoreQueryCountBuckets": {
             "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",
             "type": "array",
@@ -89,7 +115,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": []
+                "enum": ["enable-list-users"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -158,7 +184,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_PASSWORD"
                 },
                 "maxCacheSize": {
-                    "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
+                    "description": "The maximum number of authorization models that will be cached in memory",
                     "type": "integer",
                     "default": 100000,
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
@@ -435,22 +461,86 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable throttling when request's number of dispatches is high",
+                    "description": "DEPRECATED: Use checkDispatchThrottling.enabled instead. enable throttling when request's number of dispatches is high",
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
-                    "description": "the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
+                    "description": "DEPRECATED: Use checkDispatchThrottling.frequency instead. the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
                     "type": "duration",
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_FREQUENCY"
                 },
                 "threshold": {
-                    "description": "define the number of recursive operations to occur before getting throttled",
+                    "description": "DEPRECATED: Use checkDispatchThrottling.threshold instead. define the number of recursive operations to occur before getting throttled",
                     "type": "integer",
                     "default": "100",
                     "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "DEPRECATED: Use checkDispatchThrottling.maxThreshold instead. define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                }
+            }
+        },
+        "checkDispatchThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when check request's number of dispatches is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated for a check request. A higher value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY"
+                },
+                "threshold": {
+                    "description": "define the number of recursive operations to occur before getting throttled for a check request",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                }
+            }
+        },
+        "listObjectsDispatchThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when list objects request's number of dispatches is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated for a list objects request. A higher value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY"
+                },
+                "threshold": {
+                    "description": "define the number of recursive operations to occur before getting throttled for a list objects request",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum dispatch threshold beyond above which requests will be throttled for a list objects request. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD"
                 }
             }
         },

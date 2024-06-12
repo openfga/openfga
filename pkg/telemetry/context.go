@@ -8,7 +8,6 @@ type rpcContextName string
 
 const (
 	rpcInfoContextName rpcContextName = "rpcInfo"
-	Throttled          string         = "Throttled"
 )
 
 type RPCInfo struct {

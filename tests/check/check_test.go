@@ -49,8 +49,9 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
-	// uncomment after https://github.com/openfga/openfga/pull/1199 is done. the span exporter needs to be closed properly
-	// defer goleak.VerifyNone(t)
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
@@ -223,8 +224,10 @@ type document
 
 				httpReq.Header.Set("User-Agent", "test-user-agent")
 				client := &http.Client{}
+				var resp *http.Response
 
-				_, err = client.Do(httpReq)
+				resp, err = client.Do(httpReq)
+				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
 				require.Error(t, err)
@@ -248,6 +251,7 @@ type document
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
+			require.Equal(t, fields["request_id"], fields["trace_id"])
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
@@ -334,6 +338,7 @@ func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceCl
 
 	tests.StartServer(b, cfg)
 
+	// nolint:staticcheck // ignoring gRPC deprecations
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

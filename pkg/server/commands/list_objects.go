@@ -9,16 +9,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -54,6 +56,8 @@ type ListObjectsQuery struct {
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
 
+	dispatchThrottlerConfig threshold.Config
+
 	checkResolver graph.CheckResolver
 }
 
@@ -62,13 +66,17 @@ type ListObjectsResolutionMetadata struct {
 	DatastoreQueryCount *uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
-	DispatchCount *uint32
+	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ListObjectsResolutionMetadata{
 		DatastoreQueryCount: new(uint32),
-		DispatchCount:       new(uint32),
+		DispatchCounter:     new(atomic.Uint32),
+		WasThrottled:        new(atomic.Bool),
 	}
 }
 
@@ -82,6 +90,12 @@ type ListObjectsQueryOption func(d *ListObjectsQuery)
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.listObjectsDeadline = deadline
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -139,7 +153,13 @@ func NewListObjectsQuery(
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
-		checkResolver:           checkResolver,
+		dispatchThrottlerConfig: threshold.Config{
+			Throttler:    throttler.NewNoopThrottler(),
+			Enabled:      serverconfig.DefaultListObjectsDispatchThrottlingEnabled,
+			Threshold:    serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
+			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+		},
+		checkResolver: checkResolver,
 	}
 
 	for _, opt := range opts {
@@ -256,6 +276,7 @@ func (q *ListObjectsQuery) evaluate(
 			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
+			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 		)
@@ -284,7 +305,8 @@ func (q *ListObjectsQuery) evaluate(
 				errChan <- err
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
-			atomic.AddUint32(resolutionMetadata.DispatchCount, *reverseExpandResolutionMetadata.DispatchCount)
+			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
+			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 		}()
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -342,7 +364,8 @@ func (q *ListObjectsQuery) evaluate(
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					atomic.AddUint32(resolutionMetadata.DispatchCount, checkRequestMetadata.DispatchCounter.Load())
+					resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
+					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
@@ -406,7 +429,7 @@ func (q *ListObjectsQuery) Execute(
 
 	objects := make([]string, 0)
 
-	var errs *multierror.Error
+	var errs error
 
 	for result := range resultsChan {
 		if result.Err != nil {
@@ -415,7 +438,7 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-				errs = multierror.Append(errs, result.Err)
+				errs = errors.Join(errs, result.Err)
 				continue
 			}
 
@@ -429,7 +452,7 @@ func (q *ListObjectsQuery) Execute(
 		objects = append(objects, result.ObjectID)
 	}
 
-	if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
+	if len(objects) < int(maxResults) && errs != nil {
 		return nil, errs
 	}
 

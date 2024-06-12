@@ -26,12 +26,12 @@ jobs:
         shell: bash
 
       - name: Checkout
-        uses: actions/checkout@1d96c772d19495a3b5c517cd2bc0cb401ea0529f # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -45,11 +45,11 @@ jobs:
 
       - uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
 
-      - uses: anchore/sbom-action/download-syft@ab5d7b5f48981941c4c5d6bf33aeb98fe3bae38c # v0.15.10
+      - uses: anchore/sbom-action/download-syft@e8d2a6937ecead383dfe75190d104edd1f9c5751 # v0.16.0
 
       - name: Run GoReleaser
         id: goreleaser
-        uses: goreleaser/goreleaser-action@7ec5c2b0c6cdda6e8bbb49444bc797dd33d74dd8 # v5.0.0
+        uses: goreleaser/goreleaser-action@5742e2a039330cbb23ebf35f046f814d4c6ff811 # v5.1.0
         with:
           distribution: goreleaser
           version: latest
@@ -74,7 +74,7 @@ jobs:
           hashes=$(echo $ARTIFACTS | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
           echo $hashes > digests.txt
 
-      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@41733f74c025cc6d156547121989dd50fbc92364 # pin@v2.0.0
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@5a775b367a56d5bd118a224a811bba288150a563 # pin@v2.0.0
         id: hashes
         with:
           path: digests.txt
@@ -98,11 +98,11 @@ jobs:
       security-events: write # needed for uploading results to GitHub Code Scanning
     steps:
       - name: Checkout code
-        uses: actions/checkout@1d96c772d19495a3b5c517cd2bc0cb401ea0529f # v3.5.2
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v3.5.2
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
-        uses: snyk/actions/docker@8349f9043a8b7f0f3ee8885bf28f0b388d2446e8 # pin@master
+        uses: snyk/actions/docker@d406fd286b663eb8c6f8adcced4f7bcd199c0a3f # pin@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -110,7 +110,7 @@ jobs:
           args: --file=Dockerfile
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@c7f9125735019aa87cfc361530512d50ea439c71 # pin@v2
+        uses: github/codeql-action/upload-sarif@9fdb3e49720b44c48891d036bb502feb25684276 # pin@v2
         with:
           sarif_file: snyk.sarif
 
@@ -159,7 +159,7 @@ jobs:
         run: |
           set -euo pipefail
           gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" \
-            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom"
+            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom.json"
 
       - name: Verify assets
         env:
@@ -169,7 +169,7 @@ jobs:
             --provenance-path "$PROVENANCE" \
             --source-uri "github.com/$GITHUB_REPOSITORY" \
             --source-tag "$GITHUB_REF_NAME" \
-            *.tar.gz *.tar.gz.sbom
+            *.tar.gz *.tar.gz.sbom.json
 
   verification-with-cosign:
     needs: [ goreleaser, image-provenance ]
