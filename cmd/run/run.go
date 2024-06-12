@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -85,7 +86,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-list-users`")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -181,9 +182,13 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-authorization-model-size-in-bytes", defaultConfig.MaxAuthorizationModelSizeInBytes, "the maximum size in bytes allowed for persisting an Authorization Model.")
 
+	flags.Uint32("max-concurrent-reads-for-list-users", defaultConfig.MaxConcurrentReadsForListUsers, "the maximum allowed number of concurrent datastore reads in a single ListUsers query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
+
 	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects or StreamedListObjects query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
 	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
+
+	flags.Uint64("max-condition-evaluation-cost", defaultConfig.MaxConditionEvaluationCost, "the maximum cost for CEL condition evaluation before a request returns an error")
 
 	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 
@@ -194,6 +199,10 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects and StreamedListObjects requests")
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
+
+	flags.Duration("listUsers-deadline", defaultConfig.ListUsersDeadline, "the timeout deadline for serving ListUsers requests. If 0, there is no deadline")
+
+	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
 
 	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
 
@@ -574,8 +583,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithChangelogHorizonOffset(config.ChangelogHorizonOffset),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithListUsersDeadline(config.ListUsersDeadline),
+		server.WithListUsersMaxResults(config.ListUsersMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
+		server.WithMaxConcurrentReadsForListUsers(config.MaxConcurrentReadsForListUsers),
 		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
@@ -629,7 +641,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
 		dialOpts := []grpc.DialOption{
+			// nolint:staticcheck // ignoring gRPC deprecations
 			grpc.WithBlock(),
+		}
+		if config.Trace.Enabled {
+			dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 		}
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
@@ -644,6 +660,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
+		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
 			s.Logger.Fatal("", zap.Error(err))
@@ -668,6 +685,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
 			return err
 		}
+		handler := http.Handler(mux)
+
+		if config.Trace.Enabled {
+			handler = otelhttp.NewHandler(handler, "grpc-gateway")
+		}
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
@@ -677,7 +699,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux), s.Logger),
+			}).Handler(handler), s.Logger),
 		}
 
 		go func() {

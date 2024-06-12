@@ -53,9 +53,7 @@ func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleR
 	return reader, ok
 }
 
-// PaginationOptions holds the settings for pagination in data retrieval operations. It defines
-// the number of items to be included on each page (PageSize) and a marker from where to start
-// the page (From).
+// PaginationOptions should not be instantiated directly. Use NewPaginationOptions.
 type PaginationOptions struct {
 	PageSize int
 	From     string
@@ -66,7 +64,7 @@ type PaginationOptions struct {
 // it uses DefaultPageSize.
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	pageSize := DefaultPageSize
-	if ps != 0 {
+	if ps > 0 {
 		pageSize = int(ps)
 	}
 
@@ -97,12 +95,13 @@ type RelationshipTupleReader interface {
 	// or `User` (or both), must be specified in this case.
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
-	// There is NO guarantee on the order returned on the iterator.
+	// There is NO guarantee on the order of the tuples returned on the iterator.
 	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory pagination options (pageSize can be zero :/)
 	// and returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
+	// There is NO guarantee on the order of the tuples in one page.
 	ReadPage(
 		ctx context.Context,
 		store string,
@@ -237,6 +236,7 @@ type ChangelogBackend interface {
 	// You can optionally provide a filter to filter out changes for objects of a specific type.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond
 	// and should be interpreted as a millisecond duration.
+	// If no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	ReadChanges(
 		ctx context.Context,
 		store,

@@ -27,6 +27,9 @@ const (
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
+	DefaultListUsersDeadline                = 3 * time.Second
+	DefaultListUsersMaxResults              = 1000
+	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 	DefaultCheckQueryCacheLimit  = 10000
@@ -212,6 +215,16 @@ type Config struct {
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
+	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
+	// before the server will respond. This is to protect the server from misuse of the
+	// ListUsers endpoints. It cannot be larger than the configured server's request timeout (RequestTimeout or HTTPConfig.UpstreamTimeout).
+	ListUsersDeadline time.Duration
+
+	// ListUsersMaxResults defines the maximum number of results to accumulate
+	// before the non-streaming ListUsers API will respond to the client.
+	// This is to protect the server from misuse of the ListUsers endpoints.
+	ListUsersMaxResults uint32
+
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
 
@@ -230,6 +243,13 @@ type Config struct {
 	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in
 	// Check queries
 	MaxConcurrentReadsForCheck uint32
+
+	// MaxConcurrentReadsForListUsers defines the maximum number of concurrent database reads
+	// allowed in ListUsers queries
+	MaxConcurrentReadsForListUsers uint32
+
+	// MaxConditionEvaluationCost defines the maximum cost for CEL condition evaluation before a request returns an error
+	MaxConditionEvaluationCost uint64
 
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur
 	// after this offset will not be included in the response of ReadChanges.
@@ -269,20 +289,25 @@ type Config struct {
 }
 
 func (cfg *Config) Verify() error {
-	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
+	configuredTimeout := DefaultContextTimeout(cfg)
+
+	if cfg.ListObjectsDeadline > configuredTimeout {
 		return fmt.Errorf(
-			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
-			cfg.HTTP.UpstreamTimeout,
+			"configured request timeout (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			configuredTimeout,
 			cfg.ListObjectsDeadline,
 		)
 	}
-
-	if cfg.RequestTimeout > 0 && cfg.ListObjectsDeadline > cfg.RequestTimeout {
+	if cfg.ListUsersDeadline > configuredTimeout {
 		return fmt.Errorf(
-			"config 'requestTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
-			cfg.RequestTimeout,
-			cfg.ListObjectsDeadline,
+			"configured request timeout (%s) cannot be lower than 'listUsersDeadline' config (%s)",
+			configuredTimeout,
+			cfg.ListUsersDeadline,
 		)
+	}
+
+	if cfg.MaxConcurrentReadsForListUsers == 0 {
+		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
@@ -381,6 +406,10 @@ func (cfg *Config) Verify() error {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
 	}
 
+	if cfg.MaxConditionEvaluationCost < 100 {
+		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
+	}
+
 	return nil
 }
 
@@ -457,6 +486,11 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	return nil
 }
 
+// MaxConditionEvaluationCost ensures a safe value for CEL evaluation cost.
+func MaxConditionEvaluationCost() uint64 {
+	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -465,12 +499,16 @@ func DefaultConfig() *Config {
 		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
+		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,
+		MaxConditionEvaluationCost:                DefaultMaxConditionEvaluationCost,
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
+		ListUsersMaxResults:                       DefaultListUsersMaxResults,
+		ListUsersDeadline:                         DefaultListUsersDeadline,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{

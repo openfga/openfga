@@ -64,13 +64,6 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.GetTupleKey())); err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
-
-		for _, ct := range assertion.GetContextualTuples().GetTupleKeys() {
-			if err = validation.ValidateUserObjectRelation(typesys,
-				tupleUtils.NewTupleKey(ct.GetObject(), ct.GetRelation(), ct.GetUser())); err != nil {
-				return nil, serverErrors.ValidationError(err)
-			}
-		}
 	}
 
 	err = w.datastore.WriteAssertions(ctx, store, modelID, assertions)

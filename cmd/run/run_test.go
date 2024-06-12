@@ -1062,6 +1062,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConditionEvaluationCost.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Uint(), cfg.MaxConditionEvaluationCost)
+
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
@@ -1089,6 +1097,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.listUsersDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
+
+	val = res.Get("properties.listUsersMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersMaxResults)
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
@@ -1276,6 +1292,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
+	t.Setenv("OPENFGA_MAX_CONDITION_EVALUATION_COST", "120")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1291,6 +1308,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
 		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
+		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
+		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
 
 		return nil
 	}
@@ -1306,6 +1325,7 @@ func TestHTTPHeaders(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
+	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -1367,6 +1387,11 @@ type document
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
 			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
+		`listusers`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-users", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"object": { "type": "document", "id": "1" } , "relation": "viewer", "user_filters": [ {"type":"user"} ]}`,
+		},
 		`expand`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
@@ -1388,6 +1413,7 @@ type document
 
 			httpResponse, err := httpClient.Do(req)
 			require.NoError(t, err)
+			defer httpResponse.Body.Close()
 
 			// These are set in the server RPCs
 			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)

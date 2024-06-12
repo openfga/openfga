@@ -13,10 +13,29 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 5 * time.Minute
+		cfg.RequestTimeout = 0
 		cfg.HTTP.UpstreamTimeout = 2 * time.Second
 
 		err := cfg.Verify()
-		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+		require.EqualError(t, err, "configured request timeout (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+	})
+	t.Run("UpstreamTimeout_cannot_be_less_than_ListUsersDeadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDeadline = 2 * time.Second
+		cfg.ListUsersDeadline = 5 * time.Minute
+		cfg.RequestTimeout = 0
+		cfg.HTTP.UpstreamTimeout = 2 * time.Second
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "configured request timeout (2s) cannot be lower than 'listUsersDeadline' config (5m0s)")
+	})
+
+	t.Run("maxConcurrentReadsForListUsers_not_zero", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConcurrentReadsForListUsers = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'maxConcurrentReadsForListUsers' cannot be 0")
 	})
 
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
@@ -239,8 +258,17 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("list_objects_deadline_request_timeout", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.RequestTimeout = 1 * time.Second
+		cfg.RequestTimeout = 500 * time.Millisecond
 		cfg.ListObjectsDeadline = 4 * time.Second
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("list_users_deadline_request_timeout", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestTimeout = 500 * time.Millisecond
+		cfg.ListUsersDeadline = 4 * time.Second
 
 		err := cfg.Verify()
 		require.Error(t, err)
@@ -250,7 +278,22 @@ func TestVerifyConfig(t *testing.T) {
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
-	require.GreaterOrEqual(t, DefaultMaxConditionEvaluationCost, 100)
+	t.Run("max_condition_evaluation_cost_too_low", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = 99
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+	t.Run("max_condition_evaluation_cost_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = uint64(120)
+		viper.Set("maxConditionEvaluationCost", uint64(120))
+
+		err := cfg.Verify()
+		require.NoError(t, err)
+	})
+	require.Equal(t, uint64(120), MaxConditionEvaluationCost())
 }
 
 func TestDefaultContextTimeout(t *testing.T) {
