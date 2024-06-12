@@ -99,8 +99,8 @@ type RelationshipTupleReader interface {
 	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
-	// mandatory pagination options (pageSize can be zero :/)
-	// and returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
+	// mandatory pagination options. PageSize will always be greater than zero.
+	// It returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	// There is NO guarantee on the order of the tuples in one page.
 	ReadPage(
 		ctx context.Context,
