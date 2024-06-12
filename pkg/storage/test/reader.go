@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -387,5 +388,98 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 			}
 			require.ElementsMatch(t, expected, actual)
 		})
+	})
+}
+
+/*
+Benchmark ideas:
+  - Increasing number of objectIDs included in the filter (how does SQL compare to DynamoDB)
+  - Sparse access - single user has a relationship to only one of the provided objectIDs where the number of tuples is an order of magnitude more.
+  - Broad access - single user has relationships to all of the provided objectIDs where the number of tuples is an order of magnitude more.
+*/
+func BenchmarkReadRelationshipTuples(b *testing.B) {
+	var datastore storage.OpenFGADatastore
+
+	storeID := BootstrapFGATuples(b, datastore, []string{})
+
+	b.Run("increasing_objectIDs_length", func(b *testing.B) {
+		objectIDListSizes := []int{10, 100, 200, 500, 1000, 2500, 5000}
+
+		for _, objectIDListSize := range objectIDListSizes {
+			b.Run(fmt.Sprintf("%d", objectIDListSize), func(b *testing.B) {
+				var objectIDs []string
+				for i := range objectIDListSize {
+					objectIDs = append(objectIDs, strconv.Itoa(i))
+				}
+
+				filter := storage.ReadRelationshipTuplesFilter{
+					ObjectType: "document",
+					ObjectIDs:  objectIDs,
+					Relation:   "viewer",
+					SubjectsFilter: []storage.SubjectsFilter{
+						{
+							SubjectType:     "user",
+							SubjectIDs:      []string{"jon"},
+							SubjectRelation: "",
+						},
+						{
+							SubjectType:     "user",
+							SubjectIDs:      []string{tuple.Wildcard},
+							SubjectRelation: "",
+						},
+					},
+				}
+
+				var actual []string
+				expected := []string{}
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
+					require.NoError(b, err)
+
+					actual = storage.RelationshipTupleIteratorToStringSlice(iter)
+				}
+
+				require.Equal(b, expected, actual)
+			})
+		}
+	})
+
+	b.Run("read_with_all_filter_fields", func(b *testing.B) {
+		storeID := BootstrapFGATuples(b, datastore, []string{})
+
+		filter := storage.ReadRelationshipTuplesFilter{
+			ObjectType: "document",
+			ObjectIDs:  []string{"1"},
+			Relation:   "parent",
+			SubjectsFilter: []storage.SubjectsFilter{
+				{
+					SubjectType:     "folder",
+					SubjectRelation: "",
+				},
+				{
+					SubjectType:     "project",
+					SubjectRelation: "",
+				},
+				{
+					SubjectType:     "group",
+					SubjectRelation: "member",
+				},
+			},
+		}
+
+		var actual []string
+		expected := []string{}
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
+			require.NoError(b, err)
+
+			actual = storage.RelationshipTupleIteratorToStringSlice(iter)
+		}
+
+		require.Equal(b, expected, actual)
 	})
 }
