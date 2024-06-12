@@ -54,6 +54,8 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
+replace github.com/openfga/api/proto => ../api-openfga/proto
+
 require (
 	dario.cat/mergo v1.0.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect

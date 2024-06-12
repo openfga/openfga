@@ -33,7 +33,6 @@ type ListUsersTests []struct {
 	model            string
 	tuples           []*openfgav1.TupleKey
 	expectedUsers    []string
-	butNot           []string
 	expectedErrorMsg string
 }
 
@@ -1311,7 +1310,6 @@ func TestListUsersIntersection(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria"},
 		},
 		{
 			name: "intersection_and_excluded_users_1",
@@ -1344,7 +1342,6 @@ func TestListUsersIntersection(t *testing.T) {
 				tuple.NewTupleKey("document:1", "a1", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria", "user:will"},
 		},
 		{
 			name: "intersection_and_excluded_users_2",
@@ -1379,7 +1376,6 @@ func TestListUsersIntersection(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked2", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria", "user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -1512,7 +1508,6 @@ func TestListUsersUnion(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria"},
 		},
 		{
 			name: "union_and_excluded_users_2",
@@ -1547,7 +1542,6 @@ func TestListUsersUnion(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked2", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -1879,7 +1873,6 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
-			butNot:        []string{"user:maria"},
 		},
 		{
 			name: "exclusion_and_wildcards_5",
@@ -1928,7 +1921,6 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:will"),
 			},
 			expectedUsers: []string{"user:*", "user:maria"},
-			butNot:        []string{"user:jon", "user:will"},
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2665,7 +2657,6 @@ func TestListUsersChainedNegation(t *testing.T) {
 				tuple.NewTupleKey("document:1", "unblocked", "user:poovam"),
 			},
 			expectedUsers: []string{"user:*", "user:jon"},
-			butNot:        []string{"user:maria"},
 		},
 		{
 			name: "chained_negation_11",
@@ -2921,13 +2912,6 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				actualCompare[i] = tuple.UserProtoToString(u)
 			}
 			require.ElementsMatch(t, actualCompare, test.expectedUsers)
-
-			exceptUsers := resp.GetExcludedUsers()
-			actualCompare = make([]string, len(exceptUsers))
-			for i, u := range exceptUsers {
-				actualCompare[i] = tuple.FromObjectOrUsersetProto(u)
-			}
-			require.ElementsMatch(t, actualCompare, test.butNot)
 		})
 	}
 }
