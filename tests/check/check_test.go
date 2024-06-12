@@ -48,7 +48,8 @@ func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
-func TestCheckLogs(t *testing.T) {
+// TODO move elsewhere as this isn't asserting on just Check API logs.
+func TestServerLogs(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -120,6 +121,7 @@ type document
 
 	type test struct {
 		_name           string
+		endpoint        string
 		grpcReq         *openfgav1.CheckRequest
 		httpReqBody     io.Reader
 		expectedError   bool
@@ -128,7 +130,8 @@ type document
 
 	tests := []test{
 		{
-			_name: "grpc_check_success",
+			_name:    "grpc_check_success",
+			endpoint: "check",
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
@@ -147,7 +150,8 @@ type document
 			},
 		},
 		{
-			_name: "http_check_success",
+			_name:    "http_check_success",
+			endpoint: "check",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -169,7 +173,8 @@ type document
 			},
 		},
 		{
-			_name: "grpc_check_error",
+			_name:    "grpc_check_error",
+			endpoint: "check",
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
@@ -188,7 +193,8 @@ type document
 			},
 		},
 		{
-			_name: "http_check_error",
+			_name:    "http_check_error",
+			endpoint: "check",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -208,6 +214,28 @@ type document
 				"user_agent":   "test-user-agent",
 			},
 		},
+		{
+			_name:    "streamed_list_objects_success",
+			endpoint: "streamed-list-objects",
+			httpReqBody: bytes.NewBufferString(`{
+  "type": "document",
+  "relation": "viewer",
+  "user": "user:anne",
+  "authorization_model_id": "` + authorizationModelID + `"
+}`),
+			expectedError: false,
+			expectedContext: map[string]interface{}{
+				"grpc_service":           "openfga.v1.OpenFGAService",
+				"grpc_method":            "StreamedListObjects",
+				"grpc_type":              "server_stream",
+				"grpc_code":              int32(0),
+				"raw_request":            fmt.Sprintf(`{"authorization_model_id":"%s","context":null,"contextual_tuples":null,"relation":"viewer","store_id":"%s","type":"document","user":"user:anne"}`, authorizationModelID, storeID),
+				"raw_response":           `{"object":"document:1"}`,
+				"store_id":               storeID,
+				"authorization_model_id": authorizationModelID,
+				"user_agent":             "test-user-agent",
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -219,7 +247,7 @@ type document
 				_, err = client.Check(context.Background(), test.grpcReq)
 			} else if test.httpReqBody != nil {
 				var httpReq *http.Request
-				httpReq, err = http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/check", test.httpReqBody)
+				httpReq, err = http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/"+test.endpoint, test.httpReqBody)
 				require.NoError(t, err)
 
 				httpReq.Header.Set("User-Agent", "test-user-agent")
