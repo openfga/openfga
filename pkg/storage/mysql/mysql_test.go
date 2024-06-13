@@ -291,3 +291,14 @@ func TestMarshalledAssertions(t *testing.T) {
 	}
 	require.Equal(t, expectedAssertions, assertions)
 }
+
+func BenchmarkMySQL(b *testing.B) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(b, err)
+	b.Cleanup(ds.Close)
+
+	test.RunAllBenchmarks(b, ds)
+}

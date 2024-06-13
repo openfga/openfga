@@ -57,6 +57,10 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
 }
 
+func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
+	b.Run("BenchmarkReadRelationshipTuples", func(b *testing.B) { ReadRelationshipTuplesBenchmarks(b, ds) })
+}
+
 func BootstrapFGATuples(
 	t require.TestingT,
 	ds storage.OpenFGADatastore,

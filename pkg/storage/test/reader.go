@@ -391,18 +391,17 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 	})
 }
 
-/*
-Benchmark ideas:
-  - Increasing number of objectIDs included in the filter (how does SQL compare to DynamoDB)
-  - Sparse access - single user has a relationship to only one of the provided objectIDs where the number of tuples is an order of magnitude more.
-  - Broad access - single user has relationships to all of the provided objectIDs where the number of tuples is an order of magnitude more.
-*/
-func BenchmarkReadRelationshipTuples(b *testing.B) {
-	var datastore storage.OpenFGADatastore
+func ReadRelationshipTuplesBenchmarks(b *testing.B, datastore storage.OpenFGADatastore) {
+	var tuples []string
+	for i := 0; i < 5000; i++ {
+		tuples = append(tuples, fmt.Sprintf("document:%d#viewer@user:jon", i))
+	}
+	storeID := BootstrapFGATuples(b, datastore, tuples)
 
-	storeID := BootstrapFGATuples(b, datastore, []string{})
+	b.Run("read_with_all_filters_varying_objectIDs_length", func(b *testing.B) {
+		// goal of this test is not to test that the storage layer filters efficiently but that
+		// the storage implementation paginates (if any) as efficiently as it can
 
-	b.Run("increasing_objectIDs_length", func(b *testing.B) {
 		objectIDListSizes := []int{10, 100, 200, 500, 1000, 2500, 5000}
 
 		for _, objectIDListSize := range objectIDListSizes {
@@ -431,7 +430,6 @@ func BenchmarkReadRelationshipTuples(b *testing.B) {
 				}
 
 				var actual []string
-				expected := []string{}
 
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -441,45 +439,8 @@ func BenchmarkReadRelationshipTuples(b *testing.B) {
 					actual = storage.RelationshipTupleIteratorToStringSlice(iter)
 				}
 
-				require.Equal(b, expected, actual)
+				require.Equal(b, objectIDListSize, len(actual))
 			})
 		}
-	})
-
-	b.Run("read_with_all_filter_fields", func(b *testing.B) {
-		storeID := BootstrapFGATuples(b, datastore, []string{})
-
-		filter := storage.ReadRelationshipTuplesFilter{
-			ObjectType: "document",
-			ObjectIDs:  []string{"1"},
-			Relation:   "parent",
-			SubjectsFilter: []storage.SubjectsFilter{
-				{
-					SubjectType:     "folder",
-					SubjectRelation: "",
-				},
-				{
-					SubjectType:     "project",
-					SubjectRelation: "",
-				},
-				{
-					SubjectType:     "group",
-					SubjectRelation: "member",
-				},
-			},
-		}
-
-		var actual []string
-		expected := []string{}
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			iter, err := datastore.ReadRelationshipTuples(context.Background(), storeID, filter)
-			require.NoError(b, err)
-
-			actual = storage.RelationshipTupleIteratorToStringSlice(iter)
-		}
-
-		require.Equal(b, expected, actual)
 	})
 }

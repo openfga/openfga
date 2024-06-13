@@ -113,3 +113,9 @@ func TestFindTupleKey(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkMemory(b *testing.B) {
+	ds := New()
+	b.Cleanup(ds.Close)
+	test.RunAllBenchmarks(b, ds)
+}

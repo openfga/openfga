@@ -290,3 +290,14 @@ func TestMarshalledAssertions(t *testing.T) {
 	}
 	require.Equal(t, expectedAssertions, assertions)
 }
+
+func BenchmarkPostgres(b *testing.B) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(b, err)
+	b.Cleanup(ds.Close)
+
+	test.RunAllBenchmarks(b, ds)
+}
