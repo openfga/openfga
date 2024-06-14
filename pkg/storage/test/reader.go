@@ -24,6 +24,7 @@ func RelationshipTupleReaderTest(t *testing.T, datastore storage.OpenFGADatastor
 
 			"document:2#viewer@user:jon",
 			"document:3#viewer@user:will",
+			"document:3#viewer@user:will#manager",
 
 			"folder:1#editor@org:acme#member",
 			"folder:2#owner@user:andres",
@@ -439,7 +440,7 @@ func ReadRelationshipTuplesBenchmarks(b *testing.B, datastore storage.OpenFGADat
 					actual = storage.RelationshipTupleIteratorToStringSlice(iter)
 				}
 
-				require.Equal(b, objectIDListSize, len(actual))
+				require.Len(b, actual, objectIDListSize)
 			})
 		}
 	})
