@@ -1312,7 +1312,7 @@ func TestListUsersIntersection(t *testing.T) {
 			expectedUsers: []string{"user:*"},
 		},
 		{
-			name: "intersection_and_excluded_users_1",
+			name: "intersection_and_wildcards_with_negation_1",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1344,7 +1344,7 @@ func TestListUsersIntersection(t *testing.T) {
 			expectedUsers: []string{"user:*"},
 		},
 		{
-			name: "intersection_and_excluded_users_2",
+			name: "intersection_and_wildcards_with_negation_2",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1480,7 +1480,7 @@ func TestListUsersUnion(t *testing.T) {
 			expectedUsers: []string{"user:jon", "user:maria", "user:will"},
 		},
 		{
-			name: "union_and_excluded_users_1",
+			name: "union_and_wildcards_with_negation_1",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
@@ -1510,7 +1510,7 @@ func TestListUsersUnion(t *testing.T) {
 			expectedUsers: []string{"user:*"},
 		},
 		{
-			name: "union_and_excluded_users_2",
+			name: "union_and_wildcards_with_negation_2",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
