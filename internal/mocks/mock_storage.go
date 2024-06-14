@@ -87,6 +87,26 @@ func (mr *MockTupleBackendMockRecorder) ReadPage(ctx, store, tupleKey, paginatio
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockTupleBackend)(nil).ReadPage), ctx, store, tupleKey, paginationOptions)
 }
 
+// ReadRelationshipTuples mocks base method.
+func (m *MockTupleBackend) ReadRelationshipTuples(ctx context.Context, store string, filter storage.ReadRelationshipTuplesFilter, opts ...storage.ReadRelationshipTuplesOpt) (storage.RelationshipTupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, store, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ReadRelationshipTuples", varargs...)
+	ret0, _ := ret[0].(storage.RelationshipTupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRelationshipTuples indicates an expected call of ReadRelationshipTuples.
+func (mr *MockTupleBackendMockRecorder) ReadRelationshipTuples(ctx, store, filter any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, store, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRelationshipTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadRelationshipTuples), varargs...)
+}
+
 // ReadStartingWithUser mocks base method.
 func (m *MockTupleBackend) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -118,18 +138,18 @@ func (mr *MockTupleBackendMockRecorder) ReadUserTuple(ctx, store, tupleKey any) 
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, storeID string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter)
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, storeID, filter)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
-func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, store, filter any) *gomock.Call {
+func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, storeID, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadUsersetTuples), ctx, store, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadUsersetTuples), ctx, storeID, filter)
 }
 
 // Write mocks base method.
@@ -200,6 +220,26 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadPage(ctx, store, tupleKey
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadPage), ctx, store, tupleKey, paginationOptions)
 }
 
+// ReadRelationshipTuples mocks base method.
+func (m *MockRelationshipTupleReader) ReadRelationshipTuples(ctx context.Context, store string, filter storage.ReadRelationshipTuplesFilter, opts ...storage.ReadRelationshipTuplesOpt) (storage.RelationshipTupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, store, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ReadRelationshipTuples", varargs...)
+	ret0, _ := ret[0].(storage.RelationshipTupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRelationshipTuples indicates an expected call of ReadRelationshipTuples.
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadRelationshipTuples(ctx, store, filter any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, store, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRelationshipTuples", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadRelationshipTuples), varargs...)
+}
+
 // ReadStartingWithUser mocks base method.
 func (m *MockRelationshipTupleReader) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -231,18 +271,18 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadUserTuple(ctx, store, tup
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, storeID string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter)
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, storeID, filter)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
-func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store, filter any) *gomock.Call {
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, storeID, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadUsersetTuples), ctx, store, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadUsersetTuples), ctx, storeID, filter)
 }
 
 // MockRelationshipTupleWriter is a mock of RelationshipTupleWriter interface.
@@ -933,6 +973,26 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(ctx, store, tupleKey, pagin
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadPage), ctx, store, tupleKey, paginationOptions)
 }
 
+// ReadRelationshipTuples mocks base method.
+func (m *MockOpenFGADatastore) ReadRelationshipTuples(ctx context.Context, store string, filter storage.ReadRelationshipTuplesFilter, opts ...storage.ReadRelationshipTuplesOpt) (storage.RelationshipTupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, store, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ReadRelationshipTuples", varargs...)
+	ret0, _ := ret[0].(storage.RelationshipTupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRelationshipTuples indicates an expected call of ReadRelationshipTuples.
+func (mr *MockOpenFGADatastoreMockRecorder) ReadRelationshipTuples(ctx, store, filter any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, store, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRelationshipTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadRelationshipTuples), varargs...)
+}
+
 // ReadStartingWithUser mocks base method.
 func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -964,18 +1024,18 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUserTuple(ctx, store, tupleKey a
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, storeID string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter)
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, storeID, filter)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, storeID, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, storeID, filter)
 }
 
 // Write mocks base method.

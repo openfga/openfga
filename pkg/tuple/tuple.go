@@ -247,6 +247,11 @@ func IsValidRelation(s string) bool {
 	return relationRegex.MatchString(s)
 }
 
+// IsUserSet return true/false 
+func IsUserSet(s string) bool {
+	return  userSetRegex.MatchString(s) || IsWildcard(s)
+}
+
 // IsValidUser determines if a string is a valid user. A valid user contains at most one `:`, at most one `#` and no spaces.
 func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
