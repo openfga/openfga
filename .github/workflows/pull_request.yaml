@@ -2,9 +2,6 @@ name: Pull Request
 on:
   merge_group:
   pull_request:
-    branches:
-      - main
-      - feat/abac
 
 permissions:
   contents: read
