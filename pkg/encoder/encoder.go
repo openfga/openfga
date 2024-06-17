@@ -1,3 +1,5 @@
+//go:generate mockgen -source encoder.go -destination ../../internal/mocks/mock_encoder.go -package mocks OpenFGADatastore
+
 package encoder
 
 // Ensure NoopEncoder implements the Encoder interface.
