@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.5.5] - 2024-06-17
+## [1.5.5] - 2024-06-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.4...v1.5.5)
 
