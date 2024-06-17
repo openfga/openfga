@@ -29,14 +29,15 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 
 	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
 
-type repo
-  relations
-	define reader: [user]
-	define can_read: reader`).GetTypeDefinitions(),
+			type repo
+				relations
+					define reader: [user]
+					define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 
@@ -145,14 +146,15 @@ func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore
 
 	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
 
-type repo
-  relations
-	define reader: [user]
-	define can_read: reader`).GetTypeDefinitions(),
+			type repo
+				relations
+					define reader: [user]
+					define can_read: reader`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 	ctx := context.Background()
