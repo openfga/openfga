@@ -76,6 +76,38 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
+// QueryOptions holds the settings for pagination as well as consistency options
+type QueryOptions struct {
+	//PaginationOptions
+	Consistency openfgav1.ConsistencyPreference
+}
+
+// NewQueryOptions creates a new [QueryOptions] instance
+// with a specified page size and continuation token and consistency. If the input page size is empty,
+// it uses DefaultPageSize and openfgav1.ConsistencyPreference_MINIMIZE_LATENCY.
+func NewQueryOptions(
+	//ps int32,
+	//contToken string,
+	consistency openfgav1.ConsistencyPreference) QueryOptions {
+	//pageSize := DefaultPageSize
+	//if ps != 0 {
+	//	pageSize = int(ps)
+	//}
+
+	consistencyPref := openfgav1.ConsistencyPreference_MINIMIZE_LATENCY
+	if consistency != openfgav1.ConsistencyPreference_UNSPECIFIED {
+		consistencyPref = consistency
+	}
+
+	return QueryOptions{
+		//PaginationOptions: PaginationOptions{
+		//	PageSize: pageSize,
+		//	From:     contToken,
+		//},
+		Consistency: consistencyPref,
+	}
+}
+
 // Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
 
@@ -98,7 +130,7 @@ type RelationshipTupleReader interface {
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
 	// There is NO guarantee on the order of the tuples returned on the iterator.
-	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
+	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, queryOptions QueryOptions) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory pagination options (pageSize can be zero :/)
@@ -109,6 +141,7 @@ type RelationshipTupleReader interface {
 		store string,
 		tupleKey *openfgav1.TupleKey,
 		paginationOptions PaginationOptions,
+		queryOptions QueryOptions,
 	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
@@ -117,6 +150,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
+		queryOptions QueryOptions,
 	) (*openfgav1.Tuple, error)
 
 	// ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -132,6 +166,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		filter ReadUsersetTuplesFilter,
+		queryOptions QueryOptions,
 	) (TupleIterator, error)
 
 	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -149,6 +184,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		filter ReadStartingWithUserFilter,
+		queryOptions QueryOptions,
 	) (TupleIterator, error)
 }
 
