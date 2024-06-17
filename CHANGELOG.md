@@ -16,14 +16,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Configuring maximum cost for CEL evaluation via `OPENFGA_MAX_CONDITION_EVALUATION_COST` [#1631](https://github.com/openfga/openfga/pull/1631) - thank you, @cmmoran
 
-
 ### Fixed
 
 * OTel trace context propagation to grpc-gateway [#1624](https://github.com/openfga/openfga/pull/1624) - thank you, @Zach-Johnson
 
 ### Removed
 
-* `excluded_users` from ListUsers response. Intent is to reintroduce in the future but further discovery needed to make firmer API decision. If impacted by this removal, please provide feedback in [issue #1692](https://github.com/openfga/openfga/issues/1692) [#1685](https://github.com/openfga/openfga/pull/1685)
+* `excluded_users` from ListUsers response. Further discovery required before being reintroduced. If impacted by this removal, please provide feedback in [issue #1692](https://github.com/openfga/openfga/issues/1692) [#1685](https://github.com/openfga/openfga/pull/1685)
 
 ## [1.5.4] - 2024-05-29
 
