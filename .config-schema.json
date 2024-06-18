@@ -115,7 +115,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-list-users"]
+                "enum": ["enable-list-users","enable-consistency-params"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
