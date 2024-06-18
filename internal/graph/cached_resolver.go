@@ -152,7 +152,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	skipCache := c.enableConsistencyOptions && req.Consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-	// only if minimize latency preferred - check cache
+	// if consistency options experimental flag is set, and consistency param set to HIGHER_CONSISTENCY, skip cache
 	if skipCache {
 		resp, err := c.delegate.ResolveCheck(ctx, req)
 		if err != nil {
