@@ -58,6 +58,23 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
+			name:                     "same_request_returns_results_from_cache_when_minimize_latency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
 			name:                     "same_request_does_not_use_cache_if_higher_consistency_requested",
 			consistencyOptionEnabled: true,
 			subsequentReq: &ResolveCheckRequest{
