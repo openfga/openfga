@@ -87,13 +87,14 @@ func TestCheckLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-type document
-  relations
-	define viewer: [user]`)
+		type document
+			relations
+				define viewer: [user]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -307,27 +308,28 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
 }
 
-const githubModel = `model
-  schema 1.1
-type user
-type team
-  relations
-    define member: [user,team#member]
-type repo
-  relations
-    define admin: [user,team#member] or repo_admin from owner
-    define maintainer: [user,team#member] or admin
-    define owner: [organization]
-    define reader: [user,team#member] or triager or repo_reader from owner
-    define triager: [user,team#member] or writer
-    define writer: [user,team#member] or maintainer or repo_writer from owner
-type organization
-  relations
-    define member: [user] or owner
-    define owner: [user]
-    define repo_admin: [user,organization#member]
-    define repo_reader: [user,organization#member]
-    define repo_writer: [user,organization#member]`
+const githubModel = `
+	model
+		schema 1.1
+	type user
+	type team
+		relations
+			define member: [user,team#member]
+	type repo
+		relations
+			define admin: [user,team#member] or repo_admin from owner
+			define maintainer: [user,team#member] or admin
+			define owner: [organization]
+			define reader: [user,team#member] or triager or repo_reader from owner
+			define triager: [user,team#member] or writer
+			define writer: [user,team#member] or maintainer or repo_writer from owner
+	type organization
+		relations
+			define member: [user] or owner
+			define owner: [user]
+			define repo_admin: [user,organization#member]
+			define repo_reader: [user,organization#member]
+			define repo_writer: [user,organization#member]`
 
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
 // and a cancellation function that stops the benchmark timer.
@@ -549,15 +551,16 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type group
-  relations
-    define member: [user]
-type document
-  relations
-    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type document
+				relations
+					define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -591,16 +594,17 @@ type document
 	writeAuthModelResponse, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type user2
-type group
-  relations
-    define member: [user2]
-type document
-  relations
-    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
+			type user2
+			type group
+				relations
+					define member: [user2]
+			type document
+				relations
+					define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -625,15 +629,16 @@ func benchmarkCheckWithOneCondition(b *testing.B, engine string) {
 	defer cancel()
 
 	storeID := ulid.Make().String()
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type doc
-  relations
-    define viewer: [user with password]
-condition password(p: string) {
-  p == "secret"
-}`)
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type doc
+			relations
+				define viewer: [user with password]
+		condition password(p: string) {
+			p == "secret"
+		}`)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   model.GetSchemaVersion(),
@@ -676,15 +681,16 @@ func benchmarkCheckWithOneConditionWithManyParameters(b *testing.B, engine strin
 	defer cancel()
 
 	storeID := ulid.Make().String()
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type doc
-  relations
-    define viewer: [user with complex]
-condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
-  b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
-}`)
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type doc
+			relations
+				define viewer: [user with complex]
+		condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
+			b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
+		}`)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   model.GetSchemaVersion(),
