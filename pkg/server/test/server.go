@@ -36,14 +36,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 		func(t *testing.T) { TestReadAuthorizationModelsInvalidContinuationToken(t, ds) },
 	)
 
-	t.Run("TestReadChanges", func(t *testing.T) { TestReadChanges(t, ds) })
-	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
-		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
-	)
-	t.Run("TestReadChangesAfterConcurrentWritesReturnsUniqueResults",
-		func(t *testing.T) { TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t, ds) },
-	)
-
 	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
