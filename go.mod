@@ -3,7 +3,7 @@ module github.com/openfga/openfga
 go 1.22.4
 
 // temporarily use api/proto on feat/stronger-consistency branch
-replace github.com/openfga/api/proto => github.com/openfga/api/proto v0.0.0-20240617155909-a1f90555c444
+replace github.com/openfga/api/proto => github.com/openfga/api/proto v0.0.0-20240621160721-5ef60b7de76f
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
