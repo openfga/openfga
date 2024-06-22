@@ -109,6 +109,13 @@ jobs:
           image: openfga/openfga
           args: --file=Dockerfile
 
+      # Replace any "undefined" security severity values with 0. The undefined value is used in the case
+      # of license-related findings, which do not do not indicate a security vulnerability.
+      # See https://github.com/github/codeql-action/issues/2187 for more context.
+      - name: Post-process snyk.sarif output
+        run: |
+          sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
+
       - name: Upload result to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@9fdb3e49720b44c48891d036bb502feb25684276 # pin@v2
         with:

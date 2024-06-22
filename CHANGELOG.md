@@ -8,6 +8,22 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.5] - 2024-06-18
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.4...v1.5.5)
+
+### Added
+
+* Configuring maximum cost for CEL evaluation via `OPENFGA_MAX_CONDITION_EVALUATION_COST` [#1631](https://github.com/openfga/openfga/pull/1631) - thank you, @cmmoran
+
+### Fixed
+
+* OTel trace context propagation to grpc-gateway [#1624](https://github.com/openfga/openfga/pull/1624) - thank you, @Zach-Johnson
+
+### Removed
+
+* `excluded_users` from ListUsers response. Further discovery required before being reintroduced. If impacted by this removal, please provide feedback in [issue #1692](https://github.com/openfga/openfga/issues/1692) [#1685](https://github.com/openfga/openfga/pull/1685)
+
 ## [1.5.4] - 2024-05-29
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.3...v1.5.4)
@@ -1041,7 +1057,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.5...HEAD
+[1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5
 [1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
 [1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
 [1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2

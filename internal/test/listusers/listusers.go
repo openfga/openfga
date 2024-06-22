@@ -11,12 +11,11 @@ import (
 )
 
 type Assertion struct {
-	Request               *TestListUsersRequest
-	ContextualTuples      []*openfgav1.TupleKey `json:"contextualTuples"`
-	Context               *structpb.Struct
-	Expectation           []string
-	ExpectedExcludedUsers []string `json:"expectedExcludedUsers"`
-	ErrorCode             int      `json:"errorCode"` // If ErrorCode is non-zero then we expect that the ListUsers call failed.
+	Request          *TestListUsersRequest
+	ContextualTuples []*openfgav1.TupleKey `json:"contextualTuples"`
+	Context          *structpb.Struct
+	Expectation      []string
+	ErrorCode        int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the ListUsers call failed.
 }
 
 type TestListUsersRequest struct {
@@ -34,15 +33,6 @@ func FromUsersProto(r []*openfgav1.User) []string {
 	for _, user := range r {
 		users = append(users, tuple.UserProtoToString(user))
 	}
-	return users
-}
-
-func FromObjectOrUsersetProto(u []*openfgav1.ObjectOrUserset) []string {
-	var users []string
-	for _, user := range u {
-		users = append(users, tuple.FromObjectOrUsersetProto(user))
-	}
-
 	return users
 }
 
