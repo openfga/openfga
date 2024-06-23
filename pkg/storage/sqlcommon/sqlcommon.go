@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -326,6 +327,23 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 	}
 }
 
+var (
+	emailRegex       = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	phoneNumberRegex = regexp.MustCompile(`^(\+\d{1,2}\s?)?1?\-?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}$`)
+	ssnRegex         = regexp.MustCompile(`^\d{3}-\d{2}-\d{4}$`)
+)
+
+func isPII(value string) bool {
+	return emailRegex.MatchString(value) || phoneNumberRegex.MatchString(value) || ssnRegex.MatchString(value)
+}
+
+func detectPII(field, value string) error {
+	if isPII(value) {
+		return fmt.Errorf("PII detected in %s: %s", field, value)
+	}
+	return nil
+}
+
 // Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
@@ -334,6 +352,7 @@ func Write(
 	deletes storage.Deletes,
 	writes storage.Writes,
 	now time.Time,
+	loggers ...logger.Logger, // Variadic logger parameter
 ) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -405,6 +424,14 @@ func Write(
 
 		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
+			return err
+		}
+
+		// Detect PII and return error if found
+		if err := detectPII("user-id", tk.GetUser()); err != nil {
+			return err
+		}
+		if err := detectPII("resource-id", tk.GetObject()); err != nil {
 			return err
 		}
 
