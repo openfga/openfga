@@ -289,6 +289,15 @@ func run(_ *cobra.Command, _ []string) {
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
 
+	// Add the startup warning if log-level is set to 'none'
+	logLevel := viper.GetString("log-level")
+	if logLevel == "" {
+		logLevel = os.Getenv("OPENFGA_LOG_LEVEL")
+	}
+	if logLevel == "none" {
+		fmt.Println("WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
+	}
+
 	serverCtx := &ServerContext{Logger: logger}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
 		panic(err)
