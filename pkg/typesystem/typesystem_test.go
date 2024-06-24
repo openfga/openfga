@@ -2920,6 +2920,82 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 	}
 }
 
+func TestResolvesToDirectlyAssignable(t *testing.T) {
+	tests := []struct {
+		name               string
+		model              string
+		relationReferences []*openfgav1.RelationReference
+		expected           bool
+	}{
+		{
+			name: "simple_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+
+				type folder
+					relations
+						define allowed: [group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expected: true,
+		},
+		{
+			name: "complex_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define exclude: [user]
+						define member: [user]
+						define complexMember: [user] but not exclude
+
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "complexMember"),
+			},
+			expected: false,
+		},
+		{
+			name: "public_assignable",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+
+				type folder
+					relations
+						define allowed: [user, user:*]`,
+			relationReferences: []*openfgav1.RelationReference{
+				WildcardRelationReference("user"),
+			},
+			expected: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+
+			typesys := New(model)
+			result, err := typesys.ResolvesToDirectlyAssignable(test.relationReferences)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
 func TestConditions(t *testing.T) {
 	tests := []struct {
 		name          string

@@ -331,6 +331,32 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
+func (t *TypeSystem) ResolvesToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
+	for _, rr := range relationReferences {
+		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
+			// TODO: determine how should we handle wildcard references
+			return false, nil
+		}
+		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+			// check whether the relation is directly assignable
+			relation, err := t.GetRelation(rr.GetType(), rr.GetRelation())
+			if err != nil {
+				return false, err
+			}
+			if reflect.TypeOf(relation.GetRewrite().GetUserset()) != reflect.TypeOf(&openfgav1.Userset_This{}) {
+				return false, nil
+			}
+		} else {
+			return false, &InvalidRelationError{
+				ObjectType: rr.GetType(),
+				Relation:   rr.GetRelation(),
+				Cause:      fmt.Errorf("relation reference is neither relation nor wildcard"),
+			}
+		}
+	}
+	return true, nil
+}
+
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, source *openfgav1.RelationReference) (bool, error) {
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
