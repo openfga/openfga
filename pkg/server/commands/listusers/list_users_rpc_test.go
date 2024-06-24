@@ -2545,7 +2545,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	// Times(0) ensures that we exit quickly
-	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
@@ -2902,7 +2902,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 			})
 			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), gomock.Any(), gomock.Any()).
+				Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, fmt.Errorf("storage err")).
 				MinTimes(1).
 				MaxTimes(2) // Because DB errors will immediately halt the execution of the API function, it's possible that only one read is made
@@ -3001,14 +3001,14 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Relation: "viewer",
 			Object:   "document:1",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:eng#member")},
 			}), nil
 		}),
-		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 			}),
 	)
@@ -3053,7 +3053,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Object:   "document:1",
 			Relation: "parent",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:1")},
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:2")},
@@ -3062,7 +3062,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Object:   "folder:1",
 			Relation: "viewer",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 		}),
 	)

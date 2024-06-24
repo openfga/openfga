@@ -74,7 +74,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 	iter, err := ds.Read(ctx,
 		store, tuple.
-			NewTupleKey("doc:", "relation", ""))
+			NewTupleKey("doc:", "relation", ""), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 	defer iter.Stop()
 	require.NoError(t, err)
 
@@ -123,7 +123,9 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
 		tuple.NewTupleKey("doc:", "relation", ""),
-		storage.NewPaginationOptions(storage.DefaultPageSize, ""))
+		storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED},
+	)
 	require.NoError(t, err)
 
 	require.Len(t, tuples, 2)
@@ -181,7 +183,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 
 	tk := tuple.NewTupleKey("folder:2021-budget", "owner", "user:anne")
-	iter, err := ds.Read(ctx, "store", tk)
+	iter, err := ds.Read(ctx, "store", tk, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -189,12 +191,12 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tk, curTuple.GetKey())
 
-	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
+	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 	require.NoError(t, err)
 	require.Len(t, tuples, 1)
 	require.Equal(t, tk, tuples[0].GetKey())
 
-	userTuple, err := ds.ReadUserTuple(ctx, "store", tk)
+	userTuple, err := ds.ReadUserTuple(ctx, "store", tk, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 	require.NoError(t, err)
 	require.Equal(t, tk, userTuple.GetKey())
 
@@ -205,7 +207,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"})
+	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -219,7 +221,7 @@ func TestAllowNullCondition(t *testing.T) {
 		UserFilter: []*openfgav1.ObjectRelation{
 			{Object: "user:anne"},
 		},
-	})
+	}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 	require.NoError(t, err)
 	defer iter.Stop()
 

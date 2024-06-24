@@ -129,11 +129,11 @@ func (m *MySQL) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, queryOptions storage.QueryOptions) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, nil)
+	return m.read(ctx, store, tupleKey, nil, queryOptions)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -142,11 +142,12 @@ func (m *MySQL) ReadPage(
 	store string,
 	tupleKey *openfgav1.TupleKey,
 	opts storage.PaginationOptions,
+	queryOptions storage.QueryOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, &opts)
+	iter, err := m.read(ctx, store, tupleKey, &opts, queryOptions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -155,7 +156,7 @@ func (m *MySQL) ReadPage(
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions, _ storage.QueryOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -216,7 +217,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, queryOptions storage.QueryOptions) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUserTuple")
 	defer span.End()
 
@@ -273,6 +274,7 @@ func (m *MySQL) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
+	queryOptions storage.QueryOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
@@ -321,6 +323,7 @@ func (m *MySQL) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	opts storage.ReadStartingWithUserFilter,
+	queryOptions storage.QueryOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadStartingWithUser")
 	defer span.End()

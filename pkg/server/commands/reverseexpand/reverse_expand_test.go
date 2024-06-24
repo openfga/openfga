@@ -49,9 +49,9 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 	var tuples []*openfgav1.Tuple
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 			iterator := storage.NewStaticTupleIterator(tuples)
 			return iterator, nil
 		})
@@ -76,7 +76,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata())
+		}, resultChan, NewResolutionMetadata(), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		t.Logf("after execute reverse expand")
 
 		if err != nil {
@@ -121,9 +121,9 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	}
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 			// simulate many goroutines trying to write to the results channel
 			iterator := storage.NewStaticTupleIterator(tuples)
 			t.Logf("returning tuple iterator")
@@ -149,7 +149,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata())
+		}, resultChan, NewResolutionMetadata(), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		t.Logf("after execute reverse expand")
 
 		if err != nil {
@@ -200,7 +200,7 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	defer mockController.Finish()
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		MaxTimes(2) // we expect it to be 0 most of the time
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
@@ -221,7 +221,7 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata())
+		}, resultChan, NewResolutionMetadata(), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 
 		if err != nil {
 			errChan <- err
@@ -264,8 +264,8 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 	}
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 			iterator := mocks.NewErrorTupleIterator(tuples)
 			return iterator, nil
 		})
@@ -290,7 +290,7 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata())
+		}, resultChan, NewResolutionMetadata(), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		if err != nil {
 			errChan <- err
 		}
@@ -352,7 +352,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 					},
 				},
 				ContextualTuples: []*openfgav1.TupleKey{},
-			}, resultChan, NewResolutionMetadata())
+			}, resultChan, NewResolutionMetadata(), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 			t.Logf("after produce")
 
 			if err != nil {
@@ -400,9 +400,9 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:anne"}},
-		}).
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED}).
 			Times(1).
-			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("group:fga", "member", "user:anne")},
 				}), nil
@@ -412,9 +412,9 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "group:fga", Relation: "member"}},
-		}).
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED}).
 			Times(1).
-			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					// NOTE this tuple is invalid
 					{Key: tuple.NewTupleKey("group:eng#member", "member", "group:fga#member")},
@@ -436,7 +436,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			Relation:         "member",
 			User:             &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata())
+		}, resultChan, NewResolutionMetadata(), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 
 		if err != nil {
 			errChan <- err
@@ -716,7 +716,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 					ObjectType: test.objectType,
 					Relation:   test.relation,
 					User:       test.user,
-				}, resultChan, resolutionMetadata)
+				}, resultChan, resolutionMetadata, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 
 				if err != nil {
 					errChan <- err

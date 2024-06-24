@@ -98,7 +98,7 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 
 	userset := rel.GetRewrite()
 
-	root, err := q.resolveUserset(ctx, store, userset, tk, typesys)
+	root, err := q.resolveUserset(ctx, store, userset, tk, typesys, req.GetConsistency())
 	if err != nil {
 		return nil, err
 	}
@@ -116,34 +116,35 @@ func (q *ExpandQuery) resolveUserset(
 	userset *openfgav1.Userset,
 	tk *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
+	consistency openfgav1.ConsistencyPreference,
 ) (*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveUserset")
 	defer span.End()
 
 	switch us := userset.GetUserset().(type) {
 	case nil, *openfgav1.Userset_This:
-		return q.resolveThis(ctx, store, tk, typesys)
+		return q.resolveThis(ctx, store, tk, typesys, consistency)
 	case *openfgav1.Userset_ComputedUserset:
 		return q.resolveComputedUserset(ctx, us.ComputedUserset, tk)
 	case *openfgav1.Userset_TupleToUserset:
-		return q.resolveTupleToUserset(ctx, store, us.TupleToUserset, tk, typesys)
+		return q.resolveTupleToUserset(ctx, store, us.TupleToUserset, tk, typesys, consistency)
 	case *openfgav1.Userset_Union:
-		return q.resolveUnionUserset(ctx, store, us.Union, tk, typesys)
+		return q.resolveUnionUserset(ctx, store, us.Union, tk, typesys, consistency)
 	case *openfgav1.Userset_Difference:
-		return q.resolveDifferenceUserset(ctx, store, us.Difference, tk, typesys)
+		return q.resolveDifferenceUserset(ctx, store, us.Difference, tk, typesys, consistency)
 	case *openfgav1.Userset_Intersection:
-		return q.resolveIntersectionUserset(ctx, store, us.Intersection, tk, typesys)
+		return q.resolveIntersectionUserset(ctx, store, us.Intersection, tk, typesys, consistency)
 	default:
 		return nil, serverErrors.UnsupportedUserSet
 	}
 }
 
 // resolveThis resolves a DirectUserset into a leaf node containing a distinct set of users with that relation.
-func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgav1.TupleKey, typesys *typesystem.TypeSystem) (*openfgav1.UsersetTree_Node, error) {
+func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgav1.TupleKey, typesys *typesystem.TypeSystem, consistency openfgav1.ConsistencyPreference) (*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveThis")
 	defer span.End()
 
-	tupleIter, err := q.datastore.Read(ctx, store, tk)
+	tupleIter, err := q.datastore.Read(ctx, store, tk, storage.NewQueryOptions(storage.WithConsistencyPreference(consistency)))
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -224,6 +225,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 	userset *openfgav1.TupleToUserset,
 	tk *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
+	consistency openfgav1.ConsistencyPreference,
 ) (*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveTupleToUserset")
 	defer span.End()
@@ -253,7 +255,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 		tsKey.Relation = tk.GetRelation()
 	}
 
-	tupleIter, err := q.datastore.Read(ctx, store, tsKey)
+	tupleIter, err := q.datastore.Read(ctx, store, tsKey, storage.NewQueryOptions(storage.WithConsistencyPreference(consistency)))
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -317,11 +319,12 @@ func (q *ExpandQuery) resolveUnionUserset(
 	usersets *openfgav1.Usersets,
 	tk *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
+	consistency openfgav1.ConsistencyPreference,
 ) (*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveUnionUserset")
 	defer span.End()
 
-	nodes, err := q.resolveUsersets(ctx, store, usersets.GetChild(), tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, usersets.GetChild(), tk, typesys, consistency)
 	if err != nil {
 		return nil, err
 	}
@@ -342,11 +345,12 @@ func (q *ExpandQuery) resolveIntersectionUserset(
 	usersets *openfgav1.Usersets,
 	tk *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
+	consistency openfgav1.ConsistencyPreference,
 ) (*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveIntersectionUserset")
 	defer span.End()
 
-	nodes, err := q.resolveUsersets(ctx, store, usersets.GetChild(), tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, usersets.GetChild(), tk, typesys, consistency)
 	if err != nil {
 		return nil, err
 	}
@@ -367,11 +371,12 @@ func (q *ExpandQuery) resolveDifferenceUserset(
 	userset *openfgav1.Difference,
 	tk *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
+	consistency openfgav1.ConsistencyPreference,
 ) (*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveDifferenceUserset")
 	defer span.End()
 
-	nodes, err := q.resolveUsersets(ctx, store, []*openfgav1.Userset{userset.GetBase(), userset.GetSubtract()}, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, []*openfgav1.Userset{userset.GetBase(), userset.GetSubtract()}, tk, typesys, consistency)
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +400,7 @@ func (q *ExpandQuery) resolveUsersets(
 	usersets []*openfgav1.Userset,
 	tk *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
+	consistency openfgav1.ConsistencyPreference,
 ) ([]*openfgav1.UsersetTree_Node, error) {
 	ctx, span := tracer.Start(ctx, "resolveUsersets")
 	defer span.End()
@@ -405,7 +411,7 @@ func (q *ExpandQuery) resolveUsersets(
 		// https://golang.org/doc/faq#closures_and_goroutines
 		i, us := i, us
 		grp.Go(func() error {
-			node, err := q.resolveUserset(ctx, store, us, tk, typesys)
+			node, err := q.resolveUserset(ctx, store, us, tk, typesys, consistency)
 			if err != nil {
 				return err
 			}

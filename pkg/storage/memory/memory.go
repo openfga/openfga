@@ -174,11 +174,11 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 func (s *MemoryBackend) Close() {}
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey, queryOptions storage.QueryOptions) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, key, nil)
+	return s.read(ctx, store, key, nil, queryOptions)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -187,11 +187,12 @@ func (s *MemoryBackend) ReadPage(
 	store string,
 	key *openfgav1.TupleKey,
 	paginationOptions storage.PaginationOptions,
+	queryOptions storage.QueryOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
-	it, err := s.read(ctx, store, key, &paginationOptions)
+	it, err := s.read(ctx, store, key, &paginationOptions, queryOptions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -271,7 +272,7 @@ func (s *MemoryBackend) ReadChanges(
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
 // A nil paginationOptions input means the returned iterator will iterate through all values.
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions *storage.PaginationOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions *storage.PaginationOptions, _ storage.QueryOptions) (*staticIterator, error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
@@ -426,7 +427,7 @@ func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, queryOptions storage.QueryOptions) (*openfgav1.Tuple, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
@@ -448,6 +449,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
+	queryOptions storage.QueryOptions,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
@@ -486,6 +488,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
+	queryOptions storage.QueryOptions,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadStartingWithUser")
 	defer span.End()
