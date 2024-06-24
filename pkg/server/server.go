@@ -650,6 +650,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			Relation:             req.GetRelation(),
 			User:                 req.GetUser(),
 			Context:              req.GetContext(),
+			Consistency:          req.GetConsistency(),
 		},
 	)
 	if err != nil {

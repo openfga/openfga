@@ -187,6 +187,7 @@ type listObjectsRequest interface {
 	GetUser() string
 	GetContextualTuples() *openfgav1.ContextualTupleKeys
 	GetContext() *structpb.Struct
+	GetConsistency() openfgav1.ConsistencyPreference
 }
 
 // evaluate fires of evaluation of the ListObjects query by delegating to
@@ -353,6 +354,7 @@ func (q *ListObjectsQuery) evaluate(
 						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 						Context:              req.GetContext(),
 						RequestMetadata:      checkRequestMetadata,
+						Consistency:          req.GetConsistency(),
 					})
 					if err != nil {
 						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
