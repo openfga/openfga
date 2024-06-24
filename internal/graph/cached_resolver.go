@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
@@ -50,7 +52,8 @@ type CachedCheckResolver struct {
 	logger       logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
-	allocatedCache bool
+	allocatedCache           bool
+	enableConsistencyOptions bool
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -87,6 +90,12 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
+	}
+}
+
+func WithEnabledConsistencyParams(enable bool) CachedCheckResolverOpt {
+	return func(ccr *CachedCheckResolver) {
+		ccr.enableConsistencyOptions = enable
 	}
 }
 
@@ -140,6 +149,19 @@ func (c *CachedCheckResolver) ResolveCheck(
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
+
+	skipCache := c.enableConsistencyOptions && req.Consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+
+	// if consistency options experimental flag is set, and consistency param set to HIGHER_CONSISTENCY, skip cache
+	if skipCache {
+		resp, err := c.delegate.ResolveCheck(ctx, req)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		return resp, nil
+	}
+
 	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := CheckRequestCacheKey(req)

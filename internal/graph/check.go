@@ -33,6 +33,7 @@ type ResolveCheckRequest struct {
 	Context              *structpb.Struct
 	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
+	Consistency          openfgav1.ConsistencyPreference
 }
 
 func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
@@ -49,6 +50,7 @@ func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
 			WasThrottled:        r.GetRequestMetadata().WasThrottled,
 		},
 		VisitedPaths: maps.Clone(r.VisitedPaths),
+		Consistency:  r.Consistency,
 	}
 }
 
@@ -147,6 +149,13 @@ func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
 		return r.Context
 	}
 	return nil
+}
+
+func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
+	if r != nil {
+		return r.Consistency
+	}
+	return openfgav1.ConsistencyPreference_MINIMIZE_LATENCY
 }
 
 type setOperatorType int
