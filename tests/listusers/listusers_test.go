@@ -92,17 +92,18 @@ func TestListUsersLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-type group
-  relations
-    define member: [user]
+		type group
+			relations
+				define member: [user]
 
-type document
-  relations
-	define viewer: [group#member]`)
+		type document
+			relations
+				define viewer: [group#member]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,

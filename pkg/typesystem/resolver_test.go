@@ -25,12 +25,13 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 	modelID1 := ulid.Make().String()
 	modelID2 := ulid.Make().String()
 
-	typedefs := parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions()
+	typedefs := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`).GetTypeDefinitions()
 
 	gomock.InOrder(
 		mockDatastore.EXPECT().
