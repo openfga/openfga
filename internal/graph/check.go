@@ -605,6 +605,19 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
+	areTypesConnected, err := c.areTypesConnected(typesys, req.GetTupleKey())
+	if err != nil {
+		return nil, err
+	}
+	if !areTypesConnected {
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+			},
+		}, nil
+	}
+
 	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -612,6 +625,27 @@ func (c *LocalChecker) ResolveCheck(
 	}
 
 	return resp, nil
+}
+
+// areTypesConnected returns true if it is possible to reach objectType#relation starting from userType[#userRelation].
+func (c *LocalChecker) areTypesConnected(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) (bool, error) {
+	_, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+	userType, _ := tuple.SplitObject(tk.GetUser())
+	objectType, _ := tuple.SplitObject(tk.GetObject())
+
+	source := userType
+	switch userRelation {
+	case "":
+		if tuple.IsTypedWildcard(tk.GetUser()) {
+			source = fmt.Sprintf("%s:*", userType)
+		}
+	default:
+		source = fmt.Sprintf("%s#%s", userType, userRelation)
+	}
+
+	target := fmt.Sprintf("%s#%s", objectType, tk.GetRelation())
+
+	return typesys.GetGraph().AreConnected(source, target)
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided

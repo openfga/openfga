@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"slices"
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -167,6 +168,9 @@ type TypeSystem struct {
 
 	modelID       string
 	schemaVersion string
+
+	// can be nil if the model is invalid
+	graph *DotEncodedGraph
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
@@ -209,7 +213,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency)
 	}
 
-	return &TypeSystem{
+	ts := &TypeSystem{
 		modelID:         model.GetId(),
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
@@ -217,6 +221,13 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		conditions:      uncompiledConditions,
 		ttuRelations:    ttuRelations,
 	}
+
+	dotEncodedGraph, err := NewDotEncodedGraph(ts)
+	if err == nil {
+		ts.graph = dotEncodedGraph
+	}
+
+	return ts
 }
 
 // GetAuthorizationModelID returns the ID for the authorization
@@ -239,6 +250,36 @@ func (t *TypeSystem) GetAllRelations() map[string]map[string]*openfgav1.Relation
 // EvaluableCondition instances within the TypeSystem.
 func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {
 	return t.conditions
+}
+
+// GetGraph retrieves the graph representation of the model.
+func (t *TypeSystem) GetGraph() *DotEncodedGraph {
+	return t.graph
+}
+
+// GetSortedTypeDefinitions returns the names of every type, in sorted order.
+func (t *TypeSystem) GetSortedTypeDefinitions() []string {
+	res := make([]string, 0, len(t.typeDefinitions))
+	for key := range t.typeDefinitions {
+		res = append(res, key)
+	}
+	slices.Sort(res)
+	return res
+}
+
+// GetSortedRelations returns the names of every relation for a type, in sorted order.
+// If the type doesn't exist, it returns an empty list.
+func (t *TypeSystem) GetSortedRelations(objectType string) []string {
+	m, err := t.GetRelations(objectType)
+	if err != nil {
+		return []string{}
+	}
+	res := make([]string, 0, len(m))
+	for key := range m {
+		res = append(res, key)
+	}
+	slices.Sort(res)
+	return res
 }
 
 // GetTypeDefinition searches for a TypeDefinition in the TypeSystem based on the given objectType string.
