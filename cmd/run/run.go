@@ -514,6 +514,9 @@ func (s *ServerContext) dialGrpc(config *serverconfig.Config) (*grpc.ClientConn,
 		// nolint:staticcheck // ignoring gRPC deprecations
 		grpc.WithBlock(),
 	}
+	if config.Trace.Enabled {
+		dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	}
 	if config.GRPC.TLS.Enabled {
 		creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 		if err != nil {
@@ -553,6 +556,11 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
+	handler := http.Handler(mux)
+
+	if config.Trace.Enabled {
+		handler = otelhttp.NewHandler(handler, "grpc-gateway")
+	}
 
 	httpServer := &http.Server{
 		Addr: config.HTTP.Addr,
@@ -562,7 +570,7 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 			AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 			AllowedMethods: []string{http.MethodGet, http.MethodPost,
 				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-		}).Handler(mux), s.Logger),
+		}).Handler(handler), s.Logger),
 	}
 
 	go func() {
@@ -658,7 +666,7 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 		if err != http.ErrServerClosed {
 			s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
 		}
-		s.Logger.Info("shutdown the openfga playground server")
+		s.Logger.Info("playground server")
 	}()
 
 	return playground, nil
