@@ -3020,6 +3020,47 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "multiple_relation_references",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define owner: [user]
+				type folder
+					relations
+						define allowed: [group#member, group#owner]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+				DirectRelationReference("group", "owner"),
+			},
+			expected: true,
+		},
+		{
+			name: "multiple_relation_references_some_complex",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define owner: [user]
+						define disallowed: [user]
+						define disallowed_member: member but not disallowed
+				type folder
+					relations
+						define allowed: [group#member, group#owner]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+				DirectRelationReference("group", "disallowed_member"),
+				DirectRelationReference("group", "owner"),
+			},
+			expected: false,
+		},
+		{
 			name: "computed_userset",
 			model: `
 				model
