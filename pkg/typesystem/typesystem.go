@@ -333,14 +333,10 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
-		// switch case to get type
-		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-			// We should use the regular resolution.
-			// TODO: We can optimize this in the future.
+		switch rr.GetRelationOrWildcard().(type) {
+		case *openfgav1.RelationReference_Wildcard:
 			return false, nil
-		}
-		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-			// check whether the relation is directly assignable
+		case *openfgav1.RelationReference_Relation:
 			relation, err := t.GetRelation(rr.GetType(), rr.GetRelation())
 			if err != nil {
 				return false, err
@@ -348,7 +344,7 @@ func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences 
 			if reflect.TypeOf(relation.GetRewrite().GetUserset()) != reflect.TypeOf(&openfgav1.Userset_This{}) {
 				return false, nil
 			}
-		} else {
+		default:
 			return false, &InvalidRelationError{
 				ObjectType: rr.GetType(),
 				Relation:   rr.GetRelation(),
