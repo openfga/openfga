@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -711,6 +713,15 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
+			isResolvesExclusivelyToDirectlyAssignable, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Println("isResolvesExclusivelyToDirectlyAssignable", isResolvesExclusivelyToDirectlyAssignable)
+
+			// Object:
+			// Relation:
+			// AllowedUserTypeRestrictions:
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
@@ -728,73 +739,185 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			var errs error
-			var handlers []CheckHandlerFunc
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
+			fn21 := func(ctx context.Context) (*ResolveCheckResponse, error) {
+				var errs error
+				var handlers []CheckHandlerFunc
+				// can skip for loop
+				// consume iterator and then send as a BIG list to storage layer
+				// future optimization
+				for {
+					t, err := filteredIter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+
+						return nil, err
 					}
 
-					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-				if err != nil {
-					errs = errors.Join(errs, err)
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					errs = errors.Join(errs, condition.NewEvaluationError(
-						t.GetCondition().GetName(),
-						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(t),
-							condEvalResult.MissingParameters),
-					))
-
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-				// if the user value is a typed wildcard and the type of the wildcard
-				// matches the target user objectType, then we're done searching
-				if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-					wildcardType := tuple.GetType(usersetObject)
-
-					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-						span.SetAttributes(attribute.Bool("allowed", true))
-						response.Allowed = true
-						return response, nil
+					condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+					if err != nil {
+						errs = errors.Join(errs, err)
+						continue
 					}
 
-					continue
+					if len(condEvalResult.MissingParameters) > 0 {
+						errs = errors.Join(errs, condition.NewEvaluationError(
+							t.GetCondition().GetName(),
+							fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+								tuple.TupleKeyToString(t),
+								condEvalResult.MissingParameters),
+						))
+
+						continue
+					}
+
+					if !condEvalResult.ConditionMet {
+						continue
+					}
+
+					usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+					fmt.Println("Userset object ", usersetObject, " relation ", usersetRelation)
+
+					// if the user value is a typed wildcard and the type of the wildcard
+					// matches the target user objectType, then we're done searching
+					if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+						wildcardType := tuple.GetType(usersetObject)
+
+						if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
+							span.SetAttributes(attribute.Bool("allowed", true))
+							response.Allowed = true
+							return response, nil
+						}
+
+						continue
+					}
+
+					if usersetRelation != "" {
+						tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
+						// check whether we dispatch or short-circuit
+						// batch check of group user
+						handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+					}
 				}
 
-				if usersetRelation != "" {
-					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-					handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+				if len(handlers) == 0 && errs != nil {
+					telemetry.TraceError(span, errs)
+					return nil, errs
 				}
+
+				resp, err := union(ctx, c.concurrencyLimit, handlers...)
+				if err != nil {
+					telemetry.TraceError(span, err)
+					return nil, errors.Join(errs, err)
+				}
+
+				return resp, nil
 			}
 
-			if len(handlers) == 0 && errs != nil {
-				telemetry.TraceError(span, errs)
-				return nil, errs
+			fn22 := func(ctx context.Context) (*ResolveCheckResponse, error) {
+				var errs error
+				usersetObjectRelationPair := make(map[string]map[string][]string)
+
+				for {
+					t, err := filteredIter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+
+						return nil, err
+					}
+
+					condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+					if err != nil {
+						errs = errors.Join(errs, err)
+						continue
+					}
+
+					if len(condEvalResult.MissingParameters) > 0 {
+						errs = errors.Join(errs, condition.NewEvaluationError(
+							t.GetCondition().GetName(),
+							fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+								tuple.TupleKeyToString(t),
+								condEvalResult.MissingParameters),
+						))
+
+						continue
+					}
+
+					if !condEvalResult.ConditionMet {
+						continue
+					}
+
+					// group:1#member, group:2#member, group:1#owner, group:2#owner]
+					// [group][member]: [1, 2]
+					// [group][owner]: [1, 2]
+					usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+					// "group": ["member", "owner"]
+					splittedUsersetObject := strings.Split(usersetObject, ":")
+					if _, ok := usersetObjectRelationPair[splittedUsersetObject[0]]; !ok {
+						usersetObjectRelationPair[splittedUsersetObject[0]] = make(map[string][]string)
+					}
+					if _, ok := usersetObjectRelationPair[splittedUsersetObject[0]][usersetRelation]; !ok {
+						usersetObjectRelationPair[splittedUsersetObject[0]][usersetRelation] = []string{}
+					}
+					usersetObjectRelationPair[splittedUsersetObject[0]][usersetRelation] = append(usersetObjectRelationPair[splittedUsersetObject[0]][usersetRelation], splittedUsersetObject[1])
+				}
+
+				for usersetObject, usersetRelationMap := range usersetObjectRelationPair {
+					for usersetRelation, objectsSlice := range usersetRelationMap {
+						// c.ds.batchCheck(user, [group:1#member, group:2#member, group:1#owner, group:2#owner])
+						iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+							ObjectType: usersetObject,
+							Relation:   usersetRelation,
+							UserFilter: []*openfgav1.ObjectRelation{{
+								Object: reqTupleKey.GetUser(),
+							}},
+						})
+						if err != nil {
+							return nil, err
+						}
+						var objectList []string
+
+						for {
+							t, err := iter.Next(ctx)
+							if err != nil {
+								if errors.Is(err, storage.ErrIteratorDone) {
+									break
+								}
+
+								return nil, err
+							}
+							actualObject := t.GetKey().GetObject()
+							if actualObject != "" {
+								objectList = append(objectList, strings.SplitN(actualObject, ":", 2)[1])
+							}
+						}
+
+						for _, object := range objectList {
+							if slices.Contains(objectsSlice, object) {
+
+								return &ResolveCheckResponse{Allowed: true,
+									ResolutionMetadata: &ResolveCheckResponseMetadata{
+										DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+									}}, nil
+							}
+						}
+					}
+				}
+
+				return &ResolveCheckResponse{Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+					}}, nil
+			}
+			if isResolvesExclusivelyToDirectlyAssignable {
+				// check to see if userset can be directly assignable
+				return fn22(ctx)
 			}
 
-			resp, err := union(ctx, c.concurrencyLimit, handlers...)
-			if err != nil {
-				telemetry.TraceError(span, err)
-				return nil, errors.Join(errs, err)
-			}
-
-			return resp, nil
+			return fn21(ctx)
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -882,6 +1005,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)),
 			attribute.String("computed_relation", computedRelation),
 		)
+
+		// check if TTU is only directly assignable
 
 		iter, err := ds.Read(
 			ctx,
