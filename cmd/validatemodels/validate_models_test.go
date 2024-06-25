@@ -48,12 +48,13 @@ func TestValidationResult(t *testing.T) {
 					Id:            modelID,
 					SchemaVersion: typesystem.SchemaVersion1_1,
 					// invalid
-					TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type document
-  relations
-	define viewer:[user]
-`).GetTypeDefinitions(),
+					TypeDefinitions: parser.MustTransformDSLToProto(`
+						model
+							schema 1.1
+						type document
+							relations
+								define viewer:[user]
+						`).GetTypeDefinitions(),
 				})
 				require.NoError(t, err)
 				t.Logf("added model %s for store %s\n", modelID, storeID)
