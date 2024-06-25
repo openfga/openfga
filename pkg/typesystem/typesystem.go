@@ -352,7 +352,7 @@ func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences 
 
 			// need to check whether these are simple types as well
 			for _, ref := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-				if ref.GetRelationOrWildcard() != nil {
+				if ref.GetRelationOrWildcard() != nil || ref.GetCondition() != "" {
 					return false, nil
 				}
 			}
