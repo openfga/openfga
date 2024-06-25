@@ -331,7 +331,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
-func (t *TypeSystem) ResolvesToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
+func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
 			// TODO: determine how should we handle wildcard references

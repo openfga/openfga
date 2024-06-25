@@ -2920,7 +2920,7 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 	}
 }
 
-func TestResolvesToDirectlyAssignable(t *testing.T) {
+func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	tests := []struct {
 		name               string
 		model              string
@@ -2936,7 +2936,6 @@ func TestResolvesToDirectlyAssignable(t *testing.T) {
 				type group
 					relations
 						define member: [user]
-
 				type folder
 					relations
 						define allowed: [group#member]`,
@@ -2946,7 +2945,7 @@ func TestResolvesToDirectlyAssignable(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "complex_userset",
+			name: "complex_userset_exclusion",
 			model: `
 				model
 					schema 1.1
@@ -2956,13 +2955,87 @@ func TestResolvesToDirectlyAssignable(t *testing.T) {
 						define exclude: [user]
 						define member: [user]
 						define complexMember: [user] but not exclude
-
 				type folder
 					relations
 						define allowed: [group#complexMember]`,
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
+			expected: false,
+		},
+		{
+			name: "complex_userset_intersection",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: [user]
+						define complexMember: [user] or owner
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "complexMember"),
+			},
+			expected: false,
+		},
+		{
+			name: "complex_userset_union",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define allowed: [user]
+						define member: [user]
+						define complexMember: [user] and allowed
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "complexMember"),
+			},
+			expected: false,
+		},
+		{
+			name: "multiple_assignment_userset",
+			model: `
+				model
+					schema 1.1
+				type user1
+				type user2
+				type group
+					relations
+						define member: [user1, user2]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expected: true,
+		},
+		{
+			name: "computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "viewable_member"),
+			},
+			// TODO: once we are able to handle the computed userset, we will change this to true.
 			expected: false,
 		},
 		{
@@ -2987,9 +3060,8 @@ func TestResolvesToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-
-			typesys := New(model)
-			result, err := typesys.ResolvesToDirectlyAssignable(test.relationReferences)
+			typeSystem := New(model)
+			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 		})
