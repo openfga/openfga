@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -218,4 +219,61 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.WasThrottled.Load())
 		})
 	}
+}
+
+func TestErrorReturnedWhenHigherConsistencyEnabled(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	modelDsl := `model
+			schema 1.1
+
+			type user
+
+			type folder
+				relations
+					define viewer: [user] but not blocked
+					define blocked: [user]`
+	tuples := []string{
+		"folder:C#viewer@user:jon",
+		"folder:B#viewer@user:jon",
+		"folder:A#viewer@user:jon",
+		"folder:A#blocked@user:jon",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+	require.NoError(t, err)
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+	mockResolver := graph.NewMockCheckResolver(ctrl)
+
+	mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("mock error"))
+
+	checker := graph.NewCachedCheckResolver(
+		graph.WithEnabledConsistencyParams(true),
+	)
+	t.Cleanup(checker.Close)
+
+	checker.SetDelegate(mockResolver)
+
+	q, _ := NewListObjectsQuery(
+		ds,
+		checker,
+	)
+
+	_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+	})
+
+	require.Error(t, err)
 }
