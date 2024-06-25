@@ -333,6 +333,10 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
+		if rr.GetCondition() != "" {
+			// although it is directly assignable, each match requires to evaluate condition.
+			return false, nil
+		}
 		switch rr.GetRelationOrWildcard().(type) {
 		case *openfgav1.RelationReference_Wildcard:
 			return false, nil
@@ -341,15 +345,19 @@ func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences 
 			if err != nil {
 				return false, err
 			}
-			if reflect.TypeOf(relation.GetRewrite().GetUserset()) != reflect.TypeOf(&openfgav1.Userset_This{}) {
-				return false, nil
+			_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
+			if !ok {
+				return false, err
+			}
+
+			// need to check whether these are simple types as well
+			for _, ref := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+				if ref.GetRelationOrWildcard() != nil {
+					return false, nil
+				}
 			}
 		default:
-			return false, &InvalidRelationError{
-				ObjectType: rr.GetType(),
-				Relation:   rr.GetRelation(),
-				Cause:      fmt.Errorf("relation reference is neither relation nor wildcard"),
-			}
+			return false, nil
 		}
 	}
 	return true, nil
