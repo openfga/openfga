@@ -333,8 +333,10 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
+		// switch case to get type
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-			// TODO: determine how should we handle wildcard references
+			// We should use the regular resolution.
+			// TODO: We can optimize this in the future.
 			return false, nil
 		}
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
