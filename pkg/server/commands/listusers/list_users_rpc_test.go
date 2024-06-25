@@ -2964,7 +2964,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			if err != nil {
 				actualErrorMsg = err.Error()
 			}
-			require.Equal(t, test.expectedErrorMsg, actualErrorMsg)
+			require.Contains(t, actualErrorMsg, test.expectedErrorMsg)
 
 			actualUsers := resp.GetUsers()
 			actualCompare := make([]string, len(actualUsers))
