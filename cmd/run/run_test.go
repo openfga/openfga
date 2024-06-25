@@ -1351,13 +1351,14 @@ func TestHTTPHeaders(t *testing.T) {
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
 
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions(),
+			type document
+				relations
+					define viewer: [user]`).GetTypeDefinitions(),
 	})
 	require.NoError(t, err)
 
