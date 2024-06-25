@@ -36,15 +36,6 @@ func FromUsersProto(r []*openfgav1.User) []string {
 	return users
 }
 
-func FromObjectOrUsersetProto(u []*openfgav1.ObjectOrUserset) []string {
-	var users []string
-	for _, user := range u {
-		users = append(users, tuple.FromObjectOrUsersetProto(user))
-	}
-
-	return users
-}
-
 func (t *TestListUsersRequest) ToProtoRequest() *openfgav1.ListUsersRequest {
 	var userTypeFilters []*openfgav1.UserTypeFilter
 
