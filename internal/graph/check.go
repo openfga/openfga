@@ -717,7 +717,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if err != nil {
 				return nil, err
 			}
-			fmt.Println("isResolvesExclusivelyToDirectlyAssignable", isResolvesExclusivelyToDirectlyAssignable)
 
 			// Object:
 			// Relation:
@@ -777,7 +776,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					}
 
 					usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-					fmt.Println("Userset object ", usersetObject, " relation ", usersetRelation)
 
 					// if the user value is a typed wildcard and the type of the wildcard
 					// matches the target user objectType, then we're done searching
@@ -865,6 +863,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					usersetObjectRelationPair[splittedUsersetObject[0]][usersetRelation] = append(usersetObjectRelationPair[splittedUsersetObject[0]][usersetRelation], splittedUsersetObject[1])
 				}
 
+				if errs != nil {
+					telemetry.TraceError(span, errs)
+					return nil, errs
+				}
+
 				for usersetObject, usersetRelationMap := range usersetObjectRelationPair {
 					for usersetRelation, objectsSlice := range usersetRelationMap {
 						// c.ds.batchCheck(user, [group:1#member, group:2#member, group:1#owner, group:2#owner])
@@ -897,7 +900,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 						for _, object := range objectList {
 							if slices.Contains(objectsSlice, object) {
-
 								return &ResolveCheckResponse{Allowed: true,
 									ResolutionMetadata: &ResolveCheckResponseMetadata{
 										DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
