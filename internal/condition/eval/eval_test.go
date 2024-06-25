@@ -27,17 +27,19 @@ func TestEvaluateTupleCondition(t *testing.T) {
 		{
 			name:     "condition_in_tuple_key_not_found_in_model",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
-			model: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-    define can_view: [user with correct_ip]
+				type user
 
-condition correct_ip(ip: string) {
-	ip == "192.168.0.1"
-}`),
+				type document
+					relations
+						define can_view: [user with correct_ip]
+
+				condition correct_ip(ip: string) {
+					ip == "192.168.0.1"
+				}`),
 			context:      map[string]interface{}{"ip": "192.168.0.1"},
 			conditionMet: false,
 			expectedErr:  "'unknown' - condition was not found",
@@ -45,17 +47,19 @@ condition correct_ip(ip: string) {
 		{
 			name:     "condition_not_met",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
-			model: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-    define can_view: [user with correct_ip]
+				type user
 
-condition correct_ip(ip: string) {
-	ip == "192.168.0.1"
-}`),
+				type document
+					relations
+						define can_view: [user with correct_ip]
+
+				condition correct_ip(ip: string) {
+					ip == "192.168.0.1"
+				}`),
 			context:      map[string]interface{}{"ip": "not_met"},
 			conditionMet: false,
 			expectedErr:  "",
@@ -63,17 +67,19 @@ condition correct_ip(ip: string) {
 		{
 			name:     "condition_met",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
-			model: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-    define can_view: [user with correct_ip]
+				type user
 
-condition correct_ip(ip: string) {
-	ip == "192.168.0.1"
-}`),
+				type document
+					relations
+						define can_view: [user with correct_ip]
+
+				condition correct_ip(ip: string) {
+					ip == "192.168.0.1"
+				}`),
 			context:      map[string]interface{}{"ip": "192.168.0.1"},
 			conditionMet: true,
 			expectedErr:  "",
@@ -118,17 +124,19 @@ func TestDefaultCELEvaluationCost(t *testing.T) {
 	}{
 		{
 			name: "list_comprehension",
-			model: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-    define can_view: [user with str_cond]
+				type user
 
-condition str_cond(s: list<string>) {
-	"98" in s
-}`),
+				type document
+					relations
+						define can_view: [user with str_cond]
+
+				condition str_cond(s: list<string>) {
+					"98" in s
+				}`),
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:jon", "str_cond", nil),
 			context: map[string]any{
 				"s": testutils.MakeSliceWithGenerator[any](99, testutils.NumericalStringGenerator),
@@ -140,17 +148,19 @@ condition str_cond(s: list<string>) {
 		},
 		{
 			name: "string_contains",
-			model: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-    define can_view: [user with str_cond]
+				type user
 
-condition str_cond(s: string) {
-	s.contains("b")
-}`),
+				type document
+					relations
+						define can_view: [user with str_cond]
+
+				condition str_cond(s: string) {
+					s.contains("b")
+				}`),
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:jon", "str_cond", nil),
 			context: map[string]any{
 				// see https://github.com/google/cel-go/blob/cfbf821f1b458533051306305a39b743db7c4bdb/checker/cost.go#L604-L609

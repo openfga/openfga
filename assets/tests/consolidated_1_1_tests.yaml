@@ -6518,8 +6518,6 @@ tests:
               relation: can_view
             expectation:
               - user:*
-            expectedExcludedUsers:
-              - user:bob
           - request:
               filters:
                 - user

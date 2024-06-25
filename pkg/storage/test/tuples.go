@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -21,8 +23,114 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+var (
+	cmpSortTupleKeys = []cmp.Option{
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
+	}
+	cmpIgnoreTimestamp = []cmp.Option{
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
+		protocmp.Transform(),
+	}
+)
+
 func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
+
+	const numOfWrites = 300
+
+	t.Run("lots_of_writes_returns_everything", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		var writtenTuples []*openfgav1.TupleKey
+		for i := 0; i < numOfWrites; i++ {
+			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:jon")
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
+			require.NoError(t, err)
+			writtenTuples = append(writtenTuples, newTuple)
+		}
+
+		// No assertions on the contents of the response, just on the length.
+
+		t.Run("page_size_1", func(t *testing.T) {
+			changes := readChangesWithPageSize(t, datastore, storeID, 1, "")
+			assert.Len(t, changes, len(writtenTuples))
+		})
+
+		t.Run("page_size_2", func(t *testing.T) {
+			changes := readChangesWithPageSize(t, datastore, storeID, 2, "")
+			assert.Len(t, changes, len(writtenTuples))
+		})
+
+		t.Run("page_size_infinite", func(t *testing.T) {
+			changes := readChangesWithPageSize(t, datastore, storeID, numOfWrites, "")
+			assert.Len(t, changes, len(writtenTuples))
+		})
+	})
+
+	t.Run("lots_of_writes_with_filter_returns_everything", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		filter := "folder"
+
+		var writtenTuples []*openfgav1.TupleKey
+		for i := 0; i < numOfWrites; i++ {
+			newTuple1 := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:jon")
+			newTuple2 := tuple.NewTupleKey(fmt.Sprintf("%s:%d", filter, i), "viewer", "user:jon")
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple1, newTuple2})
+			require.NoError(t, err)
+			writtenTuples = append(writtenTuples, newTuple1, newTuple2)
+		}
+
+		// No assertions on the contents of the response, just on the length.
+
+		t.Run("page_size_1", func(t *testing.T) {
+			changes := readChangesWithPageSize(t, datastore, storeID, 1, filter)
+			assert.Len(t, changes, len(writtenTuples)/2)
+		})
+
+		t.Run("page_size_2", func(t *testing.T) {
+			changes := readChangesWithPageSize(t, datastore, storeID, 2, filter)
+			assert.Len(t, changes, len(writtenTuples)/2)
+		})
+
+		t.Run("page_size_infinite", func(t *testing.T) {
+			changes := readChangesWithPageSize(t, datastore, storeID, numOfWrites, filter)
+			assert.Len(t, changes, len(writtenTuples)/2)
+		})
+	})
+
+	t.Run("read_changes_returns_non_empty_timestamp", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne",
+			Condition: &openfgav1.RelationshipCondition{
+				Name:    "condition",
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			},
+		}
+		tk1WithoutCond := &openfgav1.TupleKeyWithoutCondition{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne",
+		}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{tk1WithoutCond}, nil)
+		require.NoError(t, err)
+
+		changes := readChangesWithPageSize(t, datastore, storeID, storage.DefaultPageSize, "")
+		require.Len(t, changes, 2)
+		for _, change := range changes {
+			require.True(t, change.GetTimestamp().IsValid())
+			require.False(t, change.GetTimestamp().AsTime().IsZero())
+		}
+	})
 
 	t.Run("read_changes_with_continuation_token", func(t *testing.T) {
 		storeID := ulid.Make().String()
@@ -41,49 +149,36 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: 1}, 0)
-		require.NoError(t, err)
-		require.NotEmpty(t, continuationToken)
-
 		expectedChanges := []*openfgav1.TupleChange{
 			{
 				TupleKey:  tk1,
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
-		}
-
-		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
-
-		changes, continuationToken, err = datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{
-			PageSize: 2,
-			From:     string(continuationToken),
-		},
-			0,
-		)
-		require.NoError(t, err)
-		require.NotEmpty(t, continuationToken)
-
-		expectedChanges = []*openfgav1.TupleChange{
 			{
 				TupleKey:  tk2,
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
-		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-want +got):\n%s", diff)
+
+		changes := readChangesWithPageSize(t, datastore, storeID, 1, "")
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		_, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		_, token, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.ErrorIs(t, err, storage.ErrNotFound)
+		require.Empty(t, token)
+
+		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		require.Empty(t, token)
 	})
 
-	t.Run("read_changes_with_horizon_offset_should_return_not_found_(no_changes)", func(t *testing.T) {
+	t.Run("read_changes_with_horizon_offset_non_zero_should_return_not_found_(no_changes)", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		tk1 := &openfgav1.TupleKey{
@@ -100,8 +195,9 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		_, _, err = datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 1*time.Minute)
+		_, token, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 1*time.Minute)
 		require.ErrorIs(t, err, storage.ErrNotFound)
+		require.Empty(t, token)
 	})
 
 	t.Run("read_changes_with_non-empty_object_type_should_only_read_that_object_type", func(t *testing.T) {
@@ -121,9 +217,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "folder", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
-		require.NoError(t, err)
-		require.NotEmpty(t, continuationToken)
+		changes := readChangesWithPageSize(t, datastore, storeID, storage.DefaultPageSize, "folder")
 
 		expectedChanges := []*openfgav1.TupleChange{
 			{
@@ -131,7 +225,19 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
-		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+
+		changes = readChangesWithPageSize(t, datastore, storeID, storage.DefaultPageSize, "document")
+
+		expectedChanges = []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk2,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
 			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -152,10 +258,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		var continuationToken []byte
 		var err error
 		for {
-			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.PaginationOptions{
-				PageSize: 10,
-				From:     string(continuationToken),
-			}, 1*time.Millisecond)
+			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.NewPaginationOptions(10, string(continuationToken)), 1*time.Millisecond)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					break
@@ -176,6 +279,26 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				break
 			}
 		}
+	})
+
+	t.Run("read_changes_after_concurrent_writes_returns_no_duplicates", func(t *testing.T) {
+		tk1 := tuple.NewTupleKey("repo:1", "admin", "alice")
+		tk2 := tuple.NewTupleKey("repo:1", "admin", "bob")
+		tk3 := tuple.NewTupleKey("repo:1", "admin", "charlie")
+		storeID := ulid.Make().String()
+
+		tuplesToWriteOne := []*openfgav1.TupleKey{tk1, tk2}
+		tuplesToWriteTwo := []*openfgav1.TupleKey{tk3}
+		totalTuplesToWrite := len(tuplesToWriteOne) + len(tuplesToWriteTwo)
+		writeTuplesConcurrently(t, storeID, datastore, tuplesToWriteOne, tuplesToWriteTwo)
+
+		// without type
+		changes1 := readChangesWithPageSize(t, datastore, storeID, 1, "")
+		require.Len(t, changes1, totalTuplesToWrite)
+
+		// with type
+		changes2 := readChangesWithPageSize(t, datastore, storeID, 1, "repo")
+		require.Len(t, changes2, totalTuplesToWrite)
 	})
 
 	t.Run("read_changes_with_conditions", func(t *testing.T) {
@@ -202,10 +325,6 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
-		require.NoError(t, err)
-		require.NotEmpty(t, continuationToken)
-
 		expectedChanges := []*openfgav1.TupleChange{
 			{
 				TupleKey: &openfgav1.TupleKey{
@@ -225,8 +344,9 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		changes := readChangesWithPageSize(t, datastore, storeID, storage.DefaultPageSize, "")
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -256,9 +376,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{tk2}, nil)
 		require.NoError(t, err)
 
-		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
-		require.NoError(t, err)
-		require.NotEmpty(t, continuationToken)
+		changes := readChangesWithPageSize(t, datastore, storeID, storage.DefaultPageSize, "")
 
 		expectedChanges := []*openfgav1.TupleChange{
 			{
@@ -273,14 +391,140 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
+	})
+
+	t.Run("read_changes_with_special_characters", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   "document:1|special_document",
+			Relation: "viewer",
+			User:     "user:anne",
+		}
+		tk2 := &openfgav1.TupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:anne@github.com|special_user",
+		}
+		tk3 := &openfgav1.TupleKey{
+			Object:   "document:1|special_document",
+			Relation: "viewer",
+			User:     "user:anne@github.com|special_user",
+		}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2})
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk3})
+		require.NoError(t, err)
+
+		changes := readChangesWithPageSize(t, datastore, storeID, storage.DefaultPageSize, "")
+
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk1,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+			{
+				TupleKey:  tk2,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+			{
+				TupleKey:  tk3,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("read_changes_returns_errors_if_mismatch_types_in_request_and_continuation_token", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("folder", "1"),
+			Relation: "viewer",
+			User:     "bob",
+		}
+		tk2 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("document", "1"),
+			Relation: "viewer",
+			User:     "bill",
+		}
+
+		var err error
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
+		require.NoError(t, err)
+
+		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", storage.NewPaginationOptions(1, ""), 0)
+		require.Len(t, changesFolder, 1)
+
+		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", storage.NewPaginationOptions(1, string(tokenFolder)), 0)
+		require.Empty(t, changesDocument)
+		require.ErrorIs(t, err, storage.ErrMismatchObjectType)
 	})
 }
 
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
+
+	t.Run("lots_of_writes_and_read_returns_everything", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		var writtenTuples []*openfgav1.TupleKey
+		for i := 0; i < storage.DefaultPageSize*50; i++ {
+			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:jon")
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
+			require.NoError(t, err)
+			writtenTuples = append(writtenTuples, newTuple)
+		}
+
+		t.Run("read_returns_everything", func(t *testing.T) {
+			tupleIterator, err := datastore.Read(ctx, storeID, tuple.NewTupleKey("", "", ""))
+			require.NoError(t, err)
+			defer tupleIterator.Stop()
+
+			seenTuples := iterateThroughAllTuples(t, tupleIterator)
+			if diff := cmp.Diff(writtenTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+
+		t.Run("read_page_size_1_returns_everything", func(t *testing.T) {
+			seenTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, 1, nil))
+			if diff := cmp.Diff(writtenTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+
+		t.Run("read_page_size_2_returns_everything", func(t *testing.T) {
+			seenTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, 2, nil))
+			if diff := cmp.Diff(writtenTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+
+		t.Run("read_page_size_default_returns_everything", func(t *testing.T) {
+			seenTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, storage.DefaultPageSize, nil))
+			if diff := cmp.Diff(writtenTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+
+		t.Run("read_page_size_infinite_returns_everything", func(t *testing.T) {
+			seenTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, storage.DefaultPageSize*50000, nil))
+			if diff := cmp.Diff(writtenTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	})
 
 	t.Run("deletes_would_succeed_and_write_would_fail,_fails_and_introduces_no_changes", func(t *testing.T) {
 		storeID := ulid.Make().String()
@@ -320,9 +564,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 
 		// Since the write didn't succeed, we expect all tuples back
-		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 50})
-		require.NoError(t, err)
-		require.Equal(t, len(tks), len(tuples))
+		seenTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, storage.DefaultPageSize, nil))
+		if diff := cmp.Diff(tks, seenTuples, cmpSortTupleKeys...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 
 	t.Run("delete_fails_if_the_tuple_does_not_exist", func(t *testing.T) {
@@ -548,7 +793,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
-	t.Run("reading_userset_tuples_that_don't_exist_should_an_empty_iterator", func(t *testing.T) {
+	t.Run("reading_userset_tuples_that_don't_exist_should_return_an_empty_iterator", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "doc:readme", Relation: "owner"})
@@ -748,9 +993,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.PaginationOptions{
-			PageSize: 2,
-		})
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Nil(t, tuples[0].GetKey().GetCondition())
@@ -785,7 +1028,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -833,9 +1076,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 		require.Empty(t, tp.GetKey().GetCondition().GetContext())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.PaginationOptions{
-			PageSize: 2,
-		})
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.NotNil(t, tuples[0].GetKey().GetCondition().GetContext())
@@ -870,87 +1111,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
 		require.NotNil(t, changes[1].GetTupleKey().GetCondition().GetContext())
-	})
-}
-
-func ReadPageTestCorrectnessOfContinuationTokens(t *testing.T, datastore storage.OpenFGADatastore) {
-	ctx := context.Background()
-	storeID := ulid.Make().String()
-	tk0 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-	tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
-
-	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk0, tk1})
-	require.NoError(t, err)
-
-	t.Run("readPage_pagination_works_properly_with_filter", func(t *testing.T) {
-		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
-		require.NoError(t, err)
-		require.Len(t, tuples0, 1)
-		require.NotEmpty(t, contToken0)
-
-		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
-		require.NoError(t, err)
-		require.Len(t, tuples1, 1)
-		require.Empty(t, contToken1)
-
-		// Assert that the combination of both pages yields all tuples.
-		expectedValues := []*openfgav1.TupleKey{tk0, tk1}
-		var actualValues []*openfgav1.Tuple
-		actualValues = append(actualValues, tuples0...)
-		actualValues = append(actualValues, tuples1...)
-		require.ElementsMatch(t, expectedValues, testutils.ConvertTuplesToTupleKeys(actualValues))
-	})
-
-	t.Run("reading_a_page_completely_does_not_return_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
-		require.NoError(t, err)
-		require.Len(t, tuples, 2)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("reading_a_page_partially_returns_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
-		require.NoError(t, err)
-		require.Len(t, tuples, 1)
-		require.NotEmpty(t, contToken)
-	})
-
-	t.Run("readPage_pagination_works_properly_without_filter", func(t *testing.T) {
-		tuple0, contToken0, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
-		require.NoError(t, err)
-		require.Len(t, tuple0, 1)
-		require.NotEmpty(t, contToken0)
-
-		tuple1, contToken1, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
-		require.NoError(t, err)
-		require.Len(t, tuple1, 1)
-		require.Empty(t, contToken1)
-
-		// Assert that the combination of both pages yields all tuples.
-		expectedValues := []*openfgav1.TupleKey{tk0, tk1}
-		var actualValues []*openfgav1.Tuple
-		actualValues = append(actualValues, tuple0...)
-		actualValues = append(actualValues, tuple1...)
-		require.ElementsMatch(t, expectedValues, testutils.ConvertTuplesToTupleKeys(actualValues))
-	})
-
-	t.Run("reading_by_storeID_completely_does_not_return_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 2})
-		require.NoError(t, err)
-		require.Len(t, tuples, 2)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("reading_by_storeID_partially_returns_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
-		require.NoError(t, err)
-		require.Len(t, tuples, 1)
-		require.NotEmpty(t, contToken)
 	})
 }
 
@@ -1081,21 +1246,35 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 }
 
-func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
+	// This list contains: users with special character |,
+	// objects with special character |,
+	// interleaved object IDs,
+	// interleaved user IDs,
+	// interleaved object types,
+	// and tuples with conditions.
 	tuples := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "reader", "user:anne"),
-		tuple.NewTupleKey("document:1", "reader", "user:bob"),
-		tuple.NewTupleKey("document:1", "writer", "user:bob"),
-		{
-			Object:   "document:2",
-			Relation: "viewer",
-			User:     "user:anne",
-			Condition: &openfgav1.RelationshipCondition{
-				Name: "condition",
-			},
-		},
+		tuple.NewTupleKey("document:1", "reader", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:2", "a", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:1", "reader", "user:github.com|bob@test.com"),
+		tuple.NewTupleKey("document:2", "b", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:2", "c", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:2", "d", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:2", "e", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:2", "f", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("folder:x", "viewer", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("folder:x", "viewer", "user:github.com|bob@test.com"),
+		tuple.NewTupleKey("document:2", "g", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:1", "writer", "user:github.com|bob@test.com"),
+		tuple.NewTupleKey("document:2", "h", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:2", "j", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:1", "admin", "user:github.com|anne@test.com"),
+		tuple.NewTupleKey("document:1|special", "reader", "user:github.com|anne@test.com"),
+		tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:github.com|anne@test.com", "condition1", nil),
+		tuple.NewTupleKey("document:2", "writer", "user:github.com|charlie@test.com"),
+		tuple.NewTupleKey("document:1|special", "writer", "user:github.com|charlie@test.com"),
 	}
 
 	storeID := ulid.Make().String()
@@ -1103,377 +1282,136 @@ func ReadTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastor
 	err := datastore.Write(ctx, storeID, nil, tuples)
 	require.NoError(t, err)
 
-	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("", "", ""),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
-
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:anne"),
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			tuple.NewTupleKey("document:1", "writer", "user:bob"),
-			{
-				Object:   "document:2",
-				Relation: "viewer",
-				User:     "user:anne",
-				Condition: &openfgav1.RelationshipCondition{
-					Name:    "condition",
-					Context: &structpb.Struct{},
-				},
+	t.Run("returns_non_empty_timestamps", func(t *testing.T) {
+		testCases := map[string]struct {
+			filter *openfgav1.TupleKey
+		}{
+			`no_filter`: {
+				filter: tuple.NewTupleKey("", "", ""),
+			},
+			`filter_by_objectID`: {
+				filter: tuple.NewTupleKey("document:1", "", ""),
 			},
 		}
 
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
-	})
+		for testName, test := range testCases {
+			t.Run(testName, func(t *testing.T) {
+				t.Run("Read_Page", func(t *testing.T) {
+					seenTuples := readWithPageSize(t, datastore, storeID, 1, test.filter)
+					for _, tuple := range seenTuples {
+						require.True(t, tuple.GetTimestamp().IsValid())
+						require.False(t, tuple.GetTimestamp().AsTime().IsZero())
+					}
+				})
 
-	t.Run("filter_by_user_and_relation_and_objectID", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
+				t.Run("Read", func(t *testing.T) {
+					tupleIterator, err := datastore.Read(ctx, storeID, test.filter)
+					require.NoError(t, err)
+					defer tupleIterator.Stop()
 
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+					for {
+						tp, err := tupleIterator.Next(context.Background())
+						if err != nil {
+							require.ErrorIs(t, err, storage.ErrIteratorDone)
+							break
+						}
+						require.True(t, tp.GetTimestamp().IsValid())
+						require.False(t, tp.GetTimestamp().AsTime().IsZero())
+					}
+				})
+			})
 		}
-
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 
-	t.Run("filter_by_user_and_relation_and_objectType", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:", "reader", "user:bob"),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
-
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-		}
-
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
-	})
-
-	t.Run("filter_by_user_and_objectType", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:", "", "user:bob"),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
-
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			tuple.NewTupleKey("document:1", "writer", "user:bob"),
-		}
-
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
-	})
-
-	t.Run("filter_by_relation_and_objectID", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "reader", ""),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
-
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			tuple.NewTupleKey("document:1", "reader", "user:anne"),
-		}
-
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
-	})
-
-	t.Run("filter_by_objectID", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", ""),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
-
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:anne"),
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			tuple.NewTupleKey("document:1", "writer", "user:bob"),
-		}
-
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
-	})
-
-	t.Run("filter_by_objectID_and_user", func(t *testing.T) {
-		tupleIterator, err := datastore.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", "user:bob"),
-		)
-		require.NoError(t, err)
-		defer tupleIterator.Stop()
-
-		expectedTupleKeys := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			tuple.NewTupleKey("document:1", "writer", "user:bob"),
-		}
-
-		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
-	})
-}
-
-func ReadPageTestCorrectnessOfContinuationTokensV2(t *testing.T, datastore storage.OpenFGADatastore) {
-	ctx := context.Background()
-	storeID := ulid.Make().String()
-
-	tuplesWritten := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "reader", "user:anne"),
-		// read should skip over these
-		tuple.NewTupleKey("document:2", "a", "user:anne"),
-		tuple.NewTupleKey("document:2", "b", "user:anne"),
-		tuple.NewTupleKey("document:2", "c", "user:anne"),
-		tuple.NewTupleKey("document:2", "d", "user:anne"),
-		tuple.NewTupleKey("document:2", "e", "user:anne"),
-		tuple.NewTupleKey("document:2", "f", "user:anne"),
-		tuple.NewTupleKey("document:2", "g", "user:anne"),
-		tuple.NewTupleKey("document:2", "h", "user:anne"),
-		tuple.NewTupleKey("document:2", "j", "user:anne"),
-		// end of skip
-		tuple.NewTupleKey("document:1", "admin", "user:anne"),
-	}
-
-	err := datastore.Write(ctx, storeID, nil, tuplesWritten)
-	require.NoError(t, err)
-
-	t.Run("returns_2_results_and_no_continuation_token_when_page_size_2", func(t *testing.T) {
-		tuplesRead, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", "user:anne"),
-			storage.PaginationOptions{
-				PageSize: 2,
+	testCases := map[string]struct {
+		filter         *openfgav1.TupleKey
+		expectedTuples []*openfgav1.TupleKey
+	}{
+		`no_filter`: {
+			filter:         tuple.NewTupleKey("", "", ""),
+			expectedTuples: tuples,
+		},
+		`filter_by_user_and_relation_and_objectID`: {
+			filter: tuple.NewTupleKey("document:1", "reader", "user:github.com|anne@test.com"),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|anne@test.com"),
 			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "admin", "user:anne")},
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
-		}
-
-		requireEqualTuples(t, expectedTuples, tuplesRead)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("returns_1_results_and_continuation_token_when_page_size_1", func(t *testing.T) {
-		firstRead, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", "user:anne"),
-			storage.PaginationOptions{
-				PageSize: 1,
+		},
+		`filter_by_user_and_relation_and_objectType`: {
+			filter: tuple.NewTupleKey("document:", "reader", "user:github.com|bob@test.com"),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|bob@test.com"),
 			},
-		)
-		require.NoError(t, err)
-
-		require.Len(t, firstRead, 1)
-		require.Equal(t, "document:1", firstRead[0].GetKey().GetObject())
-		require.Equal(t, "user:anne", firstRead[0].GetKey().GetUser())
-		require.NotEmpty(t, contToken)
-
-		// use the token
-
-		secondRead, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", "user:anne"),
-			storage.PaginationOptions{
-				PageSize: 50, // fetch the remainder
-				From:     string(contToken),
+		},
+		`filter_by_user_and_objectType`: {
+			filter: tuple.NewTupleKey("document:", "", "user:github.com|bob@test.com"),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|bob@test.com"),
+				tuple.NewTupleKey("document:1", "writer", "user:github.com|bob@test.com"),
 			},
-		)
-		require.NoError(t, err)
-
-		require.Len(t, secondRead, 1)
-		require.Equal(t, "document:1", secondRead[0].GetKey().GetObject())
-		require.Equal(t, "user:anne", secondRead[0].GetKey().GetUser())
-		require.NotEqual(t, firstRead[0].GetKey().GetRelation(), secondRead[0].GetKey().GetRelation())
-		require.Empty(t, contToken)
-	})
-}
-
-func ReadPageTestCorrectnessOfTuples(t *testing.T, datastore storage.OpenFGADatastore) {
-	ctx := context.Background()
-
-	tuples := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "reader", "user:anne"),
-		tuple.NewTupleKey("document:1", "reader", "user:bob"),
-		tuple.NewTupleKey("document:1", "writer", "user:bob"),
-		{
-			Object:   "document:2",
-			Relation: "viewer",
-			User:     "user:anne",
-			Condition: &openfgav1.RelationshipCondition{
-				Name: "condition",
+		},
+		`filter_by_relation_and_objectID`: {
+			filter: tuple.NewTupleKey("document:1", "reader", ""),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|anne@test.com"),
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|bob@test.com"),
+			},
+		},
+		`filter_by_objectID`: {
+			filter: tuple.NewTupleKey("document:1", "", ""),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|anne@test.com"),
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|bob@test.com"),
+				tuple.NewTupleKey("document:1", "writer", "user:github.com|bob@test.com"),
+				tuple.NewTupleKey("document:1", "admin", "user:github.com|anne@test.com"),
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:github.com|anne@test.com", "condition1", nil),
+			},
+		},
+		`filter_by_objectID_and_user`: {
+			filter: tuple.NewTupleKey("document:1", "", "user:github.com|bob@test.com"),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "reader", "user:github.com|bob@test.com"),
+				tuple.NewTupleKey("document:1", "writer", "user:github.com|bob@test.com"),
+			},
+		},
+		`filter_by_objectID_with_special_character`: {
+			filter: tuple.NewTupleKey("document:1|special", "", ""),
+			expectedTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1|special", "reader", "user:github.com|anne@test.com"),
+				tuple.NewTupleKey("document:1|special", "writer", "user:github.com|charlie@test.com"),
 			},
 		},
 	}
 
-	storeID := ulid.Make().String()
+	for testName, test := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			t.Run("Read_Page", func(t *testing.T) {
+				seenTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, 1, test.filter))
+				if diff := cmp.Diff(test.expectedTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+					t.Fatalf("mismatch (-want +got):\n%s", diff)
+				}
+				seenTuples = testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, 2, test.filter))
+				if diff := cmp.Diff(test.expectedTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+					t.Fatalf("mismatch (-want +got):\n%s", diff)
+				}
+				seenTuples = testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, storage.DefaultPageSize, test.filter))
+				if diff := cmp.Diff(test.expectedTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+					t.Fatalf("mismatch (-want +got):\n%s", diff)
+				}
+			})
 
-	err := datastore.Write(ctx, storeID, nil, tuples)
-	require.NoError(t, err)
+			t.Run("Read", func(t *testing.T) {
+				tupleIterator, err := datastore.Read(ctx, storeID, test.filter)
+				require.NoError(t, err)
+				defer tupleIterator.Stop()
 
-	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("", "", ""),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
-			{Key: tuple.NewTupleKeyWithCondition("document:2", "viewer", "user:anne", "condition", nil)},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("filter_by_user_and_relation_and_objectID", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "reader", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("filter_by_user_and_relation_and_objectType", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:", "reader", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("filter_by_user_and_objectType", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:", "", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("filter_by_relation_and_objectID", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "reader", ""),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("filter_by_objectID", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", ""),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:anne")},
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
-
-	t.Run("filter_by_objectID_and_user", func(t *testing.T) {
-		gotTuples, contToken, err := datastore.ReadPage(
-			ctx,
-			storeID,
-			tuple.NewTupleKey("document:1", "", "user:bob"),
-			storage.PaginationOptions{
-				PageSize: 50,
-			},
-		)
-		require.NoError(t, err)
-
-		expectedTuples := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "reader", "user:bob")},
-			{Key: tuple.NewTupleKey("document:1", "writer", "user:bob")},
-		}
-
-		requireEqualTuples(t, expectedTuples, gotTuples)
-		require.Empty(t, contToken)
-	})
+				seenTuples := iterateThroughAllTuples(t, tupleIterator)
+				if diff := cmp.Diff(test.expectedTuples, seenTuples, cmpSortTupleKeys...); diff != "" {
+					t.Fatalf("mismatch (-want +got):\n%s", diff)
+				}
+			})
+		})
+	}
 }
 
 // getObjects returns all the objects from an iterator.
@@ -1483,11 +1421,8 @@ func getObjects(t *testing.T, tupleIterator storage.TupleIterator) []string {
 	for {
 		tp, err := tupleIterator.Next(context.Background())
 		if err != nil {
-			if err == storage.ErrIteratorDone {
-				break
-			}
-
-			t.Errorf(err.Error())
+			require.ErrorIs(t, err, storage.ErrIteratorDone)
+			break
 		}
 
 		objects = append(objects, tp.GetKey().GetObject())
@@ -1495,30 +1430,120 @@ func getObjects(t *testing.T, tupleIterator storage.TupleIterator) []string {
 	return objects
 }
 
-func getTupleKeys(tupleIterator storage.TupleIterator, t *testing.T) []*openfgav1.TupleKey {
+// iterateThroughAllTuples returns all the tuples in the iterator.
+// If the iterator throws an error, it fails the test.
+func iterateThroughAllTuples(t *testing.T, tupleIterator storage.TupleIterator) []*openfgav1.TupleKey {
 	t.Helper()
-	var tupleKeys []*openfgav1.TupleKey
+	var tupleKeys []*openfgav1.Tuple
 	for {
 		tp, err := tupleIterator.Next(context.Background())
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-
-			require.Fail(t, err.Error())
+			require.ErrorIs(t, err, storage.ErrIteratorDone)
+			break
 		}
 
-		tupleKeys = append(tupleKeys, tp.GetKey())
+		tupleKeys = append(tupleKeys, tp)
 	}
-	return tupleKeys
+	return testutils.ConvertTuplesToTupleKeys(tupleKeys)
 }
 
-func requireEqualTuples(t *testing.T, expectedTuples []*openfgav1.Tuple, actualTuples []*openfgav1.Tuple) {
-	cmpOpts := []cmp.Option{
-		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
-		testutils.TupleCmpTransformer,
-		protocmp.Transform(),
+// readChanges calls ReadChanges. It reads everything from the store, pageSize changes at a time.
+// Along the way, it makes assertions on the changes seen. It returns all changes seen.
+func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID string, pageSize int, objectTypeFilter string) []*openfgav1.TupleChange {
+	t.Helper()
+	var (
+		tupleChanges      []*openfgav1.TupleChange
+		seenChanges       []*openfgav1.TupleChange
+		continuationToken []byte
+		err               error
+	)
+	for {
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, objectTypeFilter, storage.PaginationOptions{
+			PageSize: pageSize,
+			From:     string(continuationToken),
+		}, time.Duration(0))
+		if err != nil {
+			require.ErrorIs(t, err, storage.ErrNotFound)
+			break
+		}
+		// Not strict equal because there may be less changes than the page size
+		require.LessOrEqual(t, len(tupleChanges), pageSize)
+		seenChanges = append(seenChanges, tupleChanges...)
+		if len(tupleChanges) == 0 {
+			require.Empty(t, continuationToken)
+		} else {
+			require.NotEmpty(t, continuationToken)
+		}
 	}
-	diff := cmp.Diff(expectedTuples, actualTuples, cmpOpts...)
-	require.Empty(t, diff)
+
+	return seenChanges
+}
+
+// readWithPageSize calls ReadPage. It reads everything from the store, pageSize tuples at a time.
+// Along the way, it makes assertions on the tuples seen. It returns all tuples seen, in no particular oder.
+func readWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID string, pageSize int, filter *openfgav1.TupleKey) []*openfgav1.Tuple {
+	t.Helper()
+	var (
+		tuples            []*openfgav1.Tuple
+		seenTuples        []*openfgav1.Tuple
+		continuationToken []byte
+		err               error
+	)
+	for {
+		tuples, continuationToken, err = ds.ReadPage(context.Background(), storeID, filter, storage.PaginationOptions{
+			PageSize: pageSize,
+			From:     string(continuationToken),
+		})
+		if err != nil {
+			require.ErrorIs(t, err, storage.ErrNotFound)
+			break
+		}
+
+		seenTuples = append(seenTuples, tuples...)
+		if len(continuationToken) != 0 {
+			require.Equal(t, len(tuples), pageSize)
+		} else {
+			require.LessOrEqual(t, len(tuples), pageSize)
+			break
+		}
+	}
+
+	return seenTuples
+}
+
+// writeTuplesConcurrently writes two groups of tuples concurrently to expose potential race issues when reading changes.
+func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenFGADatastore, tupleGroupOne, tupleGroupTwo []*openfgav1.TupleKey) {
+	t.Helper()
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		err := datastore.Write(
+			ctx,
+			store,
+			[]*openfgav1.TupleKeyWithoutCondition{},
+			tupleGroupOne,
+		)
+		if err != nil {
+			t.Logf("failed to write tuples: %s", err)
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		err := datastore.Write(
+			ctx,
+			store,
+			[]*openfgav1.TupleKeyWithoutCondition{},
+			tupleGroupTwo,
+		)
+		if err != nil {
+			t.Logf("failed to write tuples: %s", err)
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
