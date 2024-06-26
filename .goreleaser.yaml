@@ -1,3 +1,5 @@
+version: 2
+
 project_name: openfga
 
 before:
@@ -125,7 +127,7 @@ brews:
     homepage: "https://openfga.dev/"
     description: "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar."
     license: "Apache-2.0"
-    folder: "Formula"
+    directory: "Formula"
     url_template: "https://github.com/openfga/openfga/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     download_strategy: CurlDownloadStrategy
 

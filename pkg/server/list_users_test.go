@@ -30,13 +30,13 @@ func TestListUsersValidation(t *testing.T) {
 	})
 
 	model := `
-	model
-		schema 1.1
-	type user
+		model
+			schema 1.1
+		type user
 
-	type document
-		relations
-			define viewer: [user]`
+		type document
+			relations
+				define viewer: [user]`
 
 	tests := []struct {
 		name              string
@@ -310,17 +310,18 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
 
-type group
-  relations
-	define member: [user, group#member]
+				type group
+					relations
+						define member: [user, group#member]
 
-type document
-  relations
-	define viewer: [group#member]`).GetTypeDefinitions(),
+				type document
+					relations
+						define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -367,17 +368,17 @@ func TestListUsers_Deadline(t *testing.T) {
 		t.Cleanup(ds.Close)
 
 		modelStr := `
-		model
-		schema 1.1
-		type user
+			model
+				schema 1.1
+			type user
 
-		type group
-		relations
-			define member: [user]
+			type group
+			relations
+				define member: [user]
 
-		type document
-		relations
-			define viewer: [user, group#member]`
+			type document
+			relations
+				define viewer: [user, group#member]`
 
 		tuples := []string{
 			"document:1#viewer@user:jon",
@@ -427,13 +428,13 @@ func TestListUsers_Deadline(t *testing.T) {
 			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 			Return(
 				testutils.MustTransformDSLToProtoWithID(`
-				model
-				  schema 1.1
-				type user
+					model
+						schema 1.1
+					type user
 
-				type document
-				  relations
-				    define viewer: [user]`),
+					type document
+						relations
+							define viewer: [user]`),
 				nil,
 			).
 			Times(1)
@@ -483,13 +484,13 @@ func TestListUsers_Deadline(t *testing.T) {
 			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 			Return(
 				testutils.MustTransformDSLToProtoWithID(`
-				model
-				  schema 1.1
-				type user
+					model
+						schema 1.1
+					type user
 
-				type document
-				  relations
-				    define viewer: [user]`),
+					type document
+						relations
+							define viewer: [user]`),
 				nil,
 			).
 			Times(1)
