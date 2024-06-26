@@ -50,7 +50,7 @@ func TestCheckMySQL(t *testing.T) {
 
 func TestCheckLogs(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 
 	// create mock OTLP server
@@ -266,7 +266,7 @@ func TestCheckLogs(t *testing.T) {
 
 func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
