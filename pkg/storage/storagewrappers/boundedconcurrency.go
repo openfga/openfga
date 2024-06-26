@@ -51,7 +51,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
-	queryOptions storage.QueryOptions,
+	options ...storage.Option,
 ) (*openfgav1.Tuple, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
@@ -62,11 +62,11 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey, queryOptions)
+	return b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey, options...)
 }
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
-func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, queryOptions storage.QueryOptions) (storage.TupleIterator, error) {
+func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, 
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.Read(ctx, store, tupleKey, queryOptions)
+	return b.RelationshipTupleReader.Read(ctx, store, tupleKey, options...)
 }
 
 // ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -84,7 +84,7 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	queryOptions storage.QueryOptions,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
@@ -95,7 +95,7 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, queryOptions)
+	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options...)
 }
 
 // ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -104,7 +104,7 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-	queryOptions storage.QueryOptions,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
@@ -115,7 +115,7 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 		<-b.limiter
 	}()
 
-	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, queryOptions)
+	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options...)
 }
 
 // waitForLimiter respects context errors and returns an error only if it couldn't send an item to the channel.

@@ -487,7 +487,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 
 		t.Run("read_returns_everything", func(t *testing.T) {
-			tupleIterator, err := datastore.Read(ctx, storeID, tuple.NewTupleKey("", "", ""), storage.NewQueryOptions())
+			tupleIterator, err := datastore.Read(ctx, storeID, tuple.NewTupleKey("", "", ""))
 			require.NoError(t, err)
 			defer tupleIterator.Stop()
 
@@ -1309,7 +1309,7 @@ func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				})
 
 				t.Run("Read", func(t *testing.T) {
-					tupleIterator, err := datastore.Read(ctx, storeID, test.filter, storage.NewQueryOptions())
+					tupleIterator, err := datastore.Read(ctx, storeID, test.filter)
 					require.NoError(t, err)
 					defer tupleIterator.Stop()
 
@@ -1405,7 +1405,7 @@ func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			})
 
 			t.Run("Read", func(t *testing.T) {
-				tupleIterator, err := datastore.Read(ctx, storeID, test.filter, storage.NewQueryOptions())
+				tupleIterator, err := datastore.Read(ctx, storeID, test.filter)
 				require.NoError(t, err)
 				defer tupleIterator.Stop()
 
@@ -1497,7 +1497,7 @@ func readWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID string,
 		tuples, continuationToken, err = ds.ReadPage(context.Background(), storeID, filter, storage.PaginationOptions{
 			PageSize: pageSize,
 			From:     string(continuationToken),
-		}, storage.NewQueryOptions())
+		})
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break

@@ -144,7 +144,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 	ctx, span := tracer.Start(ctx, "resolveThis")
 	defer span.End()
 
-	tupleIter, err := q.datastore.Read(ctx, store, tk, storage.NewQueryOptions(storage.WithConsistencyPreference(consistency)))
+	tupleIter, err := q.datastore.Read(ctx, store, tk, storage.QueryOptions{Consistency: consistency})
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -255,7 +255,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 		tsKey.Relation = tk.GetRelation()
 	}
 
-	tupleIter, err := q.datastore.Read(ctx, store, tsKey, storage.NewQueryOptions(storage.WithConsistencyPreference(consistency)))
+	tupleIter, err := q.datastore.Read(ctx, store, tsKey, storage.QueryOptions{Consistency: consistency})
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

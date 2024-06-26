@@ -174,11 +174,11 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 func (s *MemoryBackend) Close() {}
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey, queryOptions storage.QueryOptions) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, key, nil, queryOptions)
+	return s.read(ctx, store, key, options...)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -186,13 +186,12 @@ func (s *MemoryBackend) ReadPage(
 	ctx context.Context,
 	store string,
 	key *openfgav1.TupleKey,
-	paginationOptions storage.PaginationOptions,
-	queryOptions storage.QueryOptions,
+	options ...storage.Option,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
-	it, err := s.read(ctx, store, key, &paginationOptions, queryOptions)
+	it, err := s.read(ctx, store, key, options...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -272,9 +271,16 @@ func (s *MemoryBackend) ReadChanges(
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
 // A nil paginationOptions input means the returned iterator will iterate through all values.
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions *storage.PaginationOptions, _ storage.QueryOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, options ...storage.Option) (*staticIterator, error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	s.mutexTuples.RLock()
 	defer s.mutexTuples.RUnlock()
@@ -293,8 +299,8 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 
 	var err error
 	var from int
-	if paginationOptions != nil && paginationOptions.From != "" {
-		from, err = strconv.Atoi(paginationOptions.From)
+	if opts.Pagination != nil && opts.Pagination.From != "" {
+		from, err = strconv.Atoi(opts.Pagination.From)
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err
@@ -306,8 +312,8 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	}
 
 	to := 0 // fetch everything
-	if paginationOptions != nil {
-		to = paginationOptions.PageSize
+	if opts.Pagination != nil {
+		to = opts.Pagination.PageSize
 	}
 	if to != 0 && to < len(matches) {
 		return &staticIterator{records: matches[:to], continuationToken: []byte(strconv.Itoa(from + to))}, nil
@@ -427,7 +433,7 @@ func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, queryOptions storage.QueryOptions) (*openfgav1.Tuple, error) {
+func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, options ...storage.Option) (*openfgav1.Tuple, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
@@ -449,7 +455,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	queryOptions storage.QueryOptions,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
@@ -488,7 +494,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-	queryOptions storage.QueryOptions,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadStartingWithUser")
 	defer span.End()
