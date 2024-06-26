@@ -623,27 +623,29 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-type org
-  relations
-	define member: [user]
+		type user
 
-type document
-  relations
-	define a: [user]
-	define b: [user]
-	define union: a or b
-	define union_rewrite: union
-	define intersection: a and b
-	define difference: a but not b
-	define ttu: member from parent
-	define union_and_ttu: union and ttu
-	define union_or_ttu: union or ttu or union_rewrite
-	define intersection_of_ttus: union_or_ttu and union_and_ttu
-	define parent: [org]`)
+		type org
+			relations
+				define member: [user]
+
+		type document
+			relations
+				define a: [user]
+				define b: [user]
+				define union: a or b
+				define union_rewrite: union
+				define intersection: a and b
+				define difference: a but not b
+				define ttu: member from parent
+				define union_and_ttu: union and ttu
+				define union_or_ttu: union or ttu or union_rewrite
+				define intersection_of_ttus: union_or_ttu and union_and_ttu
+				define parent: [org]`)
 
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
