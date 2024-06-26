@@ -331,33 +331,30 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
+// ResolvesExclusivelyToDirectlyAssignable returns whether all relationReferences are relations that are exclusively directly assignable.
+// For now, it will return false if the directly assignable relations are public wildcard, contains condition, or is another userset because
+// check using these relations cannot be evaluated via simple datastore query.
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
-		if rr.GetCondition() != "" {
-			// although it is directly assignable, each match requires to evaluate condition.
+		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
 			return false, nil
 		}
-		switch rr.GetRelationOrWildcard().(type) {
-		case *openfgav1.RelationReference_Wildcard:
-			return false, nil
-		case *openfgav1.RelationReference_Relation:
-			relation, err := t.GetRelation(rr.GetType(), rr.GetRelation())
-			if err != nil {
-				return false, err
-			}
-			_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
-			if !ok {
-				return false, err
-			}
+		relation, err := t.GetRelation(rr.GetType(), rr.GetRelation())
+		if err != nil {
+			return false, err
+		}
+		_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
+		if !ok {
+			return false, err
+		}
 
-			// need to check whether these are simple types as well
-			for _, ref := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-				if ref.GetRelationOrWildcard() != nil || ref.GetCondition() != "" {
-					return false, nil
-				}
+		// need to check whether these are simple types as well
+		for _, ref := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			if ref.GetRelationOrWildcard() != nil || ref.GetCondition() != "" {
+				// For now, we don't allow if these types are another userset, publicly assignable or has condition
+				// because local check with these relations cannot be evaluated via simple datastore query.
+				return false, nil
 			}
-		default:
-			return false, nil
 		}
 	}
 	return true, nil

@@ -3151,7 +3151,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			name: "conditional_relation_in_member",
