@@ -1299,7 +1299,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 					// FIXME: need to re-enable this!!!!
 					// minDBReads <= dbReads <= maxDBReads
 					// require.GreaterOrEqual(t, res.ResolutionMetadata.DatastoreQueryCount, test.minDBReads)
-					//require.LessOrEqual(t, res.ResolutionMetadata.DatastoreQueryCount, test.maxDBReads)
+					// require.LessOrEqual(t, res.ResolutionMetadata.DatastoreQueryCount, test.maxDBReads)
 				})
 			}
 		})

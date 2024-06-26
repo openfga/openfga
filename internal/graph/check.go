@@ -853,7 +853,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					// [group][owner]: [1, 2]
 					usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
 					// "group": ["member", "owner"]
-					splittedUsersetObject := strings.Split(usersetObject, ":")
+					splittedUsersetObject := strings.SplitN(usersetObject, ":", 2)
 					if _, ok := usersetObjectRelationPair[splittedUsersetObject[0]]; !ok {
 						usersetObjectRelationPair[splittedUsersetObject[0]] = make(map[string][]string)
 					}
@@ -868,11 +868,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return nil, errs
 				}
 
-				for usersetObject, usersetRelationMap := range usersetObjectRelationPair {
+				for usersetObjectType, usersetRelationMap := range usersetObjectRelationPair {
 					for usersetRelation, objectsSlice := range usersetRelationMap {
-						// c.ds.batchCheck(user, [group:1#member, group:2#member, group:1#owner, group:2#owner])
+						// TODO: we can optimize by using batch query once DS has the function to perform batch query.
 						iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-							ObjectType: usersetObject,
+							ObjectType: usersetObjectType,
 							Relation:   usersetRelation,
 							UserFilter: []*openfgav1.ObjectRelation{{
 								Object: reqTupleKey.GetUser(),
@@ -881,6 +881,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						if err != nil {
 							return nil, err
 						}
+
 						var objectList []string
 
 						for {
@@ -898,6 +899,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							}
 						}
 
+						// TODO: we can optimize this as this is already in order
 						for _, object := range objectList {
 							if slices.Contains(objectsSlice, object) {
 								return &ResolveCheckResponse{Allowed: true,
