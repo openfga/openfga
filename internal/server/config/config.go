@@ -326,6 +326,10 @@ func (cfg *Config) Verify() error {
 		)
 	}
 
+	if cfg.Log.Level == "none" {
+		fmt.Println("WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
+	}
+
 	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}

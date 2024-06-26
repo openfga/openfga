@@ -1,6 +1,9 @@
 package config
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -272,6 +275,56 @@ func TestVerifyConfig(t *testing.T) {
 
 		err := cfg.Verify()
 		require.Error(t, err)
+	})
+
+	t.Run("prints_warning_when_log_level_is_none", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Level = "none"
+
+		// Capture the output of fmt.Println
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		defer func() {
+			// Restore the original stdout
+			os.Stdout = oldStdout
+			w.Close()
+		}()
+
+		cfg.Verify()
+		w.Close()
+
+		// Read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+
+		require.Contains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
+	})
+
+	t.Run("does_not_print_warning_when_log_level_is_not_none", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Level = "info"
+
+		// Capture the output of fmt.Println
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		defer func() {
+			// Restore the original stdout
+			os.Stdout = oldStdout
+			w.Close()
+		}()
+
+		cfg.Verify()
+		w.Close()
+
+		// Read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+
+		require.NotContains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	})
 }
 
