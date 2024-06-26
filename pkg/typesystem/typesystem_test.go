@@ -2920,6 +2920,307 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 	}
 }
 
+func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
+	tests := []struct {
+		name                     string
+		model                    string
+		relationReferences       []*openfgav1.RelationReference
+		expectDirectlyAssignable bool
+		expectError              bool
+	}{
+		{
+			name: "simple_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+
+		{
+			name: "complex_userset_member_is_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user, group#member]
+						type folder
+							relations
+								define allowed: [group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "complex_userset_member_is_public",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user, user:*]
+						type folder
+							relations
+								define allowed: [group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "complex_userset_exclusion",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define exclude: [user]
+								define member: [user]
+								define complexMember: [user] but not exclude
+						type folder
+							relations
+								define allowed: [group#complexMember]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "complexMember"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "complex_userset_intersection",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define owner: [user]
+								define member: [user]
+								define complexMember: [user] or owner
+						type folder
+							relations
+								define allowed: [group#complexMember]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "complexMember"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "complex_userset_union",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define allowed: [user]
+								define member: [user]
+								define complexMember: [user] and allowed
+						type folder
+							relations
+								define allowed: [group#complexMember]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "complexMember"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "multiple_assignment_userset",
+			model: `
+						model
+							schema 1.1
+						type user1
+						type user2
+						type group
+							relations
+								define member: [user1, user2]
+						type folder
+							relations
+								define allowed: [group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "multiple_relation_references",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+								define owner: [user]
+						type folder
+							relations
+								define allowed: [group#member, group#owner]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+				DirectRelationReference("group", "owner"),
+			},
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "multiple_relation_references_some_complex",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+								define owner: [user]
+								define disallowed: [user]
+								define disallowed_member: member but not disallowed
+						type folder
+							relations
+								define allowed: [group#member, group#owner]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+				DirectRelationReference("group", "disallowed_member"),
+				DirectRelationReference("group", "owner"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "computed_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+								define viewable_member: member
+						type folder
+							relations
+								define allowed: [group#viewable_member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "viewable_member"),
+			},
+			// TODO: once we are able to handle the computed userset, we will change this to true.
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "public_assignable",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+
+						type folder
+							relations
+								define allowed: [user, user:*]`,
+			relationReferences: []*openfgav1.RelationReference{
+				WildcardRelationReference("user"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "conditional_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define allowed: [group#member with x_less_than]
+		                condition x_less_than(x: int) {
+		                    x < 100
+		                }`,
+			relationReferences: []*openfgav1.RelationReference{
+				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
+			},
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "conditional_relation_in_member",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user with x_less_than]
+						type folder
+							relations
+								define allowed: [group#member]
+		                condition x_less_than(x: int) {
+		                    x < 100
+		                }`,
+			relationReferences: []*openfgav1.RelationReference{
+				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "not_valid_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define allowed: [group#member]
+		               `,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "bad_relation"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typeSystem := New(model)
+			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.expectDirectlyAssignable, result)
+			}
+		})
+	}
+}
+
 func TestConditions(t *testing.T) {
 	tests := []struct {
 		name          string
