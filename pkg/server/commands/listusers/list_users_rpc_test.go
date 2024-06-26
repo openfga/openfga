@@ -2547,7 +2547,10 @@ func TestListUsersCycleDetection(t *testing.T) {
 	// Times(0) ensures that we exit quickly
 	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
+	l := NewListUsersQuery(mockDatastore,
+		WithResolveNodeLimit(maximumRecursiveDepth),
+		WithListUsersDeadline(6*time.Second),
+	)
 	channelDone := make(chan struct{})
 	channelWithResults := make(chan foundUser)
 	channelWithError := make(chan error, 1)
@@ -2921,7 +2924,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 						define intersection: a and b`)
 			typesys := typesystem.New(model)
 
-			l := NewListUsersQuery(mockDatastore)
+			l := NewListUsersQuery(mockDatastore, WithListUsersDeadline(6*time.Second))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 			resp, err := l.ListUsers(ctx, test.req)
@@ -2951,7 +2954,10 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+			l := NewListUsersQuery(ds,
+				WithResolveNodeLimit(maximumRecursiveDepth),
+				WithListUsersDeadline(6*time.Second),
+			)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
@@ -3350,7 +3356,7 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 				),
 			)
 
-			l := NewListUsersQuery(ds)
+			l := NewListUsersQuery(ds, WithListUsersDeadline(6*time.Second))
 			resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
 				Relation:         test.relation,
 				Object:           test.object,
@@ -3698,6 +3704,7 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 				res, err := NewListUsersQuery(
 					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
 					WithListUsersMaxConcurrentReads(test.inputConfigMaxConcurrentReads),
+					WithListUsersDeadline(6*time.Second),
 				).ListUsers(ctx, test.inputRequest)
 
 				require.NoError(t, err)
@@ -3735,7 +3742,10 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 			"document:1#restricted@user:jon",
 		})
 
-		l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+		l := NewListUsersQuery(ds,
+			WithResolveNodeLimit(maximumRecursiveDepth),
+			WithListUsersDeadline(6*time.Second),
+		)
 		channelDone := make(chan struct{})
 		channelWithResults := make(chan foundUser)
 		channelWithError := make(chan error, 1)
