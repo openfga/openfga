@@ -110,6 +110,7 @@ func (s *Server) ListUsers(
 		methodName,
 		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		"N/A",
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListUsersResponse{
