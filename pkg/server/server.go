@@ -142,9 +142,15 @@ type Server struct {
 	listObjectsDispatchDefaultThreshold       uint32
 	listObjectsDispatchThrottlingMaxThreshold uint32
 
+	listUsersDispatchThrottlingEnabled      bool
+	listUsersDispatchThrottlingFrequency    time.Duration
+	listUsersDispatchDefaultThreshold       uint32
+	listUsersDispatchThrottlingMaxThreshold uint32
+
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	listObjectsDispatchThrottler throttler.Throttler
+	listUsersDispatchThrottler   throttler.Throttler
 }
 
 type OpenFGAServiceV1Option func(s *Server)
