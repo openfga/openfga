@@ -333,7 +333,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 
 // ResolvesExclusivelyToDirectlyAssignable returns whether all relationReferences are relations that are exclusively directly assignable.
 // For now, it will return false if the directly assignable relations are public wildcard, contains condition, or is another userset because
-// check using these relations cannot be evaluated via simple datastore query.
+// check resolver using these relations cannot be evaluated via simple datastore query.
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
