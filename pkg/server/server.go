@@ -997,6 +997,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tk,
+		Consistency:          req.GetConsistency(),
 	})
 }
 
