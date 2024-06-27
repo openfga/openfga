@@ -627,6 +627,7 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish playground connection to HTTP server: %w", err)
 	}
+	defer conn.Close()
 
 	playgroundAPIToken := ""
 	if authMethod == "preshared" {
@@ -666,7 +667,7 @@ func (s *ServerContext) runPlaygroundServer(config *serverconfig.Config) (*http.
 		if err != http.ErrServerClosed {
 			s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
 		}
-		s.Logger.Info("playground server")
+		s.Logger.Info("playground shut down.")
 	}()
 
 	return playground, nil
