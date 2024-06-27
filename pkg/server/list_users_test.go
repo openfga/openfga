@@ -257,9 +257,20 @@ func TestExperimentalListUsers(t *testing.T) {
 
 	t.Run("list_users_errors_if_not_higher_consistency_param_sent_but_not_experimentally_enabled", func(t *testing.T) {
 		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
-		req.Consistency = openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-		_, err := server.ListUsers(ctx, req)
+		_, err := server.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId: storeID,
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+
 		require.Error(t, err)
 		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
 
