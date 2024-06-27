@@ -589,6 +589,9 @@ func (s *Server) Close() {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return nil, status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
 	start := time.Now()
 
 	targetObjectType := req.GetType()
@@ -692,6 +695,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
 	start := time.Now()
 
 	ctx := srv.Context()
@@ -782,6 +788,9 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return nil, status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -849,6 +858,10 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return nil, status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
+
 	start := time.Now()
 
 	tk := req.GetTupleKey()
@@ -968,6 +981,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return nil, status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
