@@ -2922,11 +2922,11 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 
 func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	tests := []struct {
-		name               string
-		model              string
-		relationReferences []*openfgav1.RelationReference
-		expected           bool
-		hasError           bool
+		name                     string
+		model                    string
+		relationReferences       []*openfgav1.RelationReference
+		expectDirectlyAssignable bool
+		expectError              bool
 	}{
 		{
 			name: "simple_userset",
@@ -2943,7 +2943,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			expected: true,
+			expectDirectlyAssignable: true,
+			expectError:              false,
 		},
 
 		{
@@ -2961,7 +2962,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "complex_userset_member_is_public",
@@ -2978,7 +2980,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "complex_userset_exclusion",
@@ -2997,7 +3000,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "complex_userset_intersection",
@@ -3016,7 +3020,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "complex_userset_union",
@@ -3035,7 +3040,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "multiple_assignment_userset",
@@ -3053,7 +3059,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			expected: true,
+			expectDirectlyAssignable: true,
+			expectError:              false,
 		},
 		{
 			name: "multiple_relation_references",
@@ -3072,7 +3079,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "member"),
 				DirectRelationReference("group", "owner"),
 			},
-			expected: true,
+			expectDirectlyAssignable: true,
+			expectError:              false,
 		},
 		{
 			name: "multiple_relation_references_some_complex",
@@ -3094,7 +3102,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "disallowed_member"),
 				DirectRelationReference("group", "owner"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "computed_userset",
@@ -3113,7 +3122,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "viewable_member"),
 			},
 			// TODO: once we are able to handle the computed userset, we will change this to true.
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "public_assignable",
@@ -3131,7 +3141,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				WildcardRelationReference("user"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
 		},
 		{
 			name: "conditional_relation",
@@ -3151,7 +3162,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			expected: true,
+			expectDirectlyAssignable: true,
+			expectError:              false,
 		},
 		{
 			name: "conditional_relation_in_member",
@@ -3171,7 +3183,27 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			expected: false,
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "not_valid_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define allowed: [group#member]
+		               `,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "bad_relation"),
+			},
+			expectDirectlyAssignable: false,
+			expectError:              true,
 		},
 	}
 	for _, test := range tests {
@@ -3179,11 +3211,11 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typeSystem := New(model)
 			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
-			if test.hasError {
+			if test.expectError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, test.expected, result)
+				require.Equal(t, test.expectDirectlyAssignable, result)
 			}
 		})
 	}
