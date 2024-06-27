@@ -810,6 +810,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		TupleKey:          tk,
 		PageSize:          req.GetPageSize(),
 		ContinuationToken: req.GetContinuationToken(),
+		Consistency:       req.GetConsistency(),
 	})
 }
 
@@ -997,6 +998,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tk,
+		Consistency:          req.GetConsistency(),
 	})
 }
 
