@@ -42,6 +42,7 @@ func (s *Server) ListUsers(
 		attribute.String("object", tuple.BuildObject(req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user_filters", userFiltersToString(req.GetUserFilters())),
+		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
 
@@ -110,7 +111,7 @@ func (s *Server) ListUsers(
 		methodName,
 		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
-		"N/A",
+		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListUsersResponse{
