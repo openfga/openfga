@@ -331,6 +331,32 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
+// resolvesTypeRelationToDirectlyAssignable returns whether the assignable types ONLY if
+// the specified type and relation is exclusively assignable. Otherwise, it will return nil as slice.
+func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return nil, false, err
+	}
+	_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
+	if !ok {
+		return nil, false, err
+	}
+
+	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
+	// need to check whether these are simple types as well
+	for _, ref := range directlyRelatedTypes {
+		if ref.GetRelationOrWildcard() != nil || ref.GetCondition() != "" {
+			// For now, we don't allow if these types are another userset, publicly assignable or has condition
+			// because local check with these relations cannot be evaluated via simple datastore query.
+			return nil, false, nil
+		}
+		assignableTypes = append(assignableTypes, ref.GetType())
+	}
+	return assignableTypes, true, nil
+}
+
 // ResolvesExclusivelyToDirectlyAssignable returns whether all relationReferences are relations that are exclusively directly assignable.
 // For now, it will return false if the directly assignable relations are public wildcard, contains condition, or is another userset because
 // check resolver using these relations cannot be evaluated via simple datastore query.
@@ -339,22 +365,12 @@ func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences 
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
 			return false, nil
 		}
-		relation, err := t.GetRelation(rr.GetType(), rr.GetRelation())
+		_, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation())
 		if err != nil {
 			return false, err
 		}
-		_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
-		if !ok {
-			return false, err
-		}
-
-		// need to check whether these are simple types as well
-		for _, ref := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-			if ref.GetRelationOrWildcard() != nil || ref.GetCondition() != "" {
-				// For now, we don't allow if these types are another userset, publicly assignable or has condition
-				// because local check with these relations cannot be evaluated via simple datastore query.
-				return false, nil
-			}
+		if !directlyAssignable {
+			return false, nil
 		}
 	}
 	return true, nil
@@ -387,6 +403,32 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	}
 
 	return false, nil
+}
+
+// TTUResolvesExclusivelyToDirectlyAssignable returns whether the computedRelation of object's tupleRelation is directly assignable.
+func (t *TypeSystem) TTUResolvesExclusivelyToDirectlyAssignable(objectType, tuplesetRelation, computedRelation string) (bool, error) {
+	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
+	if err != nil {
+		return false, err
+	}
+	if !directlyAssignable {
+		return false, nil
+	}
+	for _, tuplesetRelationType := range tuplesetRelationTypes {
+		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
+		if err != nil {
+			var relationUndefinedError *RelationUndefinedError
+			if errors.As(err, &relationUndefinedError) {
+				// It is possible thats some parents may not have the relation defined
+				continue
+			}
+			return false, err
+		}
+		if !childDirectlyAssignable {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part

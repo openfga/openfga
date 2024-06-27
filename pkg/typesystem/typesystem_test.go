@@ -3221,6 +3221,329 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	}
 }
 
+func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
+	tests := []struct {
+		name                     string
+		model                    string
+		objectType               string
+		tuplesetRealtion         string
+		computedRelation         string
+		expectDirectlyAssignable bool
+		expectError              bool
+	}{
+		{
+			name: "simple_ttu_references",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "complex_tupleset_relation_intersection",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define otherParent: [user]
+								define parent: [group] or otherParent
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "complex_tupleset_relation_union",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define otherParent: [user]
+								define parent: [group] and otherParent
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "tupleset_relation_public",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group, group:*]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "tupleset_relation_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group, folder#parent]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "ttu_child_multiple_directly_assignable_types",
+			model: `
+						model
+							schema 1.1
+						type user1
+						type user2
+						type group
+							relations
+								define member: [user1, user2]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "multiple_ttu_references",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group1
+							relations
+								define member: [user]
+						type group2
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group1, group2]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "only_some_parent_have_relations",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group1
+							relations
+								define owner: [user]
+						type group2
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group1, group2]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: true,
+			expectError:              false,
+		},
+		{
+			name: "ttu_child_not_directly_assignable_union",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define allowed: [user]
+								define member: [user] and allowed
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "ttu_child_public_wildcard",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user, user:*]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "ttu_child_has_condition",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user with x_less_than]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+                        condition x_less_than(x: int) {
+		                    x < 100
+		                }
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "ttu_child_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define parent: [group]
+								define member: [user, group#member]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+                        condition x_less_than(x: int) {
+		                    x < 100
+		                }
+					`,
+			objectType:               "folder",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "bad_object_type",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "undefined_type",
+			tuplesetRealtion:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              true,
+		},
+		{
+			name: "bad_tupleset_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "group",
+			tuplesetRealtion:         "viewer",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typeSystem := New(model)
+			result, err := typeSystem.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRealtion, test.computedRelation)
+			if test.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.expectDirectlyAssignable, result)
+			}
+		})
+	}
+}
+
 func TestConditions(t *testing.T) {
 	tests := []struct {
 		name          string
