@@ -36,8 +36,9 @@ func (s *Server) ListUsers(
 		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
 	}
 
-	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		return nil, status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
 	}
 
 	start := time.Now()
