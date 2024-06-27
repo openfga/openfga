@@ -60,6 +60,9 @@ type PaginationOptions struct {
 }
 
 func (p PaginationOptions) Apply(opts *Options) {
+	if p.PageSize == 0 {
+		p.PageSize = DefaultPageSize
+	}
 	opts.Pagination = &p
 }
 
@@ -213,7 +216,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
-	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options ...Option) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
@@ -241,7 +244,7 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
-	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgav1.Store, []byte, error)
+	ListStores(ctx context.Context, options ...Option) ([]*openfgav1.Store, []byte, error)
 }
 
 // AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
@@ -267,8 +270,8 @@ type ChangelogBackend interface {
 		ctx context.Context,
 		store,
 		objectType string,
-		paginationOptions PaginationOptions,
 		horizonOffset time.Duration,
+		options ...Option,
 	) ([]*openfgav1.TupleChange, []byte, error)
 }
 

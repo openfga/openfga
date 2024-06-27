@@ -375,9 +375,16 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, options ...storage.Option) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := p.stbl.
 		Select("authorization_model_id").
@@ -386,15 +393,15 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if opts.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -421,8 +428,8 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 
 	var token []byte
 	numModelIDs := len(modelIDs)
-	if len(modelIDs) > opts.PageSize {
-		numModelIDs = opts.PageSize
+	if len(modelIDs) > opts.Pagination.PageSize {
+		numModelIDs = opts.Pagination.PageSize
 		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
@@ -530,9 +537,16 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgav1.Store, e
 }
 
 // ListStores provides a paginated list of all stores present in the Postgres storage.
-func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
+func (p *Postgres) ListStores(ctx context.Context, options ...storage.Option) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := p.stbl.
 		Select("id", "name", "created_at", "updated_at").
@@ -540,15 +554,15 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if opts.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -579,12 +593,12 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if len(stores) > opts.PageSize {
+	if len(stores) > opts.Pagination.PageSize {
 		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
-		return stores[:opts.PageSize], contToken, nil
+		return stores[:opts.Pagination.PageSize], contToken, nil
 	}
 
 	return stores, nil, nil
@@ -665,11 +679,18 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 func (p *Postgres) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
-	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
+	options ...storage.Option,
 ) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := p.stbl.
 		Select(
@@ -684,8 +705,8 @@ func (p *Postgres) ReadChanges(
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -695,8 +716,8 @@ func (p *Postgres) ReadChanges(
 
 		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+	if opts.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)

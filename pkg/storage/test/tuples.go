@@ -169,11 +169,11 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		_, token, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		_, token, err := datastore.ReadChanges(ctx, storeID, "", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 
-		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 	})
@@ -195,7 +195,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		_, token, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 1*time.Minute)
+		_, token, err := datastore.ReadChanges(ctx, storeID, "", 1*time.Minute, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 	})
@@ -258,7 +258,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		var continuationToken []byte
 		var err error
 		for {
-			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.NewPaginationOptions(10, string(continuationToken)), 1*time.Millisecond)
+			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", 1*time.Millisecond, storage.PaginationOptions{PageSize: 10, From: string(continuationToken)})
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					break
@@ -463,10 +463,10 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", storage.NewPaginationOptions(1, ""), 0)
+		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", 0, storage.PaginationOptions{PageSize: 1, From: ""})
 		require.Len(t, changesFolder, 1)
 
-		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", storage.NewPaginationOptions(1, string(tokenFolder)), 0)
+		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", 0, storage.PaginationOptions{PageSize: 1, From: string(tokenFolder)})
 		require.Empty(t, changesDocument)
 		require.ErrorIs(t, err, storage.ErrMismatchObjectType)
 	})
@@ -1028,7 +1028,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -1111,7 +1111,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
@@ -1462,10 +1462,10 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 		err               error
 	)
 	for {
-		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, objectTypeFilter, storage.PaginationOptions{
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, objectTypeFilter, time.Duration(0), storage.PaginationOptions{
 			PageSize: pageSize,
 			From:     string(continuationToken),
-		}, time.Duration(0))
+		})
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break

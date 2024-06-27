@@ -204,8 +204,8 @@ func (s *MemoryBackend) ReadChanges(
 	ctx context.Context,
 	store,
 	objectType string,
-	paginationOptions storage.PaginationOptions,
 	horizonOffset time.Duration,
+	options ...storage.Option,
 ) ([]*openfgav1.TupleChange, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
@@ -213,12 +213,19 @@ func (s *MemoryBackend) ReadChanges(
 	s.mutexTuples.RLock()
 	defer s.mutexTuples.RUnlock()
 
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
+
 	var err error
 	var from int64
 	var typeInToken string
 	var continuationToken string
-	if paginationOptions.From != "" {
-		tokens := strings.Split(paginationOptions.From, "|")
+	if opts.Pagination.From != "" {
+		tokens := strings.Split(opts.Pagination.From, "|")
 		if len(tokens) == 2 {
 			concreteToken := tokens[0]
 			typeInToken = tokens[1]
@@ -248,8 +255,8 @@ func (s *MemoryBackend) ReadChanges(
 	}
 
 	pageSize := storage.DefaultPageSize
-	if paginationOptions.PageSize > 0 {
-		pageSize = paginationOptions.PageSize
+	if opts.Pagination.PageSize > 0 {
+		pageSize = opts.Pagination.PageSize
 	}
 	to := int(from) + pageSize
 	if len(allChanges) < to {
@@ -580,13 +587,20 @@ func (s *MemoryBackend) ReadAuthorizationModel(
 func (s *MemoryBackend) ReadAuthorizationModels(
 	ctx context.Context,
 	store string,
-	options storage.PaginationOptions,
+	options ...storage.Option,
 ) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
 	s.mutexModels.RLock()
 	defer s.mutexModels.RUnlock()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	models := make([]*openfgav1.AuthorizationModel, 0, len(s.authorizationModels[store]))
 	for _, entry := range s.authorizationModels[store] {
@@ -603,12 +617,12 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 	var err error
 
 	pageSize := storage.DefaultPageSize
-	if options.PageSize > 0 {
-		pageSize = options.PageSize
+	if opts.Pagination.PageSize > 0 {
+		pageSize = opts.Pagination.PageSize
 	}
 
-	if options.From != "" {
-		from, err = strconv.ParseInt(options.From, 10, 32)
+	if opts.Pagination.From != "" {
+		from, err = strconv.ParseInt(opts.Pagination.From, 10, 32)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -765,12 +779,19 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgav
 }
 
 // ListStores provides a paginated list of all stores present in the MemoryBackend.
-func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
+func (s *MemoryBackend) ListStores(ctx context.Context, options ...storage.Option) ([]*openfgav1.Store, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ListStores")
 	defer span.End()
 
 	s.mutexStores.RLock()
 	defer s.mutexStores.RUnlock()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	stores := make([]*openfgav1.Store, 0, len(s.stores))
 	for _, t := range s.stores {
@@ -784,15 +805,15 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 
 	var err error
 	var from int64
-	if paginationOptions.From != "" {
-		from, err = strconv.ParseInt(paginationOptions.From, 10, 32)
+	if opts.Pagination.From != "" {
+		from, err = strconv.ParseInt(opts.Pagination.From, 10, 32)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 	pageSize := storage.DefaultPageSize
-	if paginationOptions.PageSize > 0 {
-		pageSize = paginationOptions.PageSize
+	if opts.Pagination.PageSize > 0 {
+		pageSize = opts.Pagination.PageSize
 	}
 	to := int(from) + pageSize
 	if len(stores) < to {
