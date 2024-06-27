@@ -589,6 +589,11 @@ func (s *Server) Close() {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 
 	targetObjectType := req.GetType()
@@ -692,6 +697,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return err
+	}
+
 	start := time.Now()
 
 	ctx := srv.Context()
@@ -782,6 +792,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -849,6 +863,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 
 	tk := req.GetTupleKey()
@@ -968,6 +987,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -1305,4 +1329,13 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
 	return typesys, nil
+}
+
+// If the requested consistency preference is HIGHER_CONSISTENCY, but the experimental flag is not enabled,
+// returns an error.
+func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) error {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY == c {
+		return status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
+	return nil
 }

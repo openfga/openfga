@@ -2013,3 +2013,94 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 }
+
+func TestErrorThrownIfHigherConsistencyWithoutFlagEnabled(t *testing.T) {
+	ds := memory.New()
+	openfga := MustNewServerWithOpts(WithDatastore(ds))
+
+	t.Run("check_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              "store-id",
+			AuthorizationModelId: "auth-model-id",
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				User:     "user:anne",
+				Relation: "reader",
+				Object:   "document:budget",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("read_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Read(context.Background(), &openfgav1.ReadRequest{
+			StoreId: "store-id",
+			TupleKey: &openfgav1.ReadRequestTupleKey{
+				User:     "user:anne",
+				Relation: "reader",
+				Object:   "document:budget",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("list_objects_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			Type:        "folder",
+			Relation:    "can_edit",
+			User:        "user:becky",
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("streamed_list_objects_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              "store-id",
+			AuthorizationModelId: "model-id",
+			Type:                 "repo",
+			Relation:             "r1",
+			User:                 "user:anne",
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}, NewMockStreamServer())
+
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("expand_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{
+			TupleKey: &openfgav1.ExpandRequestTupleKey{
+				Object:   "folder:C",
+				Relation: "can_edit",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+}

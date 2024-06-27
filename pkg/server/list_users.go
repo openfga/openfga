@@ -36,6 +36,11 @@ func (s *Server) ListUsers(
 		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
 	}
 
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
