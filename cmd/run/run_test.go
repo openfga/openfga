@@ -1009,7 +1009,7 @@ func TestPlaygroundEnabled(t *testing.T) {
 		err := resp.Body.Close()
 		require.NoError(t, err)
 	})
-	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")	
+	require.Equal(t, http.StatusOK, resp.StatusCode, "unexpected status code received from server")
 }
 
 func TestDefaultConfig(t *testing.T) {
