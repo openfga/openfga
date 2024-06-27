@@ -3226,7 +3226,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 		name                     string
 		model                    string
 		objectType               string
-		tuplesetRealtion         string
+		tuplesetRelation         string
 		computedRelation         string
 		expectDirectlyAssignable bool
 		expectError              bool
@@ -3246,7 +3246,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
 			expectError:              false,
@@ -3267,7 +3267,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3288,7 +3288,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3308,7 +3308,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3328,7 +3328,30 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
+			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              false,
+		},
+		{
+			name: "tupleset_relation_condition",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group with x_less_than]
+								define viewer: member from parent
+                        condition x_less_than(x: int) {
+		                    x < 100
+		                }
+					`,
+			objectType:               "folder",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3349,7 +3372,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
 			expectError:              false,
@@ -3372,7 +3395,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
 			expectError:              false,
@@ -3383,19 +3406,21 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						model
 							schema 1.1
 						type user
-						type group1
+						type group_without_member
 							relations
 								define owner: [user]
-						type group2
+						type group_with_member
 							relations
 								define member: [user]
 						type folder
 							relations
-								define parent: [group1, group2]
+								define parent: [group_without_member, group_with_member]
 								define viewer: member from parent
 					`,
+			// notice that group_without_member does not have member.  However, we should
+			// still allow because group_with_member has member
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
 			expectError:              false,
@@ -3416,7 +3441,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3436,7 +3461,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3459,7 +3484,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 		                }
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3483,7 +3508,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 		                }
 					`,
 			objectType:               "folder",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              false,
@@ -3503,7 +3528,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "undefined_type",
-			tuplesetRealtion:         "parent",
+			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
 			expectError:              true,
@@ -3523,8 +3548,28 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:               "group",
-			tuplesetRealtion:         "viewer",
+			tuplesetRelation:         "viewer",
 			computedRelation:         "member",
+			expectDirectlyAssignable: false,
+			expectError:              true,
+		},
+		{
+			name: "bad_computed_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:               "group",
+			tuplesetRelation:         "parent",
+			computedRelation:         "undefined",
 			expectDirectlyAssignable: false,
 			expectError:              true,
 		},
@@ -3533,7 +3578,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typeSystem := New(model)
-			result, err := typeSystem.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRealtion, test.computedRelation)
+			result, err := typeSystem.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
 			if test.expectError {
 				require.Error(t, err)
 			} else {

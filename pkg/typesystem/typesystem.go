@@ -333,6 +333,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 
 // resolvesTypeRelationToDirectlyAssignable returns whether the assignable types ONLY if
 // the specified type and relation is exclusively assignable. Otherwise, it will return nil as slice.
+// TODO: memorized so that we do not need to reparse the type system in subsequent calls.
 func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
 	relation, err := t.GetRelation(objectType, relationName)
 	if err != nil {
@@ -344,6 +345,8 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	}
 
 	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+
+	// assignableTypes is needed for the TTU case
 	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
 	// need to check whether these are simple types as well
 	for _, ref := range directlyRelatedTypes {
@@ -414,14 +417,17 @@ func (t *TypeSystem) TTUResolvesExclusivelyToDirectlyAssignable(objectType, tupl
 	if !directlyAssignable {
 		return false, nil
 	}
+	var relationUndefinedError *RelationUndefinedError
 	for _, tuplesetRelationType := range tuplesetRelationTypes {
 		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
 		if err != nil {
-			var relationUndefinedError *RelationUndefinedError
+			// in the case of errors due to relation undefined, we can ignore the error because it is possible
+			// that some parents do not have the relation defined.
 			if errors.As(err, &relationUndefinedError) {
-				// It is possible thats some parents may not have the relation defined
 				continue
 			}
+
+			// otherwise, we do not know what the error is.  It is better to return error at this point.
 			return false, err
 		}
 		if !childDirectlyAssignable {
