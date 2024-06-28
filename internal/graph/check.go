@@ -899,7 +899,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							}
 						}
 
-						// TODO: we can optimize this as this is already in order
+						// TODO: we can optimize this as this is already in order ???
 						for _, object := range objectList {
 							if slices.Contains(objectsSlice, object) {
 								return &ResolveCheckResponse{Allowed: true,
@@ -975,6 +975,221 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	}
 }
 
+// checkTTUInternalInfo contains information for evaluating checkTTU internally.
+type checkTTUInternalInfo struct {
+	span             trace.Span
+	req              *ResolveCheckRequest
+	typesys          *typesystem.TypeSystem
+	tuplesetRelation string
+	computedRelation string
+	tk               *openfgav1.TupleKey
+	filteredIter     storage.TupleKeyIterator
+	ds               storage.RelationshipTupleReader
+}
+
+// checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
+// resort to dispatch check on its children.
+func (c *LocalChecker) checkTTUSlowPath(info checkTTUInternalInfo) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		var errs error
+		var handlers []CheckHandlerFunc
+		for {
+			t, err := info.filteredIter.Next(ctx)
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				return nil, err
+			}
+
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, info.typesys, info.req.GetContext())
+			if err != nil {
+				errs = errors.Join(errs, err)
+
+				continue
+			}
+
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = errors.Join(errs, condition.NewEvaluationError(
+					t.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(t),
+						condEvalResult.MissingParameters),
+				))
+
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				continue
+			}
+
+			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
+
+			tupleKey := &openfgav1.TupleKey{
+				Object:   userObj,
+				Relation: info.computedRelation,
+				User:     info.tk.GetUser(),
+			}
+
+			if _, err := info.typesys.GetRelation(tuple.GetType(userObj), info.computedRelation); err != nil {
+				if errors.Is(err, typesystem.ErrRelationUndefined) {
+					continue // skip computed relations on tupleset relationships if they are undefined
+				}
+			}
+
+			// Note: we add TTU read below
+			handlers = append(handlers, c.dispatch(ctx, info.req, tupleKey))
+		}
+
+		if len(handlers) == 0 && errs != nil {
+			telemetry.TraceError(info.span, errs)
+			return nil, errs
+		}
+
+		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
+		if err != nil {
+			telemetry.TraceError(info.span, err)
+			return nil, errors.Join(errs, err)
+		}
+
+		// if we had 3 dispatched requests, and the final result is "allowed = false",
+		// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
+		// if final result is "allowed = true", we want final reads to be N1 + 1
+		unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+
+		return unionResponse, nil
+	}
+}
+
+// checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
+// This requires both the TTU's tuplesetRelation and computedRelation be exclusively directly assignable.
+// The general idea is to check whether user has relation with the specified TTU by finding object
+// intersection between tuplesetRelation's object AND objectType's computedRelation for user.  For example,
+//
+//	type group
+//	  define member: [user]
+//	type doc
+//	  define parent: [group]
+//	  define viewer: member from parent
+//
+// check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
+// all group where the user is a member of.
+func (c *LocalChecker) checkTTUFastPath(info checkTTUInternalInfo) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		// First, get all the users for the tupleset relation
+		var errs error
+
+		// tuplesetRelationUserMap contains of users that fits the tuplesetRelation.  For example,
+		// type group
+		//   define member: [user]
+		// type doc
+		//   define parent: [group]
+		//   define viewer: member from parent
+		// tuplesetRelationUserMap will list all group for doc:1's parent
+		// [group]: [1, 2, 3, ...]
+		tuplesetRelationUserMap := make(map[string][]string)
+
+		for {
+			t, err := info.filteredIter.Next(ctx)
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				return nil, err
+			}
+
+			// FIXME: currently, TTUResolvesExclusivelyToDirectlyAssignable will be false
+			// if the tupleset relation contains condition.  We can optimize this by
+			// allowing condition and evaluate condition as below.
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, info.typesys, info.req.GetContext())
+			if err != nil {
+				errs = errors.Join(errs, err)
+
+				continue
+			}
+
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = errors.Join(errs, condition.NewEvaluationError(
+					t.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(t),
+						condEvalResult.MissingParameters),
+				))
+
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				continue
+			}
+
+			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
+			splittedUserObject := strings.SplitN(userObj, ":", 2)
+			if _, ok := tuplesetRelationUserMap[splittedUserObject[0]]; !ok {
+				tuplesetRelationUserMap[splittedUserObject[0]] = []string{}
+			}
+			tuplesetRelationUserMap[splittedUserObject[0]] = append(tuplesetRelationUserMap[splittedUserObject[0]], splittedUserObject[1])
+		}
+
+		// Next, for each of the type in tuplesetRelationUserMap, look up what object is in computedRelation for the specified user.
+		// We will then try to see if there are any intersection.
+		// Return true if user is in any of the computedRelation.  For example,
+		// type group
+		//   define member: [user]
+		// type doc
+		//   define parent: [group]
+		//   define viewer: member from parent
+		// we want to find out which group user:bob is a member of.
+		// After that, we will find the intersection.
+		for userObjType, tuplesetObjectList := range tuplesetRelationUserMap {
+			iter, err := info.ds.ReadStartingWithUser(ctx, info.req.GetStoreID(), storage.ReadStartingWithUserFilter{
+				ObjectType: userObjType,
+				Relation:   info.computedRelation,
+				UserFilter: []*openfgav1.ObjectRelation{{
+					Object: info.tk.GetUser(),
+				}},
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			var objectList []string
+			for {
+				t, err := iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+
+					return nil, err
+				}
+				actualObject := t.GetKey().GetObject()
+				if actualObject != "" {
+					objectList = append(objectList, strings.SplitN(actualObject, ":", 2)[1])
+				}
+			}
+			for _, object := range objectList {
+				// FIXME: this can be optimize by knowing both the objectList and tuplsetObjectList
+				// are sorted ??
+				if slices.Contains(tuplesetObjectList, object) {
+					return &ResolveCheckResponse{Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: info.req.GetRequestMetadata().DatastoreQueryCount + 1,
+						}}, nil
+				}
+			}
+		}
+
+		return &ResolveCheckResponse{Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: info.req.GetRequestMetadata().DatastoreQueryCount + 1,
+			}}, nil
+	}
+}
+
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
@@ -1033,207 +1248,31 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		standardTTUEvaluationFunction := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			var errs error
-			var handlers []CheckHandlerFunc
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if err == storage.ErrIteratorDone {
-						break
-					}
-
-					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-				if err != nil {
-					errs = errors.Join(errs, err)
-
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					errs = errors.Join(errs, condition.NewEvaluationError(
-						t.GetCondition().GetName(),
-						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(t),
-							condEvalResult.MissingParameters),
-					))
-
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-
-				tupleKey := &openfgav1.TupleKey{
-					Object:   userObj,
-					Relation: computedRelation,
-					User:     tk.GetUser(),
-				}
-
-				if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
-					if errors.Is(err, typesystem.ErrRelationUndefined) {
-						continue // skip computed relations on tupleset relationships if they are undefined
-					}
-				}
-
-				// Note: we add TTU read below
-				handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
-			}
-
-			if len(handlers) == 0 && errs != nil {
-				telemetry.TraceError(span, errs)
-				return nil, errs
-			}
-
-			unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
-			if err != nil {
-				telemetry.TraceError(span, err)
-				return nil, errors.Join(errs, err)
-			}
-
-			// if we had 3 dispatched requests, and the final result is "allowed = false",
-			// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
-			// if final result is "allowed = true", we want final reads to be N1 + 1
-			unionResponse.GetResolutionMetadata().DatastoreQueryCount++
-
-			return unionResponse, nil
-		}
-
-		// shortcutTTUEvaluationFunction provides a way to quickly check whether user has relation
-		// with the specified TTU by finding object intersection between tuplesetRelation's object AND
-		// objectType's computedRelation for user.  For example,
-		// type group
-		//   define member: [user]
-		// type doc
-		//   define parent: [group]
-		//   define viewer: member from parent
-		// check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
-		// all group where the user is a member of.
-		shortcutTTUEvaluationFunction := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			// First, get all the users for the tupleset relation
-			var errs error
-
-			// tuplesetRelationUserMap contains of users that fits the tuplesetRelation.  For example,
-			// type group
-			//   define member: [user]
-			// type doc
-			//   define parent: [group]
-			//   define viewer: member from parent
-			// tuplesetRelationUserMap will list all group for parent
-			// [group]: [1, 2, 3, ...]
-			tuplesetRelationUserMap := make(map[string][]string)
-
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if err == storage.ErrIteratorDone {
-						break
-					}
-
-					return nil, err
-				}
-
-				// FIXME: currently, TTUResolvesExclusivelyToDirectlyAssignable will be false
-				// if the tupleset relation contains condition.  We can optimize this by
-				// allowing condition and evaluate condition as below.
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-				if err != nil {
-					errs = errors.Join(errs, err)
-
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					errs = errors.Join(errs, condition.NewEvaluationError(
-						t.GetCondition().GetName(),
-						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(t),
-							condEvalResult.MissingParameters),
-					))
-
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-				splittedUserObject := strings.SplitN(userObj, ":", 2)
-				if _, ok := tuplesetRelationUserMap[splittedUserObject[0]]; !ok {
-					tuplesetRelationUserMap[splittedUserObject[0]] = []string{}
-				}
-				tuplesetRelationUserMap[splittedUserObject[0]] = append(tuplesetRelationUserMap[splittedUserObject[0]], splittedUserObject[1])
-			}
-
-			// next, for each of the type in tuplesetRelationUserMap, what object is in computedRelation for the specified user
-			// we will then try to see if there are any intersection.
-			// Return true if user is in any of the computedRelation.  For example
-			// type group
-			//   define member: [user]
-			// type doc
-			//   define parent: [group]
-			//   define viewer: member from parent
-			// we want to find out which group user:bob is a member of.
-			// After that, we will find the intersection.
-			for userObjType, tuplesetObjectList := range tuplesetRelationUserMap {
-				iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: userObjType,
-					Relation:   computedRelation,
-					UserFilter: []*openfgav1.ObjectRelation{{
-						Object: tk.GetUser(),
-					}},
-				})
-				if err != nil {
-					return nil, err
-				}
-
-				var objectList []string
-				for {
-					t, err := iter.Next(ctx)
-					if err != nil {
-						if errors.Is(err, storage.ErrIteratorDone) {
-							break
-						}
-
-						return nil, err
-					}
-					actualObject := t.GetKey().GetObject()
-					if actualObject != "" {
-						objectList = append(objectList, strings.SplitN(actualObject, ":", 2)[1])
-					}
-				}
-				for _, object := range objectList {
-					// FIXME: this can be optimize by knowing both the objectList and tuplsetObjectList
-					// are sorted.
-					if slices.Contains(tuplesetObjectList, object) {
-						return &ResolveCheckResponse{Allowed: true,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-							}}, nil
-					}
-				}
-			}
-
-			return &ResolveCheckResponse{Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				}}, nil
-		}
-
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
 		if isResolvesExclusivelyToDirectlyAssignable && !tuple.IsObjectRelation(tk.GetUser()) {
-			return shortcutTTUEvaluationFunction(ctx)
+			return c.checkTTUFastPath(checkTTUInternalInfo{
+				span:             span,
+				req:              req,
+				typesys:          typesys,
+				tuplesetRelation: tuplesetRelation,
+				computedRelation: computedRelation,
+				tk:               tk,
+				filteredIter:     filteredIter,
+				ds:               ds,
+			})(ctx)
 		}
-		return standardTTUEvaluationFunction(ctx)
+		return c.checkTTUSlowPath(checkTTUInternalInfo{
+			span:             span,
+			req:              req,
+			typesys:          typesys,
+			tuplesetRelation: tuplesetRelation,
+			computedRelation: computedRelation,
+			tk:               tk,
+			filteredIter:     filteredIter,
+			ds:               ds,
+		})(ctx)
 	}
 }
 
