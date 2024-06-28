@@ -59,6 +59,13 @@ type PaginationOptions struct {
 	From     string
 }
 
+func (p PaginationOptions) Apply(opts *Options) {
+	if p.PageSize == 0 {
+		p.PageSize = DefaultPageSize
+	}
+	opts.Pagination = &p
+}
+
 // NewPaginationOptions creates a new [PaginationOptions] instance
 // with a specified page size and continuation token. If the input page size is empty,
 // it uses DefaultPageSize.
@@ -72,6 +79,24 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 		PageSize: pageSize,
 		From:     contToken,
 	}
+}
+
+// QueryOptions holds the settings for consistency options.
+type QueryOptions struct {
+	Consistency openfgav1.ConsistencyPreference
+}
+
+func (q QueryOptions) Apply(opts *Options) {
+	opts.Query = &q
+}
+
+type Option interface {
+	Apply(*Options)
+}
+
+type Options struct {
+	Pagination *PaginationOptions
+	Query      *QueryOptions
 }
 
 // Writes is a typesafe alias for Write arguments.
@@ -96,7 +121,7 @@ type RelationshipTupleReader interface {
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
 	// There is NO guarantee on the order of the tuples returned on the iterator.
-	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
+	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...Option) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory pagination options. PageSize will always be greater than zero.
@@ -106,7 +131,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
-		paginationOptions PaginationOptions,
+		options ...Option,
 	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
@@ -115,6 +140,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
+		options ...Option,
 	) (*openfgav1.Tuple, error)
 
 	// ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -130,6 +156,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		filter ReadUsersetTuplesFilter,
+		options ...Option,
 	) (TupleIterator, error)
 
 	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -147,6 +174,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		filter ReadStartingWithUserFilter,
+		options ...Option,
 	) (TupleIterator, error)
 }
 
@@ -188,7 +216,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
-	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options ...Option) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
@@ -216,7 +244,7 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
-	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgav1.Store, []byte, error)
+	ListStores(ctx context.Context, options ...Option) ([]*openfgav1.Store, []byte, error)
 }
 
 // AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
@@ -242,8 +270,8 @@ type ChangelogBackend interface {
 		ctx context.Context,
 		store,
 		objectType string,
-		paginationOptions PaginationOptions,
 		horizonOffset time.Duration,
+		options ...Option,
 	) ([]*openfgav1.TupleChange, []byte, error)
 }
 

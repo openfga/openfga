@@ -48,10 +48,11 @@ func (c *combinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
 	tk *openfgav1.TupleKey,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation()))
 
-	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk)
+	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -64,10 +65,10 @@ func (c *combinedTupleReader) ReadPage(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
-	opts storage.PaginationOptions,
+	options ...storage.Option,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	// No reading from contextual tuples.
-	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, opts)
+	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, options...)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
@@ -75,6 +76,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
+	options ...storage.Option,
 ) (*openfgav1.Tuple, error) {
 	filteredContextualTuples := filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation())
 
@@ -84,7 +86,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 		}
 	}
 
-	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk)
+	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk, options...)
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
@@ -92,6 +94,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	var usersetTuples []*openfgav1.Tuple
 
@@ -103,7 +106,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 
 	iter1 := storage.NewStaticTupleIterator(usersetTuples)
 
-	iter2, err := c.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter)
+	iter2, err := c.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +119,7 @@ func (c *combinedTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	var filteredTuples []*openfgav1.Tuple
 	for _, t := range c.contextualTuples {
@@ -143,7 +147,7 @@ func (c *combinedTupleReader) ReadStartingWithUser(
 
 	iter1 := storage.NewStaticTupleIterator(filteredTuples)
 
-	iter2, err := c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
+	iter2, err := c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options...)
 	if err != nil {
 		return nil, err
 	}

@@ -129,11 +129,11 @@ func (m *MySQL) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, nil)
+	return m.read(ctx, store, tupleKey, options...)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -141,23 +141,37 @@ func (m *MySQL) ReadPage(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
-	opts storage.PaginationOptions,
+	options ...storage.Option,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, &opts)
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
+
+	iter, err := m.read(ctx, store, tupleKey, options...)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(opts)
+	return iter.ToArray(*opts.Pagination)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := m.stbl.
 		Select(
@@ -166,7 +180,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if opts != nil {
+	if opts.Pagination != nil {
 		sb = sb.OrderBy("ulid")
 	}
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
@@ -182,15 +196,15 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	if tupleKey.GetUser() != "" {
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
-	if opts != nil && opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination != nil && opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
-	if opts != nil && opts.PageSize != 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if opts.Pagination != nil && opts.Pagination.PageSize != 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -216,7 +230,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUserTuple")
 	defer span.End()
 
@@ -273,6 +287,7 @@ func (m *MySQL) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
@@ -321,6 +336,7 @@ func (m *MySQL) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	opts storage.ReadStartingWithUserFilter,
+	options ...storage.Option,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadStartingWithUser")
 	defer span.End()
@@ -370,10 +386,17 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 func (m *MySQL) ReadAuthorizationModels(
 	ctx context.Context,
 	store string,
-	opts storage.PaginationOptions,
+	options ...storage.Option,
 ) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModels")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := m.stbl.Select("authorization_model_id").
 		Distinct().
@@ -381,15 +404,15 @@ func (m *MySQL) ReadAuthorizationModels(
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if opts.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -416,8 +439,8 @@ func (m *MySQL) ReadAuthorizationModels(
 
 	var token []byte
 	numModelIDs := len(modelIDs)
-	if len(modelIDs) > opts.PageSize {
-		numModelIDs = opts.PageSize
+	if len(modelIDs) > opts.Pagination.PageSize {
+		numModelIDs = opts.Pagination.PageSize
 		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
@@ -548,9 +571,16 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, erro
 }
 
 // ListStores provides a paginated list of all stores present in the MySQL storage.
-func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *MySQL) ListStores(ctx context.Context, options ...storage.Option) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := m.stbl.
 		Select("id", "name", "created_at", "updated_at").
@@ -558,15 +588,15 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if opts.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -597,12 +627,12 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if len(stores) > opts.PageSize {
+	if len(stores) > opts.Pagination.PageSize {
 		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
-		return stores[:opts.PageSize], contToken, nil
+		return stores[:opts.Pagination.PageSize], contToken, nil
 	}
 
 	return stores, nil, nil
@@ -683,11 +713,18 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 func (m *MySQL) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
-	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
+	options ...storage.Option,
 ) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
+
+	opts := &storage.Options{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.Apply(opts)
+	}
 
 	sb := m.stbl.
 		Select(
@@ -702,8 +739,8 @@ func (m *MySQL) ReadChanges(
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -713,8 +750,8 @@ func (m *MySQL) ReadChanges(
 
 		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+	if opts.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)

@@ -43,10 +43,10 @@ func TestReadChangesQuery(t *testing.T) {
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		// Assert on specific inputs passed in.
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, reqType, storage.PaginationOptions{
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, reqType, horizonOffset, storage.PaginationOptions{
 			PageSize: reqPageSize,
 			From:     reqToken,
-		}, horizonOffset).Times(1)
+		}).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangeQueryHorizonOffset(int(horizonOffset.Minutes())))
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
@@ -72,10 +72,10 @@ func TestReadChangesQuery(t *testing.T) {
 		mockEncoder.EXPECT().Encode(gomock.Any()).Return(respToken, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", 0*time.Minute, storage.PaginationOptions{
+			PageSize: 0,
 			From:     "",
-		}, 0*time.Minute).Times(1)
+		}).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
@@ -118,10 +118,10 @@ func TestReadChangesQuery(t *testing.T) {
 		mockEncoder.EXPECT().Decode(reqToken).Return([]byte{}, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", 0*time.Minute, storage.PaginationOptions{
+			PageSize: 0,
 			From:     "",
-		}, 0*time.Minute).Times(1).Return(nil, []byte{}, storage.ErrNotFound)
+		}).Times(1).Return(nil, []byte{}, storage.ErrNotFound)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{

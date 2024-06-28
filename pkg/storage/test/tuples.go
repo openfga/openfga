@@ -169,11 +169,11 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		_, token, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		_, token, err := datastore.ReadChanges(ctx, storeID, "", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 
-		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 	})
@@ -195,7 +195,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		_, token, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 1*time.Minute)
+		_, token, err := datastore.ReadChanges(ctx, storeID, "", 1*time.Minute, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 	})
@@ -258,7 +258,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		var continuationToken []byte
 		var err error
 		for {
-			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.NewPaginationOptions(10, string(continuationToken)), 1*time.Millisecond)
+			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", 1*time.Millisecond, storage.PaginationOptions{PageSize: 10, From: string(continuationToken)})
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					break
@@ -463,10 +463,10 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", storage.NewPaginationOptions(1, ""), 0)
+		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", 0, storage.PaginationOptions{PageSize: 1, From: ""})
 		require.Len(t, changesFolder, 1)
 
-		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", storage.NewPaginationOptions(1, string(tokenFolder)), 0)
+		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", 0, storage.PaginationOptions{PageSize: 1, From: string(tokenFolder)})
 		require.Empty(t, changesDocument)
 		require.ErrorIs(t, err, storage.ErrMismatchObjectType)
 	})
@@ -605,7 +605,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		// Ensure it is not there.
-		_, err = datastore.ReadUserTuple(ctx, storeID, tk)
+		_, err = datastore.ReadUserTuple(ctx, storeID, tk, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -694,28 +694,28 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple1, tuple2, tuple3, tuple4})
 		require.NoError(t, err)
 
-		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1)
+		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple1, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2)
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple2, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3)
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple3, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple4)
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple4, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple4, gotTuple.GetKey(), cmpOpts...); diff != "" {
@@ -727,7 +727,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		_, err := datastore.ReadUserTuple(ctx, storeID, tk)
+		_, err := datastore.ReadUserTuple(ctx, storeID, tk, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -762,7 +762,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "doc:readme",
 			Relation: "owner",
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -796,7 +796,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	t.Run("reading_userset_tuples_that_don't_exist_should_return_an_empty_iterator", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "doc:readme", Relation: "owner"})
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "doc:readme", Relation: "owner"}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 
@@ -822,7 +822,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -859,7 +859,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				typesystem.DirectRelationReference("group", "member"),
 				typesystem.DirectRelationReference("grouping", "member"),
 			},
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -900,7 +900,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.WildcardRelationReference("user"),
 			},
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -937,7 +937,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				typesystem.DirectRelationReference("group", "member"),
 				typesystem.WildcardRelationReference("user"),
 			},
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -985,7 +985,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, tks)
 		require.NoError(t, err)
 
-		iter, err := datastore.Read(ctx, storeID, tupleKey1)
+		iter, err := datastore.Read(ctx, storeID, tupleKey1, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -993,20 +993,20 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Nil(t, tuples[0].GetKey().GetCondition())
 		require.Nil(t, tuples[1].GetKey().GetCondition())
 
-		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
+		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
 		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   tupleKey2.GetObject(),
 			Relation: tupleKey2.GetRelation(),
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1020,7 +1020,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: tupleKey1.GetUser()},
 			},
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1028,7 +1028,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -1066,7 +1066,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, tks)
 		require.NoError(t, err)
 
-		iter, err := datastore.Read(ctx, storeID, tupleKey1)
+		iter, err := datastore.Read(ctx, storeID, tupleKey1, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1076,20 +1076,20 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 		require.Empty(t, tp.GetKey().GetCondition().GetContext())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.NotNil(t, tuples[0].GetKey().GetCondition().GetContext())
 		require.NotNil(t, tuples[1].GetKey().GetCondition().GetContext())
 
-		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
+		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
 		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   tupleKey2.GetObject(),
 			Relation: tupleKey2.GetRelation(),
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1103,7 +1103,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: tupleKey1.GetUser()},
 			},
-		})
+		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1111,7 +1111,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.NewPaginationOptions(storage.DefaultPageSize, ""), 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", 0, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: ""})
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
@@ -1159,6 +1159,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
+			storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED},
 		)
 		require.NoError(t, err)
 
@@ -1185,6 +1186,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
+			storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED},
 		)
 		require.NoError(t, err)
 
@@ -1211,6 +1213,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
+			storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED},
 		)
 		require.NoError(t, err)
 
@@ -1237,6 +1240,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
+			storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED},
 		)
 		require.NoError(t, err)
 
@@ -1458,10 +1462,10 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 		err               error
 	)
 	for {
-		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, objectTypeFilter, storage.PaginationOptions{
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, objectTypeFilter, time.Duration(0), storage.PaginationOptions{
 			PageSize: pageSize,
 			From:     string(continuationToken),
-		}, time.Duration(0))
+		})
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break

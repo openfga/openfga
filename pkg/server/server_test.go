@@ -748,15 +748,15 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		Return(returnedTuple, nil)
 
 	mockDatastore.EXPECT().
-		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 				time.Sleep(50 * time.Millisecond)
 				return nil, errors.New("some error")
 			})
@@ -1040,10 +1040,10 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(ctx context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			func(ctx context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
@@ -1053,10 +1053,10 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 			})
 
 	mockDatastore.EXPECT().
-		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.QueryOptions) (storage.TupleIterator, error) {
 				time.Sleep(100 * time.Millisecond)
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{returnedTuple}), nil
 			})
@@ -1120,7 +1120,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		}, nil)
 
 	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		Times(1).
 		Return(returnedTuple, nil)
 
@@ -1413,7 +1413,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
 	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
@@ -1490,7 +1490,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: "user:*"},
 				{Object: "user:bob"},
-			}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
+			}}, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 		t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
