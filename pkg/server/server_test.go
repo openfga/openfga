@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/server/cache/redis"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -57,7 +58,16 @@ func ExampleNewServerWithOpts() {
 	datastore := memory.New() // other supported datastores include Postgres and MySQL
 	defer datastore.Close()
 
+	redisClient, err := redis.NewContainer()
+	if err != nil {
+		panic(err)
+	}
+	defer redisClient.Terminate()
+
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
+		WithRedisUser(""),
+		WithRedisPassword(""),
+		WithRedisAddrs(redisClient.GetConnectionURI(false)),
 		WithCheckQueryCacheEnabled(true),
 		// more options available
 	)
@@ -252,6 +262,18 @@ func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(
 			WithListObjectsDispatchThrottlingEnabled(true),
 			WithListObjectsDispatchThrottlingThreshold(100),
 			WithListObjectsDispatchThrottlingMaxThreshold(80),
+		)
+	})
+}
+
+func TestServerPanicIfDefaultcheckQueryCacheEnabled(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: cache is enabled, Redis username, password and address are not be specified", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCheckQueryCacheEnabled(true),
 		)
 	})
 }
@@ -1124,12 +1146,20 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		Times(1).
 		Return(returnedTuple, nil)
 
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCheckQueryCacheEnabled(true),
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
+		WithRedisUser(""),
+		WithRedisPassword(""),
+		WithRedisAddrs(redisClient.GetConnectionURI(false)),
 	)
+
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
 		s.Close()
@@ -1875,8 +1905,16 @@ func TestDelegateCheckResolver(t *testing.T) {
 	t.Run("cache_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
+
+		redisClient, err := redis.NewContainer()
+		require.NoError(t, err)
+		t.Cleanup(func() { redisClient.Terminate() })
+
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
+			WithRedisUser(""),
+			WithRedisPassword(""),
+			WithRedisAddrs(redisClient.GetConnectionURI(false)),
 			WithCheckQueryCacheEnabled(true),
 		)
 		t.Cleanup(s.Close)
@@ -1903,8 +1941,17 @@ func TestDelegateCheckResolver(t *testing.T) {
 	t.Run("both_dispatch_throttling_and_cache_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
+
+		redisClient, err := redis.NewContainer()
+		require.NoError(t, err)
+		t.Cleanup(func() { redisClient.Terminate() })
+
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
+			WithDatastore(ds),
+			WithRedisUser(""),
+			WithRedisPassword(""),
+			WithRedisAddrs(redisClient.GetConnectionURI(false)),
 			WithCheckQueryCacheEnabled(true),
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(50),

@@ -249,6 +249,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
+	flags.String("redis-username", defaultConfig.RedisUserName, "redis user name used to authenticates the current connection.")
+	flags.String("redis-password", defaultConfig.RedisPassword, "redis password used to authenticates the current connection.")
+	flags.String("redis-address", defaultConfig.RedisAddress, "redis ip and port used to establish a connection.")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -603,6 +607,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
 		server.WithListObjectsDispatchThrottlingMaxThreshold(config.ListObjectsDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
+		server.WithRedisUser(config.RedisUserName),
+		server.WithRedisPassword(config.RedisPassword),
+		server.WithRedisAddrs(config.RedisAddress),
 	)
 
 	s.Logger.Info(

@@ -286,6 +286,10 @@ type Config struct {
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
+
+	RedisUserName string
+	RedisPassword string
+	RedisAddress  string
 }
 
 func (cfg *Config) Verify() error {
