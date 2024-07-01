@@ -81,8 +81,8 @@ func (p RedisContainer) RunTestContainer() (cache.Container, error) {
 	return p, nil
 }
 
-func (p RedisContainer) Close() {
-	p.rdb.Close()
+func (p RedisContainer) Close() error {
+	return p.rdb.Close()
 }
 
 func (p RedisContainer) GetPort() string {
@@ -102,7 +102,7 @@ func (p RedisContainer) GetConnectionURI(includeCredentials bool) string {
 }
 
 // GetHostPort returns the postgres connection uri for the running postgres test container.
-func (p RedisContainer) GetHostPort(includeCredentials bool) (string, string) {
+func (p RedisContainer) GetHostPort() (string, string) {
 	return p.GetHost(), p.GetPort()
 }
 

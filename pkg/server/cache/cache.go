@@ -21,7 +21,7 @@ type Container interface {
 	GetPassword() string
 
 	// GetHostPort returns containers host address and port.
-	GetHostPort(includeCredentials bool) (string, string)
+	GetHostPort() (string, string)
 
 	// GetIP returns container IP address.
 	GetIP() string
