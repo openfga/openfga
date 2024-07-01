@@ -81,10 +81,6 @@ func (p RedisContainer) RunTestContainer() (cache.Container, error) {
 	return p, nil
 }
 
-func (p RedisContainer) Close() error {
-	return p.rdb.Close()
-}
-
 func (p RedisContainer) GetPort() string {
 	return p.port
 }

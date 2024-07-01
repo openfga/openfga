@@ -18,8 +18,17 @@ func Test_ContainerValidation(t *testing.T) {
 	port := redisClient.GetPort()
 	require.NotEqual(t, "", port)
 
-	uri := redisClient.GetConnectionURI(false)
-	require.NotEqual(t, "", uri)
+	uri1 := redisClient.GetConnectionURI(false)
+	require.NotEqual(t, "", uri1)
+
+	userNameCredential := redisClient.GetUsername()
+	require.Equal(t, "", userNameCredential)
+
+	passwordredential := redisClient.GetPassword()
+	require.Equal(t, "", passwordredential)
+
+	uri2 := redisClient.GetConnectionURI(true)
+	require.NotEqual(t, "", uri2)
 
 	host, port = redisClient.GetHostPort()
 	require.NotEqual(t, "", host)
