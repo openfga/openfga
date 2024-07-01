@@ -584,23 +584,12 @@ func (s *MemoryBackend) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (s *MemoryBackend) ReadAuthorizationModels(
-	ctx context.Context,
-	store string,
-	options ...storage.Option,
-) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
 	s.mutexModels.RLock()
 	defer s.mutexModels.RUnlock()
-
-	opts := &storage.Options{}
-
-	// Apply each option to the opts struct
-	for _, option := range options {
-		option.Apply(opts)
-	}
 
 	models := make([]*openfgav1.AuthorizationModel, 0, len(s.authorizationModels[store]))
 	for _, entry := range s.authorizationModels[store] {
@@ -617,12 +606,12 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 	var err error
 
 	pageSize := storage.DefaultPageSize
-	if opts.Pagination.PageSize > 0 {
-		pageSize = opts.Pagination.PageSize
+	if options.Pagination.PageSize > 0 {
+		pageSize = options.Pagination.PageSize
 	}
 
-	if opts.Pagination.From != "" {
-		from, err = strconv.ParseInt(opts.Pagination.From, 10, 32)
+	if options.Pagination.From != "" {
+		from, err = strconv.ParseInt(options.Pagination.From, 10, 32)
 		if err != nil {
 			return nil, nil, err
 		}

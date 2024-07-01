@@ -435,13 +435,9 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options ...storage.Option) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, store}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ReadAuthorizationModels", varargs...)
+	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -449,10 +445,9 @@ func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.
 }
 
 // ReadAuthorizationModels indicates an expected call of ReadAuthorizationModels.
-func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModels(ctx, store any, options ...any) *gomock.Call {
+func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModels(ctx, store, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, store}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockAuthorizationModelReadBackend)(nil).ReadAuthorizationModels), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockAuthorizationModelReadBackend)(nil).ReadAuthorizationModels), ctx, store, options)
 }
 
 // MockTypeDefinitionWriteBackend is a mock of TypeDefinitionWriteBackend interface.
@@ -574,13 +569,9 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModel(ctx,
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options ...storage.Option) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, store}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ReadAuthorizationModels", varargs...)
+	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -588,10 +579,9 @@ func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Cont
 }
 
 // ReadAuthorizationModels indicates an expected call of ReadAuthorizationModels.
-func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModels(ctx, store any, options ...any) *gomock.Call {
+func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModels(ctx, store, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, store}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).ReadAuthorizationModels), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).ReadAuthorizationModels), ctx, store, options)
 }
 
 // WriteAuthorizationModel mocks base method.
@@ -1001,13 +991,9 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModel(ctx, store, i
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options ...storage.Option) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, store}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ReadAuthorizationModels", varargs...)
+	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -1015,10 +1001,9 @@ func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, stor
 }
 
 // ReadAuthorizationModels indicates an expected call of ReadAuthorizationModels.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store any, options ...any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, store}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadAuthorizationModels), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadAuthorizationModels), ctx, store, options)
 }
 
 // ReadChanges mocks base method.
