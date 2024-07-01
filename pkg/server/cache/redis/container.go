@@ -6,10 +6,11 @@ import (
 	"net"
 	"net/url"
 
-	"github.com/openfga/openfga/pkg/server/cache"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	testcontainersredis "github.com/testcontainers/testcontainers-go/modules/redis"
+
+	"github.com/openfga/openfga/pkg/server/cache"
 )
 
 const (

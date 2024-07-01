@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/server/cache/redis"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/pkg/server/cache/redis"
 )
 
 func TestRedis(t *testing.T) {
@@ -29,7 +30,7 @@ func TestRedis(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Cleanup( func () {
+	t.Cleanup(func() {
 		err := redisClient.Close()
 		require.NoError(t, err)
 	})

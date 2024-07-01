@@ -31,7 +31,7 @@ type Container interface {
 
 	// GetHost returns container Port.
 	GetPort() string
-	
+
 	// Terminate the container
 	Terminate() error
 }
@@ -52,7 +52,7 @@ type Cache interface {
 	// Get return value associated with the key. return nil if the key is not found,  an error is returned.
 	Get(ctx context.Context, key string) ([]byte, error)
 
-	// Set key to hold the value. If key already holds a value, it is overwritten. Any 
+	// Set key to hold the value. If key already holds a value, it is overwritten. Any
 	// previous TTL associated with the key is discarded on successful SET operation.
 	Set(ctx context.Context, key string, value []byte) error
 }

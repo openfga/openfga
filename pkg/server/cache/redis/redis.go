@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openfga/openfga/pkg/server/cache"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/openfga/openfga/pkg/server/cache"
 )
 
 type options func(s *Handle)
@@ -28,38 +29,42 @@ var (
 	ErrAddrMissing = fmt.Errorf("redis addresses must be specified")
 )
 
-// WithTTL Cached item Time To Live (TTL)
+// WithTTL Cached item Time To Live (TTL).
 func WithTTL(ttl time.Duration) options {
 	return func(h *Handle) {
 		h.ttl = ttl
 	}
 }
 
+// WithAddr Cached solution ip address.
 func WithAddr(addrs string) options {
 	return func(h *Handle) {
 		h.addrs = strings.Split(addrs, ",")
 	}
 }
 
+// WithUserCredential Cached user credentials.
 func WithUserCredential(credential string) options {
 	return func(h *Handle) {
 		h.userCredential = credential
 	}
 }
 
+// WithPassCredential Cached Password credentials.
 func WithPassCredential(credential string) options {
 	return func(h *Handle) {
 		h.passCredential = credential
 	}
 }
 
+// WithDatabase Cached database.
 func WithDatabase(db int) options {
 	return func(h *Handle) {
 		h.db = db
 	}
 }
 
-// New create new instance cache
+// New create new instance cache.
 func New(opts ...options) (cache.Cache, error) {
 	h := &Handle{}
 
@@ -92,12 +97,12 @@ func (h *Handle) validate() error {
 	return nil
 }
 
-// Ping returns the Redis server liveliness response
+// Ping returns the Redis server liveliness response.
 func (h *Handle) Ping(ctx context.Context) error {
 	return h.client.Ping(ctx).Err()
 }
 
-// Quit Closes the server connection
+// Quit Closes the server connection.
 func (h *Handle) Close() error {
 	return h.client.Close()
 }
@@ -107,13 +112,13 @@ func (h *Handle) Del(ctx context.Context, keys ...string) error {
 	return h.client.Del(ctx, keys...).Err()
 }
 
-// Exists returns true/false the specified key exist
+// Exists returns true/false the specified key exist.
 func (h *Handle) Exists(ctx context.Context, keys ...string) (bool, error) {
 	exists, err := h.client.Exists(ctx, keys...).Result()
 	return exists != 0, err
 }
 
-// Get return value associated with the key. return nil if the key is not found,  an error is returned.
+// Get return value associated with the key. Return nil if the key is not found,  an error is returned.
 func (h *Handle) Get(ctx context.Context, key string) ([]byte, error) {
 	redisCmd := h.client.Get(ctx, key)
 	switch {
