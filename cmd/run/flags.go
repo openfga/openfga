@@ -243,5 +243,14 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
+
+		util.MustBindPFlag("redisUserName", flags.Lookup("redis-username"))
+		util.MustBindEnv("redisUserName",     "OPENFGA_REDIS_USERNAME")
+
+		util.MustBindPFlag("redisPassword", flags.Lookup("redis-password"))
+		util.MustBindEnv("redisPassword", "OPENFGA_REDIS_PASSWORD")
+
+		util.MustBindPFlag("redisAddress", flags.Lookup("redis-address"))
+		util.MustBindEnv("redisAddress",    "OPENFGA_REDIS_ADDRESS")
 	}
 }

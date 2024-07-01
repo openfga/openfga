@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	redisImage = "redis:7"
+	redisImage = "redis:latest"
 )
 
 type RedisContainer struct {

@@ -101,7 +101,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	redisClient, err := redis.NewContainer()
 	require.NoError(t, err)
 	t.Cleanup(func() { redisClient.Terminate() })
-	cfg.RedisAddrs = redisClient.GetConnectionURI(false)
+	cfg.RedisAddress = redisClient.GetConnectionURI(false)
 
 	StartServer(t, cfg)
 

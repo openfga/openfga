@@ -386,10 +386,6 @@ func WithDispatchThrottlingCheckResolverMaxThreshold(maxThreshold uint32) OpenFG
 // WithRedisUser Redis authenticates against the user.
 func WithRedisUser(redisUser string) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		if redisUser == "" {
-			s.redisUser = serverconfig.DefaultRedisUser
-			return
-		}
 		s.redisUser = redisUser
 	}
 }
@@ -397,10 +393,6 @@ func WithRedisUser(redisUser string) OpenFGAServiceV1Option {
 // WithRedisPassword Redis authenticates against the password.
 func WithRedisPassword(redisPass string) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		if redisPass == "" {
-			s.redisPassword = serverconfig.DefaultRedisPassword
-			return
-		}
 		s.redisPassword = redisPass
 	}
 }
@@ -408,10 +400,6 @@ func WithRedisPassword(redisPass string) OpenFGAServiceV1Option {
 // WithRedisAddr initialize seed list of host:port addresses of Redis cluster nodes.
 func WithRedisAddrs(addrs string) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		if addrs == "" {
-			s.redisAddrs = serverconfig.DefaultRedisAddrs
-			return
-		}
 		s.redisAddrs = addrs
 	}
 }
@@ -506,10 +494,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsDispatchThrottlingFrequency:    serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
 		listObjectsDispatchDefaultThreshold:       serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
 		listObjectsDispatchThrottlingMaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
-
-		redisUser:     serverconfig.DefaultRedisUser,
-		redisPassword: serverconfig.DefaultRedisPassword,
-		redisAddrs:    serverconfig.DefaultRedisAddrs,
 	}
 
 	for _, opt := range opts {
@@ -535,6 +519,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects")
 	}
 
+	if s.checkQueryCacheEnabled && s.redisAddrs == "" {
+		return nil, fmt.Errorf("cache is enabled, Redis username, password and address are not be specified")
+	}
 	// below this point, don't throw errors or we may leak resources in tests
 
 	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
