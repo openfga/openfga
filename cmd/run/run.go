@@ -603,6 +603,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
 		server.WithListObjectsDispatchThrottlingMaxThreshold(config.ListObjectsDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
+		server.WithRedisAddrs(config.RedisAddrs),
+		server.WithRedisPassword(config.RedisPassword),
+		server.WithRedisUser(config.RedisUser),
 	)
 
 	s.Logger.Info(

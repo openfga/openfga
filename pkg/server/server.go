@@ -28,6 +28,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
+
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
@@ -37,6 +38,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
+	"github.com/openfga/openfga/pkg/server/cache/redis"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -145,6 +147,10 @@ type Server struct {
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	listObjectsDispatchThrottler throttler.Throttler
+
+	redisUser     string
+	redisPassword string
+	redisAddrs    string
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -377,6 +383,39 @@ func WithDispatchThrottlingCheckResolverMaxThreshold(maxThreshold uint32) OpenFG
 	}
 }
 
+// WithRedisUser Redis authenticates against the user.
+func WithRedisUser(redisUser string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if redisUser == "" {
+			s.redisUser = serverconfig.DefaultRedisUser
+			return
+		}
+		s.redisUser = redisUser
+	}
+}
+
+// WithRedisPassword Redis authenticates against the password.
+func WithRedisPassword(redisPass string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if redisPass == "" {
+			s.redisPassword = serverconfig.DefaultRedisPassword
+			return
+		}
+		s.redisPassword = redisPass
+	}
+}
+
+// WithRedisAddr initialize seed list of host:port addresses of Redis cluster nodes.
+func WithRedisAddrs(addrs string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		if addrs == "" {
+			s.redisAddrs = serverconfig.DefaultRedisAddrs
+			return
+		}
+		s.redisAddrs = addrs
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -467,6 +506,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsDispatchThrottlingFrequency:    serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
 		listObjectsDispatchDefaultThreshold:       serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
 		listObjectsDispatchThrottlingMaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+
+		redisUser:     serverconfig.DefaultRedisUser,
+		redisPassword: serverconfig.DefaultRedisPassword,
+		redisAddrs:    serverconfig.DefaultRedisAddrs,
 	}
 
 	for _, opt := range opts {
@@ -509,13 +552,26 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
 
+		redisClient, err := redis.New(
+			redis.WithTTL(s.checkQueryCacheTTL),
+			redis.WithAddr(s.redisAddrs),
+			redis.WithUserCredential(s.redisUser),
+			redis.WithPassCredential(s.redisPassword),
+		)
+		if err != nil {
+			return nil, err
+		}
+
 		cachedCheckResolver := graph.NewCachedCheckResolver(
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithExistingCache(redisClient),
+			graph.WithRedisAddrs(s.redisAddrs),
+			graph.WithRedisUser(s.redisUser),
+			graph.WithRedisPassword(s.redisPassword),
 		)
 		s.cachedCheckResolver = cachedCheckResolver
-
 		cachedCheckResolver.SetDelegate(localChecker)
 		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 	}

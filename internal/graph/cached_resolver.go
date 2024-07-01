@@ -2,12 +2,12 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,12 +17,14 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/cache"
+	"github.com/openfga/openfga/pkg/server/cache/redis"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
 	defaultMaxCacheSize     = 10000
-	defaultCacheTTL         = 10 * time.Second
+	defaultCacheTTL         = 60 * time.Second
 	defaultResolveNodeLimit = 25
 )
 
@@ -44,13 +46,17 @@ var (
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        *ccache.Cache[*ResolveCheckResponse]
+	cache        cache.Cache
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
 	allocatedCache bool
+	// todo remove
+	redisUser     string
+	redisPassword string
+	redisAddrs    string
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -77,7 +83,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 // WithExistingCache sets the cache to the specified cache.
 // Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
 // to check whether the original cache should be stopped.
-func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache cache.Cache) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
@@ -87,6 +93,24 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
+	}
+}
+
+func WithRedisUser(user string) CachedCheckResolverOpt {
+	return func(s *CachedCheckResolver) {
+		s.redisUser = user
+	}
+}
+
+func WithRedisPassword(password string) CachedCheckResolverOpt {
+	return func(s *CachedCheckResolver) {
+		s.redisPassword = password
+	}
+}
+
+func WithRedisAddrs(addrs string) CachedCheckResolverOpt {
+	return func(s *CachedCheckResolver) {
+		s.redisAddrs = addrs
 	}
 }
 
@@ -108,13 +132,18 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 	}
 
 	if checker.cache == nil {
-		checker.allocatedCache = true
-		checker.cache = ccache.New(
-			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
-		)
+		checker.instantiateCache()
 	}
 
 	return checker
+}
+
+func (c *CachedCheckResolver) instantiateCache() {
+	c.allocatedCache = true
+	c.cache, _ = redis.New(
+		redis.WithAddr(c.redisAddrs),
+		redis.WithTTL(c.cacheTTL),
+	)
 }
 
 // SetDelegate sets this CachedCheckResolver's dispatch delegate.
@@ -131,7 +160,7 @@ func (c *CachedCheckResolver) GetDelegate() CheckResolver {
 // It will not deallocate cache if it has been passed in from WithExistingCache.
 func (c *CachedCheckResolver) Close() {
 	if c.allocatedCache {
-		c.cache.Stop()
+		_ = c.cache.Close()
 	}
 }
 
@@ -149,14 +178,17 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired()
-	span.SetAttributes(attribute.Bool("is_cached", isCached))
-	if isCached {
+	if value, err := c.cache.Get(ctx, cacheKey); err == nil {
+		span.SetAttributes(attribute.Bool("is_cached", true))
 		checkCacheHitCounter.Inc()
 
-		// return a copy to avoid races across goroutines
-		return CloneResolveCheckResponse(cachedResp.Value()), nil
+		cachedResp := &ResolveCheckResponse{}
+		err = json.Unmarshal(value, cachedResp)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		return cachedResp, nil
 	}
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
@@ -171,7 +203,17 @@ func (c *CachedCheckResolver) ResolveCheck(
 	clonedResp := CloneResolveCheckResponse(resp)
 	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
 
-	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)
+	body, err := json.Marshal(clonedResp)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+
+	if err = c.cache.Set(ctx, cacheKey, body); err != nil {
+		c.logger.Error("cache set failed with error", zap.Error(err))
+		telemetry.TraceError(span, err)
+	}
+
 	return resp, nil
 }
 

@@ -53,6 +53,10 @@ const (
 	DefaultRequestTimeout = 3 * time.Second
 
 	additionalUpstreamTimeout = 3 * time.Second
+
+	DefaultRedisUser     = "default"
+	DefaultRedisPassword = "on ~* +@all"
+	DefaultRedisAddrs    = "master.space-shared-fga-dev-7-use1-default.4fzayk.use1.cache.amazonaws.com:6379"
 )
 
 type DatastoreMetricsConfig struct {
@@ -286,6 +290,10 @@ type Config struct {
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
+
+	RedisUser     string
+	RedisPassword string
+	RedisAddrs    string
 }
 
 func (cfg *Config) Verify() error {
