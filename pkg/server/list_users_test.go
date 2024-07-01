@@ -521,7 +521,7 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey, queryOptions storage.QueryOptions) (storage.TupleIterator, error) {
+			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey, queryOptions storage.ConsistencyOptions) (storage.TupleIterator, error) {
 				time.Sleep(10 * time.Millisecond)
 				return nil, context.Canceled
 			}).

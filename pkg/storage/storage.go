@@ -81,12 +81,12 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
-// QueryOptions holds the settings for consistency options.
-type QueryOptions struct {
+// ConsistencyOptions holds the settings for consistency options.
+type ConsistencyOptions struct {
 	Consistency openfgav1.ConsistencyPreference
 }
 
-func (q QueryOptions) Apply(opts *Options) {
+func (q ConsistencyOptions) Apply(opts *Options) {
 	opts.Query = &q
 }
 
@@ -96,7 +96,7 @@ type Option interface {
 
 type Options struct {
 	Pagination *PaginationOptions
-	Query      *QueryOptions
+	Query      *ConsistencyOptions
 }
 
 // Writes is a typesafe alias for Write arguments.

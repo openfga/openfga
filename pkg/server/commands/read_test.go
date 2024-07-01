@@ -88,7 +88,7 @@ func TestReadCommand(t *testing.T) {
 		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, storage.PaginationOptions{
 			PageSize: storage.DefaultPageSize,
 			From:     "",
-		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED}).Times(1)
+		}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED}).Times(1)
 
 		cmd := NewReadQuery(mockDatastore)
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
@@ -116,7 +116,7 @@ func TestReadCommand(t *testing.T) {
 		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, storage.PaginationOptions{
 			PageSize: int(pageSize),
 			From:     "",
-		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED}).Times(1)
+		}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED}).Times(1)
 
 		cmd := NewReadQuery(mockDatastore, WithReadQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{

@@ -220,7 +220,7 @@ func (c *ReverseExpandQuery) Execute(
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
-	queryOptions storage.QueryOptions,
+	queryOptions storage.ConsistencyOptions,
 ) error {
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata, queryOptions)
 	if err != nil {
@@ -237,7 +237,7 @@ func (c *ReverseExpandQuery) dispatch(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
-	queryOptions storage.QueryOptions,
+	queryOptions storage.ConsistencyOptions,
 ) error {
 	newcount := resolutionMetadata.DispatchCounter.Add(1)
 	if c.dispatchThrottlerConfig.Enabled {
@@ -252,7 +252,7 @@ func (c *ReverseExpandQuery) execute(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
-	queryOptions storage.QueryOptions,
+	queryOptions storage.ConsistencyOptions,
 ) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -391,7 +391,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
-	queryOptions storage.QueryOptions,
+	queryOptions storage.ConsistencyOptions,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
@@ -415,7 +415,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
-	queryOptions storage.QueryOptions,
+	queryOptions storage.ConsistencyOptions,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
@@ -439,7 +439,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
-	queryOptions storage.QueryOptions,
+	queryOptions storage.ConsistencyOptions,
 ) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
