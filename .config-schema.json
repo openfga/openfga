@@ -553,19 +553,19 @@
         "redisUser": {
             "description": "The Redis user name.",
             "type": "string",
-            "default": "default",
+            "default": [],
             "x-env-variable": "OPENFGA_REDIS_USERNAME"
         },
         "redisPassword": {
             "description": "The Redis user password.",
             "type": "string",
-            "default": "on ~* +@all",
+            "default": [],
             "x-env-variable": "OPENFGA_REDIS_PASSWORD"
         },
         "redisAddress": {
             "description": "The Redis connection address.",
             "type": "string",
-            "default": "master.space-shared-fga-dev-7-use1-default.4fzayk.use1.cache.amazonaws.com:6379",
+            "default": [],
             "x-env-variable": "OPENFGA_REDIS_ADDRESS"
         }
     
