@@ -28,4 +28,6 @@ type CheckResolver interface {
 
 	// Close releases resources. It must be called after the CheckResolver is done processing all requests.
 	Close()
+
+	SetDelegate(resolver CheckResolver)
 }

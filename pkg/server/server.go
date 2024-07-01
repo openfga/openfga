@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/openfga/openfga/internal/graph"
+
 	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/internal/throttler"
@@ -28,7 +30,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
@@ -125,9 +126,9 @@ type Server struct {
 	checkQueryCacheEnabled bool
 	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
-	cachedCheckResolver    *graph.CachedCheckResolver
 
-	checkResolver graph.CheckResolver
+	checkResolver       graph.CheckResolver
+	checkResolverCloser func()
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -141,8 +142,6 @@ type Server struct {
 	listObjectsDispatchThrottlingFrequency    time.Duration
 	listObjectsDispatchDefaultThreshold       uint32
 	listObjectsDispatchThrottlingMaxThreshold uint32
-
-	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	listObjectsDispatchThrottler throttler.Throttler
 }
@@ -494,30 +493,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
-	s.checkResolver = cycleDetectionCheckResolver
-
-	localChecker := graph.NewLocalChecker(
-		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-	)
-
-	cycleDetectionCheckResolver.SetDelegate(localChecker)
-	localChecker.SetDelegate(cycleDetectionCheckResolver)
+	checkBuilderOpts := []graph.CheckQueryBuilderOpt{}
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
 
-		cachedCheckResolver := graph.NewCachedCheckResolver(
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithCachedCheckResolver(
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		)
-		s.cachedCheckResolver = cachedCheckResolver
-
-		cachedCheckResolver.SetDelegate(localChecker)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		))
 	}
 
 	if s.checkDispatchThrottlingEnabled {
@@ -527,23 +514,30 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			zap.Uint32("MaxThreshold", s.checkDispatchThrottlingMaxThreshold),
 		)
 
-		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
-			DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
-			MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
-		}
+		checkBuilderOpts = append(checkBuilderOpts, graph.WithDispatchThrottlingCheckResolver(
+			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
+				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
+			}),
+			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
+				"check_dispatch_throttle")),
+		))
+	}
 
-		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
-			graph.WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingConfig),
-			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency, "check_dispatch_throttle")),
+	checkBuilderOpts = append(checkBuilderOpts, graph.WithLocalChecker(
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+	))
+
+	s.checkResolver, s.checkResolverCloser = graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
+
+	if s.listObjectsDispatchThrottlingEnabled {
+		s.logger.Info("Enabling ListObjects dispatch throttling",
+			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
+			zap.Uint32("DefaultThreshold", s.listObjectsDispatchDefaultThreshold),
+			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
 		)
-		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
-		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
 
-		if s.cachedCheckResolver != nil {
-			s.cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		} else {
-			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		}
+		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 
 	if s.listObjectsDispatchThrottlingEnabled {
@@ -565,21 +559,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	if s.dispatchThrottlingCheckResolver != nil {
-		s.dispatchThrottlingCheckResolver.Close()
-	}
-
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
 	}
 
-	if s.cachedCheckResolver != nil {
-		s.cachedCheckResolver.Close()
-	}
-
-	if s.checkResolver != nil {
-		s.checkResolver.Close()
-	}
+	s.checkResolverCloser()
 	s.datastore.Close()
 	s.typesystemResolverStop()
 }

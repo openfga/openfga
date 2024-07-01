@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/graph"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -14,7 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -502,19 +503,19 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
-			checkResolver, closer := graph.NewLayeredCheckResolver(
-				[]graph.LocalCheckerOption{
-					graph.WithResolveNodeBreadthLimit(100),
-					graph.WithMaxConcurrentReads(30),
-				},
-				test.useCheckCache,
-				false,
-				[]graph.CachedCheckResolverOpt{
-					graph.WithMaxCacheSize(100),
-					graph.WithCacheTTL(10 * time.Second),
-				},
-				[]graph.DispatchThrottlingCheckResolverOpt{},
-			)
+			localCheckOpts := []graph.LocalCheckerOption{
+				graph.WithResolveNodeBreadthLimit(100),
+				graph.WithMaxConcurrentReads(30),
+			}
+			cacheOpts := []graph.CachedCheckResolverOpt{
+				graph.WithMaxCacheSize(100),
+				graph.WithCacheTTL(10 * time.Second),
+			}
+			checkBuilderOpts := []graph.CheckQueryBuilderOpt{
+				graph.WithCachedCheckResolver(cacheOpts...),
+				graph.WithLocalChecker(localCheckOpts...),
+			}
+			checkResolver, closer := graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
 			t.Cleanup(closer)
 
 			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
