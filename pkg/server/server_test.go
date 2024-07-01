@@ -266,6 +266,18 @@ func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(
 	})
 }
 
+func TestServerPanicIfDefaultcheckQueryCacheEnabled(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: cache is enabled, Redis username, password and address are not be specified", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCheckQueryCacheEnabled(true),
+		)
+	})
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
