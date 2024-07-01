@@ -17,6 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
+	"github.com/openfga/openfga/pkg/server/cache/redis"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -96,6 +97,11 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
+
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+	cfg.RedisAddress = redisClient.GetConnectionURI(false)
 
 	StartServer(t, cfg)
 

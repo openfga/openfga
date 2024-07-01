@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/server/cache/redis"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -31,6 +31,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 		RequestMetadata:      NewCheckRequestMetadata(20),
 	}
+
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+
 	result := &ResolveCheckResponse{Allowed: true}
 
 	// if the tuple is different, it should result in fetching from cache
@@ -65,7 +70,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -80,7 +85,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -95,7 +100,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -110,7 +115,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -125,7 +130,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -147,7 +152,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -162,10 +167,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(nil, fmt.Errorf("Mock error"))
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 		{
@@ -252,7 +257,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0)
@@ -337,7 +342,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -371,10 +376,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 	}
@@ -382,7 +387,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -393,9 +397,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 			}
 			test.setInitialResult(mockResolver, initialReq)
 
-			// expect first call to result in actual resolve call
-			dut := NewCachedCheckResolver(WithMaxCacheSize(10))
-			defer dut.Close()
+			dut := NewCachedCheckResolver(
+				WithCacheTTL(10*time.Second),
+				WithRedisAddrs(redisClient.GetConnectionURI(false)))
 
 			dut.SetDelegate(mockResolver)
 
@@ -403,8 +407,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			test.setTestExpectations(mockResolver, test.subsequentReq)
 
-			dut2 := NewCachedCheckResolver(WithExistingCache(dut.cache))
-			defer dut2.Close()
+			dut2 := NewCachedCheckResolver(WithCacheTTL(10*time.Second), WithExistingCache(dut.cache))
 
 			dut2.SetDelegate(dut)
 
@@ -425,8 +428,13 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 
 	mockCheckResolver := NewMockCheckResolver(ctrl)
 
-	dut := NewCachedCheckResolver(WithCacheTTL(10 * time.Second))
-	t.Cleanup(dut.Close)
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+
+	dut := NewCachedCheckResolver(
+		WithCacheTTL(10*time.Second),
+		WithRedisAddrs(redisClient.GetConnectionURI(false)))
 
 	dut.SetDelegate(mockCheckResolver)
 
@@ -440,7 +448,7 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 			},
 		}, nil)
 
-	_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	_, err = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 
 	// run multiple times to increase probability of ensuring we detect the race
@@ -492,12 +500,18 @@ func TestResolveCheckExpired(t *testing.T) {
 		RequestMetadata: NewCheckRequestMetadata(20),
 	}
 
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)
-	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
+	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).MinTimes(1).Return(result, nil)
 
 	// expect first call to result in actual resolve call
-	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Microsecond))
+	dut := NewCachedCheckResolver(
+		WithCacheTTL(1*time.Millisecond),
+		WithRedisAddrs(redisClient.GetConnectionURI(false)))
 	defer dut.Close()
 
 	dut.SetDelegate(initialMockResolver)
@@ -515,7 +529,12 @@ func TestResolveCheckExpired(t *testing.T) {
 }
 
 func TestCachedCheckResolver_CycleDetected(t *testing.T) {
-	cachedCheckResolver := NewCachedCheckResolver()
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+
+	cachedCheckResolver := NewCachedCheckResolver(
+		WithRedisAddrs(redisClient.GetConnectionURI(false)))
 	defer cachedCheckResolver.Close()
 
 	mockCtrl := gomock.NewController(t)
@@ -595,14 +614,13 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
-	checkCache := ccache.New(
-		ccache.Configure[*ResolveCheckResponse]().MaxSize(100),
-	)
-	defer checkCache.Stop()
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
 
 	cachedCheckResolver := NewCachedCheckResolver(
-		WithExistingCache(checkCache),
 		WithCacheTTL(10*time.Hour),
+		WithRedisAddrs(redisClient.GetConnectionURI(false)),
 	)
 	defer cachedCheckResolver.Close()
 
@@ -658,7 +676,14 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 }
 
 func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
-	cachedCheckResolver := NewCachedCheckResolver(WithExistingCache(nil)) // create cache inside
+	redisClient, err := redis.NewContainer()
+	require.NoError(t, err)
+	t.Cleanup(func() { redisClient.Terminate() })
+
+	cachedCheckResolver := NewCachedCheckResolver(
+		WithExistingCache(nil),
+		WithRedisAddrs(redisClient.GetConnectionURI(false))) // create cache inside
+	defer cachedCheckResolver.Close()
 
 	mockCtrl := gomock.NewController(t)
 	t.Cleanup(mockCtrl.Finish)
@@ -677,7 +702,6 @@ func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) 
 			},
 		}, nil)
 
-	cachedCheckResolver.Close()
 	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)

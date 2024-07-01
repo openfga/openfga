@@ -549,7 +549,26 @@
             "type": "duration",
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
+        },
+        "redisUser": {
+            "description": "The Redis user name.",
+            "type": "string",
+            "default": [],
+            "x-env-variable": "OPENFGA_REDIS_USERNAME"
+        },
+        "redisPassword": {
+            "description": "The Redis user password.",
+            "type": "string",
+            "default": [],
+            "x-env-variable": "OPENFGA_REDIS_PASSWORD"
+        },
+        "redisAddress": {
+            "description": "The Redis connection address.",
+            "type": "string",
+            "default": [],
+            "x-env-variable": "OPENFGA_REDIS_ADDRESS"
         }
+    
     },
     "definitions": {
         "oidc": {
