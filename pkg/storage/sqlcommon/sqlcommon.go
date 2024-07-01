@@ -232,17 +232,10 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 // ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token.
 // If the continuation token exists it is the ulid of the last element of the returned array.
 func (t *SQLTupleIterator) ToArray(
-	options ...storage.Option,
+	paginationOptions storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
-	opts := &storage.Options{}
-
-	// Apply each option to the opts struct
-	for _, option := range options {
-		option.Apply(opts)
-	}
-
 	var res []*openfgav1.Tuple
-	for i := 0; i < opts.Pagination.PageSize; i++ {
+	for i := 0; i < paginationOptions.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {

@@ -66,7 +66,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 }
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
-func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
 		return nil, err

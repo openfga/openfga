@@ -41,7 +41,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	start := time.Now()
 
 	wg.Go(func() error {
-		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		return err
 	})
 
@@ -49,12 +49,12 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 		_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
 			Object:   "obj:1",
 			Relation: "viewer",
-		}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+		}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		return err
 	})
 
 	wg.Go(func() error {
-		_, err := limitedTupleReader.Read(context.Background(), store, nil, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+		_, err := limitedTupleReader.Read(context.Background(), store, nil, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		return err
 	})
 
@@ -68,7 +68,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 						Object:   "obj",
 						Relation: "viewer",
 					},
-				}}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+				}}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 		return err
 	})
 
@@ -96,22 +96,22 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	}{
 		`read`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 			},
 		},
 		`read_user_tuple`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 			},
 		},
 		`read_userset_tuples`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadUsersetTuples(ctx, ulid.Make().String(), storage.ReadUsersetTuplesFilter{}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+				return dut.ReadUsersetTuples(ctx, ulid.Make().String(), storage.ReadUsersetTuplesFilter{}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 			},
 		},
 		`read_starting_with_user`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadStartingWithUser(ctx, ulid.Make().String(), storage.ReadStartingWithUserFilter{}, storage.QueryOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
+				return dut.ReadStartingWithUser(ctx, ulid.Make().String(), storage.ReadStartingWithUserFilter{}, storage.ConsistencyOptions{Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED})
 			},
 		},
 	}

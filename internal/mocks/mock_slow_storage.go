@@ -26,7 +26,7 @@ func NewMockSlowDataStorage(ds storage.OpenFGADatastore, readTuplesDelay time.Du
 
 func (m *slowDataStorage) Close() {}
 
-func (m *slowDataStorage) Read(ctx context.Context, store string, key *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (m *slowDataStorage) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.Read(ctx, store, key, options...)
 }

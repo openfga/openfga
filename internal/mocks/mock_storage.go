@@ -92,7 +92,7 @@ func (mr *MockTupleBackendMockRecorder) MaxTuplesPerWrite() *gomock.Call {
 }
 
 // Read mocks base method.
-func (m *MockTupleBackend) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, store, tupleKey}
 	for _, a := range options {
@@ -230,7 +230,7 @@ func (m *MockRelationshipTupleReader) EXPECT() *MockRelationshipTupleReaderMockR
 }
 
 // Read mocks base method.
-func (m *MockRelationshipTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (m *MockRelationshipTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, store, tupleKey}
 	for _, a := range options {
@@ -951,7 +951,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesPerAuthorizationModel() *gom
 }
 
 // Read mocks base method.
-func (m *MockOpenFGADatastore) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, store, tupleKey}
 	for _, a := range options {

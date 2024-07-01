@@ -142,7 +142,7 @@ func (p *Postgres) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
@@ -150,9 +150,16 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgav1.T
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) ([]*openfgav1.Tuple, []byte, error) {
+func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
+
+	opts := &storage.ReadOptions{}
+
+	// Apply each option to the opts struct
+	for _, option := range options {
+		option.ApplyReadOptions(opts)
+	}
 
 	iter, err := p.read(ctx, store, tupleKey, options...)
 	if err != nil {
@@ -160,18 +167,18 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(options...)
+	return iter.ToArray(*opts.Pagination)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (*sqlcommon.SQLTupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
-	opts := &storage.Options{}
+	opts := &storage.ReadOptions{}
 
 	// Apply each option to the opts struct
 	for _, option := range options {
-		option.Apply(opts)
+		option.ApplyReadOptions(opts)
 	}
 
 	sb := p.stbl.

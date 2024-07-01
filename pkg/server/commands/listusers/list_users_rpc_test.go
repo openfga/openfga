@@ -3001,14 +3001,14 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Relation: "viewer",
 			Object:   "document:1",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ConsistencyOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:eng#member")},
 			}), nil
 		}),
 		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ConsistencyOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 			}),
 	)
@@ -3053,7 +3053,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Object:   "document:1",
 			Relation: "parent",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ConsistencyOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:1")},
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:2")},
@@ -3062,7 +3062,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Object:   "folder:1",
 			Relation: "viewer",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.QueryOptions) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ConsistencyOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 		}),
 	)

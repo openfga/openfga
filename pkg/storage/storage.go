@@ -59,6 +59,20 @@ type PaginationOptions struct {
 	From     string
 }
 
+func (p PaginationOptions) ApplyReadOptions(opts *ReadOptions) {
+	if p.PageSize == 0 {
+		p.PageSize = DefaultPageSize
+	}
+	opts.Pagination = &p
+}
+
+func (p PaginationOptions) ApplyListStoresOptions(opts *ListStoresOptions) {
+	if p.PageSize == 0 {
+		p.PageSize = DefaultPageSize
+	}
+	opts.Pagination = &p
+}
+
 func (p PaginationOptions) Apply(opts *Options) {
 	if p.PageSize == 0 {
 		p.PageSize = DefaultPageSize
@@ -81,12 +95,16 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
-// QueryOptions holds the settings for consistency options.
-type QueryOptions struct {
+// ConsistencyOptions holds the settings for consistency options.
+type ConsistencyOptions struct {
 	Consistency openfgav1.ConsistencyPreference
 }
 
-func (q QueryOptions) Apply(opts *Options) {
+func (q ConsistencyOptions) ApplyReadOptions(opts *ReadOptions) {
+	opts.ConsistencyOptions = &q
+}
+
+func (q ConsistencyOptions) Apply(opts *Options) {
 	opts.Query = &q
 }
 
@@ -96,7 +114,24 @@ type Option interface {
 
 type Options struct {
 	Pagination *PaginationOptions
-	Query      *QueryOptions
+	Query      *ConsistencyOptions
+}
+
+type ReadOption interface {
+	ApplyReadOptions(*ReadOptions)
+}
+
+type ReadOptions struct {
+	Pagination         *PaginationOptions
+	ConsistencyOptions *ConsistencyOptions
+}
+
+type ListStoresOption interface {
+	ApplyListStoresOptions(*ListStoresOptions)
+}
+
+type ListStoresOptions struct {
+	Pagination *PaginationOptions
 }
 
 // Writes is a typesafe alias for Write arguments.
@@ -121,7 +156,7 @@ type RelationshipTupleReader interface {
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
 	// There is NO guarantee on the order of the tuples returned on the iterator.
-	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...Option) (TupleIterator, error)
+	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...ReadOption) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory pagination options. PageSize will always be greater than zero.
@@ -131,7 +166,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
-		options ...Option,
+		options ...ReadOption,
 	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.

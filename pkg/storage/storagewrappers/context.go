@@ -38,14 +38,14 @@ func (c *ContextTracerWrapper) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
-func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey, options...)
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) ([]*openfgav1.Tuple, []byte, error) {
+func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) ([]*openfgav1.Tuple, []byte, error) {
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadPage(queryCtx, store, tupleKey, options...)

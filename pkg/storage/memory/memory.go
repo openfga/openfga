@@ -174,11 +174,11 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 func (s *MemoryBackend) Close() {}
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
-	return s.read(ctx, store, key, options...)
+	return s.read(ctx, store, tupleKey, options...)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -186,7 +186,7 @@ func (s *MemoryBackend) ReadPage(
 	ctx context.Context,
 	store string,
 	key *openfgav1.TupleKey,
-	options ...storage.Option,
+	options ...storage.ReadOption,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
@@ -278,15 +278,15 @@ func (s *MemoryBackend) ReadChanges(
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
 // A nil paginationOptions input means the returned iterator will iterate through all values.
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, options ...storage.Option) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, options ...storage.ReadOption) (*staticIterator, error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
-	opts := &storage.Options{}
+	opts := &storage.ReadOptions{}
 
 	// Apply each option to the opts struct
 	for _, option := range options {
-		option.Apply(opts)
+		option.ApplyReadOptions(opts)
 	}
 
 	s.mutexTuples.RLock()

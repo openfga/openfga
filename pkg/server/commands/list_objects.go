@@ -301,7 +301,7 @@ func (q *ListObjectsQuery) evaluate(
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 				Context:          req.GetContext(),
-			}, reverseExpandResultsChan, reverseExpandResolutionMetadata, storage.QueryOptions{Consistency: req.GetConsistency()})
+			}, reverseExpandResultsChan, reverseExpandResolutionMetadata, storage.ConsistencyOptions{Consistency: req.GetConsistency()})
 			if err != nil {
 				errChan <- err
 			}

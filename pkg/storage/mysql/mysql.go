@@ -129,7 +129,7 @@ func (m *MySQL) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (storage.TupleIterator, error) {
+func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
@@ -141,16 +141,16 @@ func (m *MySQL) ReadPage(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
-	options ...storage.Option,
+	options ...storage.ReadOption,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	opts := &storage.Options{}
+	opts := &storage.ReadOptions{}
 
 	// Apply each option to the opts struct
 	for _, option := range options {
-		option.Apply(opts)
+		option.ApplyReadOptions(opts)
 	}
 
 	iter, err := m.read(ctx, store, tupleKey, options...)
@@ -162,15 +162,15 @@ func (m *MySQL) ReadPage(
 	return iter.ToArray(*opts.Pagination)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.Option) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ...storage.ReadOption) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
-	opts := &storage.Options{}
+	opts := &storage.ReadOptions{}
 
 	// Apply each option to the opts struct
 	for _, option := range options {
-		option.Apply(opts)
+		option.ApplyReadOptions(opts)
 	}
 
 	sb := m.stbl.
