@@ -10,15 +10,8 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/openfga/main.go",
-            "args": [
-                "run"
-            ],
+            "args": ["run"],
             "env": {
-                "OPENFGA_REQUEST_TIMEOUT": "300s",
-                "OPENFGA_CHECK_QUERY_CACHE_ENABLED": "true",
-                "OPENFGA_REDIS_USERNAME": "default",
-                "OPENFGA_REDIS_PASSWORD": "on ~* +@all",
-                "OPENFGA_REDIS_ADDRESS": "master.space-shared-fga-dev-7-use1-default.4fzayk.use1.cache.amazonaws.com:6379"
             }
         }
     ]
