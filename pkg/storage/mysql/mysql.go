@@ -560,16 +560,9 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, erro
 }
 
 // ListStores provides a paginated list of all stores present in the MySQL storage.
-func (m *MySQL) ListStores(ctx context.Context, options ...storage.Option) ([]*openfgav1.Store, []byte, error) {
+func (m *MySQL) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
-
-	opts := &storage.Options{}
-
-	// Apply each option to the opts struct
-	for _, option := range options {
-		option.Apply(opts)
-	}
 
 	sb := m.stbl.
 		Select("id", "name", "created_at", "updated_at").
@@ -577,15 +570,15 @@ func (m *MySQL) ListStores(ctx context.Context, options ...storage.Option) ([]*o
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
 
-	if opts.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
 	}
-	if opts.Pagination.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -616,12 +609,12 @@ func (m *MySQL) ListStores(ctx context.Context, options ...storage.Option) ([]*o
 		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if len(stores) > opts.Pagination.PageSize {
+	if len(stores) > options.Pagination.PageSize {
 		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
-		return stores[:opts.Pagination.PageSize], contToken, nil
+		return stores[:options.Pagination.PageSize], contToken, nil
 	}
 
 	return stores, nil, nil

@@ -666,13 +666,9 @@ func (mr *MockStoresBackendMockRecorder) GetStore(ctx, id any) *gomock.Call {
 }
 
 // ListStores mocks base method.
-func (m *MockStoresBackend) ListStores(ctx context.Context, options ...storage.Option) ([]*openfgav1.Store, []byte, error) {
+func (m *MockStoresBackend) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ListStores", varargs...)
+	ret := m.ctrl.Call(m, "ListStores", ctx, options)
 	ret0, _ := ret[0].([]*openfgav1.Store)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -680,10 +676,9 @@ func (m *MockStoresBackend) ListStores(ctx context.Context, options ...storage.O
 }
 
 // ListStores indicates an expected call of ListStores.
-func (mr *MockStoresBackendMockRecorder) ListStores(ctx any, options ...any) *gomock.Call {
+func (mr *MockStoresBackendMockRecorder) ListStores(ctx, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockStoresBackend)(nil).ListStores), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockStoresBackend)(nil).ListStores), ctx, options)
 }
 
 // MockAssertionsBackend is a mock of AssertionsBackend interface.
@@ -892,13 +887,9 @@ func (mr *MockOpenFGADatastoreMockRecorder) IsReady(ctx any) *gomock.Call {
 }
 
 // ListStores mocks base method.
-func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options ...storage.Option) ([]*openfgav1.Store, []byte, error) {
+func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range options {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "ListStores", varargs...)
+	ret := m.ctrl.Call(m, "ListStores", ctx, options)
 	ret0, _ := ret[0].([]*openfgav1.Store)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -906,10 +897,9 @@ func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options ...storag
 }
 
 // ListStores indicates an expected call of ListStores.
-func (mr *MockOpenFGADatastoreMockRecorder) ListStores(ctx any, options ...any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ListStores(ctx, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, options...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockOpenFGADatastore)(nil).ListStores), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockOpenFGADatastore)(nil).ListStores), ctx, options)
 }
 
 // MaxTuplesPerWrite mocks base method.

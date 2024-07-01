@@ -103,6 +103,10 @@ type ReadAuthorizationModelsOptions struct {
 	Pagination *PaginationOptions
 }
 
+type ListStoresOptions struct {
+	Pagination *PaginationOptions
+}
+
 // Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
 
@@ -248,7 +252,7 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
-	ListStores(ctx context.Context, options ...Option) ([]*openfgav1.Store, []byte, error)
+	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, []byte, error)
 }
 
 // AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
