@@ -99,8 +99,8 @@ type RelationshipTupleReader interface {
 	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
-	// mandatory pagination options (pageSize can be zero :/)
-	// and returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
+	// mandatory pagination options. PageSize will always be greater than zero.
+	// It returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	// There is NO guarantee on the order of the tuples in one page.
 	ReadPage(
 		ctx context.Context,
@@ -234,9 +234,10 @@ type ChangelogBackend interface {
 	// ReadChanges returns the writes and deletes that have occurred for tuples within a store,
 	// in the order that they occurred.
 	// You can optionally provide a filter to filter out changes for objects of a specific type.
-	// The horizonOffset should be specified using a unit no more granular than a millisecond
-	// and should be interpreted as a millisecond duration.
-	// If no changes are found, it should return storage.ErrNotFound and an empty continuation token.
+	// The horizonOffset should be specified using a unit no more granular than a millisecond.
+	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
+	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
+	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
 	ReadChanges(
 		ctx context.Context,
 		store,

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -46,6 +47,7 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.Experimentals = []string{"enable-list-users"}
+	cfg.ListUsersDeadline = 6 * time.Second
 
 	tests.StartServer(t, cfg)
 
@@ -92,17 +94,18 @@ func TestListUsersLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-type group
-  relations
-    define member: [user]
+		type group
+			relations
+				define member: [user]
 
-type document
-  relations
-	define viewer: [group#member]`)
+		type document
+			relations
+				define viewer: [group#member]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -154,7 +157,7 @@ type document
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
 				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
-				"raw_response":           `{"excluded_users":[],"users":[{"object":{"type":"user","id":"anne"}}]}`,
+				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
@@ -174,7 +177,7 @@ type document
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
 				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
-				"raw_response":           `{"excluded_users":[],"users":[{"object":{"type":"user","id":"anne"}}]}`,
+				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent",

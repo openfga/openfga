@@ -27,17 +27,18 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		expectedResults       int
 	}{
 		`one_found_without_conditions`: {
-			inputModel: `model
-							schema 1.1
-						type user
-						type folder
-							relations
-								define viewer: [user]
-						type document
-							relations
-								define viewer: [user]
-								define parent: [folder]
-								define can_view: viewer or viewer from parent`,
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define viewer: [user]
+						define parent: [folder]
+						define can_view: viewer or viewer from parent`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the next benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
@@ -57,17 +58,18 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			expectedResults:       1,
 		},
 		`all_found_without_conditions`: {
-			inputModel: `model
-							schema 1.1
-						type user
-						type folder
-							relations
-								define viewer: [user]
-						type document
-							relations
-								define viewer: [user]
-								define parent: [folder]
-								define can_view: viewer or viewer from parent`,
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define viewer: [user]
+						define parent: [folder]
+						define can_view: viewer or viewer from parent`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				// same as the previous benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
@@ -90,21 +92,22 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			expectedResults:       1000,
 		},
 		`all_found_with_conditions`: {
-			inputModel: `model
-							schema 1.1
-						type user
-						type folder
-							relations
-								define viewer: [user]
-						type document
-							relations
-								define viewer: [user with condTrue]
-								define parent: [folder]
-								define can_view_conditional: viewer or viewer from parent
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define viewer: [user with condTrue]
+						define parent: [folder]
+						define can_view_conditional: viewer or viewer from parent
 
-						condition condTrue(param: bool) {
-							param == true
-						}`,
+				condition condTrue(param: bool) {
+					param == true
+				}`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				var tuples []*openfgav1.TupleKey
 				for j := 0; j < 1000; j++ {
@@ -124,13 +127,14 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 			expectedResults:       1000,
 		},
 		`exclusion_without_conditions`: {
-			inputModel: `model
-							schema 1.1
-						type user
-						type document
-							relations
-								define blocked: [user]
-								define public_but_not: [user:*] but not blocked`,
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define blocked: [user]
+						define public_but_not: [user:*] but not blocked`,
 			tupleGenerator: func() []*openfgav1.TupleKey {
 				return []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "public_but_not", "user:*"),
