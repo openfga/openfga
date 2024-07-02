@@ -795,7 +795,6 @@ func TestReleasesConnections(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(s.Close)
 
@@ -938,7 +937,6 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)

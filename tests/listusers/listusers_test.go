@@ -46,7 +46,6 @@ func testRunAll(t *testing.T, engine string) {
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	cfg.Experimentals = []string{"enable-list-users"}
 	cfg.ListUsersDeadline = 6 * time.Second
 
 	tests.StartServer(t, cfg)
@@ -69,7 +68,6 @@ func TestListUsersLogs(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
-	cfg.Experimentals = append(cfg.Experimentals, "enable-list-users")
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	serverCtx := &run.ServerContext{
