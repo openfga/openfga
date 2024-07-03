@@ -1,6 +1,6 @@
 module github.com/openfga/openfga
 
-go 1.22.4
+go 1.22.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
