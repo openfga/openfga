@@ -2946,7 +2946,21 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectDirectlyAssignable: true,
 			expectError:              false,
 		},
-
+		{
+			name: "userset_reference_itself",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user,group#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+			expectDirectlyAssignable: false, // for now, we cannot shortcut this logic due to recursion
+			expectError:              false,
+		},
 		{
 			name: "complex_userset_member_is_userset",
 			model: `
