@@ -734,13 +734,6 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
 	}
 
-	response := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-		},
-	}
-
 	// usersetsMap is a map of all ObjectRelations and its IdsFor example,
 	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
 	// [group#member][1]
@@ -799,44 +792,58 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 
 	// Next, for all the ObjectRelation, compare the associated objectIDs
 	// to the users associated objects
+	// all of this can likely bee its own function
+	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
 	for objectRel, objectIDs := range usersetsMap {
-		// TODO: Make this function concurrent with short circuiting / control
-		objectType, relation := tuple.SplitObjectRelation(objectRel)
-		iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-			ObjectType: objectType,
-			Relation:   relation,
-			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: reqTupleKey.GetUser(),
-			}},
-		})
-		if err != nil {
-			return nil, err
-		}
-		defer iter.Stop()
-
-		response.GetResolutionMetadata().DatastoreQueryCount++
-
-		for {
-			t, err := iter.Next(ctx)
+		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
+			response := &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+				},
+			}
+			objectType, relation := tuple.SplitObjectRelation(objectRel)
+			iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+				ObjectType: objectType,
+				Relation:   relation,
+				UserFilter: []*openfgav1.ObjectRelation{{
+					Object: reqTupleKey.GetUser(),
+				}},
+			})
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-
 				return nil, err
 			}
+			defer iter.Stop()
 
-			if actualObject := t.GetKey().GetObject(); actualObject != "" {
-				_, objectID := tuple.SplitObject(actualObject)
-				if _, ok := objectIDs[objectID]; ok {
-					response.Allowed = true
-					return response, nil
+			for {
+				t, err := iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+
+					return nil, err
+				}
+
+				if actualObject := t.GetKey().GetObject(); actualObject != "" {
+					_, objectID := tuple.SplitObject(actualObject)
+					if _, ok := objectIDs[objectID]; ok {
+						response.Allowed = true
+						return response, nil
+					}
 				}
 			}
+			return response, nil
 		}
+		handlers = append(handlers, handler)
+	}
+	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
 	}
 
-	return response, nil
+	return resp, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
