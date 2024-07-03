@@ -676,12 +676,7 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (m *MySQL) ReadChanges(
-	ctx context.Context,
-	store, objectTypeFilter string,
-	opts storage.PaginationOptions,
-	horizonOffset time.Duration,
-) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MySQL) ReadChanges(ctx context.Context, store, objectTypeFilter string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
 
@@ -698,8 +693,8 @@ func (m *MySQL) ReadChanges(
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -709,8 +704,8 @@ func (m *MySQL) ReadChanges(
 
 		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)

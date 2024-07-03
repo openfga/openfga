@@ -672,9 +672,9 @@ func (m *MockChangelogBackend) EXPECT() *MockChangelogBackendMockRecorder {
 }
 
 // ReadChanges mocks base method.
-func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectType string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, paginationOptions, horizonOffset)
+	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, options, horizonOffset)
 	ret0, _ := ret[0].([]*openfgav1.TupleChange)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -682,9 +682,9 @@ func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectTyp
 }
 
 // ReadChanges indicates an expected call of ReadChanges.
-func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, objectType, paginationOptions, horizonOffset any) *gomock.Call {
+func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, objectType, options, horizonOffset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockChangelogBackend)(nil).ReadChanges), ctx, store, objectType, paginationOptions, horizonOffset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockChangelogBackend)(nil).ReadChanges), ctx, store, objectType, options, horizonOffset)
 }
 
 // MockOpenFGADatastore is a mock of OpenFGADatastore interface.
@@ -902,9 +902,9 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, 
 }
 
 // ReadChanges mocks base method.
-func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectType string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, paginationOptions, horizonOffset)
+	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, options, horizonOffset)
 	ret0, _ := ret[0].([]*openfgav1.TupleChange)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -912,9 +912,9 @@ func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectTyp
 }
 
 // ReadChanges indicates an expected call of ReadChanges.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadChanges(ctx, store, objectType, paginationOptions, horizonOffset any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ReadChanges(ctx, store, objectType, options, horizonOffset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadChanges), ctx, store, objectType, paginationOptions, horizonOffset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadChanges), ctx, store, objectType, options, horizonOffset)
 }
 
 // ReadPage mocks base method.

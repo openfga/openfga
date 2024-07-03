@@ -200,13 +200,7 @@ func (s *MemoryBackend) ReadPage(
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (s *MemoryBackend) ReadChanges(
-	ctx context.Context,
-	store,
-	objectType string,
-	paginationOptions storage.PaginationOptions,
-	horizonOffset time.Duration,
-) ([]*openfgav1.TupleChange, []byte, error) {
+func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
 
@@ -217,8 +211,8 @@ func (s *MemoryBackend) ReadChanges(
 	var from int64
 	var typeInToken string
 	var continuationToken string
-	if paginationOptions.From != "" {
-		tokens := strings.Split(paginationOptions.From, "|")
+	if options.Pagination.From != "" {
+		tokens := strings.Split(options.Pagination.From, "|")
 		if len(tokens) == 2 {
 			concreteToken := tokens[0]
 			typeInToken = tokens[1]
@@ -248,8 +242,8 @@ func (s *MemoryBackend) ReadChanges(
 	}
 
 	pageSize := storage.DefaultPageSize
-	if paginationOptions.PageSize > 0 {
-		pageSize = paginationOptions.PageSize
+	if options.Pagination.PageSize > 0 {
+		pageSize = options.Pagination.PageSize
 	}
 	to := int(from) + pageSize
 	if len(allChanges) < to {

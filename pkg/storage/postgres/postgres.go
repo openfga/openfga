@@ -655,12 +655,7 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (p *Postgres) ReadChanges(
-	ctx context.Context,
-	store, objectTypeFilter string,
-	opts storage.PaginationOptions,
-	horizonOffset time.Duration,
-) ([]*openfgav1.TupleChange, []byte, error) {
+func (p *Postgres) ReadChanges(ctx context.Context, store, objectTypeFilter string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
@@ -677,8 +672,8 @@ func (p *Postgres) ReadChanges(
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -688,8 +683,8 @@ func (p *Postgres) ReadChanges(
 
 		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)

@@ -86,6 +86,12 @@ type ListStoresOptions struct {
 	Pagination PaginationOptions
 }
 
+// ReadChangesOptions represents the options that can
+// be used with the ReadChanges method.
+type ReadChangesOptions struct {
+	Pagination PaginationOptions
+}
+
 // Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
 
@@ -250,13 +256,7 @@ type ChangelogBackend interface {
 	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
-	ReadChanges(
-		ctx context.Context,
-		store,
-		objectType string,
-		paginationOptions PaginationOptions,
-		horizonOffset time.Duration,
-	) ([]*openfgav1.TupleChange, []byte, error)
+	ReadChanges(ctx context.Context, store, objectType string, options ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting
