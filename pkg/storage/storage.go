@@ -75,7 +75,7 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 }
 
 // ReadAuthorizationModelOptions represents the options that can
-// be used with the ReadAuthorizationModels method
+// be used with the ReadAuthorizationModels method.
 type ReadAuthorizationModelsOptions struct {
 	Pagination PaginationOptions
 }

@@ -116,7 +116,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 			for {
 				// fetch a page of models for that store
 				opts := storage.ReadAuthorizationModelsOptions{
-					storage.NewPaginationOptions(100, continuationTokenModels),
+					Pagination: storage.NewPaginationOptions(100, continuationTokenModels),
 				}
 				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.GetId(), opts)
 				if err != nil {
