@@ -1363,7 +1363,6 @@ func TestHTTPHeaders(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
