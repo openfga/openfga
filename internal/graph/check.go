@@ -797,9 +797,9 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
-	// Next, for all the ObjectRelation, compare the associated objectIds
+	// Next, for all the ObjectRelation, compare the associated objectIDs
 	// to the users associated objects
-	for objectRel, objectIds := range usersetsMap {
+	for objectRel, objectIDs := range usersetsMap {
 		// TODO: Make this function concurrent with short circuiting / control
 		objectType, relation := tuple.SplitObjectRelation(objectRel)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
@@ -828,7 +828,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 
 			if actualObject := t.GetKey().GetObject(); actualObject != "" {
 				_, objectID := tuple.SplitObject(actualObject)
-				if _, ok := objectIds[objectID]; ok {
+				if _, ok := objectIDs[objectID]; ok {
 					response.Allowed = true
 					return response, nil
 				}
