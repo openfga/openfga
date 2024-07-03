@@ -182,16 +182,11 @@ func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.T
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (s *MemoryBackend) ReadPage(
-	ctx context.Context,
-	store string,
-	key *openfgav1.TupleKey,
-	paginationOptions storage.PaginationOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
+func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
-	it, err := s.read(ctx, store, key, &paginationOptions)
+	it, err := s.read(ctx, store, key, &options)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -265,7 +260,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
 // A nil paginationOptions input means the returned iterator will iterate through all values.
-func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, paginationOptions *storage.PaginationOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.TupleKey, options *storage.ReadPageOptions) (*staticIterator, error) {
 	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
@@ -286,8 +281,8 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 
 	var err error
 	var from int
-	if paginationOptions != nil && paginationOptions.From != "" {
-		from, err = strconv.Atoi(paginationOptions.From)
+	if options != nil && options.Pagination.From != "" {
+		from, err = strconv.Atoi(options.Pagination.From)
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err
@@ -299,8 +294,8 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	}
 
 	to := 0 // fetch everything
-	if paginationOptions != nil {
-		to = paginationOptions.PageSize
+	if options != nil {
+		to = options.Pagination.PageSize
 	}
 	if to != 0 && to < len(matches) {
 		return &staticIterator{records: matches[:to], continuationToken: []byte(strconv.Itoa(from + to))}, nil

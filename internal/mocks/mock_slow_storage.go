@@ -31,9 +31,9 @@ func (m *slowDataStorage) Read(ctx context.Context, store string, key *openfgav1
 	return m.OpenFGADatastore.Read(ctx, store, key)
 }
 
-func (m *slowDataStorage) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *slowDataStorage) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
 	time.Sleep(m.readTuplesDelay)
-	return m.OpenFGADatastore.ReadPage(ctx, store, key, paginationOptions)
+	return m.OpenFGADatastore.ReadPage(ctx, store, key, options)
 }
 
 func (m *slowDataStorage) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey) (*openfgav1.Tuple, error) {

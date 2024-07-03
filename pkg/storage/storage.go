@@ -92,6 +92,12 @@ type ReadChangesOptions struct {
 	Pagination PaginationOptions
 }
 
+// ReadPageOptions represents the options that can
+// be used with the ReadPage method.
+type ReadPageOptions struct {
+	Pagination PaginationOptions
+}
+
 // Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
 
@@ -124,7 +130,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
-		paginationOptions PaginationOptions,
+		options ReadPageOptions,
 	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.

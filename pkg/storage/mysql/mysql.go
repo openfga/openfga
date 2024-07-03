@@ -137,25 +137,20 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (m *MySQL) ReadPage(
-	ctx context.Context,
-	store string,
-	tupleKey *openfgav1.TupleKey,
-	opts storage.PaginationOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, &opts)
+	iter, err := m.read(ctx, store, tupleKey, &options)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(opts)
+	return iter.ToArray(options.Pagination)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -182,15 +177,15 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	if tupleKey.GetUser() != "" {
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
-	if opts != nil && opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if opts != nil && opts.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(opts.Pagination.From)
 		if err != nil {
 			return nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
-	if opts != nil && opts.PageSize != 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if opts != nil && opts.Pagination.PageSize != 0 {
+		sb = sb.Limit(uint64(opts.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)

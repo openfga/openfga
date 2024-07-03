@@ -1011,7 +1011,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
+		opts := storage.ReadPageOptions{
+			Pagination: storage.NewPaginationOptions(2, ""),
+		}
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, opts)
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Nil(t, tuples[0].GetKey().GetCondition())
@@ -1046,10 +1049,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		opts := storage.ReadChangesOptions{
+		readChangesOpts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", opts, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", readChangesOpts, 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -1097,7 +1100,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 		require.Empty(t, tp.GetKey().GetCondition().GetContext())
 
-		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.NewPaginationOptions(2, ""))
+		opts := storage.ReadPageOptions{
+			Pagination: storage.NewPaginationOptions(2, ""),
+		}
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, opts)
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.NotNil(t, tuples[0].GetKey().GetCondition().GetContext())
@@ -1132,10 +1138,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		opts := storage.ReadChangesOptions{
+		readChangesOpts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", opts, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", readChangesOpts, 0)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
@@ -1517,10 +1523,13 @@ func readWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID string,
 		err               error
 	)
 	for {
-		tuples, continuationToken, err = ds.ReadPage(context.Background(), storeID, filter, storage.PaginationOptions{
-			PageSize: pageSize,
-			From:     string(continuationToken),
-		})
+		opts := storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: pageSize,
+				From:     string(continuationToken),
+			},
+		}
+		tuples, continuationToken, err = ds.ReadPage(context.Background(), storeID, filter, opts)
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break
