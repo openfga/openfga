@@ -11,7 +11,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 )
 
-func TestNewLayeredCheckResolver(t *testing.T) {
+func TestNewCheckResolverBuilder(t *testing.T) {
 	type Test struct {
 		name                      string
 		cacheEnabled              bool
