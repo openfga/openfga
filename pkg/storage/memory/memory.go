@@ -568,11 +568,7 @@ func (s *MemoryBackend) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (s *MemoryBackend) ReadAuthorizationModels(
-	ctx context.Context,
-	store string,
-	options storage.PaginationOptions,
-) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
@@ -594,12 +590,12 @@ func (s *MemoryBackend) ReadAuthorizationModels(
 	var err error
 
 	pageSize := storage.DefaultPageSize
-	if options.PageSize > 0 {
-		pageSize = options.PageSize
+	if options.Pagination.PageSize > 0 {
+		pageSize = options.Pagination.PageSize
 	}
 
-	if options.From != "" {
-		from, err = strconv.ParseInt(options.From, 10, 32)
+	if options.Pagination.From != "" {
+		from, err = strconv.ParseInt(options.Pagination.From, 10, 32)
 		if err != nil {
 			return nil, nil, err
 		}

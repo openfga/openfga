@@ -350,7 +350,7 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
@@ -484,7 +484,7 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModel(ctx,
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
@@ -886,7 +886,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModel(ctx, store, i
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)

@@ -368,7 +368,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
@@ -379,15 +379,15 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -414,8 +414,8 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 
 	var token []byte
 	numModelIDs := len(modelIDs)
-	if len(modelIDs) > opts.PageSize {
-		numModelIDs = opts.PageSize
+	if len(modelIDs) > options.Pagination.PageSize {
+		numModelIDs = options.Pagination.PageSize
 		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err

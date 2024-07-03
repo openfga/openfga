@@ -74,6 +74,12 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
+// ReadAuthorizationModelOptions represents the options that can
+// be used with the ReadAuthorizationModels method
+type ReadAuthorizationModelsOptions struct {
+	Pagination PaginationOptions
+}
+
 // Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
 
@@ -188,7 +194,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
-	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
