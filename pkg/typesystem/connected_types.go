@@ -1,10 +1,6 @@
 package typesystem
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
@@ -32,21 +28,11 @@ func (t *TypeSystem) AreTypesConnectedViaRelations(objectType, relation, subject
 	return true, terminalRelations
 }
 
-func TMPPrettyPrint(data interface{}) {
-	// Marshal the map to a pretty-printed JSON string
-	jsonData, err := json.MarshalIndent(data, "", "    ")
-	if err != nil {
-		log.Fatalf("Error pretty-printing map: %v", err)
-	}
-	fmt.Println(string(jsonData))
-}
-
-// validateRelation applies all the validation rules to a relation definition in a model. A relation
-// must meet all the rewrite validation, type restriction validation, and entrypoint validation criteria
-// for it to be valid. Otherwise, an error is returned.
+// AssignTerminalTypes will populate the `connectedTypes` property on the typesystem to indicate for a given object type
+// what the terminal user types and relations.
 func (t *TypeSystem) AssignTerminalTypes(typeName, relationName string, relationMap map[string]*openfgav1.Userset) {
 	rewrite := relationMap[relationName]
-	terminalTypesAndRelations := t.getTerminalSubjectTypesAndRelation(typeName, relationName, rewrite)
+	terminalTypesAndRelations := t.getTerminalUserTypesAndRelation(typeName, relationName, rewrite)
 
 	for _, terminalTypesAndRelation := range terminalTypesAndRelations {
 		for _, terminalType := range terminalTypesAndRelation.terminalTypes {
@@ -60,7 +46,7 @@ type terminalTypesAndRelation struct {
 	terminalRelation string
 }
 
-func (t *TypeSystem) getTerminalSubjectTypesAndRelation(
+func (t *TypeSystem) getTerminalUserTypesAndRelation(
 	typeName string,
 	relationName string,
 	rewrite *openfgav1.Userset,
@@ -105,7 +91,7 @@ func (t *TypeSystem) getTerminalSubjectTypesAndRelation(
 	case *openfgav1.Userset_ComputedUserset:
 		computedRelationName := rw.ComputedUserset.GetRelation()
 		computedRelation := t.relations[typeName][computedRelationName]
-		return t.getTerminalSubjectTypesAndRelation(typeName, computedRelationName, computedRelation.GetRewrite())
+		return t.getTerminalUserTypesAndRelation(typeName, computedRelationName, computedRelation.GetRewrite())
 	case *openfgav1.Userset_TupleToUserset:
 		tuplesetRelationName := rw.TupleToUserset.GetTupleset().GetRelation()
 		computedRelationName := rw.TupleToUserset.GetComputedUserset().GetRelation()
@@ -119,7 +105,7 @@ func (t *TypeSystem) getTerminalSubjectTypesAndRelation(
 			assignableTypeName := assignableType.GetType()
 
 			if assignableRelation, ok := t.relations[assignableTypeName][computedRelationName]; ok {
-				return t.getTerminalSubjectTypesAndRelation(assignableTypeName, computedRelationName, assignableRelation.GetRewrite())
+				return t.getTerminalUserTypesAndRelation(assignableTypeName, computedRelationName, assignableRelation.GetRewrite())
 			}
 		}
 
@@ -127,26 +113,27 @@ func (t *TypeSystem) getTerminalSubjectTypesAndRelation(
 		assignableTypesForRelation := []terminalTypesAndRelation{}
 
 		for _, child := range rw.Union.GetChild() {
-			tt := t.getTerminalSubjectTypesAndRelation(typeName, relationName, child)
+			tt := t.getTerminalUserTypesAndRelation(typeName, relationName, child)
 			assignableTypesForRelation = append(assignableTypesForRelation, tt...)
 		}
 
 		return assignableTypesForRelation
 
-	case *openfgav1.Userset_Intersection:
-		intersectionAssignableTypesAndRelations := []terminalTypesAndRelation{}
-
-		for _, child := range rw.Intersection.GetChild() {
-			_ = t.getTerminalSubjectTypesAndRelation(typeName, relationName, child)
-		}
-
-		return intersectionAssignableTypesAndRelations
 	}
+	// case *openfgav1.Userset_Intersection:
+	// 	intersectionAssignableTypesAndRelations := []terminalTypesAndRelation{}
+
+	// 	for _, child := range rw.Intersection.GetChild() {
+	// 		_ = t.getTerminalUserTypesAndRelation(typeName, relationName, child)
+	// 	}
+
+	// 	return intersectionAssignableTypesAndRelations
+	// }
 
 	// case *openfgav1.Userset_Difference:
 	// 	// All the children must have an entrypoint.
-	// 	baseTypes, baseTerminalRelation := t.getTerminalSubjectTypesAndRelation(typeName, relationName, rw.Difference.GetBase())
-	// 	subTypes, subTerminalRelation := t.getTerminalSubjectTypesAndRelation(typeName, relationName, rw.Difference.GetSubtract())
+	// 	baseTypes, baseTerminalRelation := t.getTerminalUserTypesAndRelation(typeName, relationName, rw.Difference.GetBase())
+	// 	subTypes, subTerminalRelation := t.getTerminalUserTypesAndRelation(typeName, relationName, rw.Difference.GetSubtract())
 
 	// 	return
 	// }

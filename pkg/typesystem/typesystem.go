@@ -222,78 +222,6 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 }
 
-// NewAndValidate is like New but also validates the model according to the following rules:
-//  1. Checks that the *TypeSystem have a valid schema version.
-//  2. For every rewrite the relations in the rewrite must:
-//     a) Be valid relations on the same type in the *TypeSystem (in cases of computedUserset)
-//     b) Be valid relations on another existing type (in cases of tupleToUserset)
-//  3. Do not allow duplicate types or duplicate relations (only need to check types as relations are
-//     in a map so cannot contain duplicates)
-//
-// If the *TypeSystem has a v1.1 schema version (with types on relations), then additionally
-// validate the *TypeSystem according to the following rules:
-//  3. Every type restriction on a relation must be a valid type:
-//     a) For a type (e.g. user) this means checking that this type is in the *TypeSystem
-//     b) For a type#relation this means checking that this type with this relation is in the *TypeSystem
-//  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
-	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
-	defer span.End()
-
-	t := New(model)
-	schemaVersion := t.GetSchemaVersion()
-
-	if !IsSchemaVersionSupported(schemaVersion) {
-		return nil, ErrInvalidSchemaVersion
-	}
-
-	if containsDuplicateType(model) {
-		return nil, ErrDuplicateTypes
-	}
-
-	if err := t.validateNames(); err != nil {
-		return nil, err
-	}
-
-	typedefsMap := t.typeDefinitions
-
-	typeNames := make([]string, 0, len(typedefsMap))
-	for typeName := range typedefsMap {
-		typeNames = append(typeNames, typeName)
-	}
-
-	// Range over the type definitions in sorted order to produce a deterministic outcome.
-	sort.Strings(typeNames)
-
-	for _, typeName := range typeNames {
-		typedef := typedefsMap[typeName]
-
-		relationMap := typedef.GetRelations()
-		relationNames := make([]string, 0, len(relationMap))
-		for relationName := range relationMap {
-			relationNames = append(relationNames, relationName)
-		}
-
-		// Range over the relations in sorted order to produce a deterministic outcome.
-		sort.Strings(relationNames)
-
-		for _, relationName := range relationNames {
-			err := t.validateRelation(typeName, relationName, relationMap)
-			if err != nil {
-				return nil, err
-			}
-
-			t.AssignTerminalTypes(typeName, relationName, relationMap)
-		}
-	}
-
-	if err := t.validateConditions(); err != nil {
-		return nil, err
-	}
-
-	return t, nil
-}
-
 // GetAuthorizationModelID returns the ID for the authorization
 // model this TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {
@@ -783,6 +711,77 @@ func hasEntrypoints(
 	}
 
 	panic("unexpected userset rewrite encountered")
+}
+
+// NewAndValidate is like New but also validates the model according to the following rules:
+//  1. Checks that the *TypeSystem have a valid schema version.
+//  2. For every rewrite the relations in the rewrite must:
+//     a) Be valid relations on the same type in the *TypeSystem (in cases of computedUserset)
+//     b) Be valid relations on another existing type (in cases of tupleToUserset)
+//  3. Do not allow duplicate types or duplicate relations (only need to check types as relations are
+//     in a map so cannot contain duplicates)
+//
+// If the *TypeSystem has a v1.1 schema version (with types on relations), then additionally
+// validate the *TypeSystem according to the following rules:
+//  3. Every type restriction on a relation must be a valid type:
+//     a) For a type (e.g. user) this means checking that this type is in the *TypeSystem
+//     b) For a type#relation this means checking that this type with this relation is in the *TypeSystem
+//  4. Check that a relation is assignable if and only if it has a non-zero list of types
+func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
+	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
+	defer span.End()
+
+	t := New(model)
+	schemaVersion := t.GetSchemaVersion()
+
+	if !IsSchemaVersionSupported(schemaVersion) {
+		return nil, ErrInvalidSchemaVersion
+	}
+
+	if containsDuplicateType(model) {
+		return nil, ErrDuplicateTypes
+	}
+
+	if err := t.validateNames(); err != nil {
+		return nil, err
+	}
+
+	typedefsMap := t.typeDefinitions
+
+	typeNames := make([]string, 0, len(typedefsMap))
+	for typeName := range typedefsMap {
+		typeNames = append(typeNames, typeName)
+	}
+
+	// Range over the type definitions in sorted order to produce a deterministic outcome.
+	sort.Strings(typeNames)
+
+	for _, typeName := range typeNames {
+		typedef := typedefsMap[typeName]
+
+		relationMap := typedef.GetRelations()
+		relationNames := make([]string, 0, len(relationMap))
+		for relationName := range relationMap {
+			relationNames = append(relationNames, relationName)
+		}
+
+		// Range over the relations in sorted order to produce a deterministic outcome.
+		sort.Strings(relationNames)
+
+		for _, relationName := range relationNames {
+			err := t.validateRelation(typeName, relationName, relationMap)
+			if err != nil {
+				return nil, err
+			}
+			t.AssignTerminalTypes(typeName, relationName, relationMap)
+		}
+	}
+
+	if err := t.validateConditions(); err != nil {
+		return nil, err
+	}
+
+	return t, nil
 }
 
 // validateRelation applies all the validation rules to a relation definition in a model. A relation
