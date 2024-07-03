@@ -614,33 +614,28 @@ func (c *LocalChecker) ResolveCheck(
 	return resp, nil
 }
 
-// TODO(jpadilla): we can likely remove this.
-type checkDirectUsersetPublicInternalInfo struct {
-	span         trace.Span
-	filteredIter storage.TupleKeyIterator
-	typesys      *typesystem.TypeSystem
-	req          *ResolveCheckRequest
-	ds           storage.RelationshipTupleReader
-}
-
 // checkUsersetPublicWildcardSlowPath will check userset or public wildcard path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, info checkDirectUsersetPublicInternalInfo) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetPublicWildcardSlowPath")
+	defer span.End()
 	var errs error
 	var handlers []CheckHandlerFunc
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: info.req.GetRequestMetadata().DatastoreQueryCount + 1,
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 		},
 	}
 
-	// can skip for loop
-	// consume iterator and then send as a BIG list to storage layer
-	// future optimization
 	for {
-		t, err := info.filteredIter.Next(ctx)
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -649,7 +644,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 			return nil, err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, info.typesys, info.req.GetContext())
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue
@@ -671,15 +666,15 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 		}
 
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-		reqTupleKey := info.req.GetTupleKey()
+		reqTupleKey := req.GetTupleKey()
 
 		// if the user value is a typed wildcard and the type of the wildcard
 		// matches the target user objectType, then we're done searching
-		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(info.typesys.GetSchemaVersion()) {
+		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
 			wildcardType := tuple.GetType(usersetObject)
 
 			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-				info.span.SetAttributes(attribute.Bool("allowed", true))
+				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
 			}
@@ -689,18 +684,18 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 
 		if usersetRelation != "" {
 			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			handlers = append(handlers, c.dispatch(ctx, info.req, tupleKey))
+			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
 		}
 	}
 
 	if len(handlers) == 0 && errs != nil {
-		telemetry.TraceError(info.span, errs)
+		telemetry.TraceError(span, errs)
 		return nil, errs
 	}
 
 	resp, err := union(ctx, c.concurrencyLimit, handlers...)
 	if err != nil {
-		telemetry.TraceError(info.span, err)
+		telemetry.TraceError(span, err)
 		return nil, errors.Join(errs, err)
 	}
 
@@ -724,26 +719,36 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 // Finally, find the intersection between the two.
 // To use the fastpath, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
-func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, info checkDirectUsersetPublicInternalInfo) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetPublicWildcardFastPath")
+	defer span.End()
 	var errs error
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
+
+	ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+	}
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: info.req.GetRequestMetadata().DatastoreQueryCount + 1,
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 		},
 	}
 
-	// usersetObjectTypeRelationMap is a map of all userset objectType and its relations.  For example,
+	// usersetsMap is a map of all ObjectRelations and its IdsFor example,
 	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group][member][1]
-	// [group][owner][1]
-	// [group][owner][3]
-	// We will later compare usersetObjectTypeRelationMap's entries with the object user has relation with.
-	usersetObjectTypeRelationMap := make(map[string]map[string]map[string]struct{})
+	// [group#member][1]
+	// [group#owner][1, 3]
+	usersetsMap := make(map[string]map[string]struct{})
 
 	for {
-		t, err := info.filteredIter.Next(ctx)
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -752,7 +757,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 			return nil, err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, info.typesys, info.req.GetContext())
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue
@@ -773,62 +778,59 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 			continue
 		}
 
-		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(usersetObject)
-
-		if _, ok := usersetObjectTypeRelationMap[objectType]; !ok {
-			usersetObjectTypeRelationMap[objectType] = make(map[string]map[string]struct{})
-			usersetObjectTypeRelationMap[objectType][usersetRelation] = make(map[string]struct{})
+		object, relation := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		objectRel := tuple.ToObjectRelationString(objectType, relation)
+		if _, ok := usersetsMap[objectRel]; !ok {
+			usersetsMap[objectRel] = make(map[string]struct{})
 		}
-
-		usersetObjectTypeRelationMap[objectType][usersetRelation][objectID] = struct{}{}
+		if _, ok := usersetsMap[objectRel][objectID]; !ok {
+			usersetsMap[objectRel][objectID] = struct{}{}
+		}
 	}
 
 	if errs != nil {
-		telemetry.TraceError(info.span, errs)
+		telemetry.TraceError(span, errs)
 		return nil, errs
 	}
 
-	storeID := info.req.GetStoreID()
-	reqTupleKey := info.req.GetTupleKey()
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
 
-	// Next, for all the userset object type and relation, compare the associated these objects
-	// has any intersections with the objects user has relations with.
-	for usersetObjectType, usersetRelationMap := range usersetObjectTypeRelationMap {
-		// TODO(jpadilla): we should run these search paths concurrently
-		for usersetRelation, objectsSlice := range usersetRelationMap {
-			// TODO: we can optimize by using batch query once DS has the function to perform batch query.
-			iter, err := info.ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-				ObjectType: usersetObjectType,
-				Relation:   usersetRelation,
-				UserFilter: []*openfgav1.ObjectRelation{{
-					Object: reqTupleKey.GetUser(),
-				}},
-			})
+	// Next, for all the ObjectRelation, compare the associated objectIds
+	// to the users associated objects
+	for objectRel, objectIds := range usersetsMap {
+		// TODO: Make this function concurrent with short circuiting / control
+		objectType, relation := tuple.SplitObjectRelation(objectRel)
+		iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: objectType,
+			Relation:   relation,
+			UserFilter: []*openfgav1.ObjectRelation{{
+				Object: reqTupleKey.GetUser(),
+			}},
+		})
+		if err != nil {
+			return nil, err
+		}
+		defer iter.Stop()
+
+		response.GetResolutionMetadata().DatastoreQueryCount++
+
+		for {
+			t, err := iter.Next(ctx)
 			if err != nil {
-				return nil, err
-			}
-			defer iter.Stop()
-
-			response.GetResolutionMetadata().DatastoreQueryCount++
-
-			// Build up the list of objects user has relation with.
-			for {
-				t, err := iter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-
-					return nil, err
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
 				}
 
-				if actualObject := t.GetKey().GetObject(); actualObject != "" {
-					_, objectID := tuple.SplitObject(actualObject)
-					if _, ok := objectsSlice[objectID]; ok {
-						response.Allowed = true
-						return response, nil
-					}
+				return nil, err
+			}
+
+			if actualObject := t.GetKey().GetObject(); actualObject != "" {
+				_, objectID := tuple.SplitObject(actualObject)
+				if _, ok := objectIds[objectID]; ok {
+					response.Allowed = true
+					return response, nil
 				}
 			}
 		}
@@ -946,48 +948,15 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			return c.checkUsersetPublicWildcardSlowPath(ctx, checkDirectUsersetPublicInternalInfo{
-				span:         span,
-				filteredIter: filteredIter,
-				typesys:      typesys,
-				req:          req,
-				ds:           ds,
-			})
-		}
+			resolver := c.checkUsersetPublicWildcardSlowPath
 
-		// TODO(jpadilla): can we lift this function up?
-		checkDirectUsersetTuplesFast := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
-			defer span.End()
-
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
+			if canShortCircuit, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes); err == nil {
+				if canShortCircuit {
+					resolver = c.checkUsersetPublicWildcardFastPath
+				}
 			}
 
-			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      reqTupleKey.GetObject(),
-				Relation:                    reqTupleKey.GetRelation(),
-				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-			})
-			if err != nil {
-				return nil, err
-			}
-			defer iter.Stop()
-
-			// filter out invalid tuples yielded by the database iterator
-			filteredIter := storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
-			)
-			defer filteredIter.Stop()
-
-			return c.checkUsersetPublicWildcardFastPath(ctx, checkDirectUsersetPublicInternalInfo{
-				span:         span,
-				filteredIter: filteredIter,
-				typesys:      typesys,
-				req:          req,
-				ds:           ds,
-			})
+			return resolver(ctx, filteredIter, req)
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -1002,16 +971,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {
-			isResolvesExclusivelyToDirectlyAssignable, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes)
-			if err != nil {
-				return nil, err
-			}
-
-			if isResolvesExclusivelyToDirectlyAssignable {
-				checkFuncs = append(checkFuncs, checkDirectUsersetTuplesFast)
-			} else {
-				checkFuncs = append(checkFuncs, checkDirectUsersetTuples)
-			}
+			checkFuncs = append(checkFuncs, checkDirectUsersetTuples)
 		}
 
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
@@ -1078,8 +1038,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)),
 			attribute.String("computed_relation", computedRelation),
 		)
-
-		// check if TTU is only directly assignable
 
 		iter, err := ds.Read(
 			ctx,
