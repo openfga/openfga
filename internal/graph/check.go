@@ -827,13 +827,12 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 					return nil, err
 				}
 
-				if actualObject := t.GetKey().GetObject(); actualObject != "" {
-					_, objectID := tuple.SplitObject(actualObject)
-					if _, ok := objectIDs[objectID]; ok {
-						span.SetAttributes(attribute.Bool("allowed", true))
-						response.Allowed = true
-						return response, nil
-					}
+				_, objectID := tuple.SplitObject(t.GetKey().GetObject())
+				if _, ok := objectIDs[objectID]; ok {
+					span.SetAttributes(attribute.Bool("allowed", true))
+					response.Allowed = true
+					return response, nil
+
 				}
 			}
 			return response, nil
