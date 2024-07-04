@@ -9,48 +9,55 @@ import (
 
 func TestSplitObjectId(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		objectID     string
-		expectedType string
-		expectedOID  string
+		name                    string
+		objectID                string
+		expectedTypeAndRelation string
+		expectedOID             string
 	}{
 		{
 			name: "empty",
 		},
 		{
-			name:         "type_only",
-			objectID:     "foo:",
-			expectedType: "foo",
+			name:                    "type_only",
+			objectID:                "foo:",
+			expectedTypeAndRelation: "foo",
 		},
+
 		{
 			name:        "no_separator",
 			objectID:    "foo",
 			expectedOID: "foo",
 		},
 		{
-			name:         "missing_type",
-			objectID:     ":foo",
-			expectedType: "",
-			expectedOID:  "foo",
+			name:                    "missing_type",
+			objectID:                ":foo",
+			expectedTypeAndRelation: "",
+			expectedOID:             "foo",
 		},
 		{
-			name:         "valid_input",
-			objectID:     "foo:bar",
-			expectedType: "foo",
-			expectedOID:  "bar",
+			name:                    "valid_input_with_relation",
+			objectID:                "foo#bar:baz",
+			expectedTypeAndRelation: "foo#bar",
+			expectedOID:             "baz",
 		},
 		{
-			name:         "separator_in_OID",
-			objectID:     "url:https://bar/baz",
-			expectedType: "url",
-			expectedOID:  "https://bar/baz",
+			name:                    "valid_input_without_relation",
+			objectID:                "foo:bar",
+			expectedTypeAndRelation: "foo",
+			expectedOID:             "bar",
+		},
+		{
+			name:                    "separator_in_OID",
+			objectID:                "url:https://bar/baz",
+			expectedTypeAndRelation: "url",
+			expectedOID:             "https://bar/baz",
 		},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			td, oid := SplitObject(tc.objectID)
 
-			require.Equal(t, tc.expectedType, td)
+			require.Equal(t, tc.expectedTypeAndRelation, td)
 			require.Equal(t, tc.expectedOID, oid)
 		})
 	}
