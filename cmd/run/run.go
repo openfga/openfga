@@ -452,12 +452,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				grpc_recovery.StreamServerInterceptor(
+				grpc_recovery.StreamServerInterceptor( // panic middleware must be 1st in chain
 					grpc_recovery.WithRecoveryHandlerContext(
 						recovery.PanicRecoveryHandler(s.Logger),
 					),
 				),
-				requestid.NewStreamingInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(), // needed for logging
+				requestid.NewStreamingInterceptor(),    // add request_id to ctxtags
 			}...,
 		),
 	}
@@ -480,7 +481,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
 				validator.StreamServerInterceptor(),
-				grpc_ctxtags.StreamServerInterceptor(),
 			}...,
 		),
 	)
