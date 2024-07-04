@@ -10,6 +10,8 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"
@@ -547,11 +549,14 @@ func (t *TypeSystem) relationInvolves(objectType, relation string, visited map[s
 // then true is returned along with a nil error.
 // This function assumes that all other model validations have run.
 func hasEntrypoints(
+	ctx context.Context,
 	typedefs map[string]map[string]*openfgav1.Relation,
 	typeName, relationName string,
 	rewrite *openfgav1.Userset,
 	visitedRelations map[string]map[string]bool,
 ) (bool, bool, error) {
+	ctx, span := tracer.Start(ctx, "typesystem.hasEntrypoints")
+	defer span.End()
 	v := maps.Clone(visitedRelations)
 
 	// Presence of a key represents that we've visited that object and relation. We keep track of this to avoid stack overflows.
@@ -590,7 +595,7 @@ func hasEntrypoints(
 				continue
 			}
 
-			hasEntrypoint, _, err := hasEntrypoints(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
+			hasEntrypoint, _, err := hasEntrypoints(ctx, typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
 			if err != nil {
 				return false, false, err
 			}
@@ -613,7 +618,7 @@ func hasEntrypoints(
 			return hasEntrypoint, true, nil
 		}
 
-		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
+		hasEntrypoint, loop, err := hasEntrypoints(ctx, typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
 		if err != nil {
 			return false, false, err
 		}
@@ -640,7 +645,7 @@ func hasEntrypoints(
 					continue
 				}
 
-				hasEntrypoint, _, err := hasEntrypoints(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
+				hasEntrypoint, _, err := hasEntrypoints(ctx, typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
 				if err != nil {
 					return false, false, err
 				}
@@ -657,7 +662,7 @@ func hasEntrypoints(
 		// At least one type must have an entrypoint.
 		loop := false
 		for _, child := range rw.Union.GetChild() {
-			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
+			hasEntrypoints, childLoop, err := hasEntrypoints(ctx, typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return false, false, err
 			}
@@ -673,7 +678,7 @@ func hasEntrypoints(
 
 		for _, child := range rw.Intersection.GetChild() {
 			// All the children must have an entrypoint.
-			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, visitedRelations)
+			hasEntrypoints, childLoop, err := hasEntrypoints(ctx, typedefs, typeName, relationName, child, visitedRelations)
 			if err != nil {
 				return false, false, err
 			}
@@ -686,7 +691,7 @@ func hasEntrypoints(
 		return true, false, nil
 	case *openfgav1.Userset_Difference:
 		// All the children must have an entrypoint.
-		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), visitedRelations)
+		hasEntrypoint, loop, err := hasEntrypoints(ctx, typedefs, typeName, relationName, rw.Difference.GetBase(), visitedRelations)
 		if err != nil {
 			return false, false, err
 		}
@@ -695,7 +700,7 @@ func hasEntrypoints(
 			return false, loop, nil
 		}
 
-		hasEntrypoint, loop, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), visitedRelations)
+		hasEntrypoint, loop, err = hasEntrypoints(ctx, typedefs, typeName, relationName, rw.Difference.GetSubtract(), visitedRelations)
 		if err != nil {
 			return false, false, err
 		}
@@ -725,7 +730,7 @@ func hasEntrypoints(
 //     b) For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
 func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
-	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
+	ctx, span := tracer.Start(ctx, "typesystem.NewAndValidate")
 	defer span.End()
 
 	t := New(model)
@@ -766,7 +771,7 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		sort.Strings(relationNames)
 
 		for _, relationName := range relationNames {
-			err := t.validateRelation(typeName, relationName, relationMap)
+			err := t.validateRelation(ctx, typeName, relationName, relationMap)
 			if err != nil {
 				return nil, err
 			}
@@ -783,22 +788,25 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 // validateRelation applies all the validation rules to a relation definition in a model. A relation
 // must meet all the rewrite validation, type restriction validation, and entrypoint validation criteria
 // for it to be valid. Otherwise, an error is returned.
-func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap map[string]*openfgav1.Userset) error {
+func (t *TypeSystem) validateRelation(ctx context.Context, typeName, relationName string, relationMap map[string]*openfgav1.Userset) error {
+	ctx, span := tracer.Start(ctx, "typesystem.validateRelation")
+	defer span.End()
+
 	rewrite := relationMap[relationName]
 
-	err := t.isUsersetRewriteValid(typeName, relationName, rewrite)
+	err := t.isUsersetRewriteValid(ctx, typeName, relationName, rewrite)
 	if err != nil {
 		return err
 	}
 
-	err = t.validateTypeRestrictions(typeName, relationName)
+	err = t.validateTypeRestrictions(ctx, typeName, relationName)
 	if err != nil {
 		return err
 	}
 
 	visitedRelations := map[string]map[string]bool{}
 
-	hasEntrypoints, loop, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
+	hasEntrypoints, loop, err := hasEntrypoints(ctx, t.relations, typeName, relationName, rewrite, visitedRelations)
 	if err != nil {
 		return err
 	}
@@ -815,7 +823,7 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 		}
 	}
 
-	hasCycle, err := t.HasCycle(typeName, relationName)
+	hasCycle, err := t.HasCycle(ctx, typeName, relationName)
 	if err != nil {
 		return err
 	}
@@ -872,7 +880,10 @@ func (t *TypeSystem) validateNames() error {
 }
 
 // isUsersetRewriteValid checks if the rewrite on objectType#relation is valid.
-func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite *openfgav1.Userset) error {
+func (t *TypeSystem) isUsersetRewriteValid(ctx context.Context, objectType, relation string, rewrite *openfgav1.Userset) error {
+	ctx, span := tracer.Start(ctx, "typesystem.isUsersetRewriteValid",
+		trace.WithAttributes(attribute.String("object_type", objectType), attribute.String("relation", relation)))
+	defer span.End()
 	if rewrite.GetUserset() == nil {
 		return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrInvalidUsersetRewrite}
 	}
@@ -922,25 +933,25 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 		}
 	case *openfgav1.Userset_Union:
 		for _, child := range r.Union.GetChild() {
-			err := t.isUsersetRewriteValid(objectType, relation, child)
+			err := t.isUsersetRewriteValid(ctx, objectType, relation, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgav1.Userset_Intersection:
 		for _, child := range r.Intersection.GetChild() {
-			err := t.isUsersetRewriteValid(objectType, relation, child)
+			err := t.isUsersetRewriteValid(ctx, objectType, relation, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgav1.Userset_Difference:
-		err := t.isUsersetRewriteValid(objectType, relation, r.Difference.GetBase())
+		err := t.isUsersetRewriteValid(ctx, objectType, relation, r.Difference.GetBase())
 		if err != nil {
 			return err
 		}
 
-		err = t.isUsersetRewriteValid(objectType, relation, r.Difference.GetSubtract())
+		err = t.isUsersetRewriteValid(ctx, objectType, relation, r.Difference.GetSubtract())
 		if err != nil {
 			return err
 		}
@@ -955,7 +966,9 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 //  3. For each type restriction referenced for an assignable relation, each of the referenced types and relations
 //     must be defined in the model.
 //  4. If the provided relation is a tupleset relation, then the type restriction must be on a direct object.
-func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName string) error {
+func (t *TypeSystem) validateTypeRestrictions(ctx context.Context, objectType string, relationName string) error {
+	ctx, span := tracer.Start(ctx, "typesystem.validateTypeRestrictions")
+	defer span.End()
 	relation, err := t.GetRelation(objectType, relationName)
 	if err != nil {
 		return err
@@ -1044,10 +1057,14 @@ func RewriteContainsSelf(rewrite *openfgav1.Userset) bool {
 }
 
 func (t *TypeSystem) hasCycle(
+	ctx context.Context,
 	objectType, relationName string,
 	rewrite *openfgav1.Userset,
 	visited map[string]struct{},
 ) (bool, error) {
+	ctx, span := tracer.Start(ctx, "typesystem.hasCycle",
+		trace.WithAttributes(attribute.String("object_type", objectType), attribute.String("relation", relationName)))
+	defer span.End()
 	visited[fmt.Sprintf("%s#%s", objectType, relationName)] = struct{}{}
 
 	visitedCopy := maps.Clone(visited)
@@ -1069,7 +1086,7 @@ func (t *TypeSystem) hasCycle(
 			return false, err
 		}
 
-		return t.hasCycle(objectType, rewrittenRelation, rewrittenRewrite.GetRewrite(), visitedCopy)
+		return t.hasCycle(ctx, objectType, rewrittenRelation, rewrittenRewrite.GetRewrite(), visitedCopy)
 	case *openfgav1.Userset_Union:
 		children = append(children, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
@@ -1079,7 +1096,7 @@ func (t *TypeSystem) hasCycle(
 	}
 
 	for _, child := range children {
-		hasCycle, err := t.hasCycle(objectType, relationName, child, visitedCopy)
+		hasCycle, err := t.hasCycle(ctx, objectType, relationName, child, visitedCopy)
 		if err != nil {
 			return false, err
 		}
@@ -1094,7 +1111,7 @@ func (t *TypeSystem) hasCycle(
 
 // HasCycle runs a cycle detection test on the provided `objectType#relation` to see if the relation
 // defines a rewrite rule that is self-referencing in any way (through computed relationships).
-func (t *TypeSystem) HasCycle(objectType, relationName string) (bool, error) {
+func (t *TypeSystem) HasCycle(ctx context.Context, objectType, relationName string) (bool, error) {
 	visited := map[string]struct{}{}
 
 	relation, err := t.GetRelation(objectType, relationName)
@@ -1102,7 +1119,7 @@ func (t *TypeSystem) HasCycle(objectType, relationName string) (bool, error) {
 		return false, err
 	}
 
-	return t.hasCycle(objectType, relationName, relation.GetRewrite(), visited)
+	return t.hasCycle(ctx, objectType, relationName, relation.GetRewrite(), visited)
 }
 
 // IsTuplesetRelation returns a boolean indicating if the provided relation is defined under a

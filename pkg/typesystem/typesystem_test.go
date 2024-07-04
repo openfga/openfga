@@ -548,7 +548,7 @@ func TestHasEntrypoints(t *testing.T) {
 			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
 
 			rewrite := inputRelation.GetRewrite()
-			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
+			hasEntrypoints, hasCycle, err := hasEntrypoints(context.Background(), ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
 
 			if test.expectError != "" {
 				require.ErrorContains(t, err, test.expectError)
@@ -758,7 +758,7 @@ func TestHasCycle(t *testing.T) {
 
 			typesys := New(model)
 
-			hasCycle, err := typesys.HasCycle(test.objectType, test.relation)
+			hasCycle, err := typesys.HasCycle(context.Background(), test.objectType, test.relation)
 			require.Equal(t, test.expected, hasCycle)
 			require.NoError(t, err)
 		})
