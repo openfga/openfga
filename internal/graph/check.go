@@ -832,7 +832,6 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 					span.SetAttributes(attribute.Bool("allowed", true))
 					response.Allowed = true
 					return response, nil
-
 				}
 			}
 			return response, nil
