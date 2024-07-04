@@ -7,7 +7,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/docker/docker v26.0.2+incompatible
+	github.com/docker/docker v27.0.3+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
@@ -18,20 +18,20 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0
 	github.com/hashicorp/go-retryablehttp v0.7.7
-	github.com/jackc/pgx/v5 v5.5.5
+	github.com/jackc/pgx/v5 v5.6.0
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20240620215129-f5a955a47ae4
 	github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d
-	github.com/pressly/goose/v3 v3.20.0
-	github.com/prometheus/client_golang v1.19.0
+	github.com/pressly/goose/v3 v3.21.1
+	github.com/prometheus/client_golang v1.19.1
 	github.com/rs/cors v1.11.0
 	github.com/sourcegraph/conc v0.3.0
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
-	github.com/spf13/viper v1.18.2
+	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go v0.30.0
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.30.0
@@ -98,7 +98,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
-	github.com/pelletier/go-toml/v2 v2.1.1 // indirect
+	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
