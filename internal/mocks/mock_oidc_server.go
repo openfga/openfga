@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
@@ -109,9 +110,11 @@ func (server *mockOidcServer) Stop() {
 
 func (server *mockOidcServer) GetToken(audience, subject string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.RegisteredClaims{
-		Issuer:   server.issuerURL,
-		Audience: []string{audience},
-		Subject:  subject,
+		Issuer:    server.issuerURL,
+		Audience:  []string{audience},
+		Subject:   subject,
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Second)),
 	})
 	token.Header["kid"] = kidHeader
 	return token.SignedString(server.privateKey)
