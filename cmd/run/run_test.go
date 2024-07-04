@@ -462,18 +462,19 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		want want
 	}{
 		{
-			name: "Good_Origin",
+			name: "origin_allowed",
 			args: args{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				// must be lowercase, see https://github.com/rs/cors/issues/174#issuecomment-2082098921
+				header: "authorization,x-custom-header",
 			},
 			want: want{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				header: "authorization,x-custom-header",
 			},
 		},
 		{
-			name: "Bad_Origin",
+			name: "origin_forbidden",
 			args: args{
 				origin: "http://openfga.example",
 				header: "X-Custom-Header",
@@ -484,7 +485,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			},
 		},
 		{
-			name: "Bad_Header",
+			name: "origin_allowed_but_header_forbidden",
 			args: args{
 				origin: "http://localhost",
 				header: "Bad-Custom-Header",
