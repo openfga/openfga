@@ -414,8 +414,8 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 
 	res, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute request")
-	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	defer res.Body.Close()
+	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read response")
 
