@@ -797,12 +797,11 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 	// all of this can likely bee its own function
 	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
 	for objectRel, objectIDs := range usersetsMap {
-		req.GetRequestMetadata().DatastoreQueryCount++
 		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 				},
 			}
 			objectType, relation := tuple.SplitObjectRelation(objectRel)
@@ -846,6 +845,8 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
+
+	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
 }
