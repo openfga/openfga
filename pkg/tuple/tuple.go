@@ -198,8 +198,11 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 	}}}
 }
 
-// SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string
-// and the original object.
+// SplitObject splits an object into an objectType, an optional objectRelation, and an objectID.
+// E.g.
+//  1. "group:fga" returns "group" and "fga".
+//  2. "group#member:fga" returns "group#member" and "fga".
+//  3. "anne" returns "" and "anne".
 func SplitObject(object string) (string, string) {
 	switch i := strings.IndexByte(object, ':'); i {
 	case -1:

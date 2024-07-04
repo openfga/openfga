@@ -1,6 +1,6 @@
 module github.com/openfga/openfga
 
-go 1.22.4
+go 1.22.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
@@ -27,7 +27,7 @@ require (
 	github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d
 	github.com/pressly/goose/v3 v3.20.0
 	github.com/prometheus/client_golang v1.19.0
-	github.com/rs/cors v1.10.1
+	github.com/rs/cors v1.11.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5
