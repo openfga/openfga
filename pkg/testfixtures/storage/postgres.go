@@ -46,8 +46,7 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	ctx := context.Background()
 
-	postgresContainer, err := testcontainerspostgres.RunContainer(ctx,
-		testcontainers.WithImage(postgresImage),
+	postgresContainer, err := testcontainerspostgres.Run(ctx, postgresImage,
 		testcontainers.WithWaitStrategy(wait.
 			ForLog("database system is ready to accept connections").
 			WithOccurrence(2).

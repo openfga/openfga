@@ -47,8 +47,7 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
 	ctx := context.Background()
 
-	mysqlContainer, err := testcontainersmysql.RunContainer(ctx,
-		testcontainers.WithImage(mySQLImage),
+	mysqlContainer, err := testcontainersmysql.Run(ctx, mySQLImage,
 		testcontainers.WithHostConfigModifier(func(hostConfig *container.HostConfig) {
 			hostConfig.Tmpfs = map[string]string{"/var/lib/mysql": ""}
 		}),
