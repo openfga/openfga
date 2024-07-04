@@ -948,7 +948,8 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
 func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	var errs error
+	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
+	defer span.End()
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
@@ -981,6 +982,8 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	// [group][2]
 	// [group][3]
 	tuplesetRelationUserMap := make(map[string]map[string]struct{})
+
+	var errs error
 
 	for {
 		t, err := iter.Next(ctx)
@@ -1065,6 +1068,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 			if actualObject := t.GetKey().GetObject(); actualObject != "" {
 				_, objectID := tuple.SplitObject(actualObject)
 				if _, ok := tuplesetObjectList[objectID]; ok {
+					span.SetAttributes(attribute.Bool("allowed", true))
 					response.Allowed = true
 					return response, nil
 				}
