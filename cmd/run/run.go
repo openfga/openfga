@@ -86,7 +86,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-list-users`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable.")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -452,12 +452,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				grpc_recovery.StreamServerInterceptor(
+				grpc_recovery.StreamServerInterceptor( // panic middleware must be 1st in chain
 					grpc_recovery.WithRecoveryHandlerContext(
 						recovery.PanicRecoveryHandler(s.Logger),
 					),
 				),
-				requestid.NewStreamingInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(), // needed for logging
+				requestid.NewStreamingInterceptor(),    // add request_id to ctxtags
 			}...,
 		),
 	}
@@ -480,7 +481,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
 				validator.StreamServerInterceptor(),
-				grpc_ctxtags.StreamServerInterceptor(),
 			}...,
 		),
 	)

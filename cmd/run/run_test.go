@@ -462,18 +462,19 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		want want
 	}{
 		{
-			name: "Good_Origin",
+			name: "origin_allowed",
 			args: args{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				// must be lowercase, see https://github.com/rs/cors/issues/174#issuecomment-2082098921
+				header: "authorization,x-custom-header",
 			},
 			want: want{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				header: "authorization,x-custom-header",
 			},
 		},
 		{
-			name: "Bad_Origin",
+			name: "origin_forbidden",
 			args: args{
 				origin: "http://openfga.example",
 				header: "X-Custom-Header",
@@ -484,7 +485,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			},
 		},
 		{
-			name: "Bad_Header",
+			name: "origin_allowed_but_header_forbidden",
 			args: args{
 				origin: "http://localhost",
 				header: "Bad-Custom-Header",
@@ -1325,7 +1326,6 @@ func TestHTTPHeaders(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
@@ -1351,13 +1351,14 @@ func TestHTTPHeaders(t *testing.T) {
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
 
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions(),
+			type document
+				relations
+					define viewer: [user]`).GetTypeDefinitions(),
 	})
 	require.NoError(t, err)
 

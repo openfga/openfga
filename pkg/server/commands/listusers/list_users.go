@@ -104,9 +104,8 @@ func (r *internalListUsersRequest) GetContext() *structpb.Struct {
 }
 
 type listUsersResponse struct {
-	Users         []*openfgav1.User
-	ExcludedUsers []*openfgav1.ObjectOrUserset
-	Metadata      listUsersResponseMetadata
+	Users    []*openfgav1.User
+	Metadata listUsersResponseMetadata
 }
 
 type listUsersResponseMetadata struct {
@@ -122,13 +121,6 @@ func (r *listUsersResponse) GetUsers() []*openfgav1.User {
 		return []*openfgav1.User{}
 	}
 	return r.Users
-}
-
-func (r *listUsersResponse) GetExcludedUsers() []*openfgav1.ObjectOrUserset {
-	if r == nil {
-		return []*openfgav1.ObjectOrUserset{}
-	}
-	return r.ExcludedUsers
 }
 
 func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
