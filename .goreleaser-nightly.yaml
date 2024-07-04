@@ -1,3 +1,5 @@
+version: 2
+
 project_name: openfga-nightly
 
 before:
@@ -63,13 +65,7 @@ docker_manifests:
       - openfga/openfga:nightly-arm64
 
 archives:
-  - replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
-    files:
+  - files:
       - assets
 
 checksum:

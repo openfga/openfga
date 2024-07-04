@@ -196,6 +196,7 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // constructed from the condition's parameter type definitions and using the context maps provided.
 // If more than one source map of context is provided, and if the keys provided in those map
 // context(s) are overlapping, then the overlapping key for the last most context wins.
+// If there are parameters missing, ConditionMet will always be set as false.
 func (e *EvaluableCondition) Evaluate(
 	ctx context.Context,
 	contextMaps ...map[string]*structpb.Value,

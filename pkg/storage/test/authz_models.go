@@ -86,9 +86,8 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	err = datastore.WriteAuthorizationModel(ctx, store, model2)
 	require.NoError(t, err)
 
-	models, continuationToken, err := datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
-		PageSize: 1,
-	})
+	models, continuationToken, err := datastore.ReadAuthorizationModels(ctx, store,
+		storage.NewPaginationOptions(1, ""))
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.NotEmpty(t, continuationToken)
@@ -97,10 +96,8 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 		t.Fatalf("mismatch (-want +got):\n%s", diff)
 	}
 
-	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
-		PageSize: 2,
-		From:     string(continuationToken),
-	})
+	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store,
+		storage.NewPaginationOptions(2, string(continuationToken)))
 	require.NoError(t, err)
 	require.Len(t, models, 1)
 	require.Empty(t, continuationToken)

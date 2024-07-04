@@ -206,6 +206,7 @@ func TestValidateWriteRequest(t *testing.T) {
 						TypeDefinitions: parser.MustTransformDSLToProto(`
 								model
 									schema 1.1
+
 								type user
 								
 								type document
@@ -238,13 +239,15 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
-			testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
-type user
+			testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
 
-type document
-  relations
-	define viewer: [user]`), nil)
+				type user
+
+				type document
+					relations
+						define viewer: [user]`), nil)
 
 	mockDatastore.EXPECT().
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

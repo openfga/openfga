@@ -48,18 +48,19 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 
 	storeID := createResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-  schema 1.1
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type user
+		type user
 
-type document
-  relations
-    define viewer: [user with conds]
+		type document
+			relations
+				define viewer: [user with conds]
 
-condition conds(s: string) {
-  "alpha" == s
-}`)
+		condition conds(s: string) {
+			"alpha" == s
+		}`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -110,20 +111,21 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	}{
 		{
 			name: "issue_1058",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type fga_user
+			typeDefinitions: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type fga_user
 
-type timeslot
-  relations
-	define user: [fga_user]
+				type timeslot
+					relations
+						define user: [fga_user]
 
-type commerce_store
-  relations
-	define approved_hourly_access: user from approved_timeslot and hourly_employee
-	define approved_timeslot: [timeslot]
-	define hourly_employee: [fga_user]
-`).GetTypeDefinitions(),
+				type commerce_store
+					relations
+						define approved_hourly_access: user from approved_timeslot and hourly_employee
+						define approved_timeslot: [timeslot]
+						define hourly_employee: [fga_user]
+				`).GetTypeDefinitions(),
 			tuples: []*openfgav1.TupleKey{
 				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
 				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
@@ -156,15 +158,16 @@ type commerce_store
 		},
 		{
 			name: "cache_computed_userset_subproblem_with_contextual_tuple",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			typeDefinitions: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
 
-type document
-  relations
-	define restricted: [user]
-	define viewer: [user] but not restricted
-`).GetTypeDefinitions(),
+				type document
+					relations
+						define restricted: [user]
+						define viewer: [user] but not restricted
+				`).GetTypeDefinitions(),
 			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
@@ -185,14 +188,15 @@ type document
 		},
 		{
 			name: "cached_direct_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			typeDefinitions: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
 
-type document
-  relations
-	define viewer: [user]
-`).GetTypeDefinitions(),
+				type document
+					relations
+						define viewer: [user]
+				`).GetTypeDefinitions(),
 			assertions: []checktest.Assertion{
 				{
 					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -210,19 +214,20 @@ type document
 		},
 		{
 			name: "cached_direct_userset_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+			typeDefinitions: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
 
-type group
-  relations
-	define restricted: [user]
-	define member: [user] but not restricted
+				type group
+					relations
+						define restricted: [user]
+						define member: [user] but not restricted
 
-type document
-  relations
-	define viewer: [group#member]
-`).GetTypeDefinitions(),
+				type document
+					relations
+						define viewer: [group#member]
+				`).GetTypeDefinitions(),
 			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
 				{Object: "group:eng", Relation: "member", User: "user:jon"},
@@ -325,7 +330,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, client) })
 	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, client) })
-
+	t.Run("TestListUsersValidation", func(t *testing.T) { GRPCListUsersValidationTest(t, client) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
@@ -393,14 +398,15 @@ func GRPCWriteTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	require.NoError(t, err)
 	storeID := resp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-type document
-  relations
-	define viewer: [user]
-`)
+		type document
+			relations
+				define viewer: [user]
+		`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -989,6 +995,245 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	}
 }
 
+func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	tests := []struct {
+		name              string
+		input             *openfgav1.ListUsersRequest
+		expectedErrorCode codes.Code
+	}{
+		{
+			name: "too_many_user_filters",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}, {Type: "employee"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "zero_user_filters",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "object_no_type_defined",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Id: "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "object_no_id_defined",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "user",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name:              "empty_request",
+			input:             &openfgav1.ListUsersRequest{},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid_storeID_because_too_short",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              "1",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid_storeID_because_extra_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String() + "A",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid_storeID_because_invalid_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid_authorization_model_ID_because_extra_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String() + "A",
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid_store_ID_because_extra_chars",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String() + "A",
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "invalid_authorization_model_ID_because_invalid_chars_in_model_ID",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "missing_object",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "empty_object",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object:               &openfgav1.Object{},
+				UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "missing_relation",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+		{
+			name: "too_many_contextual_tuples",
+			input: &openfgav1.ListUsersRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(),
+				Relation:             "viewer",
+				Object: &openfgav1.Object{
+					Type: "document",
+					Id:   "1",
+				},
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "user", "user:1"),
+					tuple.NewTupleKey("document:1", "user", "user:2"),
+					tuple.NewTupleKey("document:1", "user", "user:3"),
+					tuple.NewTupleKey("document:1", "user", "user:4"),
+					tuple.NewTupleKey("document:1", "user", "user:5"),
+					tuple.NewTupleKey("document:1", "user", "user:6"),
+					tuple.NewTupleKey("document:1", "user", "user:7"),
+					tuple.NewTupleKey("document:1", "user", "user:8"),
+					tuple.NewTupleKey("document:1", "user", "user:9"),
+					tuple.NewTupleKey("document:1", "user", "user:10"),
+					tuple.NewTupleKey("document:1", "user", "user:11"),
+					tuple.NewTupleKey("document:1", "user", "user:12"),
+					tuple.NewTupleKey("document:1", "user", "user:13"),
+					tuple.NewTupleKey("document:1", "user", "user:14"),
+					tuple.NewTupleKey("document:1", "user", "user:15"),
+					tuple.NewTupleKey("document:1", "user", "user:16"),
+					tuple.NewTupleKey("document:1", "user", "user:17"),
+					tuple.NewTupleKey("document:1", "user", "user:18"),
+					tuple.NewTupleKey("document:1", "user", "user:19"),
+					tuple.NewTupleKey("document:1", "user", "user:20"),
+					tuple.NewTupleKey("document:1", "user", "user:21"),
+				},
+			},
+			expectedErrorCode: codes.InvalidArgument,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := client.ListUsers(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.expectedErrorCode, s.Code())
+
+			if s.Code() == codes.OK {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
+
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
 // TODO move to consolidated_1_1_tests.yaml.
@@ -1269,9 +1514,10 @@ func GRPCReadAuthorizationModelTest(t *testing.T, client openfgav1.OpenFGAServic
 		{
 			name: "happy_path",
 			testData: &testData{
-				model: `model
-	schema 1.1
-type user`,
+				model: `
+					model
+						schema 1.1
+					type user`,
 			},
 			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
@@ -1293,16 +1539,6 @@ type user`,
 			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: "1",
 				Id:      ulid.Make().String(),
-			},
-			output: output{
-				errorCode: codes.InvalidArgument,
-			},
-		},
-		{
-			name: "invalid_storeID_because_extra_chars",
-			input: &openfgav1.ReadAuthorizationModelRequest{
-				StoreId: ulid.Make().String() + "A",
-				Id:      ulid.Make().String(), // ulids aren't required at this time
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -1581,13 +1817,14 @@ func GRPCWriteAssertionsTest(t *testing.T, client openfgav1.OpenFGAServiceClient
 		{
 			name: "happy_path",
 			testData: &testData{
-				model: `model
-	schema 1.1
-type user
+				model: `
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define viewer: [user]`,
+					type document
+						relations
+							define viewer: [user]`,
 			},
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              ulid.Make().String(),

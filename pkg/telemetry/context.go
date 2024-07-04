@@ -5,15 +5,9 @@ import (
 )
 
 type rpcContextName string
-type dispatchThrottlingThresholdType uint32
 
 const (
 	rpcInfoContextName rpcContextName = "rpcInfo"
-	Throttled          string         = "Throttled"
-)
-
-const (
-	dispatchThrottlingThreshold dispatchThrottlingThresholdType = iota
 )
 
 type RPCInfo struct {
@@ -36,22 +30,4 @@ func RPCInfoFromContext(ctx context.Context) RPCInfo {
 		Method:  "unknown",
 		Service: "unknown",
 	}
-}
-
-// ContextWithDispatchThrottlingThreshold will save the dispatch throttling threshold in context.
-func ContextWithDispatchThrottlingThreshold(ctx context.Context, threshold uint32) context.Context {
-	return context.WithValue(ctx, dispatchThrottlingThreshold, threshold)
-}
-
-// DispatchThrottlingThresholdFromContext returns the dispatch throttling threshold saved in context
-// Return 0 if not found.
-func DispatchThrottlingThresholdFromContext(ctx context.Context) uint32 {
-	thresholdInContext := ctx.Value(dispatchThrottlingThreshold)
-	if thresholdInContext != nil {
-		thresholdInInt, ok := thresholdInContext.(uint32)
-		if ok {
-			return thresholdInInt
-		}
-	}
-	return 0
 }

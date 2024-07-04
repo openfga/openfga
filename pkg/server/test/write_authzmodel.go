@@ -141,14 +141,15 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			name: "self_referencing_type_restriction_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define editor: [user]
-	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
+					type document
+						relations
+							define editor: [user]
+							define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 		},
@@ -157,12 +158,13 @@ type document
 			name: "self_referencing_type_restriction_without_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-type document
-  relations
-	define viewer: [document#viewer]`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
+					type document
+						relations
+							define viewer: [document#viewer]`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -172,13 +174,14 @@ type document
 			name: "self_referencing_type_restriction_without_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-type document
-  relations
-	define editor: [user]
-	define viewer: [document#viewer] and editor`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
+					type document
+						relations
+							define editor: [user]
+							define viewer: [document#viewer] and editor`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -188,13 +191,14 @@ type document
 			name: "self_referencing_type_restriction_without_entrypoint_3",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-type document
-  relations
-	define restricted: [user]
-	define viewer: [document#viewer] but not restricted`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
+					type document
+						relations
+							define restricted: [user]
+							define viewer: [document#viewer] but not restricted`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -204,16 +208,17 @@ type document
 			name: "rewritten_relation_in_intersection_unresolvable",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define admin: [user]
-	define action1: admin and action2 and action3
-	define action2: admin and action1 and action3
-	define action3: admin and action1 and action2`).GetTypeDefinitions(),
+					type document
+						relations
+							define admin: [user]
+							define action1: admin and action2 and action3
+							define action2: admin and action1 and action3
+							define action3: admin and action1 and action2`).GetTypeDefinitions(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
@@ -223,13 +228,14 @@ type document
 			name: "direct_relationship_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions(),
+					type document
+						relations
+							define viewer: [user]`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -237,14 +243,15 @@ type document
 			name: "computed_relationship_with_entrypoint",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define editor: [user]
-	define viewer: editor`).GetTypeDefinitions(),
+					type document
+						relations
+							define editor: [user]
+							define viewer: editor`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -252,16 +259,17 @@ type document
 			name: "rewritten_relation_in_exclusion_unresolvable",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define admin: [user]
-	define action1: admin but not action2
-	define action2: admin but not action3
-	define action3: admin but not action1`).GetTypeDefinitions(),
+					type document
+						relations
+							define admin: [user]
+							define action1: admin but not action2
+							define action2: admin but not action3
+							define action3: admin but not action1`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -270,14 +278,15 @@ type document
 			name: "no_entrypoint_3a",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define viewer: [document#viewer] and editor
-	define editor: [user]`).GetTypeDefinitions(),
+					type document
+						relations
+							define viewer: [document#viewer] and editor
+							define editor: [user]`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -286,14 +295,15 @@ type document
 			name: "no_entrypoint_3b",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define viewer: [document#viewer] but not editor
-	define editor: [user]`).GetTypeDefinitions(),
+					type document
+						relations
+							define viewer: [document#viewer] but not editor
+							define editor: [user]`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -303,20 +313,21 @@ type document
 			name: "no_entrypoint_4",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type folder
-  relations
-	define parent: [document]
-	define viewer: editor from parent
+					type folder
+						relations
+							define parent: [document]
+							define viewer: editor from parent
 
-type document
-  relations
-	define parent: [folder]
-	define editor: viewer
-	define viewer: editor from parent`).GetTypeDefinitions(),
+					type document
+						relations
+							define parent: [folder]
+							define editor: viewer
+							define viewer: editor from parent`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -325,17 +336,18 @@ type document
 			name: "self_referencing_type_restriction_with_entrypoint_1",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define restricted: [user]
-	define editor: [user]
-	define viewer: [document#viewer] or editor
-	define can_view: viewer but not restricted
-	define can_view_actual: can_view`).GetTypeDefinitions(),
+					type document
+						relations
+							define restricted: [user]
+							define editor: [user]
+							define viewer: [document#viewer] or editor
+							define can_view: viewer but not restricted
+							define can_view_actual: can_view`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -343,35 +355,37 @@ type document
 			name: "self_referencing_type_restriction_with_entrypoint_2",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define editor: [user]
-	define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
+					type document
+						relations
+							define editor: [user]
+							define viewer: [document#viewer] or editor`).GetTypeDefinitions(),
 			},
 		},
 		{
 			name: "relation_with_union_of_ttu_rewrites",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-type org
-  relations
-	define admin: [user]
-	define member: [user]
-type group
-  relations
-	define member: [user]
-type feature
-  relations
-	define accessible: admin from subscriber_org or member from subscriber_group
-	define subscriber_group: [group]
-	define subscriber_org: [org]`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
+					type org
+						relations
+							define admin: [user]
+							define member: [user]
+					type group
+						relations
+							define member: [user]
+					type feature
+						relations
+							define accessible: admin from subscriber_org or member from subscriber_group
+							define subscriber_group: [group]
+							define subscriber_org: [org]`).GetTypeDefinitions(),
 			},
 		},
 		{
@@ -409,23 +423,24 @@ type feature
 			name: "many_circular_computed_relations",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type canvas
-  relations
-	define can_edit: editor or owner
-	define editor: [user, account#member]
-	define owner: [user]
-	define viewer: [user, account#member]
+					type canvas
+						relations
+							define can_edit: editor or owner
+							define editor: [user, account#member]
+							define owner: [user]
+							define viewer: [user, account#member]
 
-type account
-  relations
-	define admin: [user] or member or super_admin or owner
-	define member: [user] or owner or admin or super_admin
-	define owner: [user]
-	define super_admin: [user] or admin or member`).GetTypeDefinitions(),
+					type account
+						relations
+							define admin: [user] or member or super_admin or owner
+							define member: [user] or owner or admin or super_admin
+							define owner: [user]
+							define super_admin: [user] or admin or member`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -434,15 +449,16 @@ type account
 			name: "circular_relations_involving_intersection",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type other
-  relations
-	define x: [user] and y
-	define y: [user] and z
-	define z: [user] or x`).GetTypeDefinitions(),
+					type other
+						relations
+							define x: [user] and y
+							define y: [user] and z
+							define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -451,15 +467,16 @@ type other
 			name: "circular_relations_involving_exclusion",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type other
-  relations
-	define x: [user] but not y
-	define y: [user] but not z
-	define z: [user] or x`).GetTypeDefinitions(),
+					type other
+						relations
+							define x: [user] but not y
+							define y: [user] but not z
+							define z: [user] or x`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
@@ -470,9 +487,10 @@ type other
 				SchemaVersion: testutils.CreateRandomString(
 					serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 				),
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user`).GetTypeDefinitions(),
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
 		},

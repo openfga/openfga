@@ -27,12 +27,12 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-
-	"github.com/openfga/openfga/pkg/testutils"
+	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -48,7 +48,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -188,6 +187,9 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{}
@@ -197,6 +199,9 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -219,6 +224,9 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
@@ -275,6 +283,9 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 }
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
@@ -289,14 +300,11 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	cfg.Trace.OTLP.TLS.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
+	serverDone := make(chan error)
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
+		serverDone <- runServer(ctx, cfg)
 	}()
-
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	// attempt a random request
@@ -309,8 +317,15 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// wait for trace exporting
-	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
+	cancel()
+	select {
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "timed out")
+	case err := <-serverDone:
+		require.NoError(t, err)
+	}
+
+	// at this point, all spans should have been forcefully exported
 
 	require.Equal(t, 1, otlpServer.GetExportCount())
 }
@@ -447,18 +462,19 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		want want
 	}{
 		{
-			name: "Good_Origin",
+			name: "origin_allowed",
 			args: args{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				// must be lowercase, see https://github.com/rs/cors/issues/174#issuecomment-2082098921
+				header: "authorization,x-custom-header",
 			},
 			want: want{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				header: "authorization,x-custom-header",
 			},
 		},
 		{
-			name: "Bad_Origin",
+			name: "origin_forbidden",
 			args: args{
 				origin: "http://openfga.example",
 				header: "X-Custom-Header",
@@ -469,7 +485,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			},
 		},
 		{
-			name: "Bad_Header",
+			name: "origin_allowed_but_header_forbidden",
 			args: args{
 				origin: "http://localhost",
 				header: "Bad-Custom-Header",
@@ -524,6 +540,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer.Stop)
 
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -596,8 +613,10 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 	trustedIssuerServer1, err := mocks.NewMockOidcServer(oidcServerURL1)
 	require.NoError(t, err)
+	t.Cleanup(trustedIssuerServer1.Stop)
 
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
+	t.Cleanup(trustedIssuerServer2.Stop)
 
 	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -629,6 +648,9 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 }
 
 func TestHTTPServingTLS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
@@ -682,12 +704,17 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
+		resp, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
+		resp.Body.Close()
+		client.HTTPClient.CloseIdleConnections()
 	})
 }
 
 func TestGRPCServingTLS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("enable_grpc_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
@@ -743,6 +770,9 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestServerMetricsReporting(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")
 	})
@@ -905,6 +935,9 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
@@ -925,6 +958,9 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1027,6 +1063,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConditionEvaluationCost.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Uint(), cfg.MaxConditionEvaluationCost)
+
+	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListUsers)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
@@ -1054,6 +1098,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.listUsersDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDeadline.String())
+
+	val = res.Get("properties.listUsersMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersMaxResults)
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
@@ -1111,19 +1163,47 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.DispatchThrottling.Enabled)
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
 
 	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.DispatchThrottling.Frequency.String())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
 
 	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.Threshold)
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
 
-	val = res.Get("properties.dispatchThrottling.properties.maxThreshold.default")
+	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.DispatchThrottling.MaxThreshold)
+	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.checkDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+
+	val = res.Get("properties.checkDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.MaxThreshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsDispatchThrottling.Enabled)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.Threshold)
+
+	val = res.Get("properties.listObjectsDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
 
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
@@ -1213,6 +1293,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
+	t.Setenv("OPENFGA_MAX_CONDITION_EVALUATION_COST", "120")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1228,6 +1309,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "1ms", viper.GetString("dispatch-throttling-frequency"))
 		require.Equal(t, "120", viper.GetString("dispatch-throttling-threshold"))
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
+		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
+		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
 
 		return nil
 	}
@@ -1239,7 +1322,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 }
 
 func TestHTTPHeaders(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -1266,19 +1351,21 @@ func TestHTTPHeaders(t *testing.T) {
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
 
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions(),
+			type document
+				relations
+					define viewer: [user]`).GetTypeDefinitions(),
 	})
 	require.NoError(t, err)
 
 	authorizationModelID := writeModelResp.GetAuthorizationModelId()
 
 	httpClient := retryablehttp.NewClient()
+	t.Cleanup(httpClient.HTTPClient.CloseIdleConnections)
 
 	var testCases = map[string]struct {
 		httpVerb      string
@@ -1301,6 +1388,11 @@ type document
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
 			httpJSONBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
 		},
+		`listusers`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-users", cfg.HTTP.Addr, storeID),
+			httpJSONBody: `{"object": { "type": "document", "id": "1" } , "relation": "viewer", "user_filters": [ {"type":"user"} ]}`,
+		},
 		`expand`: {
 			httpVerb:     "POST",
 			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
@@ -1322,6 +1414,7 @@ type document
 
 			httpResponse, err := httpClient.Do(req)
 			require.NoError(t, err)
+			defer httpResponse.Body.Close()
 
 			// These are set in the server RPCs
 			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
@@ -1332,6 +1425,8 @@ type document
 			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
 			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
+
+			httpResponse.Body.Close()
 		})
 	}
 }

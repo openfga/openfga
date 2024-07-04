@@ -35,6 +35,7 @@ func WithReadChangesQueryEncoder(e encoder.Encoder) ReadChangesQueryOption {
 	}
 }
 
+// WithReadChangeQueryHorizonOffset specifies duration in minutes.
 func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption {
 	return func(rq *ReadChangesQuery) {
 		rq.horizonOffset = time.Duration(horizonOffset) * time.Minute

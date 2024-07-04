@@ -41,7 +41,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1 # exists in store
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2 # does not exist in store
+              relation: viewer
+            expectation:
   - name: computed_userset
     stages:
       - model: |
@@ -86,7 +99,27 @@ tests:
               relation: writer
             expectation:
               - document:1
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: writer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
   - name: tuple_to_userset
     stages:
       - model: |
@@ -122,7 +155,33 @@ tests:
               relation: viewer
             expectation:
               - document:1
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: parent
+            expectation:
+              - folder:x
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: parent
+            expectation:
   - name: this_and_union
     stages:
       - model: |
@@ -165,6 +224,21 @@ tests:
               relation: viewer
             expectation:
               - document:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
 
   - name: this_and_intersection
     stages:
@@ -223,6 +297,14 @@ tests:
               type: document
               relation: viewer
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
 
   - name: this_and_exclusion_base
     stages:
@@ -281,7 +363,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: computed_userset_and_computed_userset
     stages:
       - model: |
@@ -311,6 +406,14 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
 
   - name: computed_userset_and_union
     stages:
@@ -355,6 +458,21 @@ tests:
               relation: viewer
             expectation:
               - document:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
 
   - name: simple_computeduserset_indirect_ref
     stages:
@@ -393,6 +511,27 @@ tests:
             expectation:
               - folder:a
               - folder:b
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - folder
+              object: folder:a
+              relation: can_view
+              expectation:
 
   - name: computed_userset_and_intersection
     stages:
@@ -452,7 +591,14 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
   - name: computed_userset_and_exclusion
     stages:
       - model: |
@@ -511,7 +657,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: tuple_to_userset_and_computed_userset
     stages:
       - model: |
@@ -548,6 +707,20 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
 
   - name: tuple_to_userset_and_tuple_to_userset
     stages:
@@ -592,6 +765,26 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - group
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
 
   - name: tuple_to_userset_and_union
     stages:
@@ -644,7 +837,48 @@ tests:
               relation: viewer
             expectation:
               - document:1
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+             - folder:X#editor
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#writer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
   - name: tuple_to_userset_and_intersection
     stages:
       - model: |
@@ -711,7 +945,39 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: viewer
+            expectation:
   - name: tuple_to_userset_and_exclusion
     stages:
       - model: |
@@ -778,7 +1044,34 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - folder#editor
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - folder#writer
+              object: document:1
+              relation: viewer
+            expectation:
+             - folder:X#writer
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - folder:X#viewer
   - name: union_and_tuple_to_userset
     stages:
       - model: |
@@ -828,6 +1121,21 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
 
   - name: union_and_union
     stages:
@@ -887,6 +1195,28 @@ tests:
               relation: viewer
             expectation:
               - document:3
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
 
   - name: union_and_intersection
     stages:
@@ -961,7 +1291,33 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
   - name: union_and_exclusion
     stages:
       - model: |
@@ -1041,7 +1397,36 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+              - user:badger
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#writer
+          - request:
+              filters:
+                - document#editor
+              object: document:1
+              relation: viewer
+            expectation:
+             - document:1#editor
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: intersection_and_tuple_to_userset
     stages:
       - model: |
@@ -1107,7 +1492,26 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
   - name: intersection_and_union
     stages:
       - model: |
@@ -1197,7 +1601,39 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
   - name: intersection_and_intersection
     stages:
       - model: |
@@ -1305,7 +1741,44 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:6
+              relation: viewer
+            expectation:
   - name: intersection_and_exclusion
     stages:
       - model: |
@@ -1413,7 +1886,26 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: exclusion_and_computed_userset
     stages:
       - model: |
@@ -1472,7 +1964,20 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
   - name: exclusion_and_tuple_to_userset_in_base
     stages:
       - model: |
@@ -1538,7 +2043,33 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+             - folder:X#viewer
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
   - name: exclusion_and_tuple_to_userset_in_subtract
     stages:
       - model: |
@@ -1604,7 +2135,20 @@ tests:
               relation: viewer
             expectation:
               - document:2
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: exclusion_and_union_in_base
     stages:
       - model: |
@@ -1700,7 +2244,35 @@ tests:
               relation: viewer
             expectation:
               - document:5
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+             - document:1#writer
+          - request:
+              filters:
+                - document#editor
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#editor
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+              - user:duck
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
+              - user:eagle
   - name: exclusion_and_union_in_subtract
     stages:
       - model: |
@@ -1763,7 +2335,26 @@ tests:
               relation: viewer
             expectation:
               - document:3
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: exclusion_and_intersection_in_base
     stages:
       - model: |
@@ -1855,7 +2446,38 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:5
+              relation: viewer
+            expectation:
   - name: exclusion_and_intersection_in_subtract
     stages:
       - model: |
@@ -1939,7 +2561,28 @@ tests:
               relation: viewer
             expectation:
               - document:4
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:badger
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
+          - request:
+              filters:
+                - user
+              object: document:4
+              relation: viewer
+            expectation:
+              - user:duck
   - name: exclusion_and_exclusion_in_base
     stages:
       - model: |
@@ -2002,7 +2645,26 @@ tests:
               relation: viewer
             expectation:
               - document:3
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
   - name: exclusion_and_exclusion_in_subtract
     stages:
       - model: |
@@ -2072,7 +2734,81 @@ tests:
               relation: viewer
             expectation:
               - document:3
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:cheetah
+  - name: exclusion_between_userset_and_type
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member] but not blocked
+              define blocked: [user, group#member]
+        tuples:
+          - object: group:1
+            relation: blocked
+            user: group:1#member
+          - object: group:1
+            relation: member
+            user: user:will
+        checkAssertions:
+          - tuple:
+              object: group:1
+              relation: member
+              user: user:will
+            expectation: false
+          - tuple:
+              object: group:1
+              relation: blocked
+              user: group:1#member
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:will
+              type: group
+              relation: member
+            expectation:
+          - request:
+              user: group:1#member
+              type: group
+              relation: blocked
+            expectation:
+             - group:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: group:1
+              relation: member
+            expectation:
+          - request:
+              filters:
+                - group#member
+              object: group:1
+              relation: blocked
+            expectation:
+              - group:1#member
   - name: userset_as_user
     stages:
       - model: |
@@ -2118,7 +2854,21 @@ tests:
               relation: viewer
             expectation:
               - document:1
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            expectation:
+              - group:x#member
   - name: wildcard_direct
     stages:
       - model: |
@@ -2128,11 +2878,14 @@ tests:
 
           type document
             relations
-              define viewer: [user:*]
+              define viewer: [user, user:*]
         tuples:
           - object: document:public
             relation: viewer
             user: user:*
+          - object: document:public
+            relation: viewer
+            user: user:jon
         checkAssertions:
           - tuple:
               object: document:public
@@ -2157,7 +2910,15 @@ tests:
               relation: viewer
             expectation:
               - document:public
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
+              - user:jon
   - name: prior_type_restrictions_ignored
     stages:
       - model: |
@@ -2185,6 +2946,14 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
       - model: |
           model
             schema 1.1
@@ -2204,6 +2973,13 @@ tests:
           - request:
               user: user:jon
               type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
               relation: viewer
             expectation:
   - name: prior_type_restrictions_ignored_with_wildcard
@@ -2232,6 +3008,14 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:*
       - model: |
           model
             schema 1.1
@@ -2251,6 +3035,13 @@ tests:
               type: document
               relation: viewer
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
 
   - name: wildcard_computed_userset
     stages:
@@ -2266,6 +3057,9 @@ tests:
           - object: document:public
             relation: writer
             user: user:*
+          - object: document:public
+            relation: viewer
+            user: user:jon
         checkAssertions:
           - tuple:
               object: document:public
@@ -2279,7 +3073,28 @@ tests:
               relation: viewer
             expectation:
               - document:public
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: writer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:notfound
+              relation: writer
+            expectation:
   - name: check_with_invalid_tuple_in_store
     stages:
       - model: |
@@ -2314,6 +3129,14 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
       - model: |
           model
             schema 1.1
@@ -2333,7 +3156,13 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
   - name: this_with_contextual_tuples
     stages:
       - model: |
@@ -2361,7 +3190,14 @@ tests:
               relation: viewer
             expectation:
               - document:1
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:aardvark
   - name: wildcard_and_userset_restriction
     stages:
       - model: |
@@ -2398,7 +3234,28 @@ tests:
               relation: viewer
             expectation:
               - document:public
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user2
+              object: document:public
+              relation: viewer
+            expectation:
+              - user2:bob
+          - request:
+              filters:
+                - group#member
+              object: document:public
+              relation: viewer
+            expectation:
+              - group:fga#member
   - name: wildcard_obeys_the_types_in_stages
     stages:
       - model: |
@@ -2439,6 +3296,27 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - employee
+              object: document:1
+              relation: viewer
+            expectation:
+              - employee:*
+          - request:
+              filters:
+                - employee
+              object: document:1
+              relation: writer
+            expectation:
+              - employee:*
       - model: |
           model
             schema 1.1
@@ -2471,7 +3349,25 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - employee
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - employee
+              object: document:1
+              relation: writer
+            expectation:
   - name: validation_relation_not_in_model
     stages:
       - model: |
@@ -2490,6 +3386,13 @@ tests:
               type: user
               relation: viewer
             errorCode: 2022
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: user:aardvark
+              relation: viewer #non-existent relation on type user
+            errorCode: 2022 # ErrorCode_validation_error
 
   - name: validation_type_not_in_model
     stages:
@@ -2504,6 +3407,13 @@ tests:
           - request:
               user: user:badger
               type: group #non-existent
+              relation: viewer
+            errorCode: 2021
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: group:fga #non-existent type
               relation: viewer
             errorCode: 2021
 
@@ -2528,6 +3438,13 @@ tests:
               type: document
               relation: viewer
             errorCode: 2000
+        listUsersAssertions:
+          - request:
+              filters:
+                - folder #non-existent type
+              object: document:1
+              relation: viewer
+            errorCode: 2021
 
   - name: validation_userset_type_not_in_model
     stages:
@@ -2550,7 +3467,13 @@ tests:
               type: document
               relation: viewer
             errorCode: 2000
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - folder#writer #non-existent type & relation
+              object: document:1
+              relation: viewer
+            errorCode: 2021
   - name: validation_userset_relation_not_in_model
     stages:
       - model: |
@@ -2572,7 +3495,13 @@ tests:
               type: document
               relation: viewer
             errorCode: 2000
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer #non-existent relation
+              object: document:1
+              relation: viewer
+            errorCode: 2022 # ErrorCode_validation_error
   - name: validation_user_invalid
     stages:
       - model: |
@@ -2624,6 +3553,17 @@ tests:
                 relation: viewer
                 user: user:aardvark
             errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - object: folder:x #invalid
+                relation: viewer
+                user: user:aardvark
+            errorCode: 2027 # ErrorCode_invalid_tuple
 
   - name: validation_invalid_relation_in_contextual_tuple
     stages:
@@ -2654,6 +3594,17 @@ tests:
                 relation: writer #invalid
                 user: user:aardvark
             errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: writer #invalid
+                user: user:aardvark
+            errorCode: 2027 # ErrorCode_invalid_tuple
 
   - name: validation_invalid_user_in_contextual_tuple
     stages:
@@ -2684,7 +3635,60 @@ tests:
                 relation: viewer
                 user: employee:aardvark #invalid
             errorCode: 2027
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: employee:aardvark #invalid
+            errorCode: 2027 # ErrorCode_invalid_tuple
+  - name: validation_invalid_userset_in_contextual_tuple
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [user, group#member]
+        checkAssertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: group:fga#undefined #invalid
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: group:fga#undefined #invalid
+            errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: group:fga#undefined #invalid
+            errorCode: 2027 # ErrorCode_invalid_tuple
   - name: validation_invalid_wildcard_in_contextual_tuple
     stages:
       - model: |
@@ -2714,7 +3718,17 @@ tests:
                 relation: viewer
                 user: user:* #invalid
             errorCode: 2027
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: user:* #invalid
+            errorCode: 2027 # ErrorCode_invalid_tuple
   - name: val_contextual_tuples_and_wildcard_in_ttu_evaluation
     stages:
       - model: |
@@ -2748,6 +3762,17 @@ tests:
                 relation: parent
                 user: user:* #invalid
             errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: parent
+                user: user:* #invalid
+            errorCode: 2027 # ErrorCode_invalid_tuple
   - name: list_objects_considers_input_contextual_tuples
     stages:
       - model: | #concurrent checks
@@ -2778,6 +3803,28 @@ tests:
               - repo:1
               - repo:2
               - repo:3
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+            expectation:
+              - user:a
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: blocked
+                object: repo:1
+            expectation:
       - model: | #reverse expansion
           model
             schema 1.1
@@ -2801,6 +3848,19 @@ tests:
               - repo:1
               - repo:2
               - repo:3
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:aardvark
+                relation: owner
+                object: repo:1
+            expectation:
+              - user:a
+              - user:aardvark
   - name: ignores_irrelevant_contextual_tuples_because_different_user
     stages:
       - model: | #concurrent checks
@@ -2826,6 +3886,18 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2 #different repo
+            expectation:
+              - user:a
       - model: | #reverse expansion
           model
             schema 1.1
@@ -2876,6 +3948,18 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: organization:1 #different type, should be ignored
+            expectation:
+              - user:a
       - model: | #reverse expansion
           model
             schema 1.1
@@ -2897,6 +3981,18 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: organization:1 #different type than filter, should be ignored
+            expectation:
+              - user:a
   - name: list_objects_ignores_irrelevant_tuples_because_different_user
     stages:
       - model: | # concurrent checks
@@ -2921,6 +4017,21 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            expectation:
+              - user:a
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            expectation:
+              - user:aa
       - model: | #reverse expansion
           model
             schema 1.1
@@ -2935,6 +4046,14 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            expectation:
+              - user:a
   - name: list_objects_ignores_duplicate_contextual_tuples
     stages:
       - model: | # concurrent checks
@@ -2964,6 +4083,21 @@ tests:
             expectation:
               - repo:1
               - repo:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a #same as above
+                relation: owner
+                object: repo:2
+            expectation:
+              - user:a
       - model: | # reverse expansion
           model
             schema 1.1
@@ -2986,6 +4120,21 @@ tests:
             expectation:
               - repo:1
               - repo:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:2
+              relation: owner
+            contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a # same as above
+                relation: owner
+                object: repo:2
+            expectation:
+              - user:a
   - name: error_if_contextual_tuples_do_not_follow_type_restrictions
     stages:
       - model: | # concurrent checks
@@ -3014,6 +4163,17 @@ tests:
               type: repo
               relation: owner
             errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:* #not allowed
+                relation: owner
+                object: organization:1
+            errorCode: 2027 # ErrorCode_invalid_tuple
       - model: | # reverse expansion
           model
             schema 1.1
@@ -3034,6 +4194,17 @@ tests:
               type: repo
               relation: owner
             errorCode: 2027
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: owner
+            contextualTuples:
+              - user: user:* #not allowed
+                relation: owner
+                object: organization:1
+            errorCode: 2027 # ErrorCode_invalid_tuple
   - name: list_objects_error_if_unknown_type_in_request
     stages:
       - model: | # concurrent checks
@@ -3130,6 +4301,14 @@ tests:
               relation: can_read
             expectation:
               - document:c
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:anne
 
   # https://github.com/openfga/openfga/issues/576
   - name: same_relation_name_different_type
@@ -3176,7 +4355,14 @@ tests:
             expectation:
               #document:d is not expected
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:anne
   - name: computed_user_indirect_ref
     stages:
       - model: |
@@ -3241,7 +4427,28 @@ tests:
               relation: can_read
             expectation:
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
   - name: computed_user_indirect_ref_extra_indirection
     stages:
       - model: |
@@ -3307,7 +4514,28 @@ tests:
               relation: can_read
             expectation:
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
   - name: three_prong_relation
     stages:
       - model: |
@@ -3401,7 +4629,49 @@ tests:
             expectation:
               - module:a
               - module:b
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:b
+              relation: viewer
+            expectation:
+              - user:anne
   - name: three_prong_relation_loop
     stages:
       - model: |
@@ -3498,7 +4768,49 @@ tests:
             expectation:
               - module:a
               - module:b
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:b
+              relation: viewer
+            expectation:
+              - user:anne
   - name: three_prong_relation_possible_exclusion
     stages:
       - model: |
@@ -3596,7 +4908,49 @@ tests:
             expectation:
               - module:a
               - module:b
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: module:b
+              relation: viewer
+            expectation:
+              - user:anne
   - name: computed_user_multi_route
     stages:
       - model: |
@@ -3663,7 +5017,28 @@ tests:
               relation: can_read
             expectation:
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:anne
   - name: computed_user_indirect_ref_same_rel_name
     stages:
       - model: |
@@ -3730,7 +5105,35 @@ tests:
             expectation:
               - document:c
               - document:d
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: can_view
+            expectation:
+              - user:anne
   - name: computed_user_indirect_ref_wildcard
     stages:
       - model: |
@@ -3795,7 +5198,28 @@ tests:
               relation: can_read
             expectation:
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:*
   - name: computed_user_indirect_ref_extra_indirection_wildcard
     stages:
       - model: |
@@ -3861,7 +5285,28 @@ tests:
               relation: can_read
             expectation:
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:*
   - name: two_level_computed_user_indirect_ref
     stages:
       - model: |
@@ -3928,7 +5373,28 @@ tests:
               relation: can_read
             expectation:
               - document:c
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:c
+              relation: can_read
+            expectation:
+              - user:anne
   - name: ttu_and_computed_ttu
     stages:
       - model: |
@@ -3990,7 +5456,28 @@ tests:
               relation: viewer
             expectation:
               - document:b
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:anne
   - name: ttu_and_computed_ttu_wildcard
     stages:
       - model: |
@@ -4052,7 +5539,35 @@ tests:
               relation: viewer
             expectation:
               - document:b
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - group#member
+              object: folder:a
+              relation: can_view
+            expectation:
+              - group:fga#member
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:b
+              relation: viewer
+            expectation:
+              - user:*
   - name: ttu_ttu_and_computed_ttu
     stages:
       - model: |
@@ -4121,7 +5636,28 @@ tests:
               relation: viewer
             expectation:
               - document:b
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: folder:b
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - group#member
+              object: folder:a
+              relation: can_view
+            expectation:
+              - group:fga#member
   - name: contextual_tuple_ref_relation_disjoint
     stages:
       - model: |
@@ -4179,7 +5715,20 @@ tests:
               type: diagram
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: diagram:a
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - group#member
+              object: diagram:a
+              relation: viewer
+            expectation:
+              - group:fga#member
   - name: reverse_expand_relation_not_match
     stages:
       - model: |
@@ -4223,7 +5772,26 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - group#member
+              object: document:a
+              relation: viewer
+            expectation:
+              - group:fga#member
+          - request:
+              filters:
+                - group#member
+              object: document:b
+              relation: viewer
+            expectation:
   - name: exclusion_for_some_relations
     stages:
       - model: |
@@ -4289,7 +5857,49 @@ tests:
               relation: can_see
             expectation:
               - document:a
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: can_see
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: can_view
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - document#can_view
+              object: document:a
+              relation: can_see
+            expectation:
+              - document:a#can_view
+          - request:
+              filters:
+                - document#viewer
+              object: document:a
+              relation: can_see
+            expectation:
+             - document:a#viewer
   - name: evaluate_userset_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -4327,7 +5937,27 @@ tests:
               relation: reader
             expectation:
               - repo:openfga/openfga
-
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - organization#member
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - organization:openfga#member
+          - request:
+              filters:
+                - organization#member
+              object: repo:unknown
+              relation: reader
+            expectation:
   - name: nested_ttu_involving_intersection
     stages:
       - model: |
@@ -4384,6 +6014,33 @@ tests:
               relation: can_view
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - organization
+              object: document:1
+              relation: can_view
+            expectation:
+          - request:
+              filters:
+                - folder
+              object: document:1
+              relation: can_view
+            expectation:
   - name: nested_ttu_involving_exclusion
     stages:
       - model: |
@@ -4460,6 +6117,28 @@ tests:
               type: document
               relation: can_view
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - folder#viewer
+              object: document:1
+              relation: can_view
+            expectation:
+              - folder:X#viewer
+          - request:
+              filters:
+                - organization#viewer
+              object: document:1
+              relation: can_view
+            expectation:
+              - organization:openfga#viewer
   - name: userset_with_intersection_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -4534,6 +6213,39 @@ tests:
           - request:
               user: user:jim
               type: repo
+              relation: can_read
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - organization#member
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+          - request:
+              filters:
+                - organization#member
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
+          - request:
+              filters:
+                - repo#allowed
+              object: repo:openfga/openfga
               relation: can_read
             expectation:
   - name: userset_with_exclusion_in_computed_relation_of_ttu
@@ -4612,6 +6324,27 @@ tests:
               type: repo
               relation: can_read
             expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: reader
+            expectation:
+              - user:erik
+          - request:
+              filters:
+                - repo#restricted
+              object: repo:openfga/openfga
+              relation: can_read
+            expectation:
   - name: relation_with_wildcard_involving_intersection
     stages:
       - model: |
@@ -4675,6 +6408,27 @@ tests:
           - request:
               user: user:bob
               type: document
+              relation: can_view
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - document#allowed
+              object: document:1
               relation: can_view
             expectation:
   - name: relation_with_wildcard_involving_exclusion
@@ -4756,6 +6510,63 @@ tests:
               relation: can_view
             expectation:
               - document:2
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: can_view
+            expectation:
+              - user:*
+  - name: relation_with_userset_involving_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define restricted: [user]
+              define viewer: [group#member] but not restricted
+              define can_view: viewer
+        tuples:
+          - user: user:maria
+            relation: member
+            object: group:fga
+          - user: user:will
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: document:1
+          - user: user:will
+            relation: restricted
+            object: document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: can_view
+            expectation:
+              - user:maria
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: can_view
+            expectation:
+              - group:fga#member
   - name: list_objects_does_not_return_duplicates
     stages:
       - model: | #concurrent checks
@@ -4780,6 +6591,15 @@ tests:
               relation: admin
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: admin
+            expectation:
+              - user:a
+              - user:*
       - model: | #reverse expansion
           model
             schema 1.1
@@ -4794,6 +6614,15 @@ tests:
               relation: admin
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: admin
+            expectation:
+              - user:a
+              - user:*
   - name: list_objects_expands_wildcard_tuple
     stages:
       - model: | #concurrent checks
@@ -4822,6 +6651,14 @@ tests:
               relation: can_own
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: can_own
+            expectation:
+              - user:*
       - model: | #reverse expansion
           model
             schema 1.1
@@ -4837,6 +6674,14 @@ tests:
               relation: owner
             expectation:
               - repo:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:1
+              relation: can_own
+            expectation:
+              - user:*
       - model: | #complex model
           model
             schema 1.1
@@ -5084,6 +6929,43 @@ tests:
               - folder:2
               - folder:3
               - folder:5
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: can_read
+            expectation:
+              - user:anne
+              - user:beth
+              - user:harriette
+          - request:
+              filters:
+                - user
+              object: folder:2
+              relation: can_read
+            expectation:
+              - user:anne
+              - user:emily
+              - user:gabriel
+              - user:harriette
+          - request:
+              filters:
+                - user
+              object: folder:3
+              relation: can_read
+            expectation:
+              - user:anne
+              - user:emily
+              - user:gabriel
+              - user:harriette
+          - request:
+              filters:
+                - user
+              object: folder:5
+              relation: can_read
+            expectation:
+              - user:harriette
   - name: resolution_too_complex_throws_error
     stages:
       - model: |
@@ -5134,6 +7016,13 @@ tests:
               relation: a1
               user: user:jon
             errorCode: 2002
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: resource:abc
+              relation: a1
+            errorCode: 2002
   - name: race_condition_same_user_same_object_diff_relation
     stages:
       - model: |
@@ -5175,6 +7064,20 @@ tests:
               relation: list_relation
             expectation:
               - list_type:list_type1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: list_type:list_type1
+              relation: list_relation
+            expectation:
+              - user:test_user
+          - request:
+              filters:
+                - user
+              object: list_type:list_type2
+              relation: list_relation
+            expectation:
   - name: follows_correct_graph_edges
     stages:
       - model: |
@@ -5211,6 +7114,19 @@ tests:
               type: repo
               relation: admin
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: repo:openfga/openfga
+              relation: admin
+            expectation:
+          - request:
+              filters:
+                - user
+              object: repo:acme/acme
+              relation: admin
+            expectation:
   - name: list_objects_with_subcheck_encounters_cycle
     stages:
       - model: |
@@ -5244,6 +7160,13 @@ tests:
               type: document
               relation: viewer
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
   - name: list_objects_with_subcheck_resolution_depth_exceeded
     stages:
       - model: |
@@ -5290,6 +7213,13 @@ tests:
               type: document
               relation: viewer
             errorCode: 2002
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2002
   - name: direct_relationships_with_intersection
     stages:
       - model: |
@@ -5315,13 +7245,46 @@ tests:
               relation: viewer
             expectation:
               - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:jon
+  - name: nested_usersets_are_recursively_expanded
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+        tuples:
+          - user: group:fga#member
+            relation: member
+            object: group:eng
+          - user: group:fga-backend#member
+            relation: member
+            object: group:fga
+        listUsersAssertions:
+          - request:
+              filters:
+                - group#member
+              object: group:eng
+              relation: member
+            expectation:
+              - group:eng#member
+              - group:fga#member
+              - group:fga-backend#member
   - name: cycle_or_cycle_return_false
     stages:
       - model: |
           model
             schema 1.1
           type user
-
           type document
             relations
               define editor: [user, document#viewer]
@@ -5691,6 +7654,14 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
   - name: userset_defines_itself_2
     stages:
       - model: |
@@ -5734,6 +7705,28 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#writer
+          - request:
+              filters:
+                - document#editor
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#editor
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
   - name: userset_defines_itself_3
     stages:
       - model: |
@@ -5776,6 +7769,27 @@ tests:
               type: document
               relation: writer
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#writer
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: writer
+            expectation:
   - name: userset_defines_itself_4
     stages:
       - model: |
@@ -5815,6 +7829,21 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+              - document:1#viewer
+          - request:
+              filters:
+                - folder#viewer
+              object: folder:x
+              relation: viewer
+            expectation:
+              - folder:x#viewer
   - name: userset_defines_itself_5
     stages:
       - model: |
@@ -5852,6 +7881,19 @@ tests:
               type: document
               relation: allowed
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#allowed
+              object: document:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: allowed
+            expectation:
   - name: userset_defines_itself_6
     stages:
       - model: |
@@ -5894,6 +7936,26 @@ tests:
               type: document
               relation: restricted
             expectation: []
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: viewer
+            expectation:
+            - document:1#viewer
+          - request:
+              filters:
+                - document#viewer
+              object: document:1
+              relation: restricted
+            expectation:
+          - request:
+              filters:
+                - document#restricted
+              object: document:1
+              relation: viewer
+            expectation:
   - name: userset_defines_itself_7
     stages:
       - model: |
@@ -5923,6 +7985,14 @@ tests:
               type: group
               relation: member
             expectation: ["group:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - group#member
+              object: group:1
+              relation: member
+            expectation:
+            - group:1#member
   - name: userset_defines_itself_8
     stages:
       - model: |
@@ -5945,6 +8015,14 @@ tests:
               type: document
               relation: viewer
             expectation: ["document:1"]
+        listUsersAssertions:
+          - request:
+              filters:
+                - document#writer
+              object: document:1
+              relation: viewer
+            expectation:
+            - document:1#writer
   - name: userset_defines_itself_9
     stages:
       - model: |
@@ -5977,6 +8055,14 @@ tests:
               type: document
               relation: viewer
             expectation: [document:1]
+        listUsersAssertions:
+          - request:
+              filters:
+                - group#member
+              object: document:1
+              relation: viewer
+            expectation:
+            - group:fga#member
   - name: userset_defines_itself_10
     stages:
       - model: |
@@ -6046,3 +8132,39 @@ tests:
               type: doc
               relation: a
             expectation: [doc:1]
+        listUsersAssertions:
+          - request:
+              filters:
+                - doc#d
+              object: doc:1
+              relation: b
+            expectation:
+            - doc:1#d
+          - request:
+              filters:
+                - doc#c
+              object: doc:1
+              relation: b
+            expectation:
+            - doc:1#c
+          - request:
+              filters:
+                - doc#c
+              object: doc:1
+              relation: a
+            expectation:
+            - doc:1#c
+          - request:
+              filters:
+                - doc#d
+              object: doc:1
+              relation: a
+            expectation:
+            - doc:1#d
+          - request:
+              filters:
+                - doc#b
+              object: doc:1
+              relation: a
+            expectation:
+            - doc:1#b

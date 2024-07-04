@@ -76,6 +76,7 @@ func ExampleNewServerWithOpts() {
 	model := language.MustTransformDSLToProto(`
 	model
 		schema 1.1
+
 	type user
 
 	type document
@@ -124,9 +125,59 @@ func ExampleNewServerWithOpts() {
 	// Output: true
 }
 
-func TestServerPanicIfNoDatastore(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
-		_ = MustNewServerWithOpts()
+func TestServerPanicIfValidationsFail(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("no_datastore", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts()
+		})
+	})
+	t.Run("no_datastore_and_check_query_cache_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+			_ = MustNewServerWithOpts(
+				WithCheckQueryCacheEnabled(true))
+		})
+	})
+
+	t.Run("no_request_duration_by_query_histogram_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			s := MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByQueryHistogramBuckets([]uint{}),
+			)
+			defer s.Close()
+		})
+	})
+	t.Run("no_request_duration_by_dispatch_count_histogram_buckets", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestDurationByDispatchCountHistogramBuckets([]uint{}),
+			)
+		})
+	})
+
+	t.Run("invalid_dispatch_throttle_threshold", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithDispatchThrottlingCheckResolverEnabled(true),
+				WithDispatchThrottlingCheckResolverThreshold(100),
+				WithDispatchThrottlingCheckResolverMaxThreshold(80),
+			)
+		})
 	})
 }
 
@@ -178,7 +229,7 @@ func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
 }
 
 func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
-	require.PanicsWithError(t, "failed to construct the OpenFGA server: default dispatch throttling threshold must be equal or smaller than max dispatch threshold", func() {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: check default dispatch throttling threshold must be equal or smaller than max dispatch threshold for Check", func() {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
@@ -187,6 +238,20 @@ func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t 
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(100),
 			WithDispatchThrottlingCheckResolverMaxThreshold(80),
+		)
+	})
+}
+
+func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithListObjectsDispatchThrottlingEnabled(true),
+			WithListObjectsDispatchThrottlingThreshold(100),
+			WithListObjectsDispatchThrottlingMaxThreshold(80),
 		)
 	})
 }
@@ -295,15 +360,16 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-	type user
+		type user
 
-	type document
-	  relations
-			define viewer: [user, document#viewer] or editor
-			define editor: [user, document#viewer]`)
+		type document
+			relations
+				define viewer: [user, document#viewer] or editor
+				define editor: [user, document#viewer]`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -398,18 +464,19 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
 			schema 1.1
 
-		  type user
+		type user
 
-		  type document
+		type document
 			relations
-			  define editor1: [user, document#viewer1]
+				define editor1: [user, document#viewer1]
 
-			  define viewer2: [document#viewer1] or editor1
-			  define viewer1: [user] or viewer2
-			  define can_view: viewer1 or editor1`)
+				define viewer2: [document#viewer1] or editor1
+				define viewer1: [user] or viewer2
+				define can_view: viewer1 or editor1`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -462,25 +529,26 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-  type user
-  type module
-  relations
-	  define owner: [user] or owner from parent
-	  define parent: [document, module]
-	  define viewer: [user] or owner or viewer from parent
-  type folder
-  relations
-	  define owner: [user] or owner from parent
-	  define parent: [module, folder]
-	  define viewer: [user] or owner or viewer from parent
-  type document
-  relations
-	  define owner: [user] or owner from parent
-	  define parent: [folder, document]
-	  define viewer: [user] or owner or viewer from parent`)
+		type user
+		type module
+			relations
+				define owner: [user] or owner from parent
+				define parent: [document, module]
+				define viewer: [user] or owner or viewer from parent
+		type folder
+			relations
+				define owner: [user] or owner from parent
+				define parent: [module, folder]
+				define viewer: [user] or owner or viewer from parent
+		type document
+			relations
+				define owner: [user] or owner from parent
+				define parent: [folder, document]
+				define viewer: [user] or owner or viewer from parent`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -555,15 +623,16 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-		schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-  type user
+		type user
 
-  type group
-    relations
-      define member: [user, group#member]
-`)
+		type group
+			relations
+				define member: [user, group#member]
+		`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -650,14 +719,16 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user]
-`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user]
+		`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -693,7 +764,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
-	t.Cleanup(s.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -704,7 +778,7 @@ type repo
 	require.True(t, checkResponse.GetAllowed())
 }
 
-func TestListObjectsReleasesConnections(t *testing.T) {
+func TestReleasesConnections(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -721,7 +795,6 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-		WithMaxConcurrentReadsForListObjects(1),
 	)
 	t.Cleanup(s.Close)
 
@@ -729,13 +802,15 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+		TypeDefinitions: language.MustTransformDSLToProto(`
+			model
+				schema 1.1
 
-type document
-  relations
-	define editor: [user]`).GetTypeDefinitions(),
+			type user
+
+			type document
+				relations
+					define editor: [user]`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
@@ -743,39 +818,81 @@ type document
 	modelID := writeAuthzModelResp.GetAuthorizationModelId()
 
 	numTuples := 2000
-	tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-	for i := 0; i < numTuples; i++ {
-		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
-		tuples = append(tuples, tk)
-	}
+	t.Run("list_objects", func(t *testing.T) {
+		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+		for i := 0; i < numTuples; i++ {
+			tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
-	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: tuples,
-		},
+			tuples = append(tuples, tk)
+		}
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: tuples,
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Type:                 "document",
+			Relation:             "editor",
+			User:                 "user:jon",
+		})
+		require.NoError(t, err)
+
+		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer timeoutCancel()
+
+		// If ListObjects is still hogging the database connection pool even after responding, then this fails.
+		// If ListObjects is closing up its connections effectively then this will not fail.
+		status, err := ds.IsReady(timeoutCtx)
+		require.NoError(t, err)
+		require.True(t, status.IsReady)
 	})
-	require.NoError(t, err)
 
-	_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Type:                 "document",
-		Relation:             "editor",
-		User:                 "user:jon",
+	t.Run("list_users", func(t *testing.T) {
+		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+		for i := 0; i < numTuples; i++ {
+			tk := tuple.NewTupleKey("document:1", "editor", fmt.Sprintf("user:%d", i))
+
+			tuples = append(tuples, tk)
+		}
+
+		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: tuples,
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = s.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Relation:             "editor",
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+		})
+		require.NoError(t, err)
+
+		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer timeoutCancel()
+
+		// If ListUsers is still hogging the database connection pool even after responding, then this fails.
+		// If ListUsers is closing up its connections effectively then this will not fail.
+		status, err := ds.IsReady(timeoutCtx)
+		require.NoError(t, err)
+		require.True(t, status.IsReady)
 	})
-	require.NoError(t, err)
-
-	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer timeoutCancel()
-
-	// If ListObjects is still hogging the database connection pool even after responding, then this fails.
-	// If ListObjects is closing up its connections effectively then this will not fail.
-	status, err := ds.IsReady(timeoutCtx)
-	require.NoError(t, err)
-	require.True(t, status.IsReady)
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {
@@ -788,16 +905,18 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	// The model is invalid
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define admin: [user]
-	define r1: [user] and r2 and r3
-	define r2: [user] and r1 and r3
-	define r3: [user] and r1 and r2`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define admin: [user]
+				define r1: [user] and r2 and r3
+				define r2: [user] and r1 and r3
+				define r3: [user] and r1 and r2`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
@@ -819,7 +938,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
-	t.Cleanup(s.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	_, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -855,6 +977,18 @@ type repo
 	require.True(t, ok)
 	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
 
+	_, err = s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Relation:             tk.GetRelation(),
+		Object:               &openfgav1.Object{Type: "repo", Id: "openfga"},
+		UserFilters:          []*openfgav1.UserTypeFilter{{Type: "user"}},
+	})
+	require.Error(t, err)
+	e, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
+
 	_, err = s.Expand(ctx, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -876,13 +1010,15 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user:*]`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user:*]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -926,7 +1062,10 @@ type repo
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
-	t.Cleanup(s.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	start := time.Now()
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -952,13 +1091,15 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user]`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -987,7 +1128,10 @@ type repo
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
-	t.Cleanup(s.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
@@ -1019,13 +1163,15 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user]`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -1153,7 +1299,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
-		t.Cleanup(s.Close)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
@@ -1180,7 +1329,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
-		t.Cleanup(s.Close)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		typesys, err := s.resolveTypesystem(ctx, store, "")
 		require.NoError(t, err)
@@ -1200,7 +1352,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
-		t.Cleanup(s.Close)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		_, err := s.resolveTypesystem(ctx, store, modelID)
 		require.Equal(t, want, err)
@@ -1239,14 +1394,16 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	typedefs := language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define allowed: [user]
-	define viewer: [user] and allowed`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define allowed: [user]
+				define viewer: [user] and allowed`).GetTypeDefinitions()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -1260,6 +1417,7 @@ type repo
 		WithDatastore(mockDatastore),
 	)
 	b.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
 		s.Close()
 	})
 
@@ -1304,19 +1462,24 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
-		t.Cleanup(s.Close)
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		modelID := ulid.Make().String()
 
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-	define viewer: [user, user:*]`).GetTypeDefinitions(),
+				type user
+
+				type document
+					relations
+						define viewer: [user, user:*]`).GetTypeDefinitions(),
 		}, nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
@@ -1363,17 +1526,19 @@ type document
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type group
-  relations
-	define member: [user, group#member]
+				type user
 
-type document
-  relations
-	define viewer: [group#member]`).GetTypeDefinitions(),
+				type group
+					relations
+						define member: [user, group#member]
+
+				type document
+					relations
+						define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -1449,7 +1614,10 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 	)
-	t.Cleanup(s.Close)
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err := s.Check(ctx, &openfgav1.CheckRequest{
@@ -1520,10 +1688,12 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-	schema 1.1
-type repo
-`).GetTypeDefinitions(),
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type repo
+				`).GetTypeDefinitions(),
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)
@@ -1555,6 +1725,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	cfg := serverconfig.DefaultConfig()
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListUsers)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
@@ -1562,6 +1733,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
+	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListUsers)
 }
 
 func TestDelegateCheckResolver(t *testing.T) {
@@ -1570,7 +1742,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
+		require.False(t, cfg.CheckDispatchThrottling.Enabled)
 		require.False(t, cfg.DispatchThrottling.Enabled)
+		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
 
 		ds := memory.New()
@@ -1580,7 +1754,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		require.Nil(t, s.dispatchThrottlingCheckResolver)
-		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
@@ -1610,9 +1784,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1643,9 +1817,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 0, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1678,9 +1852,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 		require.Nil(t, s.cachedCheckResolver)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, dispatchThreshold, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, maxDispatchThreshold, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1705,7 +1879,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.dispatchThrottlingCheckResolverEnabled)
+		require.False(t, s.checkDispatchThrottlingEnabled)
 		require.Nil(t, s.dispatchThrottlingCheckResolver)
 
 		require.True(t, s.checkQueryCacheEnabled)
@@ -1736,9 +1910,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.True(t, s.dispatchThrottlingCheckResolverEnabled)
-		require.EqualValues(t, 50, s.dispatchThrottlingDefaultThreshold)
-		require.EqualValues(t, 100, s.dispatchThrottlingMaxThreshold)
+		require.True(t, s.checkDispatchThrottlingEnabled)
+		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
+		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1777,7 +1951,10 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
-		defer s.Close()
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
 
 		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
@@ -1798,5 +1975,39 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 		})
 
 		require.NoError(t, err)
+	})
+}
+
+func TestIsExperimentallyEnabled(t *testing.T) {
+	ds := memory.New() // Datastore required for server instantiation
+	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
+
+	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
+		s := MustNewServerWithOpts(WithDatastore(ds))
+		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(someExperimentalFlag),
+		)
+		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
+		)
+		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+
+	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+		)
+		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 }

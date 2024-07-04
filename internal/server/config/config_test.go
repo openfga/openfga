@@ -1,8 +1,13 @@
 package config
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/stretchr/testify/require"
 )
@@ -11,10 +16,29 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 5 * time.Minute
+		cfg.RequestTimeout = 0
 		cfg.HTTP.UpstreamTimeout = 2 * time.Second
 
 		err := cfg.Verify()
-		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+		require.EqualError(t, err, "configured request timeout (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+	})
+	t.Run("UpstreamTimeout_cannot_be_less_than_ListUsersDeadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDeadline = 2 * time.Second
+		cfg.ListUsersDeadline = 5 * time.Minute
+		cfg.RequestTimeout = 0
+		cfg.HTTP.UpstreamTimeout = 2 * time.Second
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "configured request timeout (2s) cannot be lower than 'listUsersDeadline' config (5m0s)")
+	})
+
+	t.Run("maxConcurrentReadsForListUsers_not_zero", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConcurrentReadsForListUsers = 0
+
+		err := cfg.Verify()
+		require.EqualError(t, err, "config 'maxConcurrentReadsForListUsers' cannot be 0")
 	})
 
 	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
@@ -133,9 +157,9 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_throttling_frequency", func(t *testing.T) {
+	t.Run("non_positive_check_dispatch_throttling_frequency", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 0,
 			Threshold: 30,
@@ -145,9 +169,33 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("non_positive_dispatch_threshold", func(t *testing.T) {
+	t.Run("non_positive_check_dispatch_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 10 * time.Microsecond,
+			Threshold: 0,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_list_objects_dispatch_throttling_frequency", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 0,
+			Threshold: 30,
+		}
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("non_positive_list_objects_dispatch_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:   true,
 			Frequency: 10 * time.Microsecond,
 			Threshold: 0,
@@ -159,7 +207,19 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("dispatch_throttling_threshold_larger_than_max_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.DispatchThrottling = DispatchThrottlingConfig{
+		cfg.CheckDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:      true,
+			Frequency:    10 * time.Microsecond,
+			Threshold:    30,
+			MaxThreshold: 29,
+		}
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("list_objects_threshold_larger_than_max_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDispatchThrottling = DispatchThrottlingConfig{
 			Enabled:      true,
 			Frequency:    10 * time.Microsecond,
 			Threshold:    30,
@@ -201,18 +261,92 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("list_objects_deadline_request_timeout", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.RequestTimeout = 1 * time.Second
+		cfg.RequestTimeout = 500 * time.Millisecond
 		cfg.ListObjectsDeadline = 4 * time.Second
 
 		err := cfg.Verify()
 		require.Error(t, err)
+	})
+
+	t.Run("list_users_deadline_request_timeout", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestTimeout = 500 * time.Millisecond
+		cfg.ListUsersDeadline = 4 * time.Second
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("prints_warning_when_log_level_is_none", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Level = "none"
+
+		// Capture the output of fmt.Println
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		defer func() {
+			// Restore the original stdout
+			os.Stdout = oldStdout
+			w.Close()
+		}()
+
+		cfg.Verify()
+		w.Close()
+
+		// Read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+
+		require.Contains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
+	})
+
+	t.Run("does_not_print_warning_when_log_level_is_not_none", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Level = "info"
+
+		// Capture the output of fmt.Println
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		defer func() {
+			// Restore the original stdout
+			os.Stdout = oldStdout
+			w.Close()
+		}()
+
+		cfg.Verify()
+		w.Close()
+
+		// Read the captured output
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+
+		require.NotContains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	})
 }
 
 func TestDefaultMaxConditionValuationCost(t *testing.T) {
 	// check to make sure DefaultMaxConditionEvaluationCost never drops below an explicit 100, because
 	// API compatibility can be impacted otherwise
-	require.GreaterOrEqual(t, DefaultMaxConditionEvaluationCost, 100)
+	t.Run("max_condition_evaluation_cost_too_low", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = 99
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+	t.Run("max_condition_evaluation_cost_valid", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConditionEvaluationCost = uint64(120)
+		viper.Set("maxConditionEvaluationCost", uint64(120))
+
+		err := cfg.Verify()
+		require.NoError(t, err)
+	})
+	require.Equal(t, uint64(120), MaxConditionEvaluationCost())
 }
 
 func TestDefaultContextTimeout(t *testing.T) {
@@ -255,6 +389,92 @@ func TestDefaultContextTimeout(t *testing.T) {
 			t.Parallel()
 			timeout := DefaultContextTimeout(&test.config)
 			require.Equal(t, test.expectedContextTimeout, timeout)
+		})
+	}
+}
+
+func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
+	var testCases = map[string]struct {
+		configGeneratingFunction    func() *Config
+		expectedCheckDispatchConfig DispatchThrottlingConfig
+	}{
+		"get_value_from_dispatch_config_if_check_dispatch_config_is_not_set": {
+			configGeneratingFunction: func() *Config {
+				config := DefaultConfig()
+				viper.Set("dispatchThrottling.enabled", true)
+				viper.Set("dispatchThrottling.frequency", 10)
+				viper.Set("dispatchThrottling.threshold", 10)
+				viper.Set("dispatchThrottling.maxThreshold", 10)
+				config.DispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      true,
+					Frequency:    10,
+					Threshold:    10,
+					MaxThreshold: 10,
+				}
+				return config
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      true,
+				Frequency:    10,
+				Threshold:    10,
+				MaxThreshold: 10,
+			},
+		},
+		"override_from_check_dispatch_config_if_set": {
+			configGeneratingFunction: func() *Config {
+				viper.Set("dispatchThrottling.enabled", true)
+				viper.Set("dispatchThrottling.frequency", 100)
+				viper.Set("dispatchThrottling.threshold", 100)
+				viper.Set("dispatchThrottling.maxThreshold", 100)
+				viper.Set("checkDispatchThrottling.enabled", true)
+				viper.Set("checkDispatchThrottling.frequency", 10)
+				viper.Set("checkDispatchThrottling.threshold", 10)
+				viper.Set("checkDispatchThrottling.maxThreshold", 10)
+				config := DefaultConfig()
+				config.DispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      true,
+					Frequency:    100,
+					Threshold:    100,
+					MaxThreshold: 100,
+				}
+				config.CheckDispatchThrottling = DispatchThrottlingConfig{
+					Enabled:      false,
+					Frequency:    10,
+					Threshold:    10,
+					MaxThreshold: 10,
+				}
+				return config
+			},
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      false,
+				Frequency:    10,
+				Threshold:    10,
+				MaxThreshold: 10,
+			},
+		},
+		"get_default_values_if_none_are_set": {
+			configGeneratingFunction: DefaultConfig,
+			expectedCheckDispatchConfig: DispatchThrottlingConfig{
+				Enabled:      DefaultCheckDispatchThrottlingEnabled,
+				Frequency:    DefaultCheckDispatchThrottlingFrequency,
+				Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
+				MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+			},
+		},
+	}
+	for name, test := range testCases {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(func() {
+				viper.Reset()
+			})
+
+			config := test.configGeneratingFunction()
+			result := GetCheckDispatchThrottlingConfig(nil, config)
+			require.Equal(t, test.expectedCheckDispatchConfig.Enabled, result.Enabled)
+			require.Equal(t, test.expectedCheckDispatchConfig.Frequency, result.Frequency)
+			require.Equal(t, test.expectedCheckDispatchConfig.Threshold, result.Threshold)
+			require.Equal(t, test.expectedCheckDispatchConfig.MaxThreshold, result.MaxThreshold)
 		})
 	}
 }

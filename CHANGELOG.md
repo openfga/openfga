@@ -8,6 +8,53 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.5] - 2024-06-18
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.4...v1.5.5)
+
+### Added
+
+* Configuring maximum cost for CEL evaluation via `OPENFGA_MAX_CONDITION_EVALUATION_COST` [#1631](https://github.com/openfga/openfga/pull/1631) - thank you, @cmmoran
+
+### Fixed
+
+* OTel trace context propagation to grpc-gateway [#1624](https://github.com/openfga/openfga/pull/1624) - thank you, @Zach-Johnson
+
+### Removed
+
+* `excluded_users` from ListUsers response. Further discovery required before being reintroduced. If impacted by this removal, please provide feedback in [issue #1692](https://github.com/openfga/openfga/issues/1692) [#1685](https://github.com/openfga/openfga/pull/1685)
+
+## [1.5.4] - 2024-05-29
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.3...v1.5.4)
+
+### Added
+
+* ListUsers API which answers the question "what users are related to a specific object?". This feature is experimental and can be enabled by configuring `OPENFGA_EXPERIMENTALS=enable-list-users`. Also see [Performing a ListUsers call](https://openfga.dev/docs/getting-started/perform-list-users) and [ListUsers API docs](https://openfga.dev/api/service#/Relationship%20Queries/ListUsers). **Known Limitation:** Child usersets that are negated from their parent are currently not returned as `excluded_users` [#1433](https://github.com/openfga/openfga/pull/1433)
+* ListObjects throttling to manage resource usage of expensive queries. Throttling improves overall query performance by limiting the number of dispatches, which are the recursive sub-operations of a ListObjects query [#1571](https://github.com/openfga/openfga/pull/1571)
+* Per-request dispatch throttling threshold configuration via context [#1546](https://github.com/openfga/openfga/pull/1546)
+* Self-defining usersets for Check, ListObjects and ListUsers. These are implicit tuples that exist by virtue of set theory. For example, the userset `document:1#viewer` implicitly possess the `viewer` relation for `document:1` [#1521](https://github.com/openfga/openfga/pull/1521)
+* Panic recovery handling for all APIs [#1557](https://github.com/openfga/openfga/pull/1557)
+* Logging of non-sensitive server configuration on startup [#1609](https://github.com/openfga/openfga/pull/1609)
+* Appropriate error codes for throttled requests indicating if a request should be retried [#1552](https://github.com/openfga/openfga/pull/1552)
+* Minor performance improvements in Check API by reducing quantity of spans created [#1550](https://github.com/openfga/openfga/pull/1550), [#1589](https://github.com/openfga/openfga/pull/1589)
+
+### Fixed
+
+* Goroutine leak occurring during initial server validation [#1617](https://github.com/openfga/openfga/pull/1617)
+* Stricter filtering of invalid tuples with ListObjects [#1563](https://github.com/openfga/openfga/pull/1563)
+* Panic on server close if caching is enabled [#1568](https://github.com/openfga/openfga/pull/1568)
+* Prevent calling datastore if context has error [#1593](https://github.com/openfga/openfga/pull/1593)
+
+### Changed
+
+* `request_id` is now same as `trace_id` (e.g. `1e20da43269fe07e3d2ac018c0aad2d1`) if tracing is enabled. Otherwise, remains an UUID (e.g. `38fee7ac-4bfe-4cf6-baa2-8b5ec296b485`) [#1576](https://github.com/openfga/openfga/pull/1576) - thank you, @00chorch
+
+### Removed
+
+* `request_duration_by_query_count_ms` metric [#1579](https://github.com/openfga/openfga/pull/1579)
+
+
 ## [1.5.3] - 2024-04-16
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.2...v1.5.3)
@@ -1010,7 +1057,9 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.5...HEAD
+[1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5
+[1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
 [1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
 [1.5.2]: https://github.com/openfga/openfga/releases/tag/v1.5.2
 [1.5.1]: https://github.com/openfga/openfga/releases/tag/v1.5.1
