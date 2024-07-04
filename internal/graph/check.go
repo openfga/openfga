@@ -717,7 +717,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 // We will first look up the group(s) that are assigned to doc:1
 // Next, we will look up all the group where user:bob is a member of.
 // Finally, find the intersection between the two.
-// To use the fastpath, we will need to ensure that the userset and all the children associated with the userset are
+// To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
 func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetPublicWildcardFastPath")
@@ -741,12 +741,15 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 	usersetsMap := make(map[string]map[string]struct{})
 
 	for {
+		// NOTE: For the future, once we observe a new ObjectRelation in the usersetsMap that means that all objectIDs
+		// needed for the intersection lookup for that ObjectRelation are in memory. There is no need to build the full
+		// usersetMap by draining the full iterator, it can start processing in batches of ObjectRelation.
+		// Consider doing it when we have better concurrency tooling for "streaming" operations.
 		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-
 			return nil, err
 		}
 
@@ -763,7 +766,6 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 					tuple.TupleKeyToString(t),
 					condEvalResult.MissingParameters),
 			))
-
 			continue
 		}
 
@@ -795,11 +797,12 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 	// all of this can likely bee its own function
 	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
 	for objectRel, objectIDs := range usersetsMap {
+		req.GetRequestMetadata().DatastoreQueryCount++
 		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 				},
 			}
 			objectType, relation := tuple.SplitObjectRelation(objectRel)
@@ -828,7 +831,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 				if actualObject := t.GetKey().GetObject(); actualObject != "" {
 					_, objectID := tuple.SplitObject(actualObject)
 					if _, ok := objectIDs[objectID]; ok {
-                                                  span.SetAttributes(attribute.Bool("allowed", true))
+						span.SetAttributes(attribute.Bool("allowed", true))
 						response.Allowed = true
 						return response, nil
 					}
