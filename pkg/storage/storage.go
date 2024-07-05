@@ -171,6 +171,7 @@ type ReadStartingWithUserFilter struct {
 	ObjectType string
 	Relation   string
 	UserFilter []*openfgav1.ObjectRelation
+	ObjectIDs  []string // Optional.
 }
 
 // ReadUsersetTuplesFilter specifies the filter options that
