@@ -341,7 +341,7 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	}
 	_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
 	if !ok {
-		return nil, false, err
+		return nil, false, nil
 	}
 
 	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
