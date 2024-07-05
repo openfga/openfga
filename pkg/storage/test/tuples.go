@@ -1267,10 +1267,10 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(t, err)
 
-		objects := iterateThroughAllTuples(t, tupleIterator)
+		tuples := iterateThroughAllTuples(t, tupleIterator)
 
-		require.Len(t, objects, 1)
-		objectID, _ := tuple.SplitObject(objects[0].GetObject())
+		require.Len(t, tuples, 1)
+		_, objectID := tuple.SplitObject(tuples[0].GetObject())
 		require.Equal(t, "doc1", objectID)
 	})
 }
