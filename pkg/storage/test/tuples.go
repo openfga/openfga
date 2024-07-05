@@ -1255,7 +1255,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			ctx,
 			storeID,
 			storage.ReadStartingWithUserFilter{
-				ObjectType: "doc",
+				ObjectType: "document",
 				Relation:   "viewer",
 				UserFilter: []*openfgav1.ObjectRelation{
 					{
