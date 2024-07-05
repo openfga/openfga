@@ -963,13 +963,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 	tk := req.GetTupleKey()
-
-	response := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-		},
-	}
+	reqContext := req.GetContext()
 
 	// tuplesetRelationUserMap contains of users that fits the tuplesetRelation.  For example,
 	// type group
@@ -1040,43 +1034,80 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	//   define viewer: member from parent
 	// we want to find out which group user:bob is a member of.
 	// After that, we will find the intersection.
+	handlers := make([]CheckHandlerFunc, 0, len(tuplesetRelationUserMap))
 	for userObjType, tuplesetObjectList := range tuplesetRelationUserMap {
-		iter, err := ds.ReadStartingWithUser(ctx, req.GetStoreID(), storage.ReadStartingWithUserFilter{
-			ObjectType: userObjType,
-			Relation:   computedRelation,
-			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: tk.GetUser(),
-			}},
-		})
-		if err != nil {
-			return nil, err
-		}
-		defer iter.Stop()
+		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
+			response := &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+				},
+			}
 
-		response.GetResolutionMetadata().DatastoreQueryCount++
-
-		for {
-			t, err := iter.Next(ctx)
+			iter, err := ds.ReadStartingWithUser(ctx, req.GetStoreID(), storage.ReadStartingWithUserFilter{
+				ObjectType: userObjType,
+				Relation:   computedRelation,
+				UserFilter: []*openfgav1.ObjectRelation{{
+					Object: tk.GetUser(),
+				}},
+			})
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-
 				return nil, err
 			}
 
-			if actualObject := t.GetKey().GetObject(); actualObject != "" {
-				_, objectID := tuple.SplitObject(actualObject)
+			// filter out invalid tuples yielded by the database iterator
+			filteredIter := storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(iter),
+				validation.FilterInvalidTuples(typesys),
+			)
+			defer filteredIter.Stop()
+
+			response.GetResolutionMetadata().DatastoreQueryCount++
+
+			for {
+				t, err := filteredIter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+
+					return nil, err
+				}
+
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
+				if err != nil {
+					continue
+				}
+
+				if len(condEvalResult.MissingParameters) > 0 {
+					continue
+				}
+
+				if !condEvalResult.ConditionMet {
+					continue
+				}
+
+				_, objectID := tuple.SplitObject(t.GetObject())
 				if _, ok := tuplesetObjectList[objectID]; ok {
 					span.SetAttributes(attribute.Bool("allowed", true))
 					response.Allowed = true
 					return response, nil
 				}
 			}
+
+			return response, nil
 		}
+
+		handlers = append(handlers, handler)
 	}
 
-	return response, nil
+	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
