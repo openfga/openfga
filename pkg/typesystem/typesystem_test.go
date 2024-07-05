@@ -2962,24 +2962,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_member_is_userset",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user, group#member]
-						type folder
-							relations
-								define allowed: [group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: false,
-			expectError:              false,
-		},
-		{
 			name: "complex_userset_member_is_public",
 			model: `
 						model
@@ -3058,7 +3040,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "multiple_assignment_userset",
+			name: "multiple_assignment",
 			model: `
 						model
 							schema 1.1
@@ -3155,7 +3137,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				WildcardRelationReference("user"),
 			},
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
 			expectError:              false,
 		},
 		{

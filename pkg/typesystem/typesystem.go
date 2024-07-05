@@ -331,8 +331,8 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
-// resolvesTypeRelationToDirectlyAssignable returns whether the assignable types ONLY if
-// the specified type and relation is exclusively assignable. Otherwise, it will return nil as slice.
+// resolvesTypeRelationToDirectlyAssignable returns whether the input object#relation is related ONLY to concrete types.
+// Otherwise, it will return nil as slice.
 // TODO: memorized so that we do not need to reparse the type system in subsequent calls.
 func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
 	relation, err := t.GetRelation(objectType, relationName)
@@ -341,12 +341,11 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	}
 	_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
 	if !ok {
-		return nil, false, err
+		return nil, false, nil
 	}
 
 	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 
-	// assignableTypes is needed for the TTU case
 	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
 	// need to check whether these are simple types as well
 	for _, ref := range directlyRelatedTypes {
