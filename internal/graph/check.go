@@ -805,20 +805,26 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 				},
 			}
 			objectType, relation := tuple.SplitObjectRelation(objectRel)
-			iter, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
 				ObjectType: objectType,
 				Relation:   relation,
 				UserFilter: []*openfgav1.ObjectRelation{{
 					Object: reqTupleKey.GetUser(),
 				}},
 			})
+
 			if err != nil {
 				return nil, err
 			}
-			defer iter.Stop()
+			// filter out invalid tuples yielded by the database iterator
+			filteredIter := storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(i),
+				validation.FilterInvalidTuples(typesys),
+			)
+			defer filteredIter.Stop()
 
 			for {
-				t, err := iter.Next(ctx)
+				t, err := filteredIter.Next(ctx)
 				if err != nil {
 					if errors.Is(err, storage.ErrIteratorDone) {
 						break
@@ -827,7 +833,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 					return nil, err
 				}
 
-				_, objectID := tuple.SplitObject(t.GetKey().GetObject())
+				_, objectID := tuple.SplitObject(t.GetObject())
 				if _, ok := objectIDs[objectID]; ok {
 					span.SetAttributes(attribute.Bool("allowed", true))
 					response.Allowed = true
