@@ -791,11 +791,13 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
+	reqContext := req.GetContext()
 
 	// Next, for all the ObjectRelation, compare the associated objectIDs
 	// to the users associated objects
 	// all of this can likely bee its own function
 	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
+	// TODO: This can be potentially abstracted into its own PR for re-usage from other rewrites, ie: TTU
 	for objectRel, objectIDs := range usersetsMap {
 		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			response := &ResolveCheckResponse{
@@ -831,6 +833,19 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 					}
 
 					return nil, err
+				}
+
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
+				if err != nil {
+					continue
+				}
+
+				if len(condEvalResult.MissingParameters) > 0 {
+					continue
+				}
+
+				if !condEvalResult.ConditionMet {
+					continue
 				}
 
 				_, objectID := tuple.SplitObject(t.GetObject())
