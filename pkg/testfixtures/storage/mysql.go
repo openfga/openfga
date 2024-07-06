@@ -20,10 +20,6 @@ import (
 	"github.com/openfga/openfga/assets"
 )
 
-const (
-	mySQLImage = "mysql:8"
-)
-
 type mySQLTestContainer struct {
 	addr     string
 	version  int64
@@ -47,8 +43,7 @@ func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
 	ctx := context.Background()
 
-	mysqlContainer, err := testcontainersmysql.RunContainer(ctx,
-		testcontainers.WithImage(mySQLImage),
+	mysqlContainer, err := testcontainersmysql.Run(ctx, "mysql:8",
 		testcontainers.WithHostConfigModifier(func(hostConfig *container.HostConfig) {
 			hostConfig.Tmpfs = map[string]string{"/var/lib/mysql": ""}
 		}),

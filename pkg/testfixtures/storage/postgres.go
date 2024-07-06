@@ -19,10 +19,6 @@ import (
 	"github.com/openfga/openfga/assets"
 )
 
-const (
-	postgresImage = "postgres:14"
-)
-
 type postgresTestContainer struct {
 	addr     string
 	version  int64
@@ -46,8 +42,7 @@ func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
 	ctx := context.Background()
 
-	postgresContainer, err := testcontainerspostgres.RunContainer(ctx,
-		testcontainers.WithImage(postgresImage),
+	postgresContainer, err := testcontainerspostgres.Run(ctx, "postgres:14",
 		testcontainers.WithWaitStrategy(wait.
 			ForLog("database system is ready to accept connections").
 			WithOccurrence(2).
