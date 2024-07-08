@@ -49,8 +49,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                          = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalEnableListUsers ExperimentalFeatureFlag = "enable-list-users"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
