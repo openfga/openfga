@@ -1,16 +1,16 @@
 module github.com/openfga/openfga
 
-go 1.22.4
+go 1.22.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/MicahParks/keyfunc v1.9.0
+	github.com/MicahParks/keyfunc/v2 v2.0.3
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/docker/docker v26.0.2+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/golang-jwt/jwt/v4 v4.5.0
+	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/cel-go v0.20.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
@@ -27,7 +27,7 @@ require (
 	github.com/openfga/language/pkg/go v0.0.0-20240409225820-a53ea2892d6d
 	github.com/pressly/goose/v3 v3.20.0
 	github.com/prometheus/client_golang v1.19.0
-	github.com/rs/cors v1.10.1
+	github.com/rs/cors v1.11.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/pflag v1.0.5

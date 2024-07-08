@@ -309,6 +309,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 
 	// attempt a random request
 	client := retryablehttp.NewClient()
+	t.Cleanup(client.HTTPClient.CloseIdleConnections)
 	response, err := client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
 	require.NoError(t, err)
 
@@ -413,8 +414,8 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 
 	res, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute request")
-	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	defer res.Body.Close()
+	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read response")
 
@@ -429,6 +430,9 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
@@ -462,18 +466,19 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		want want
 	}{
 		{
-			name: "Good_Origin",
+			name: "origin_allowed",
 			args: args{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				// must be lowercase, see https://github.com/rs/cors/issues/174#issuecomment-2082098921
+				header: "authorization,x-custom-header",
 			},
 			want: want{
 				origin: "http://localhost",
-				header: "Authorization, X-Custom-Header",
+				header: "authorization,x-custom-header",
 			},
 		},
 		{
-			name: "Bad_Origin",
+			name: "origin_forbidden",
 			args: args{
 				origin: "http://openfga.example",
 				header: "X-Custom-Header",
@@ -484,7 +489,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			},
 		},
 		{
-			name: "Bad_Header",
+			name: "origin_allowed_but_header_forbidden",
 			args: args{
 				origin: "http://localhost",
 				header: "Bad-Custom-Header",
@@ -497,6 +502,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	}
 
 	client := retryablehttp.NewClient()
+	t.Cleanup(client.HTTPClient.CloseIdleConnections)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -525,6 +531,9 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	oidcServerPort, oidcServerPortReleaser := testutils.TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
@@ -582,6 +591,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	}
 
 	retryClient := retryablehttp.NewClient()
+	t.Cleanup(retryClient.HTTPClient.CloseIdleConnections)
+
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
@@ -594,6 +605,9 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	oidcServerPort1, oidcServerPortReleaser1 := testutils.TCPRandomPort()
 	oidcServerPort2, oidcServerPortReleaser2 := testutils.TCPRandomPort()
 	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
@@ -632,6 +646,8 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 
 	retryClient := retryablehttp.NewClient()
+	t.Cleanup(retryClient.HTTPClient.CloseIdleConnections)
+
 	test := authTest{
 		_name:              "Token_with_issuer_equal_to_alias_is_accepted",
 		authHeader:         "Bearer " + trustedTokenFromAlias,
@@ -697,6 +713,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
 		client := retryablehttp.NewClient()
+		t.Cleanup(client.HTTPClient.CloseIdleConnections)
 		client.HTTPClient.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs: certPool,
@@ -706,7 +723,6 @@ func TestHTTPServingTLS(t *testing.T) {
 		resp, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
 		resp.Body.Close()
-		client.HTTPClient.CloseIdleConnections()
 	})
 }
 
@@ -781,6 +797,9 @@ func TestServerMetricsReporting(t *testing.T) {
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
@@ -1325,7 +1344,6 @@ func TestHTTPHeaders(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
-	cfg.Experimentals = []string{string(server.ExperimentalEnableListUsers)}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
