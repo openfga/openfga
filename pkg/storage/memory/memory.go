@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -509,9 +510,17 @@ func (s *MemoryBackend) ReadStartingWithUser(
 				targetUser = tupleUtils.GetObjectRelationAsString(userFilter)
 			}
 
-			if targetUser == t.User {
-				matches = append(matches, t)
+			if targetUser != t.User {
+				continue
 			}
+
+			if len(filter.ObjectIDs) > 0 {
+				if !slices.Contains(filter.ObjectIDs, t.ObjectID) {
+					continue
+				}
+			}
+
+			matches = append(matches, t)
 		}
 	}
 	return &staticIterator{records: matches}, nil

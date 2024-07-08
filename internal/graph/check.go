@@ -614,6 +614,265 @@ func (c *LocalChecker) ResolveCheck(
 	return resp, nil
 }
 
+// checkUsersetSlowPath will check userset or public wildcard path.
+// This is the slow path as it requires dispatch on all its children.
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
+	defer span.End()
+	var errs error
+	var handlers []CheckHandlerFunc
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
+
+	response := &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+		},
+	}
+
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+
+			return nil, err
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			continue
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			errs = errors.Join(errs, condition.NewEvaluationError(
+				t.GetCondition().GetName(),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(t),
+					condEvalResult.MissingParameters),
+			))
+
+			continue
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
+		}
+
+		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+		reqTupleKey := req.GetTupleKey()
+
+		// if the user value is a typed wildcard and the type of the wildcard
+		// matches the target user objectType, then we're done searching
+		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+			wildcardType := tuple.GetType(usersetObject)
+
+			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
+				span.SetAttributes(attribute.Bool("allowed", true))
+				response.Allowed = true
+				return response, nil
+			}
+
+			continue
+		}
+
+		if usersetRelation != "" {
+			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
+			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+		}
+	}
+
+	if len(handlers) == 0 && errs != nil {
+		telemetry.TraceError(span, errs)
+		return nil, errs
+	}
+
+	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, errors.Join(errs, err)
+	}
+
+	resp.GetResolutionMetadata().DatastoreQueryCount += response.GetResolutionMetadata().DatastoreQueryCount
+
+	return resp, nil
+}
+
+// checkUsersetFastPath is the fast path to evaluate userset.
+// The general idea of the algorithm is that it tries to find intersection on the objects as identified in the userset
+// with the objects the user has the specified relation with.
+// For example, for the following model, for check(user:bob, viewer, doc:1)
+//
+//	type group
+//	  define member: [user]
+//	type doc
+//	  define viewer: [group#member]
+//
+// We will first look up the group(s) that are assigned to doc:1
+// Next, we will look up all the group where user:bob is a member of.
+// Finally, find the intersection between the two.
+// To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
+// exclusively directly assignable. In our case, group member must be directly exclusively assignable.
+func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
+	defer span.End()
+	var errs error
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
+
+	ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+	}
+
+	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
+	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
+	// [group#member][1]
+	// [group#owner][1, 3]
+	usersetsMap := make(map[string]map[string]struct{})
+
+	for {
+		// NOTE: For the future, once we observe a new ObjectRelation in the usersetsMap that means that all objectIDs
+		// needed for the intersection lookup for that ObjectRelation are in memory. There is no need to build the full
+		// usersetMap by draining the full iterator, it can start processing in batches of ObjectRelation.
+		// Consider doing it when we have better concurrency tooling for "streaming" operations.
+		t, err := iter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			return nil, err
+		}
+
+		// TODO: Currently we are not supporting conditions so both this and subsequent evaluation (for UserObjects)
+		// are untested code until the start formally supporting them. Will be done in a subsequent PR.
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+		if err != nil {
+			errs = errors.Join(errs, err)
+			continue
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			errs = errors.Join(errs, condition.NewEvaluationError(
+				t.GetCondition().GetName(),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(t),
+					condEvalResult.MissingParameters),
+			))
+			continue
+		}
+
+		if !condEvalResult.ConditionMet {
+			continue
+		}
+
+		object, relation := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		objectRel := tuple.ToObjectRelationString(objectType, relation)
+		if _, ok := usersetsMap[objectRel]; !ok {
+			usersetsMap[objectRel] = make(map[string]struct{})
+		}
+		if _, ok := usersetsMap[objectRel][objectID]; !ok {
+			usersetsMap[objectRel][objectID] = struct{}{}
+		}
+	}
+
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return nil, errs
+	}
+
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
+	reqContext := req.GetContext()
+
+	// Next, for all the ObjectRelation, compare the associated objectIDs
+	// to the users associated objects
+	// all of this can likely bee its own function
+	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
+	// TODO: This can be potentially abstracted into its own function for re-usage from other rewrites, ie: TTU
+	for objectRel, objectIDs := range usersetsMap {
+		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
+			response := &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+				},
+			}
+			objectType, relation := tuple.SplitObjectRelation(objectRel)
+			i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+				ObjectType: objectType,
+				Relation:   relation,
+				UserFilter: []*openfgav1.ObjectRelation{{
+					Object: reqTupleKey.GetUser(),
+				}},
+				ObjectIDs: maps.Keys(objectIDs),
+			})
+
+			if err != nil {
+				return nil, err
+			}
+			// filter out invalid tuples yielded by the database iterator
+			filteredIter := storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(i),
+				validation.FilterInvalidTuples(typesys),
+			)
+			defer filteredIter.Stop()
+
+			for {
+				t, err := filteredIter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+
+					return nil, err
+				}
+
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
+				if err != nil {
+					continue
+				}
+
+				if len(condEvalResult.MissingParameters) > 0 {
+					continue
+				}
+
+				if !condEvalResult.ConditionMet {
+					continue
+				}
+
+				_, objectID := tuple.SplitObject(t.GetObject())
+				if _, ok := objectIDs[objectID]; ok {
+					span.SetAttributes(attribute.Bool("allowed", true))
+					response.Allowed = true
+					return response, nil
+				}
+			}
+			return response, nil
+		}
+		handlers = append(handlers, handler)
+	}
+	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+
+	resp.GetResolutionMetadata().DatastoreQueryCount++
+
+	return resp, nil
+}
+
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
@@ -645,7 +904,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
-		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
+		// TODO(jpadilla): can we lift this function up?
+		checkDirectUserTuple := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", reqTupleKey.String())))
 			defer span.End()
 
@@ -696,19 +956,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return response, nil
 		}
 
-		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
+		// TODO(jpadilla): can we lift this function up?
+		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
 			defer span.End()
 
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
-			}
-
-			response := &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-				},
 			}
 
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
@@ -728,73 +982,15 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			var errs error
-			var handlers []CheckHandlerFunc
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
+			resolver := c.checkUsersetSlowPath
 
-					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-				if err != nil {
-					errs = errors.Join(errs, err)
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					errs = errors.Join(errs, condition.NewEvaluationError(
-						t.GetCondition().GetName(),
-						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(t),
-							condEvalResult.MissingParameters),
-					))
-
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-				// if the user value is a typed wildcard and the type of the wildcard
-				// matches the target user objectType, then we're done searching
-				if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-					wildcardType := tuple.GetType(usersetObject)
-
-					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-						span.SetAttributes(attribute.Bool("allowed", true))
-						response.Allowed = true
-						return response, nil
-					}
-
-					continue
-				}
-
-				if usersetRelation != "" {
-					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-					handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+			if canShortCircuit, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes); err == nil {
+				if canShortCircuit {
+					resolver = c.checkUsersetFastPath
 				}
 			}
 
-			if len(handlers) == 0 && errs != nil {
-				telemetry.TraceError(span, errs)
-				return nil, errs
-			}
-
-			resp, err := union(ctx, c.concurrencyLimit, handlers...)
-			if err != nil {
-				telemetry.TraceError(span, err)
-				return nil, errors.Join(errs, err)
-			}
-
-			return resp, nil
+			return resolver(ctx, filteredIter, req)
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -805,23 +1001,17 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		)
 
 		if shouldCheckDirectTuple {
-			checkFuncs = []CheckHandlerFunc{fn1}
+			checkFuncs = []CheckHandlerFunc{checkDirectUserTuple}
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {
-			checkFuncs = append(checkFuncs, fn2)
+			checkFuncs = append(checkFuncs, checkDirectUsersetTuples)
 		}
 
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err
-		}
-
-		// count db reads after they happen in the case that we didn't find 'allowed=false' but we still incurred reads
-		if len(directlyRelatedUsersetTypes) > 0 {
-			// if we had N userset checks, that was 1 read, not N
-			resp.GetResolutionMetadata().DatastoreQueryCount++
 		}
 
 		return resp, nil
