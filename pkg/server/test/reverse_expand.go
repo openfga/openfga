@@ -1320,7 +1320,7 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 
 			reverseExpandErrCh := make(chan error, 1)
 			go func() {
-				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				errReverseExpand := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata, storage.ConsistencyOptions{})
 				if errReverseExpand != nil {
 					reverseExpandErrCh <- errReverseExpand
 				}

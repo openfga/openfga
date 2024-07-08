@@ -72,9 +72,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
-	iter, err := ds.Read(ctx,
-		store,
-		tuple.NewTupleKey("doc:", "relation", ""))
+	iter, err := ds.Read(ctx, store, tuple.NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
 	defer iter.Stop()
 
 	require.NoError(t, err)
@@ -185,7 +183,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 
 	tk := tuple.NewTupleKey("folder:2021-budget", "owner", "user:anne")
-	iter, err := ds.Read(ctx, "store", tk)
+	iter, err := ds.Read(ctx, "store", tk, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -201,7 +199,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Len(t, tuples, 1)
 	require.Equal(t, tk, tuples[0].GetKey())
 
-	userTuple, err := ds.ReadUserTuple(ctx, "store", tk)
+	userTuple, err := ds.ReadUserTuple(ctx, "store", tk, storage.ReadUserTupleOptions{})
 	require.NoError(t, err)
 	require.Equal(t, tk, userTuple.GetKey())
 
@@ -212,7 +210,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"})
+	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"}, storage.ReadUsersetTuplesOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -226,7 +224,7 @@ func TestAllowNullCondition(t *testing.T) {
 		UserFilter: []*openfgav1.ObjectRelation{
 			{Object: "user:anne"},
 		},
-	})
+	}, storage.ReadStartingWithUserOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 

@@ -220,8 +220,9 @@ func (c *ReverseExpandQuery) Execute(
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
+	consistencyOptions storage.ConsistencyOptions,
 ) error {
-	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
+	err := c.execute(ctx, req, resultChan, false, resolutionMetadata, consistencyOptions)
 	if err != nil {
 		return err
 	}
@@ -236,12 +237,13 @@ func (c *ReverseExpandQuery) dispatch(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
+	consistencyOptions storage.ConsistencyOptions,
 ) error {
 	newcount := resolutionMetadata.DispatchCounter.Add(1)
 	if c.dispatchThrottlerConfig.Enabled {
 		c.throttle(ctx, newcount, resolutionMetadata)
 	}
-	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -250,6 +252,7 @@ func (c *ReverseExpandQuery) execute(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
+	consistencyOptions storage.ConsistencyOptions,
 ) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -349,7 +352,7 @@ LoopOnEdges:
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 			})
 		case graph.ComputedUsersetEdge:
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
@@ -359,14 +362,14 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				break LoopOnEdges
 			}
 		case graph.TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 			})
 		default:
 			panic("unsupported edge type")
@@ -388,6 +391,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
+	consistencyOptions storage.ConsistencyOptions,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
@@ -401,7 +405,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 	return err
 }
 
@@ -411,6 +415,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
+	consistencyOptions storage.ConsistencyOptions,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
@@ -424,7 +429,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 	return err
 }
 
@@ -434,6 +439,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
+	consistencyOptions storage.ConsistencyOptions,
 ) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -495,7 +501,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   relationFilter,
 		UserFilter: userFilter,
-	})
+	}, storage.ReadStartingWithUserOptions{Consistency: consistencyOptions})
 	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err
@@ -572,7 +578,7 @@ LoopOnIterator:
 				ContextualTuples: req.ContextualTuples,
 				Context:          req.Context,
 				edge:             req.edge,
-			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, consistencyOptions)
 		})
 	}
 

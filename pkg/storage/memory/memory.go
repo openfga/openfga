@@ -174,7 +174,7 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 func (s *MemoryBackend) Close() {}
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
@@ -415,7 +415,7 @@ func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
@@ -437,6 +437,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
+	_ storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
@@ -475,6 +476,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
+	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadStartingWithUser")
 	defer span.End()

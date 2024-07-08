@@ -465,7 +465,7 @@ func TestListUsers_Deadline(t *testing.T) {
 		mockDatastore.EXPECT().Close().Times(1)
 
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, gomock.Any()).
+			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			Return(nil, context.DeadlineExceeded).
 			Times(1)
 
@@ -520,8 +520,8 @@ func TestListUsers_Deadline(t *testing.T) {
 			Times(1)
 
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				time.Sleep(10 * time.Millisecond)
 				return nil, context.Canceled
 			}).
