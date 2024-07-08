@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -158,9 +159,14 @@ func TestListUsersValidation(t *testing.T) {
 			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 			require.NoError(t, err)
 
+			serverCtx, serverCancel := context.WithCancel(context.Background())
+			defer serverCancel()
+
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
 				WithExperimentals(ExperimentalEnableListUsers),
+				WithContext(serverCtx),
+				WithLogger(logger.NewNoopLogger()),
 			)
 			t.Cleanup(s.Close)
 
@@ -178,7 +184,8 @@ func TestListUsersValidation(t *testing.T) {
 }
 
 func TestModelIdNotFound(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	req := &openfgav1.ListUsersRequest{
 		StoreId: ulid.Make().String(),
@@ -201,6 +208,8 @@ func TestModelIdNotFound(t *testing.T) {
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithExperimentals(ExperimentalEnableListUsers),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -217,7 +226,8 @@ func TestModelIdNotFound(t *testing.T) {
 }
 
 func TestExperimentalListUsers(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	storeID := ulid.Make().String()
 
@@ -239,6 +249,8 @@ func TestExperimentalListUsers(t *testing.T) {
 
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -296,7 +308,9 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	store := ulid.Make().String()
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
@@ -304,6 +318,8 @@ func TestListUsers_ErrorCases(t *testing.T) {
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),
 			WithExperimentals(ExperimentalEnableListUsers),
+			WithContext(ctx),
+			WithLogger(logger.NewNoopLogger()),
 		)
 		t.Cleanup(s.Close)
 
@@ -361,8 +377,10 @@ func TestListUsers_Deadline(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	logger := logger.NewNoopLogger()
 	t.Run("return_no_error_and_partial_results_at_deadline", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -395,6 +413,8 @@ func TestListUsers_Deadline(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(30*time.Millisecond), // 30ms is enough for first read, but not others
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -449,6 +469,8 @@ func TestListUsers_Deadline(t *testing.T) {
 			WithDatastore(mockDatastore),
 			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(1*time.Minute),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -508,6 +530,8 @@ func TestListUsers_Deadline(t *testing.T) {
 			WithDatastore(mockDatastore),
 			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(5*time.Millisecond),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 

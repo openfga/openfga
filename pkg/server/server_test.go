@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -57,7 +58,12 @@ func ExampleNewServerWithOpts() {
 	datastore := memory.New() // other supported datastores include Postgres and MySQL
 	defer datastore.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 		WithCheckQueryCacheEnabled(true),
 		// more options available
 	)
@@ -330,8 +336,13 @@ func TestCheckResolverOuterLayerDefault(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(s.Close)
 
@@ -348,8 +359,12 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(s.Close)
 
@@ -452,8 +467,13 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(s.Close)
 
@@ -515,8 +535,13 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		s.Close()
@@ -608,8 +633,14 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	const dispatchThreshold = 5
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+
+	serverCtx, serverCancel := context.WithCancel(context.Background())
+	defer serverCancel()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
+		WithContext(serverCtx),
+		WithLogger(logger.NewNoopLogger()),
 		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
 		WithDispatchThrottlingCheckResolverEnabled(true),
 		WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
@@ -715,7 +746,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -763,6 +796,8 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -793,9 +828,14 @@ func TestReleasesConnections(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
 		WithExperimentals(ExperimentalEnableListUsers),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(s.Close)
 
@@ -901,7 +941,9 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -939,6 +981,8 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithExperimentals(ExperimentalEnableListUsers),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1007,7 +1051,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1063,6 +1108,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1088,7 +1135,8 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1129,6 +1177,8 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		WithCheckQueryCacheEnabled(true),
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1287,7 +1337,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
 		store := ulid.Make().String()
@@ -1300,6 +1353,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(func() {
 			mockDatastore.EXPECT().Close().Times(1)
@@ -1330,6 +1385,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(func() {
 			mockDatastore.EXPECT().Close().Times(1)
@@ -1353,6 +1410,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(func() {
 			mockDatastore.EXPECT().Close().Times(1)
@@ -1389,7 +1448,9 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			goleak.IgnoreTopFunction("testing.(*B).doBench"),
 		)
 	})
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -1417,6 +1478,8 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	b.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1452,7 +1515,11 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	store := ulid.Make().String()
 
 	mockController := gomock.NewController(t)
@@ -1463,6 +1530,8 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(func() {
 			mockDatastore.EXPECT().Close().Times(1)
@@ -1522,6 +1591,8 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -1589,7 +1660,9 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -1615,6 +1688,8 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1729,8 +1804,13 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListUsers)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
+		WithContext(ctx),
+		WithLogger(logger.NewNoopLogger()),
 	)
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
@@ -1742,6 +1822,12 @@ func TestDelegateCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+
+	logger := logger.NewNoopLogger()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.CheckDispatchThrottling.Enabled)
@@ -1753,6 +1839,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 		require.Nil(t, s.dispatchThrottlingCheckResolver)
@@ -1765,11 +1853,15 @@ func TestDelegateCheckResolver(t *testing.T) {
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
 
-		localCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.LocalChecker)
+		trackerCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
 		require.True(t, ok)
 
-		_, ok = localCheckResolver.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		localChecker, ok := trackerCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
+
+		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		require.True(t, ok)
+
 	})
 
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
@@ -1780,6 +1872,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDatastore(ds),
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -1813,6 +1907,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
 			WithDispatchThrottlingCheckResolverMaxThreshold(0),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -1848,6 +1944,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(dispatchThreshold),
 			WithDispatchThrottlingCheckResolverMaxThreshold(maxDispatchThreshold),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -1878,6 +1976,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithCheckQueryCacheEnabled(true),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -1909,6 +2009,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDispatchThrottlingCheckResolverEnabled(true),
 			WithDispatchThrottlingCheckResolverThreshold(50),
 			WithDispatchThrottlingCheckResolverMaxThreshold(100),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		t.Cleanup(s.Close)
 
@@ -1941,7 +2043,9 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	storeID := ulid.Make().String()
 
 	mockController := gomock.NewController(t)
@@ -1952,6 +2056,8 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 	t.Run("accepts_request_with_schema_version_1.2", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
+			WithContext(ctx),
+			WithLogger(logger.NewNoopLogger()),
 		)
 		t.Cleanup(func() {
 			mockDatastore.EXPECT().Close().Times(1)
@@ -1984,8 +2090,16 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 	ds := memory.New() // Datastore required for server instantiation
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
 
+	logger := logger.NewNoopLogger()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithLogger(logger),
+			WithContext(ctx))
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1993,6 +2107,8 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(someExperimentalFlag),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
@@ -2001,6 +2117,8 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
@@ -2009,6 +2127,8 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+			WithContext(ctx),
+			WithLogger(logger),
 		)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})

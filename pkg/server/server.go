@@ -145,6 +145,7 @@ type Server struct {
 	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
 
 	listObjectsDispatchThrottler throttler.Throttler
+	ctx                          context.Context
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -154,6 +155,14 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+// WithDatastore passes a datastore to the Server.
+// You must call [storage.OpenFGADatastore.Close] on it after you have stopped using it.
+func WithContext(ctx context.Context) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.ctx = ctx
 	}
 }
 
@@ -501,7 +510,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	cycleDetectionCheckResolver.SetDelegate(localChecker)
+	trackChecker := graph.NewTrackCheckResolver(
+		graph.WithTrackerContext(s.ctx),
+		graph.WithTrackerLogger(s.logger))
+
+	cycleDetectionCheckResolver.SetDelegate(trackChecker)
+	trackChecker.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.checkQueryCacheEnabled {
