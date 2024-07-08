@@ -729,11 +729,6 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
 
-	ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
-	}
-
 	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
 	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
 	// [group#member][1]
@@ -791,75 +786,12 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 		return nil, errs
 	}
 
-	storeID := req.GetStoreID()
-	reqTupleKey := req.GetTupleKey()
-	reqContext := req.GetContext()
-
 	// Next, for all the ObjectRelation, compare the associated objectIDs
 	// to the users associated objects
 	// all of this can likely bee its own function
 	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	// TODO: This can be potentially abstracted into its own function for re-usage from other rewrites, ie: TTU
 	for objectRel, objectIDs := range usersetsMap {
-		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			response := &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
-			}
-			objectType, relation := tuple.SplitObjectRelation(objectRel)
-			i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-				ObjectType: objectType,
-				Relation:   relation,
-				UserFilter: []*openfgav1.ObjectRelation{{
-					Object: reqTupleKey.GetUser(),
-				}},
-				ObjectIDs: maps.Keys(objectIDs),
-			})
-
-			if err != nil {
-				return nil, err
-			}
-			// filter out invalid tuples yielded by the database iterator
-			filteredIter := storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(i),
-				validation.FilterInvalidTuples(typesys),
-			)
-			defer filteredIter.Stop()
-
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-
-					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
-				if err != nil {
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				_, objectID := tuple.SplitObject(t.GetObject())
-				if _, ok := objectIDs[objectID]; ok {
-					span.SetAttributes(attribute.Bool("allowed", true))
-					response.Allowed = true
-					return response, nil
-				}
-			}
-			return response, nil
-		}
+		handler := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)
 		handlers = append(handlers, handler)
 	}
 	resp, err := union(ctx, c.concurrencyLimit, handlers...)
@@ -1058,7 +990,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 
@@ -1124,6 +1056,85 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	return resp, nil
 }
 
+func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs map[string]struct{}) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
+		defer span.End()
+
+		typesys, ok := typesystem.TypesystemFromContext(ctx)
+		if !ok {
+			return nil, fmt.Errorf("typesystem missing in context")
+		}
+
+		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
+		if !ok {
+			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		}
+
+		storeID := req.GetStoreID()
+		reqTupleKey := req.GetTupleKey()
+		reqContext := req.GetContext()
+
+		response := &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			},
+		}
+		objectType, relation := tuple.SplitObjectRelation(objectRel)
+		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: objectType,
+			Relation:   relation,
+			UserFilter: []*openfgav1.ObjectRelation{{
+				Object: reqTupleKey.GetUser(),
+			}},
+			ObjectIDs: maps.Keys(objectIDs),
+		})
+
+		if err != nil {
+			return nil, err
+		}
+		// filter out invalid tuples yielded by the database iterator
+		filteredIter := storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(i),
+			validation.FilterInvalidTuples(typesys),
+		)
+		defer filteredIter.Stop()
+
+		for {
+			t, err := filteredIter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+
+				return nil, err
+			}
+
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
+			if err != nil {
+				continue
+			}
+
+			if len(condEvalResult.MissingParameters) > 0 {
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				continue
+			}
+
+			_, objectID := tuple.SplitObject(t.GetObject())
+			if _, ok := objectIDs[objectID]; ok {
+				span.SetAttributes(attribute.Bool("allowed", true))
+				response.Allowed = true
+				return response, nil
+			}
+		}
+		return response, nil
+	}
+}
+
 // checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
 // This requires both the TTU's tuplesetRelation and computedRelation be exclusively directly assignable.
 // The general idea is to check whether user has relation with the specified TTU by finding object
@@ -1146,33 +1157,20 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
 
-	ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
-	}
+	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
+	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
+	// [group#member][1]
+	// [group#owner][1, 3]
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-	tk := req.GetTupleKey()
-	reqContext := req.GetContext()
-
-	// tuplesetRelationUserMap contains of users that fits the tuplesetRelation.  For example,
-	// type group
-	//   define member: [user]
-	// type doc
-	//   define parent: [group]
-	//   define viewer: member from parent
-	// tuplesetRelationUserMap will list all group for doc:1's parent
-	// [group][1]
-	// [group][2]
-	// [group][3]
-	tuplesetRelationUserMap := make(map[string]map[string]struct{})
+	usersetsMap := make(map[string]map[string]struct{})
 
 	var errs error
 
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 
@@ -1204,14 +1202,15 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 			continue
 		}
 
-		userObject, _ := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(userObject)
-
-		if _, ok := tuplesetRelationUserMap[objectType]; !ok {
-			tuplesetRelationUserMap[objectType] = make(map[string]struct{})
+		object, _ := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
+		if _, ok := usersetsMap[objectRel]; !ok {
+			usersetsMap[objectRel] = make(map[string]struct{})
 		}
-
-		tuplesetRelationUserMap[objectType][objectID] = struct{}{}
+		if _, ok := usersetsMap[objectRel][objectID]; !ok {
+			usersetsMap[objectRel][objectID] = struct{}{}
+		}
 	}
 
 	// Next, for each of the type in tuplesetRelationUserMap, look up what object is in computedRelation for the specified user.
@@ -1224,70 +1223,9 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	//   define viewer: member from parent
 	// we want to find out which group user:bob is a member of.
 	// After that, we will find the intersection.
-	handlers := make([]CheckHandlerFunc, 0, len(tuplesetRelationUserMap))
-	for userObjType, tuplesetObjectList := range tuplesetRelationUserMap {
-		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			response := &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
-			}
-
-			iter, err := ds.ReadStartingWithUser(ctx, req.GetStoreID(), storage.ReadStartingWithUserFilter{
-				ObjectType: userObjType,
-				Relation:   computedRelation,
-				UserFilter: []*openfgav1.ObjectRelation{{
-					Object: tk.GetUser(),
-				}},
-			})
-			if err != nil {
-				return nil, err
-			}
-
-			// filter out invalid tuples yielded by the database iterator
-			filteredIter := storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
-			)
-			defer filteredIter.Stop()
-
-			response.GetResolutionMetadata().DatastoreQueryCount++
-
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-
-					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
-				if err != nil {
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				_, objectID := tuple.SplitObject(t.GetObject())
-				if _, ok := tuplesetObjectList[objectID]; ok {
-					span.SetAttributes(attribute.Bool("allowed", true))
-					response.Allowed = true
-					return response, nil
-				}
-			}
-
-			return response, nil
-		}
-
+	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
+	for objectRel, objectIDs := range usersetsMap {
+		handler := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)
 		handlers = append(handlers, handler)
 	}
 
@@ -1296,6 +1234,8 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
+
+	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
 }
