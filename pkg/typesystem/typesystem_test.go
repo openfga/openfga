@@ -3256,11 +3256,11 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						type user
 						type group
 							relations
-								define member: [user]
+								define owner: [user]
+								define member: [user] or owner
 						type folder
 							relations
-								define otherParent: [user]
-								define parent: [group] or otherParent
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3277,11 +3277,11 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						type user
 						type group
 							relations
-								define member: [user]
+								define owner: [user]
+								define member: [user] and owner
 						type folder
 							relations
-								define otherParent: [user]
-								define parent: [group] and otherParent
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3296,12 +3296,13 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						model
 							schema 1.1
 						type user
+
 						type group
 							relations
-								define member: [user]
+								define member: [user, user:*]
 						type folder
 							relations
-								define parent: [group, group:*]
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3318,10 +3319,10 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						type user
 						type group
 							relations
-								define member: [user]
+								define member: [user, group#member]
 						type folder
 							relations
-								define parent: [group, folder#parent]
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
