@@ -753,6 +753,8 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 			return nil, err
 		}
 
+		// TODO: Currently we are not supporting conditions so both this and subsequent evaluation (for UserObjects)
+		// are untested code until the start formally supporting them. Will be done in a subsequent PR.
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 		if err != nil {
 			errs = errors.Join(errs, err)
@@ -797,7 +799,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 	// to the users associated objects
 	// all of this can likely bee its own function
 	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	// TODO: This can be potentially abstracted into its own PR for re-usage from other rewrites, ie: TTU
+	// TODO: This can be potentially abstracted into its own function for re-usage from other rewrites, ie: TTU
 	for objectRel, objectIDs := range usersetsMap {
 		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			response := &ResolveCheckResponse{
