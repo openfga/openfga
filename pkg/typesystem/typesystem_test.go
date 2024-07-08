@@ -199,7 +199,7 @@ func TestHasEntrypoints(t *testing.T) {
 				type group
 					relations
 						define member: [group#member]
-				
+
 				type folder
 					relations
 						define parent: [group#member]`,
@@ -266,12 +266,12 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type folder
 					relations
 						define parent: [document]
 						define viewer: editor from parent
-				
+
 				type document
 					relations
 						define parent: [folder]
@@ -286,7 +286,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define editor: [user]
@@ -300,7 +300,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define editor: [document#viewer]
@@ -359,7 +359,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define action1: admin and editor
@@ -374,7 +374,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define action1: [document#action1] and editor
@@ -388,7 +388,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define admin: [user]
@@ -404,7 +404,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define action1: admin but not editor
@@ -419,7 +419,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define restricted: [user]
@@ -436,7 +436,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define action1: [document#action1] but not editor
@@ -450,7 +450,7 @@ func TestHasEntrypoints(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type document
 					relations
 						define admin: [user]
@@ -465,9 +465,9 @@ func TestHasEntrypoints(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-			
+
 				type user
-			
+
 				type entity
 					relations
 						define member : [user]
@@ -486,15 +486,15 @@ func TestHasEntrypoints(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-			
+
 				type user
-			
+
 				type state
 					relations
 						define can_view: [user]
 						define associated_transition: [transition]
 						define can_transition_with: can_apply from associated_transition
-			
+
 				type transition
 					relations
 						define start: [state]
@@ -525,9 +525,9 @@ func TestHasEntrypoints(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-			
+
 				type user
-			
+
 				type document
 					relations
 						define a: [user]
@@ -634,7 +634,7 @@ func TestHasCycle(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type resource
 					relations
 						define x: [user] and y
@@ -732,14 +732,14 @@ func TestHasCycle(t *testing.T) {
 				model
 					schema 1.1
 				type user
-				
+
 				type canvas
 					relations
 						define can_edit: editor or owner
 						define editor: [user, account#member]
 						define owner: [user]
 						define viewer: [user, account#member]
-				
+
 				type account
 					relations
 						define admin: [user] or member or super_admin or owner
@@ -3000,7 +3000,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_intersection",
+			name: "complex_userset_union",
 			model: `
 						model
 							schema 1.1
@@ -3020,7 +3020,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_union",
+			name: "complex_userset_intersection",
 			model: `
 						model
 							schema 1.1
@@ -3205,7 +3205,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem := New(model)
+			typeSystem, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
 			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
 			if test.expectError {
 				require.Error(t, err)
@@ -3248,18 +3249,18 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_tupleset_relation_intersection",
+			name: "complex_tupleset_relation_union",
 			model: `
 						model
 							schema 1.1
 						type user
 						type group
 							relations
-								define member: [user]
+								define owner: [user]
+								define member: [user] or owner
 						type folder
 							relations
-								define otherParent: [user]
-								define parent: [group] or otherParent
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3269,18 +3270,18 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_tupleset_relation_union",
+			name: "complex_tupleset_relation_intersection",
 			model: `
 						model
 							schema 1.1
 						type user
 						type group
 							relations
-								define member: [user]
+								define owner: [user]
+								define member: [user] and owner
 						type folder
 							relations
-								define otherParent: [user]
-								define parent: [group] and otherParent
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3295,12 +3296,13 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						model
 							schema 1.1
 						type user
+
 						type group
 							relations
-								define member: [user]
+								define member: [user, user:*]
 						type folder
 							relations
-								define parent: [group, group:*]
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3317,10 +3319,10 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						type user
 						type group
 							relations
-								define member: [user]
+								define member: [user, group#member]
 						type folder
 							relations
-								define parent: [group, folder#parent]
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3573,8 +3575,9 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem := New(model)
-			result, err := typeSystem.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			result, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
 			if test.expectError {
 				require.Error(t, err)
 			} else {
@@ -3754,7 +3757,8 @@ func TestHasTypeInfo(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys := New(model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
 			result, err := typesys.HasTypeInfo(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
