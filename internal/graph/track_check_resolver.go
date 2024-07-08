@@ -70,7 +70,7 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 	return t
 }
 
-// LogExecutionPaths report the  model and tuple path.
+// LogExecutionPaths reports the model and tuple path.
 func (t *TrackerCheckResolver) logExecutionPaths() {
 	t.nodes.Range(func(k, v any) bool {
 		modelid := k.(string)

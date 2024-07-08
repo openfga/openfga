@@ -21,7 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestIntegrationWithTracker(t *testing.T) {
+func TestIntegrationTracker(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -44,6 +44,7 @@ func TestIntegrationWithTracker(t *testing.T) {
 	cycleDetectionCheckResolver.SetDelegate(trackChecker)
 	trackChecker.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
+
 	t.Run("tracker_delegates_request", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -62,10 +63,15 @@ func TestIntegrationWithTracker(t *testing.T) {
 			define member: [user, group#member] but not blocked
 `)
 
-		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
-			tuple.NewTupleKey("group:1", "member", "user:jon"),
-			tuple.NewTupleKey("group:1", "blocked", "group:1#member"),
-		})
+		err := ds.Write(
+			ctx,
+			storeID,
+			nil,
+			[]*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:jon"),
+				tuple.NewTupleKey("group:2", "blocked", "group:1#member"),
+				tuple.NewTupleKey("group:3", "blocked", "group:1#member"),
+			})
 		require.NoError(t, err)
 
 		typesys, err := typesystem.NewAndValidate(
@@ -108,7 +114,7 @@ func TestIntegrationWithTracker(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("user_type", func(t *testing.T) {
+	t.Run("tracker_user_type", func(t *testing.T) {
 		userType := trackChecker.userType("group:1#member")
 		require.Equal(t, "userset", userType)
 
@@ -119,14 +125,15 @@ func TestIntegrationWithTracker(t *testing.T) {
 		require.Equal(t, "userset", userType)
 	})
 
-	t.Run("verify_expiry", func(t *testing.T) {
+	t.Run("traacker_expires_paths", func(t *testing.T) {
 		r := resolutionTree{tm: time.Now().Add(-trackerInterval)}
+		require.True(t, r.expired())
 
-		ok := r.expired()
-		require.True(t, ok)
+		r = resolutionTree{tm: time.Now().Add(trackerInterval)}
+		require.False(t, r.expired())
 	})
 
-	t.Run("printPath Check", func(t *testing.T) {
+	t.Run("tracker_prints_and_delete_path", func(t *testing.T) {
 		path := "user#member#group:1"
 		sm := &sync.Map{}
 		sm.Store(
