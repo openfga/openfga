@@ -3205,7 +3205,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem := New(model)
+			typeSystem, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
 			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
 			if test.expectError {
 				require.Error(t, err)
@@ -3248,7 +3249,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_tupleset_relation_intersection",
+			name: "complex_tupleset_relation_union",
 			model: `
 						model
 							schema 1.1
@@ -3269,7 +3270,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_tupleset_relation_union",
+			name: "complex_tupleset_relation_intersection",
 			model: `
 						model
 							schema 1.1
@@ -3754,7 +3755,8 @@ func TestHasTypeInfo(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys := New(model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
 			result, err := typesys.HasTypeInfo(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
