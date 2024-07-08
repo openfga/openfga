@@ -2,7 +2,10 @@ package graph
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -74,8 +77,8 @@ func TestIntegrationWithTracker(t *testing.T) {
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		resp, err := trackChecker.ResolveCheck(ctx, &ResolveCheckRequest{
+			AuthorizationModelID: ulid.Make().String(),
 			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("group:1", "blocked", "user:jon"),
 			RequestMetadata:      NewCheckRequestMetadata(25),
 		})
@@ -83,7 +86,7 @@ func TestIntegrationWithTracker(t *testing.T) {
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
 	})
-	
+
 	t.Run("tracker_delegates_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -103,5 +106,42 @@ func TestIntegrationWithTracker(t *testing.T) {
 
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
+	})
+
+	t.Run("user_type", func(t *testing.T) {
+		userType := trackChecker.userType("group:1#member")
+		require.Equal(t, "userset", userType)
+
+		userType = trackChecker.userType("user:ann")
+		require.Equal(t, "user", userType)
+
+		userType = trackChecker.userType("user:*")
+		require.Equal(t, "userset", userType)
+	})
+
+	t.Run("verify_expiry", func(t *testing.T) {
+		r := resolutionTree{tm: time.Now().Add(-trackerInterval)}
+
+		ok := r.expired()
+		require.True(t, ok)
+	})
+
+	t.Run("printPath Check", func(t *testing.T) {
+		path := "user#member#group:1"
+		sm := &sync.Map{}
+		sm.Store(
+			path,
+			&resolutionTree{
+				tm:   time.Now().Add(-trackerInterval),
+				hits: &atomic.Uint64{},
+			},
+		)
+
+		model := ulid.Make().String()
+		trackChecker.nodes.Store(model, sm)
+		trackChecker.logExecutionPaths()
+
+		_, ok := sm.Load(path)
+		require.False(t, ok)
 	})
 }

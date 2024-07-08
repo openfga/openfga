@@ -70,17 +70,6 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 	return t
 }
 
-// PrintPath logs.
-func (t *TrackerCheckResolver) printPaths(paths *sync.Map, tree *resolutionTree, modelid, path string) {
-	if tree.expired() {
-		t.logger.Info("execution path hits",
-			zap.String("modelid", modelid),
-			zap.String("path", path),
-			zap.Uint64("hits", tree.hits.Load()))
-		paths.Delete(path)
-	}
-}
-
 // LogExecutionPaths report the  model and tuple path.
 func (t *TrackerCheckResolver) logExecutionPaths() {
 	t.nodes.Range(func(k, v any) bool {
@@ -89,7 +78,13 @@ func (t *TrackerCheckResolver) logExecutionPaths() {
 		paths.Range(func(k, v any) bool {
 			tree, _ := v.(*resolutionTree)
 			path := k.(string)
-			t.printPaths(paths, tree, modelid, path)
+			if tree.expired() {
+				t.logger.Info("execution path hits",
+					zap.String("modelid", modelid),
+					zap.String("path", path),
+					zap.Uint64("hits", tree.hits.Load()))
+				paths.Delete(path)
+			}
 			return true
 		})
 		return true
@@ -127,16 +122,18 @@ func (*TrackerCheckResolver) Close() {}
 
 // UserType returns the associated tuple user type.
 func (t *TrackerCheckResolver) userType(userKey string) string {
-	switch tuple.StringToUserProto(userKey).GetUser().(type) {
-	case *openfgav1.User_Wildcard:
+	userObj, userRel := tuple.SplitObjectRelation(userKey)
+	_, userObjID := tuple.SplitObject(userObj)
+
+	if userRel == "" && userObjID == "*" {
 		return string(tuple.UserSet)
-	case *openfgav1.User_Userset:
-		return string(tuple.UserSet)
-	case *openfgav1.User_Object:
-		return string(tuple.User)
-	default:
+	}
+
+	if userRel == "" {
 		return string(tuple.User)
 	}
+
+	return string(tuple.UserSet)
 }
 
 // GetTK returns formatted tuple suitable insertion into list.
