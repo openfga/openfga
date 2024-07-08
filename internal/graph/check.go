@@ -644,27 +644,6 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 			return nil, err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-		if err != nil {
-			errs = errors.Join(errs, err)
-			continue
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			errs = errors.Join(errs, condition.NewEvaluationError(
-				t.GetCondition().GetName(),
-				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-					tuple.TupleKeyToString(t),
-					condEvalResult.MissingParameters),
-			))
-
-			continue
-		}
-
-		if !condEvalResult.ConditionMet {
-			continue
-		}
-
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
 		reqTupleKey := req.GetTupleKey()
 
@@ -702,6 +681,29 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 	resp.GetResolutionMetadata().DatastoreQueryCount += response.GetResolutionMetadata().DatastoreQueryCount
 
 	return resp, nil
+}
+
+func TupleKeyConditionalFilter(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem) storage.TupleKeyConditionFilterFunc {
+	return func(t *openfgav1.TupleKey) (bool, error) {
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqCtx)
+		if err != nil {
+			return false, err
+		}
+
+		if len(condEvalResult.MissingParameters) > 0 {
+			return false, condition.NewEvaluationError(
+				t.GetCondition().GetName(),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(t),
+					condEvalResult.MissingParameters),
+			)
+		}
+
+		if !condEvalResult.ConditionMet {
+			return false, nil
+		}
+		return true, nil
+	}
 }
 
 // checkUsersetPublicWildcardFastPath is the fast path to evaluate userset.
@@ -753,26 +755,6 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 			return nil, err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-		if err != nil {
-			errs = errors.Join(errs, err)
-			continue
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			errs = errors.Join(errs, condition.NewEvaluationError(
-				t.GetCondition().GetName(),
-				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-					tuple.TupleKeyToString(t),
-					condEvalResult.MissingParameters),
-			))
-			continue
-		}
-
-		if !condEvalResult.ConditionMet {
-			continue
-		}
-
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
 		objectRel := tuple.ToObjectRelationString(objectType, relation)
@@ -818,10 +800,13 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 			if err != nil {
 				return nil, err
 			}
-			// filter out invalid tuples yielded by the database iterator
-			filteredIter := storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(i),
-				validation.FilterInvalidTuples(typesys),
+
+			filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+				storage.NewFilteredTupleKeyIterator(
+					storage.NewTupleKeyIteratorFromTupleIterator(i),
+					validation.FilterInvalidTuples(typesys),
+				),
+				TupleKeyConditionalFilter(ctx, reqContext, typesys),
 			)
 			defer filteredIter.Stop()
 
@@ -833,19 +818,6 @@ func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, i
 					}
 
 					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
-				if err != nil {
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
 				}
 
 				_, objectID := tuple.SplitObject(t.GetObject())
@@ -970,12 +942,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if err != nil {
 				return nil, err
 			}
-			defer iter.Stop()
 
-			// filter out invalid tuples yielded by the database iterator
-			filteredIter := storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
+			filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+				storage.NewFilteredTupleKeyIterator(
+					storage.NewTupleKeyIteratorFromTupleIterator(iter),
+					validation.FilterInvalidTuples(typesys),
+				),
+				TupleKeyConditionalFilter(ctx, req.GetContext(), typesys),
 			)
 			defer filteredIter.Stop()
 
@@ -1097,28 +1070,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 
 				return nil, err
-			}
-
-			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-			if err != nil {
-				errs = errors.Join(errs, err)
-
-				continue
-			}
-
-			if len(condEvalResult.MissingParameters) > 0 {
-				errs = errors.Join(errs, condition.NewEvaluationError(
-					t.GetCondition().GetName(),
-					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-						tuple.TupleKeyToString(t),
-						condEvalResult.MissingParameters),
-				))
-
-				continue
-			}
-
-			if !condEvalResult.ConditionMet {
-				continue
 			}
 
 			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
