@@ -3574,8 +3574,9 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem := New(model)
-			result, err := typeSystem.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			result, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
 			if test.expectError {
 				require.Error(t, err)
 			} else {
