@@ -74,6 +74,30 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
+// ReadAuthorizationModelOptions represents the options that can
+// be used with the ReadAuthorizationModels method.
+type ReadAuthorizationModelsOptions struct {
+	Pagination PaginationOptions
+}
+
+// ListStoresOptions represents the options that can
+// be used with the ListStores method.
+type ListStoresOptions struct {
+	Pagination PaginationOptions
+}
+
+// ReadChangesOptions represents the options that can
+// be used with the ReadChanges method.
+type ReadChangesOptions struct {
+	Pagination PaginationOptions
+}
+
+// ReadPageOptions represents the options that can
+// be used with the ReadPage method.
+type ReadPageOptions struct {
+	Pagination PaginationOptions
+}
+
 // Writes is a typesafe alias for Write arguments.
 type Writes = []*openfgav1.TupleKey
 
@@ -106,7 +130,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
-		paginationOptions PaginationOptions,
+		options ReadPageOptions,
 	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
@@ -188,7 +212,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
-	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
@@ -216,7 +240,7 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
-	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgav1.Store, []byte, error)
+	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, []byte, error)
 }
 
 // AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
@@ -238,13 +262,7 @@ type ChangelogBackend interface {
 	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
-	ReadChanges(
-		ctx context.Context,
-		store,
-		objectType string,
-		paginationOptions PaginationOptions,
-		horizonOffset time.Duration,
-	) ([]*openfgav1.TupleChange, []byte, error)
+	ReadChanges(ctx context.Context, store, objectType string, options ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting
