@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/internal/condition"
@@ -619,6 +620,8 @@ func (c *LocalChecker) ResolveCheck(
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
+
+	defer iter.Stop()
 	var errs error
 	var handlers []CheckHandlerFunc
 
@@ -722,7 +725,6 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.Tu
 func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
-	var errs error
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
@@ -734,139 +736,167 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
 	}
 
-	// usersetsMap is a map of all ObjectRelations and its IdsFor example,
-	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1]
-	// [group#owner][1, 3]
-	usersetsMap := make(map[string]map[string]struct{})
+	type usersetsToCheck struct {
+		objectRelation string // e.g. group#member
+		id             string
+	}
+	usersetsChan := make(chan *usersetsToCheck)
+	doneChan := make(chan struct{}, 1) // must be size 1 so that consumer goroutine doesn't become blocked if producer doesn't listen
 
-	for {
-		// NOTE: For the future, once we observe a new ObjectRelation in the usersetsMap that means that all objectIDs
-		// needed for the intersection lookup for that ObjectRelation are in memory. There is no need to build the full
-		// usersetMap by draining the full iterator, it can start processing in batches of ObjectRelation.
-		// Consider doing it when we have better concurrency tooling for "streaming" operations.
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			return nil, err
-		}
-
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
-		if err != nil {
-			errs = errors.Join(errs, err)
-			continue
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			errs = errors.Join(errs, condition.NewEvaluationError(
-				t.GetCondition().GetName(),
-				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-					tuple.TupleKeyToString(t),
-					condEvalResult.MissingParameters),
-			))
-			continue
-		}
-
-		if !condEvalResult.ConditionMet {
-			continue
-		}
-
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		objectRel := tuple.ToObjectRelationString(objectType, relation)
-		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = make(map[string]struct{})
-		}
-		if _, ok := usersetsMap[objectRel][objectID]; !ok {
-			usersetsMap[objectRel][objectID] = struct{}{}
-		}
+	resp := &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+		},
 	}
 
-	if errs != nil {
+	var wg errgroup.Group
+
+	// producer of object IDs
+	wg.Go(func() error {
+		defer close(usersetsChan)
+		defer iter.Stop()
+
+		var errs error
+
+	ProducerLoop:
+		for {
+			t, err := iter.Next(ctx)
+			if err != nil {
+				if !errors.Is(err, storage.ErrIteratorDone) {
+					errs = errors.Join(errs, err)
+				}
+				break ProducerLoop
+			}
+
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+			if err != nil {
+				errs = errors.Join(errs, err)
+				continue
+			}
+
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = errors.Join(errs, condition.NewEvaluationError(
+					t.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(t),
+						condEvalResult.MissingParameters),
+				))
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				continue
+			}
+
+			object, relation := tuple.SplitObjectRelation(t.GetUser())
+			objectType, objectID := tuple.SplitObject(object)
+			objectRel := tuple.ToObjectRelationString(objectType, relation)
+
+			select {
+			case <-doneChan:
+				break ProducerLoop
+			case <-ctx.Done():
+				break ProducerLoop
+			case usersetsChan <- &usersetsToCheck{
+				objectRelation: objectRel,
+				id:             objectID,
+			}:
+			}
+		}
+
+		return errs
+	})
+
+	// consumer of object IDs that also computes intersection
+	wg.Go(func() error {
+		var errs error
+		objectIDsPerObjectRelation := make(map[string]map[string]struct{}) // key is group#member, value is map with object IDs
+
+		select {
+		case <-ctx.Done():
+			errs = errors.Join(errs, ctx.Err())
+			break
+		case usersetToCheck, channelOpen := <-usersetsChan:
+			if !channelOpen {
+				break
+			}
+			_, populated := objectIDsPerObjectRelation[usersetToCheck.objectRelation]
+			if !populated {
+				objectIDsPerObjectRelation[usersetToCheck.objectRelation] = make(map[string]struct{})
+				objectType, relation := tuple.SplitObjectRelation(usersetToCheck.objectRelation)
+				iter2, err := ds.ReadStartingWithUser(ctx, req.GetStoreID(), storage.ReadStartingWithUserFilter{
+					ObjectType: objectType,
+					Relation:   relation,
+					UserFilter: []*openfgav1.ObjectRelation{{
+						Object: req.GetTupleKey().GetUser(),
+					}},
+				})
+				if err != nil {
+					errs = errors.Join(errs, err)
+					break
+				}
+				resp.GetResolutionMetadata().DatastoreQueryCount++
+				defer iter2.Stop()
+
+				filteredIter := storage.NewFilteredTupleKeyIterator(
+					storage.NewTupleKeyIteratorFromTupleIterator(iter2),
+					validation.FilterInvalidTuples(typesys),
+				)
+				defer filteredIter.Stop()
+
+			UsersetFinderLoop:
+				for {
+					t, err := filteredIter.Next(ctx)
+					if err != nil {
+						if !errors.Is(err, storage.ErrIteratorDone) {
+							errs = errors.Join(errs, err)
+						}
+
+						break UsersetFinderLoop
+					}
+
+					condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
+					if err != nil {
+						errs = errors.Join(errs, err)
+						continue
+					}
+
+					if len(condEvalResult.MissingParameters) > 0 {
+						errs = errors.Join(errs, condition.NewEvaluationError(
+							t.GetCondition().GetName(),
+							fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+								tuple.TupleKeyToString(t),
+								condEvalResult.MissingParameters),
+						))
+						continue
+					}
+
+					if !condEvalResult.ConditionMet {
+						continue
+					}
+
+					_, objectID := tuple.SplitObject(t.GetObject())
+					objectIDsPerObjectRelation[usersetToCheck.objectRelation][objectID] = struct{}{}
+				}
+			}
+
+			if _, match := objectIDsPerObjectRelation[usersetToCheck.objectRelation][usersetToCheck.id]; match {
+				errs = nil // clear all errors because we don't care about them
+				span.SetAttributes(attribute.Bool("allowed", true))
+				resp.Allowed = true
+				break
+			}
+		}
+		doneChan <- struct{}{} // signal to the producer goroutine that it can stop producing
+		return errs
+	})
+
+	errs := wg.Wait()
+	if errs != nil && !resp.Allowed {
 		telemetry.TraceError(span, errs)
 		return nil, errs
 	}
-
-	storeID := req.GetStoreID()
-	reqTupleKey := req.GetTupleKey()
-	reqContext := req.GetContext()
-
-	// Next, for all the ObjectRelation, compare the associated objectIDs
-	// to the users associated objects
-	// all of this can likely bee its own function
-	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	// TODO: This can be potentially abstracted into its own PR for re-usage from other rewrites, ie: TTU
-	for objectRel, objectIDs := range usersetsMap {
-		handler := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			response := &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
-			}
-			objectType, relation := tuple.SplitObjectRelation(objectRel)
-			i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-				ObjectType: objectType,
-				Relation:   relation,
-				UserFilter: []*openfgav1.ObjectRelation{{
-					Object: reqTupleKey.GetUser(),
-				}},
-			})
-
-			if err != nil {
-				return nil, err
-			}
-			// filter out invalid tuples yielded by the database iterator
-			filteredIter := storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(i),
-				validation.FilterInvalidTuples(typesys),
-			)
-			defer filteredIter.Stop()
-
-			for {
-				t, err := filteredIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-
-					return nil, err
-				}
-
-				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqContext)
-				if err != nil {
-					continue
-				}
-
-				if len(condEvalResult.MissingParameters) > 0 {
-					continue
-				}
-
-				if !condEvalResult.ConditionMet {
-					continue
-				}
-
-				_, objectID := tuple.SplitObject(t.GetObject())
-				if _, ok := objectIDs[objectID]; ok {
-					span.SetAttributes(attribute.Bool("allowed", true))
-					response.Allowed = true
-					return response, nil
-				}
-			}
-			return response, nil
-		}
-		handlers = append(handlers, handler)
-	}
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
-
-	resp.GetResolutionMetadata().DatastoreQueryCount++
-
 	return resp, nil
 }
 
@@ -970,14 +1000,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if err != nil {
 				return nil, err
 			}
-			defer iter.Stop()
 
 			// filter out invalid tuples yielded by the database iterator
 			filteredIter := storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
 				validation.FilterInvalidTuples(typesys),
 			)
-			defer filteredIter.Stop()
 
 			resolver := c.checkUsersetSlowPath
 

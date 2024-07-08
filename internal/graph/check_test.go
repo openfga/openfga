@@ -1204,8 +1204,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "multiple_userset_no_access",
 			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:no_access"),
 			allowed:    false,
-			minDBReads: 3, // 1 userset read (2 found) follow by 2 direct tuple check (not found)
-			maxDBReads: 3,
+			minDBReads: 2, // 1 userset read (2 found) follow by 1 read to find user's usersets (none found)
+			maxDBReads: 2,
 		},
 		{
 			name:       "multiple_userset_access",
