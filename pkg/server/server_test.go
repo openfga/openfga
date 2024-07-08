@@ -1861,7 +1861,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
-
 	})
 
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {

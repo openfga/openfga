@@ -70,7 +70,7 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 	return t
 }
 
-// PrintPath logs
+// PrintPath logs.
 func (t *TrackerCheckResolver) printPaths(paths *sync.Map, tree *resolutionTree, modelid, path string) {
 	if tree.expired() {
 		t.logger.Info("execution path hits",
@@ -164,7 +164,7 @@ func (t *TrackerCheckResolver) loadPath(value any, path string) {
 	}
 }
 
-// IncrementPath counter
+// IncrementPath counter.
 func (t *TrackerCheckResolver) incrementPath(paths *sync.Map, path string) {
 	value, ok := paths.Load(path)
 	if ok {
