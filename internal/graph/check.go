@@ -734,7 +734,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
 	}
 
-	// usersetsMap is a map of all ObjectRelations and its IdsFor example,
+	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
 	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
 	// [group#member][1]
 	// [group#owner][1, 3]
