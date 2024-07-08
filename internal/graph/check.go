@@ -614,10 +614,10 @@ func (c *LocalChecker) ResolveCheck(
 	return resp, nil
 }
 
-// checkUsersetPublicWildcardSlowPath will check userset or public wildcard path.
+// checkUsersetSlowPath will check userset or public wildcard path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkUsersetPublicWildcardSlowPath")
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
 	var errs error
 	var handlers []CheckHandlerFunc
@@ -704,7 +704,7 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 	return resp, nil
 }
 
-// checkUsersetPublicWildcardFastPath is the fast path to evaluate userset.
+// checkUsersetFastPath is the fast path to evaluate userset.
 // The general idea of the algorithm is that it tries to find intersection on the objects as identified in the userset
 // with the objects the user has the specified relation with.
 // For example, for the following model, for check(user:bob, viewer, doc:1)
@@ -719,8 +719,8 @@ func (c *LocalChecker) checkUsersetPublicWildcardSlowPath(ctx context.Context, i
 // Finally, find the intersection between the two.
 // To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
-func (c *LocalChecker) checkUsersetPublicWildcardFastPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkUsersetPublicWildcardFastPath")
+func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
 	var errs error
 
@@ -979,11 +979,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			resolver := c.checkUsersetPublicWildcardSlowPath
+			resolver := c.checkUsersetSlowPath
 
 			if canShortCircuit, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes); err == nil {
 				if canShortCircuit {
-					resolver = c.checkUsersetPublicWildcardFastPath
+					resolver = c.checkUsersetFastPath
 				}
 			}
 
