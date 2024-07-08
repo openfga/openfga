@@ -3000,7 +3000,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_intersection",
+			name: "complex_userset_union",
 			model: `
 						model
 							schema 1.1
@@ -3020,7 +3020,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_union",
+			name: "complex_userset_intersection",
 			model: `
 						model
 							schema 1.1
