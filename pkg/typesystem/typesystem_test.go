@@ -2962,24 +2962,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_member_is_userset",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user, group#member]
-						type folder
-							relations
-								define allowed: [group#member]`,
-			relationReferences: []*openfgav1.RelationReference{
-				DirectRelationReference("group", "member"),
-			},
-			expectDirectlyAssignable: false,
-			expectError:              false,
-		},
-		{
 			name: "complex_userset_member_is_public",
 			model: `
 						model
@@ -3018,7 +3000,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_intersection",
+			name: "complex_userset_union",
 			model: `
 						model
 							schema 1.1
@@ -3038,7 +3020,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_userset_union",
+			name: "complex_userset_intersection",
 			model: `
 						model
 							schema 1.1
@@ -3058,7 +3040,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "multiple_assignment_userset",
+			name: "multiple_assignment",
 			model: `
 						model
 							schema 1.1
@@ -3155,7 +3137,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				WildcardRelationReference("user"),
 			},
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
 			expectError:              false,
 		},
 		{
@@ -3223,7 +3205,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem := New(model)
+			typeSystem, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
 			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
 			if test.expectError {
 				require.Error(t, err)
@@ -3266,18 +3249,18 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_tupleset_relation_intersection",
+			name: "complex_tupleset_relation_union",
 			model: `
 						model
 							schema 1.1
 						type user
 						type group
 							relations
-								define member: [user]
+								define owner: [user]
+								define member: [user] or owner
 						type folder
 							relations
-								define otherParent: [user]
-								define parent: [group] or otherParent
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3287,18 +3270,18 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			expectError:              false,
 		},
 		{
-			name: "complex_tupleset_relation_union",
+			name: "complex_tupleset_relation_intersection",
 			model: `
 						model
 							schema 1.1
 						type user
 						type group
 							relations
-								define member: [user]
+								define owner: [user]
+								define member: [user] and owner
 						type folder
 							relations
-								define otherParent: [user]
-								define parent: [group] and otherParent
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3313,12 +3296,13 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						model
 							schema 1.1
 						type user
+
 						type group
 							relations
-								define member: [user]
+								define member: [user, user:*]
 						type folder
 							relations
-								define parent: [group, group:*]
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3335,10 +3319,10 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 						type user
 						type group
 							relations
-								define member: [user]
+								define member: [user, group#member]
 						type folder
 							relations
-								define parent: [group, folder#parent]
+								define parent: [group]
 								define viewer: member from parent
 					`,
 			objectType:               "folder",
@@ -3591,8 +3575,9 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typeSystem := New(model)
-			result, err := typeSystem.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			result, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
 			if test.expectError {
 				require.Error(t, err)
 			} else {
@@ -3772,7 +3757,8 @@ func TestHasTypeInfo(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys := New(model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
 			result, err := typesys.HasTypeInfo(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
