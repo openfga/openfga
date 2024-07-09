@@ -77,21 +77,21 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 }
 
 // LogExecutionPaths reports the model and tuple path.
-func (t *TrackerCheckResolver) logExecutionPaths(shutdown bool) {
+func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 	t.nodes.Range(func(k, v any) bool {
 		modelid := k.(string)
 		paths, _ := v.(*sync.Map)
 		paths.Range(func(k, v any) bool {
 			tree, _ := v.(*resolutionTree)
 			path := k.(string)
-			if tree.expired() || shutdown {
+			if tree.expired() || flush {
 				if t.limiter.Allow() {
 					t.logger.Info("execution path hits",
-						zap.String("modelid", modelid),
+						zap.String("model", modelid),
 						zap.String("path", path),
 						zap.Uint64("hits", tree.hits.Load()))
+					paths.Delete(path)
 				}
-				paths.Delete(path)
 			}
 			return true
 		})
@@ -163,8 +163,7 @@ func (t *TrackerCheckResolver) loadPath(value any, path string) {
 func (t *TrackerCheckResolver) incrementPath(paths *sync.Map, path string) {
 	value, ok := paths.Load(path)
 	if ok {
-		rt := value.(*resolutionTree)
-		rt.hits.Add(1)
+		value.(*resolutionTree).hits.Add(1)
 	}
 }
 
