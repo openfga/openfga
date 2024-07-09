@@ -1159,7 +1159,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 
 	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
 	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1]
+	// [group#member][1, 2]
 	// [group#owner][1, 3]
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
