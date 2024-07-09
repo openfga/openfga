@@ -211,7 +211,6 @@ type conditionsFilteredTupleKeyIterator struct {
 	iter      TupleKeyIterator
 	filter    TupleKeyConditionFilterFunc
 	lastError error
-	isClosed  bool
 	onceValid bool
 }
 
@@ -220,18 +219,16 @@ var _ TupleKeyIterator = &conditionsFilteredTupleKeyIterator{}
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
 func (f *conditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
-	if f.isClosed {
-		return nil, ErrIteratorDone
-	}
 	for {
 		tuple, err := f.iter.Next(ctx)
 		if err != nil {
-			if !errors.Is(err, ErrIteratorDone) {
-				f.isClosed = true
-				if f.onceValid {
-					return nil, err
+			if errors.Is(err, ErrIteratorDone) {
+				if f.onceValid || f.lastError == nil {
+					return nil, ErrIteratorDone
 				}
-				return nil, f.lastError
+				lastError := f.lastError
+				f.lastError = nil
+				return nil, lastError
 			}
 			return nil, err
 		}
@@ -252,7 +249,6 @@ func (f *conditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 // Stop see [Iterator.Stop].
 func (f *conditionsFilteredTupleKeyIterator) Stop() {
 	f.iter.Stop()
-	f.isClosed = true
 }
 
 // NewConditionsFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
