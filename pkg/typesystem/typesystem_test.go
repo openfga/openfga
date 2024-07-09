@@ -2926,7 +2926,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 		model                    string
 		relationReferences       []*openfgav1.RelationReference
 		expectDirectlyAssignable bool
-		expectError              bool
 	}{
 		{
 			name: "simple_userset",
@@ -2944,7 +2943,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "member"),
 			},
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "userset_reference_itself",
@@ -2959,7 +2957,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "member"),
 			},
 			expectDirectlyAssignable: false, // for now, we cannot shortcut this logic due to recursion
-			expectError:              false,
 		},
 		{
 			name: "complex_userset_member_is_public",
@@ -2977,7 +2974,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "member"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "complex_userset_exclusion",
@@ -2997,7 +2993,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "complexMember"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "complex_userset_union",
@@ -3017,7 +3012,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "complexMember"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "complex_userset_intersection",
@@ -3037,7 +3031,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "complexMember"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "multiple_assignment",
@@ -3056,7 +3049,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "member"),
 			},
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "multiple_relation_references",
@@ -3076,7 +3068,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "owner"),
 			},
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "multiple_relation_references_some_complex",
@@ -3099,7 +3090,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "owner"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "computed_userset",
@@ -3119,7 +3109,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			},
 			// TODO: once we are able to handle the computed userset, we will change this to true.
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "public_assignable",
@@ -3138,7 +3127,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				WildcardRelationReference("user"),
 			},
 			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
-			expectError:              false,
 		},
 		{
 			name: "conditional_relation",
@@ -3159,7 +3147,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "conditional_relation_in_member",
@@ -3180,7 +3167,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "not_valid_relation",
@@ -3199,7 +3185,6 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 				DirectRelationReference("group", "bad_relation"),
 			},
 			expectDirectlyAssignable: false,
-			expectError:              true,
 		},
 	}
 	for _, test := range tests {
@@ -3207,13 +3192,8 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typeSystem, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			result, err := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
-			if test.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.expectDirectlyAssignable, result)
-			}
+			result := typeSystem.ResolvesExclusivelyToDirectlyAssignable(test.relationReferences)
+			require.Equal(t, test.expectDirectlyAssignable, result)
 		})
 	}
 }
@@ -3226,7 +3206,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 		tuplesetRelation         string
 		computedRelation         string
 		expectDirectlyAssignable bool
-		expectError              bool
 	}{
 		{
 			name: "simple_ttu_references",
@@ -3246,7 +3225,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "complex_tupleset_relation_union",
@@ -3267,7 +3245,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "complex_tupleset_relation_intersection",
@@ -3288,7 +3265,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "tupleset_relation_public",
@@ -3309,7 +3285,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "tupleset_relation_userset",
@@ -3329,7 +3304,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "tupleset_relation_condition",
@@ -3352,7 +3326,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "ttu_child_multiple_directly_assignable_types",
@@ -3373,7 +3346,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "multiple_ttu_references",
@@ -3396,7 +3368,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "only_some_parent_have_relations",
@@ -3421,7 +3392,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: true,
-			expectError:              false,
 		},
 		{
 			name: "ttu_child_not_directly_assignable_union",
@@ -3442,7 +3412,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "ttu_child_public_wildcard",
@@ -3462,7 +3431,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "ttu_child_has_condition",
@@ -3485,7 +3453,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "ttu_child_userset",
@@ -3509,7 +3476,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              false,
 		},
 		{
 			name: "bad_object_type",
@@ -3529,7 +3495,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              true,
 		},
 		{
 			name: "bad_tupleset_relation",
@@ -3549,7 +3514,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "viewer",
 			computedRelation:         "member",
 			expectDirectlyAssignable: false,
-			expectError:              true,
 		},
 		{
 			name: "bad_computed_relation",
@@ -3569,7 +3533,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			tuplesetRelation:         "parent",
 			computedRelation:         "undefined",
 			expectDirectlyAssignable: false,
-			expectError:              true,
 		},
 	}
 	for _, test := range tests {
@@ -3577,13 +3540,8 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			result, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
-			if test.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.expectDirectlyAssignable, result)
-			}
+			result := typesys.TTUResolvesExclusivelyToDirectlyAssignable(test.objectType, test.tuplesetRelation, test.computedRelation)
+			require.Equal(t, test.expectDirectlyAssignable, result)
 		})
 	}
 }
