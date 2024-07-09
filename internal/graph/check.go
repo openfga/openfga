@@ -619,7 +619,6 @@ func (c *LocalChecker) ResolveCheck(
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
-	var errs error
 	var handlers []CheckHandlerFunc
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
@@ -667,15 +666,10 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.Tu
 		}
 	}
 
-	if len(handlers) == 0 && errs != nil {
-		telemetry.TraceError(span, errs)
-		return nil, errs
-	}
-
 	resp, err := union(ctx, c.concurrencyLimit, handlers...)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, errors.Join(errs, err)
+		return nil, err
 	}
 
 	resp.GetResolutionMetadata().DatastoreQueryCount += response.GetResolutionMetadata().DatastoreQueryCount
@@ -1075,7 +1069,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 
 	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
 	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1]
+	// [group#member][1, 2]
 	// [group#owner][1, 3]
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 	usersetsMap := make(map[string]map[string]struct{})

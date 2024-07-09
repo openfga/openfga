@@ -204,7 +204,7 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 // tuples from a [TupleKeyIterator] that don't meet the tuple the conditions provided by the request.
 // Implementations should return true if the tuple should be returned
 // and false if it should be filtered out.
-// errors will be treated as false. The iterator can return the last seen error before ErrIteratorDone.
+// Errors will be treated as false. The iterator can return the last seen error before ErrIteratorDone.
 type TupleKeyConditionFilterFunc func(tupleKey *openfgav1.TupleKey) (bool, error)
 
 type conditionsFilteredTupleKeyIterator struct {
