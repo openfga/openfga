@@ -146,7 +146,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
-			Consistency: consistency,
+			Preference: consistency,
 		},
 	}
 	tupleIter, err := q.datastore.Read(ctx, store, tk, opts)
@@ -262,7 +262,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
-			Consistency: consistency,
+			Preference: consistency,
 		},
 	}
 	tupleIter, err := q.datastore.Read(ctx, store, tsKey, opts)

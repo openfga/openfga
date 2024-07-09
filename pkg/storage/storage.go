@@ -102,7 +102,7 @@ type ReadPageOptions struct {
 // ConsistencyOptions represents the options that can
 // be used for methods that accept a consistency preference.
 type ConsistencyOptions struct {
-	Consistency openfgav1.ConsistencyPreference
+	Preference openfgav1.ConsistencyPreference
 }
 
 // ReadOptions represents the options that can

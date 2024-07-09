@@ -401,7 +401,7 @@ func (l *listUsersQuery) expandDirect(
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
-			Consistency: req.GetConsistency(),
+			Preference: req.GetConsistency(),
 		},
 	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
@@ -839,7 +839,7 @@ func (l *listUsersQuery) expandTTU(
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
-			Consistency: req.GetConsistency(),
+			Preference: req.GetConsistency(),
 		},
 	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
