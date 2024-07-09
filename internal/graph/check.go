@@ -1293,16 +1293,16 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		canShortCircuit, _ := typesys.TTUResolvesExclusivelyToDirectlyAssignable(
-			tuple.GetType(object), tuplesetRelation, computedRelation)
-
 		resolver := c.checkTTUSlowPath
 
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
-		if canShortCircuit && !tuple.IsObjectRelation(tk.GetUser()) {
-			resolver = c.checkTTUFastPath
+		if !tuple.IsObjectRelation(tk.GetUser()) {
+			if canShortCircuit, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(
+				tuple.GetType(object), tuplesetRelation, computedRelation); err == nil && canShortCircuit {
+				resolver = c.checkTTUFastPath
+			}
 		}
 
 		return resolver(ctx, req, rewrite, filteredIter)
