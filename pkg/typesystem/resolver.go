@@ -14,23 +14,25 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+// TODO there is a duplicate cache of models elsewhere: https://github.com/openfga/openfga/issues/1045
+
 const (
 	typesystemCacheTTL = 168 * time.Hour // 7 days.
 )
 
-// TypesystemResolverFunc is a function type that implementations
-// can use to provide lookup and resolution of a Typesystem.
 type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (*TypeSystem, error)
 
-// MemoizedTypesystemResolverFunc returns a TypesystemResolverFunc that fetches the provided authorization
-// model (if provided) or looks up the latest authorization model. It then constructs a TypeSystem from
-// the resolved model, and memoizes the type-system resolution. If another lookup of the same model occurs,
-// the earlier constructed TypeSystem will be used.
+// MemoizedTypesystemResolverFunc does several things.
 //
-// The memoized resolver function is designed for concurrent use.
+// If given a model ID: validates the model ID, and tries to fetch it from the cache.
+// If not found in the cache, fetches from the datastore, validates it, stores in cache, and returns it.
+//
+// If not given a model ID: fetches the latest model ID from the datastore, then sees if the model ID is in the cache.
+// If it is, returns it. Else, validates it and returns it.
 func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) (TypesystemResolverFunc, func()) {
 	lookupGroup := singleflight.Group{}
 
+	// cache holds models that have already been validated.
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
@@ -61,6 +63,11 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 
 			model := v.(*openfgav1.AuthorizationModel)
 			key = fmt.Sprintf("%s/%s", storeID, model.GetId())
+			item := cache.Get(key)
+			if item != nil {
+				// This model has been validated before
+				return item.Value(), nil
+			}
 		} else {
 			key = fmt.Sprintf("%s/%s", storeID, modelID)
 			item := cache.Get(key)
