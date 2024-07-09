@@ -1293,11 +1293,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		canShortCircuit, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(
+		canShortCircuit, _ := typesys.TTUResolvesExclusivelyToDirectlyAssignable(
 			tuple.GetType(object), tuplesetRelation, computedRelation)
-		if err != nil {
-			return nil, err
-		}
 
 		resolver := c.checkTTUSlowPath
 
