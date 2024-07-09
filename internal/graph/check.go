@@ -815,6 +815,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter storage.Tu
 				UserFilter: []*openfgav1.ObjectRelation{{
 					Object: reqTupleKey.GetUser(),
 				}},
+				ObjectIDs: maps.Keys(objectIDs),
 			})
 
 			if err != nil {
