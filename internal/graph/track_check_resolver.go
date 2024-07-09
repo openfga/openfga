@@ -12,13 +12,17 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
-	trackerInterval = time.Duration(60) * time.Second
+	trackerLogLines    = 10
+	trackerLogBurst    = 15
+	trackerLogInterval = time.Second
+	trackerInterval    = time.Duration(60) * time.Second
 )
 
 // TrackerCheckResolverOpt defines an option pattern that can be used to change the behavior of TrackerCheckResolver.
@@ -32,6 +36,7 @@ type TrackerCheckResolver struct {
 	delegate CheckResolver
 	ticker   *time.Ticker
 	logger   logger.Logger
+	limiter  *rate.Limiter
 	ctx      context.Context
 	nodes    sync.Map
 }
@@ -58,7 +63,8 @@ func (r *resolutionTree) expired() bool {
 // NewTrackCheckResolver creates an instance tracker Resolver.
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
 	t := &TrackerCheckResolver{
-		ticker: time.NewTicker(trackerInterval),
+		limiter: rate.NewLimiter(rate.Limit(trackerLogLines/trackerLogInterval), trackerLogBurst),
+		ticker:  time.NewTicker(trackerInterval),
 	}
 
 	for _, opt := range opts {
@@ -79,10 +85,12 @@ func (t *TrackerCheckResolver) logExecutionPaths(shutdown bool) {
 			tree, _ := v.(*resolutionTree)
 			path := k.(string)
 			if tree.expired() || shutdown {
-				t.logger.Info("execution path hits",
-					zap.String("modelid", modelid),
-					zap.String("path", path),
-					zap.Uint64("hits", tree.hits.Load()))
+				if t.limiter.Allow() {
+					t.logger.Info("execution path hits",
+						zap.String("modelid", modelid),
+						zap.String("path", path),
+						zap.Uint64("hits", tree.hits.Load()))
+				}
 				paths.Delete(path)
 			}
 			return true
@@ -123,18 +131,7 @@ func (*TrackerCheckResolver) Close() {}
 
 // UserType returns the associated tuple user type.
 func (t *TrackerCheckResolver) userType(userKey string) string {
-	userObj, userRel := tuple.SplitObjectRelation(userKey)
-	_, userObjID := tuple.SplitObject(userObj)
-
-	if userRel == "" && userObjID == "*" {
-		return string(tuple.UserSet)
-	}
-
-	if userRel == "" {
-		return string(tuple.User)
-	}
-
-	return string(tuple.UserSet)
+	return string(tuple.GetUserTypeFromUser(userKey))
 }
 
 // GetTK returns formatted tuple suitable insertion into list.
