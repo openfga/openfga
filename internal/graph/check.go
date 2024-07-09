@@ -821,19 +821,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			// filter out invalid tuples yielded by the database query
 			tupleKey := t.GetKey()
 			err = validation.ValidateTuple(typesys, tupleKey)
-
+			if err != nil {
+				return response, nil
+			}
 			conditionalFilter := TupleKeyConditionalFilter(ctx, req.Context, typesys)
-			if t != nil && err == nil {
-				conditionMet, err := conditionalFilter(tupleKey)
-				if err != nil {
-					telemetry.TraceError(span, err)
-					return nil, err
-				}
-
-				if !conditionMet {
-					return response, nil
-				}
-
+			conditionMet, err := conditionalFilter(tupleKey)
+			if err != nil {
+				telemetry.TraceError(span, err)
+				return nil, err
+			}
+			if conditionMet {
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil

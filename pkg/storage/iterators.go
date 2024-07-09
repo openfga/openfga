@@ -218,6 +218,7 @@ var _ TupleKeyIterator = &conditionsFilteredTupleKeyIterator{}
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
+// This function is not thread-safe.
 func (f *conditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
 	for {
 		tuple, err := f.iter.Next(ctx)
