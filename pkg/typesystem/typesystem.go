@@ -362,20 +362,20 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 // ResolvesExclusivelyToDirectlyAssignable returns whether all relationReferences are relations that are exclusively directly assignable.
 // For now, it will return false if the directly assignable relations are public wildcard, contains condition, or is another userset because
 // check resolver using these relations cannot be evaluated via simple datastore query.
-func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) bool {
+func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
-			return false
+			return false, nil
 		}
 		_, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation())
 		if err != nil {
-			return false
+			return false, err
 		}
 		if !directlyAssignable {
-			return false
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
@@ -408,13 +408,13 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 }
 
 // TTUResolvesExclusivelyToDirectlyAssignable returns whether the computedRelation of object's tupleRelation is directly assignable.
-func (t *TypeSystem) TTUResolvesExclusivelyToDirectlyAssignable(objectType, tuplesetRelation, computedRelation string) bool {
+func (t *TypeSystem) TTUResolvesExclusivelyToDirectlyAssignable(objectType, tuplesetRelation, computedRelation string) (bool, error) {
 	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
 	if err != nil {
-		return false
+		return false, err
 	}
 	if !directlyAssignable {
-		return false
+		return false, nil
 	}
 	var relationUndefinedError *RelationUndefinedError
 	for _, tuplesetRelationType := range tuplesetRelationTypes {
@@ -427,13 +427,13 @@ func (t *TypeSystem) TTUResolvesExclusivelyToDirectlyAssignable(objectType, tupl
 			}
 
 			// otherwise, we do not know what the error is.  It is better to return error at this point.
-			return false
+			return false, err
 		}
 		if !childDirectlyAssignable {
-			return false
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
