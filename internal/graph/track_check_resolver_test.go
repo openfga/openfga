@@ -146,7 +146,7 @@ func TestIntegrationTracker(t *testing.T) {
 
 		model := ulid.Make().String()
 		trackChecker.nodes.Store(model, sm)
-		trackChecker.logExecutionPaths()
+		trackChecker.logExecutionPaths(false)
 
 		_, ok := sm.Load(path)
 		require.False(t, ok)

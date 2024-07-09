@@ -158,8 +158,7 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	}
 }
 
-// WithDatastore passes a datastore to the Server.
-// You must call [storage.OpenFGADatastore.Close] on it after you have stopped using it.
+// WithContext passes the server context to allow for graceful shutdowns.
 func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.ctx = ctx
