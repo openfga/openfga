@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -648,22 +647,22 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		}
 
 		user := reqTupleKey.GetUser()
-		userType := strings.SplitN(user, ":", 2)
+		userType := tuple.GetType(user)
 
 		hasPubliclyAssignedType := false
 		// TODO: memorize the check for public wildcard
 		for _, directlyRelatedUsersetType := range directlyRelatedUsersetTypes {
-			if directlyRelatedUsersetType.GetWildcard() != nil && directlyRelatedUsersetType.GetType() == userType[0] {
+			if directlyRelatedUsersetType.GetWildcard() != nil && directlyRelatedUsersetType.GetType() == userType {
 				hasPubliclyAssignedType = true
 			}
 		}
 
 		userFilter := []*openfgav1.ObjectRelation{{
-			Object: reqTupleKey.GetUser(),
+			Object: user,
 		}}
 		if hasPubliclyAssignedType {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: userType[0] + ":*",
+				Object: tuple.TypedPublicWildcard(userType),
 			})
 		}
 
