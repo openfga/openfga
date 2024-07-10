@@ -38,10 +38,10 @@ func (c *ContextTracerWrapper) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
-func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
-	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey)
+	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey, options)
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
@@ -52,22 +52,22 @@ func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tuple
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	queryCtx := queryContext(ctx)
 
-	return c.OpenFGADatastore.ReadUserTuple(queryCtx, store, tupleKey)
+	return c.OpenFGADatastore.ReadUserTuple(queryCtx, store, tupleKey, options)
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
-func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
-	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, filter)
+	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, filter, options)
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
-func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 	queryCtx := queryContext(ctx)
 
-	return c.OpenFGADatastore.ReadStartingWithUser(queryCtx, store, opts)
+	return c.OpenFGADatastore.ReadStartingWithUser(queryCtx, store, opts, options)
 }

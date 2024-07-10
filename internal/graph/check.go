@@ -665,7 +665,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey)
+			opts := storage.ReadUserTupleOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
+			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -720,11 +725,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
+			opts := storage.ReadUsersetTuplesOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-			})
+			}, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -892,11 +902,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("computed_relation", computedRelation),
 		)
 
-		iter, err := ds.Read(
-			ctx,
-			req.GetStoreID(),
-			tuple.NewTupleKey(object, tuplesetRelation, ""),
-		)
+		opts := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+		iter, err := ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(object, tuplesetRelation, ""), opts)
 		if err != nil {
 			return nil, err
 		}
