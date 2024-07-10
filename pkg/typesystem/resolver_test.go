@@ -224,4 +224,45 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, model.GetId(), typesys.GetAuthorizationModelID())
 	})
+
+	t.Run("returns_different_latest_models_for_same_store", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelOne := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user`)
+		modelTwo := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user2`)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+
+		resolver, resolverStop := MemoizedTypesystemResolverFunc(
+			mockDatastore,
+		)
+		defer resolverStop()
+
+		// first read returns modelOne
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(modelOne, nil).
+			Times(1)
+		typesys, err := resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, modelOne.GetId(), typesys.GetAuthorizationModelID())
+
+		// simulate a write of a new model
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(modelTwo, nil).
+			Times(1)
+
+		// second read returns modelTwo
+		typesys, err = resolver(context.Background(), store, "")
+		require.NoError(t, err)
+		require.Equal(t, modelTwo.GetId(), typesys.GetAuthorizationModelID())
+	})
 }

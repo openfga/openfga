@@ -66,8 +66,8 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 				return nil, fmt.Errorf("failed to FindLatestAuthorizationModel: %w", err)
 			}
 
-			modelID = model.GetId()
 			model = v.(*openfgav1.AuthorizationModel)
+			modelID = model.GetId()
 		}
 
 		key = fmt.Sprintf("%s/%s", storeID, modelID)
