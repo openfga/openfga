@@ -129,6 +129,36 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
 	})
 
+	// This test is for the scenario where an invalid model was somehow written to the store.
+	// We want to make sure it's validated again (maybe with more rules) when we read it.
+	t.Run("validation_of_model_fails", func(t *testing.T) {
+		store := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user
+			type group
+				relations
+					define member: [user_invalid]`)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
+
+		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), store).
+			Return(model, nil).
+			Times(1)
+
+		resolver, resolverStop := MemoizedTypesystemResolverFunc(
+			mockDatastore,
+		)
+		defer resolverStop()
+
+		_, err := resolver(context.Background(), store, "")
+		require.ErrorContains(t, err, "invalid authorization model encountered: the relation type 'user_invalid' on 'member' in object type 'group' is not valid")
+	})
+
 	t.Run("two_calls_same_model_id_returns_second_from_cache", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()

@@ -47,10 +47,10 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			}
 		}
 
-		var v interface{}
+		var model *openfgav1.AuthorizationModel
 		var key string
 		if modelID == "" {
-			v, err, _ = lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModel:%s", storeID), func() (interface{}, error) {
+			v, err, _ := lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModel:%s", storeID), func() (interface{}, error) {
 				return datastore.FindLatestAuthorizationModel(ctx, storeID)
 			})
 			if err != nil {
@@ -61,21 +61,18 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 				return nil, fmt.Errorf("failed to FindLatestAuthorizationModel: %w", err)
 			}
 
-			model := v.(*openfgav1.AuthorizationModel)
-			key = fmt.Sprintf("%s/%s", storeID, model.GetId())
-			item := cache.Get(key)
-			if item != nil {
-				// This model has been validated before
-				return item.Value(), nil
-			}
-		} else {
-			key = fmt.Sprintf("%s/%s", storeID, modelID)
-			item := cache.Get(key)
-			if item != nil {
-				return item.Value(), nil
-			}
+			modelID = model.GetId()
+			model = v.(*openfgav1.AuthorizationModel)
+		}
 
-			v, err, _ = lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
+		key = fmt.Sprintf("%s/%s", storeID, modelID)
+		item := cache.Get(key)
+		if item != nil {
+			return item.Value(), nil
+		}
+
+		if model == nil {
+			v, err, _ := lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
 				return datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 			})
 			if err != nil {
@@ -85,9 +82,9 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 
 				return nil, fmt.Errorf("failed to ReadAuthorizationModel: %w", err)
 			}
-		}
 
-		model := v.(*openfgav1.AuthorizationModel)
+			model = v.(*openfgav1.AuthorizationModel)
+		}
 
 		typesys, err := NewAndValidate(ctx, model)
 		if err != nil {
