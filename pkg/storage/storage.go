@@ -171,6 +171,7 @@ type ReadStartingWithUserFilter struct {
 	ObjectType string
 	Relation   string
 	UserFilter []*openfgav1.ObjectRelation
+	ObjectIDs  []string // Optional. If present, the datastore returns the intersection between this filter and what is in the database
 }
 
 // ReadUsersetTuplesFilter specifies the filter options that
