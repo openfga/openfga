@@ -217,23 +217,33 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount, &dispatchCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
-		// first send error and then close results channel, to ensure that error takes precedence
 		if resp.err != nil {
 			expandErrCh <- resp.err
 		}
 		close(foundUsersCh)
 	}()
 
+	deadlineExceeded := false
+
 	select {
-	// Note: if all cases can proceed, one will be selected at random
-	case err := <-expandErrCh:
-		telemetry.TraceError(span, err)
-		return nil, err
 	case <-doneWithFoundUsersCh:
 		break
 	case <-cancellableCtx.Done():
+		deadlineExceeded = true
 		// to avoid a race on the 'foundUsersUnique' map below, wait for the range over the channel to close
 		<-doneWithFoundUsersCh
+		break
+	}
+
+	select {
+	case err := <-expandErrCh:
+		if deadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
+			// We skip the error because we want to send at least partial results to the user (but we should probably set response headers)
+			break
+		}
+		telemetry.TraceError(span, err)
+		return nil, err
+	default:
 		break
 	}
 
