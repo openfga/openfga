@@ -5484,9 +5484,10 @@ tests:
           model
             schema 1.1
           type user
+          type user2
           type group
             relations
-              define member: [user, user:*]
+              define member: [user, user:*, user2, user2:*]
           type folder
             relations
               define viewer: [group#member]
@@ -5524,6 +5525,16 @@ tests:
               relation: viewer
               object: folder:2
             expectation: true
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:anne
@@ -5538,6 +5549,11 @@ tests:
             expectation:
               - folder:1
               - folder:2
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
         listUsersAssertions:
           - request:
               filters:
@@ -5553,15 +5569,28 @@ tests:
               relation: viewer
             expectation:
               - user:maria
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
   - name: simple_ttu_child_wildcard
     stages:
       - model: |
           model
             schema 1.1
           type user
+          type user2
           type group
             relations
-              define member: [user, user:*]
+              define member: [user, user:*, user2, user2:*]
           type folder
             relations
               define viewer: member from owner
@@ -5600,6 +5629,16 @@ tests:
               relation: viewer
               object: folder:2
             expectation: true
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:anne
@@ -5614,6 +5653,11 @@ tests:
             expectation:
               - folder:1
               - folder:2
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
         listUsersAssertions:
           - request:
               filters:
@@ -5629,6 +5673,18 @@ tests:
               relation: viewer
             expectation:
               - user:maria
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
   - name: ttu_and_computed_ttu_wildcard
     stages:
       - model: |

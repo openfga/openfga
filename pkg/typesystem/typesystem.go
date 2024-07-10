@@ -350,9 +350,11 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	// need to check whether these are simple types as well
 	for _, ref := range directlyRelatedTypes {
 		if ref.GetRelationOrWildcard() != nil {
-			// For now, we don't allow if these types are another userset or publicly assignable
-			// because local check with these relations cannot be evaluated via simple datastore query.
-			return nil, false, nil
+			if _, ok := ref.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				// For now, we don't allow if these types are another userset
+				// because local check with these relations cannot be evaluated via simple datastore query.
+				return nil, false, nil
+			}
 		}
 		assignableTypes = append(assignableTypes, ref.GetType())
 	}
@@ -364,6 +366,8 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 // check resolver using these relations cannot be evaluated via simple datastore query.
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
+		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
+		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
 			return false, nil
 		}

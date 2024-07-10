@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -640,13 +641,37 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			},
 		}
 		objectType, relation := tuple.SplitObjectRelation(objectRel)
+
+		directlyRelatedUsersetTypes, err := typesys.DirectlyRelatedUsersets(objectType, relation)
+		if err != nil {
+			return nil, err
+		}
+
+		user := reqTupleKey.GetUser()
+		userType := strings.SplitN(user, ":", 2)
+
+		hasPubliclyAssignedType := false
+		// TODO: memorize the check for public wildcard
+		for _, directlyRelatedUsersetType := range directlyRelatedUsersetTypes {
+			if directlyRelatedUsersetType.GetWildcard() != nil && directlyRelatedUsersetType.GetType() == userType[0] {
+				hasPubliclyAssignedType = true
+			}
+		}
+
+		userFilter := []*openfgav1.ObjectRelation{{
+			Object: reqTupleKey.GetUser(),
+		}}
+		if hasPubliclyAssignedType {
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: userType[0] + ":*",
+			})
+		}
+
 		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
-			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: reqTupleKey.GetUser(),
-			}},
-			ObjectIDs: maps.Keys(objectIDs),
+			UserFilter: userFilter,
+			ObjectIDs:  maps.Keys(objectIDs),
 		})
 
 		if err != nil {
