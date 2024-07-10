@@ -350,7 +350,7 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	// need to check whether these are simple types as well
 	for _, ref := range directlyRelatedTypes {
 		if ref.GetRelationOrWildcard() != nil {
-			// For now, we don't allow if these types are another userset, publicly assignable or has condition
+			// For now, we don't allow if these types are another userset or publicly assignable
 			// because local check with these relations cannot be evaluated via simple datastore query.
 			return nil, false, nil
 		}
@@ -360,7 +360,7 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 }
 
 // ResolvesExclusivelyToDirectlyAssignable returns whether all relationReferences are relations that are exclusively directly assignable.
-// For now, it will return false if the directly assignable relations are public wildcard, contains condition, or is another userset because
+// For now, it will return false if the directly assignable relations are public wildcard or is another userset because
 // check resolver using these relations cannot be evaluated via simple datastore query.
 func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
 	for _, rr := range relationReferences {
