@@ -249,6 +249,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
+	flags.Bool("check-tracker-enabled", defaultConfig.CheckTrackerEnabled, `enabled/disabled tracking tuples`)
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -604,6 +606,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsDispatchThrottlingMaxThreshold(config.ListObjectsDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
 		server.WithContext(ctx),
+		server.WithCheckTrackerEnabled(config.CheckTrackerEnabled),
 	)
 
 	s.Logger.Info(

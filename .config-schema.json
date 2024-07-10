@@ -120,6 +120,17 @@
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
+        "checkTrackerEnabled": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable/disable tracking tuples.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
+                }
+            }
+        },  
         "playground": {
             "type": "object",
             "properties": {

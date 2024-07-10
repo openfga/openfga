@@ -286,6 +286,8 @@ type Config struct {
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
+
+	CheckTrackerEnabled bool
 }
 
 func (cfg *Config) Verify() error {

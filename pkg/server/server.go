@@ -146,6 +146,7 @@ type Server struct {
 
 	listObjectsDispatchThrottler throttler.Throttler
 	ctx                          context.Context
+	checkTrackerEnabled          bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -162,6 +163,13 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.ctx = ctx
+	}
+}
+
+// WithCheckTrackerEnabled enables/disables tracker Check results.
+func WithCheckTrackerEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkTrackerEnabled = enabled
 	}
 }
 
@@ -509,13 +517,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	trackChecker := graph.NewTrackCheckResolver(
-		graph.WithTrackerContext(s.ctx),
-		graph.WithTrackerLogger(s.logger))
+	if s.checkTrackerEnabled {
+		trackChecker := graph.NewTrackCheckResolver(
+			graph.WithTrackerContext(s.ctx),
+			graph.WithTrackerLogger(s.logger))
 
-	cycleDetectionCheckResolver.SetDelegate(trackChecker)
-	trackChecker.SetDelegate(localChecker)
-	localChecker.SetDelegate(cycleDetectionCheckResolver)
+		cycleDetectionCheckResolver.SetDelegate(trackChecker)
+		trackChecker.SetDelegate(localChecker)
+		localChecker.SetDelegate(cycleDetectionCheckResolver)
+	} else {
+		cycleDetectionCheckResolver.SetDelegate(localChecker)
+		localChecker.SetDelegate(cycleDetectionCheckResolver)
+	}
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
