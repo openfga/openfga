@@ -248,6 +248,9 @@ type Config struct {
 	// allowed in ListUsers queries
 	MaxConcurrentReadsForListUsers uint32
 
+	// MaxConditionEvaluationCost defines the maximum cost for CEL condition evaluation before a request returns an error
+	MaxConditionEvaluationCost uint64
+
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur
 	// after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
@@ -321,6 +324,10 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf(
 			"config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']",
 		)
+	}
+
+	if cfg.Log.Level == "none" {
+		fmt.Println("WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	}
 
 	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
@@ -403,6 +410,10 @@ func (cfg *Config) Verify() error {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
 	}
 
+	if cfg.MaxConditionEvaluationCost < 100 {
+		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
+	}
+
 	return nil
 }
 
@@ -479,6 +490,11 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	return nil
 }
 
+// MaxConditionEvaluationCost ensures a safe value for CEL evaluation cost.
+func MaxConditionEvaluationCost() uint64 {
+	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
+}
+
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -488,6 +504,7 @@ func DefaultConfig() *Config {
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
 		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,
+		MaxConditionEvaluationCost:                DefaultMaxConditionEvaluationCost,
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,

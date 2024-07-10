@@ -104,3 +104,124 @@ func ExampleNewFilteredTupleKeyIterator() {
 	fmt.Println(filtered)
 	// Output: [document:doc1#editor@user:elbuo]
 }
+
+func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		switch tupleKey.GetCondition().GetName() {
+		case "condition1":
+			return true, nil
+		case "condition2":
+			return false, nil
+		default:
+			return false, fmt.Errorf("unknown condition: %s", tupleKey.GetCondition().GetName())
+		}
+	}
+
+	t.Run("no_error", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition1", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition2", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
+		}
+		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+
+			actual = append(actual, tk)
+		}
+		expected := []*openfgav1.TupleKey{tuples[0], tuples[2]}
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("has_some_valid_but_middle_invalid", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition1", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition3", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
+		}
+		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				// Notice that we don't expect errors as some tuples are valid.
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+
+			actual = append(actual, tk)
+		}
+		expected := []*openfgav1.TupleKey{tuples[0], tuples[2]}
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("has_some_valid_but_last_invalid", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition1", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition2", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition3", nil),
+		}
+		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				// Notice that we don't expect errors as some tuples are valid.
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+
+			actual = append(actual, tk)
+		}
+		expected := []*openfgav1.TupleKey{tuples[0]}
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("empty_list", func(t *testing.T) {
+		var tuples []*openfgav1.TupleKey
+		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+
+			actual = append(actual, tk)
+		}
+		var expected []*openfgav1.TupleKey
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("all_invalid", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition3", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition4", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition5", nil),
+		}
+		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		tk, err := iter.Next(context.Background())
+
+		// only the last error is returned
+		require.Equal(t, "unknown condition: condition5", err.Error())
+		require.Nil(t, tk)
+	})
+}

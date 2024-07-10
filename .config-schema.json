@@ -36,6 +36,12 @@
             "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_USERS"
         },
+        "maxConditionEvaluationCost": {
+            "description": "The maximum cost for CEL condition evaluation before a request returns an error (default is 100).",
+            "type": "integer",
+            "default": 100,
+            "x-env-variable": "OPENFGA_MAX_CONDITION_EVALUATION_COST"
+        },
         "changelogHorizonOffset": {
             "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
             "type": "integer",
@@ -109,7 +115,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-list-users"]
+                "enum": []
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"

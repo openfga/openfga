@@ -32,10 +32,6 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
-	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
-		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
-	}
-
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
@@ -113,8 +109,7 @@ func (s *Server) ListUsers(
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListUsersResponse{
-		Users:         resp.GetUsers(),
-		ExcludedUsers: resp.GetExcludedUsers(),
+		Users: resp.GetUsers(),
 	}, nil
 }
 
