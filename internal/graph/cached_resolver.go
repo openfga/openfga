@@ -6,13 +6,14 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -150,20 +151,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	skipCache := c.enableConsistencyOptions && req.Consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
-
-	// if consistency options experimental flag is set, and consistency param set to HIGHER_CONSISTENCY, skip cache
-	if skipCache {
-		resp, err := c.delegate.ResolveCheck(ctx, req)
-		if err != nil {
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
-		return resp, nil
-	}
-
-	checkCacheTotalCounter.Inc()
-
 	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
@@ -171,16 +158,23 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired()
-	span.SetAttributes(attribute.Bool("is_cached", isCached))
-	if isCached {
-		checkCacheHitCounter.Inc()
+	skipCache := c.enableConsistencyOptions && req.Consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-		// return a copy to avoid races across goroutines
-		return CloneResolveCheckResponse(cachedResp.Value()), nil
+	if !skipCache {
+		checkCacheTotalCounter.Inc()
+
+		cachedResp := c.cache.Get(cacheKey)
+		isCached := cachedResp != nil && !cachedResp.Expired()
+		span.SetAttributes(attribute.Bool("is_cached", isCached))
+		if isCached {
+			checkCacheHitCounter.Inc()
+
+			// return a copy to avoid races across goroutines
+			return CloneResolveCheckResponse(cachedResp.Value()), nil
+		}
 	}
 
+	// not in cache, or consistency options experimental flag is set, and consistency param set to HIGHER_CONSISTENCY
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)

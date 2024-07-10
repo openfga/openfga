@@ -92,7 +92,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			name:                     "result_not_cached_when_higher_consistency_requested",
+			name:                     "result_added_to_cache_when_higher_consistency_requested",
 			consistencyOptionEnabled: true,
 			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -106,13 +106,13 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
-				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 		{
