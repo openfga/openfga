@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -264,6 +265,7 @@ func TestServerLogs(t *testing.T) {
 				require.NoError(t, err)
 			}
 
+			time.Sleep(1 * time.Second) // Wait for streaming endpoint to emit logs.
 			actualLogs := logs.All()
 			require.Len(t, actualLogs, 1)
 
