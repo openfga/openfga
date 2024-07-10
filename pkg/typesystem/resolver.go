@@ -9,6 +9,8 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -36,7 +38,10 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
-		ctx, span := tracer.Start(ctx, "MemoizedTypesystemResolverFunc")
+		ctx, span := tracer.Start(ctx, "MemoizedTypesystemResolverFunc", trace.WithAttributes(
+			attribute.String("store_id", storeID),
+			attribute.String("authorization_model_id", modelID),
+		))
 		defer span.End()
 
 		var err error
