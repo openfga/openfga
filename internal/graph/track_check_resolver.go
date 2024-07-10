@@ -136,7 +136,7 @@ func (t *TrackerCheckResolver) userType(userKey string) string {
 
 // GetTK returns formatted tuple suitable insertion into list.
 func (t *TrackerCheckResolver) getTK(tk *openfgav1.TupleKey) string {
-	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()) )
+	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()))
 }
 
 // LoadModel populate model id for individual tuple paths.
