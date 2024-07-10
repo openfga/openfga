@@ -3179,7 +3179,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: true,
 			expectError:              false,
 		},
 		{
@@ -3351,7 +3351,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			objectType:               "folder",
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: true,
 			expectError:              false,
 		},
 		{
@@ -3484,7 +3484,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			objectType:               "folder",
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: true,
 			expectError:              false,
 		},
 		{

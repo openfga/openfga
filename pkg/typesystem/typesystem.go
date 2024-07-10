@@ -349,7 +349,7 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
 	// need to check whether these are simple types as well
 	for _, ref := range directlyRelatedTypes {
-		if ref.GetRelationOrWildcard() != nil || ref.GetCondition() != "" {
+		if ref.GetRelationOrWildcard() != nil {
 			// For now, we don't allow if these types are another userset, publicly assignable or has condition
 			// because local check with these relations cannot be evaluated via simple datastore query.
 			return nil, false, nil
