@@ -614,6 +614,75 @@ func (c *LocalChecker) ResolveCheck(
 	return resp, nil
 }
 
+func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs map[string]struct{}) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
+		defer span.End()
+
+		typesys, ok := typesystem.TypesystemFromContext(ctx)
+		if !ok {
+			return nil, fmt.Errorf("typesystem missing in context")
+		}
+
+		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
+		if !ok {
+			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		}
+
+		storeID := req.GetStoreID()
+		reqTupleKey := req.GetTupleKey()
+		reqContext := req.GetContext()
+
+		response := &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			},
+		}
+		objectType, relation := tuple.SplitObjectRelation(objectRel)
+		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: objectType,
+			Relation:   relation,
+			UserFilter: []*openfgav1.ObjectRelation{{
+				Object: reqTupleKey.GetUser(),
+			}},
+			ObjectIDs: maps.Keys(objectIDs),
+		})
+
+		if err != nil {
+			return nil, err
+		}
+		// filter out invalid tuples yielded by the database iterator
+		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(i),
+				validation.FilterInvalidTuples(typesys),
+			),
+			TupleKeyConditionalFilter(ctx, reqContext, typesys),
+		)
+		defer filteredIter.Stop()
+
+		for {
+			t, err := filteredIter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				telemetry.TraceError(span, err)
+				return nil, err
+			}
+
+			_, objectID := tuple.SplitObject(t.GetObject())
+			if _, ok := objectIDs[objectID]; ok {
+				span.SetAttributes(attribute.Bool("allowed", true))
+				response.Allowed = true
+				return response, nil
+			}
+		}
+		return response, nil
+	}
+}
+
 // checkUsersetSlowPath will check userset or public wildcard path.
 // This is the slow path as it requires dispatch on all its children.
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter storage.TupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
@@ -976,75 +1045,6 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
-}
-
-func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs map[string]struct{}) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
-		defer span.End()
-
-		typesys, ok := typesystem.TypesystemFromContext(ctx)
-		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
-		}
-
-		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
-		if !ok {
-			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
-		}
-
-		storeID := req.GetStoreID()
-		reqTupleKey := req.GetTupleKey()
-		reqContext := req.GetContext()
-
-		response := &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
-		}
-		objectType, relation := tuple.SplitObjectRelation(objectRel)
-		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-			ObjectType: objectType,
-			Relation:   relation,
-			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: reqTupleKey.GetUser(),
-			}},
-			ObjectIDs: maps.Keys(objectIDs),
-		})
-
-		if err != nil {
-			return nil, err
-		}
-		// filter out invalid tuples yielded by the database iterator
-		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(i),
-				validation.FilterInvalidTuples(typesys),
-			),
-			TupleKeyConditionalFilter(ctx, reqContext, typesys),
-		)
-		defer filteredIter.Stop()
-
-		for {
-			t, err := filteredIter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				telemetry.TraceError(span, err)
-				return nil, err
-			}
-
-			_, objectID := tuple.SplitObject(t.GetObject())
-			if _, ok := objectIDs[objectID]; ok {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				response.Allowed = true
-				return response, nil
-			}
-		}
-		return response, nil
-	}
 }
 
 // checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
