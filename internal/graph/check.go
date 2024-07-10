@@ -658,7 +658,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 				storage.NewTupleKeyIteratorFromTupleIterator(i),
 				validation.FilterInvalidTuples(typesys),
 			),
-			TupleKeyConditionalFilter(ctx, reqContext, typesys),
+			buildTupleKeyConditionFilter(ctx, reqContext, typesys),
 		)
 		defer filteredIter.Stop()
 
@@ -746,7 +746,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter *storage.C
 	return resp, nil
 }
 
-func TupleKeyConditionalFilter(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem) storage.TupleKeyConditionFilterFunc {
+func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem) storage.TupleKeyConditionFilterFunc {
 	return func(t *openfgav1.TupleKey) (bool, error) {
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqCtx)
 		if err != nil {
@@ -893,8 +893,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if err != nil {
 				return response, nil
 			}
-			conditionalFilter := TupleKeyConditionalFilter(ctx, req.Context, typesys)
-			conditionMet, err := conditionalFilter(tupleKey)
+			tupleKeyConditionFilter := buildTupleKeyConditionFilter(ctx, req.Context, typesys)
+			conditionMet, err := tupleKeyConditionFilter(tupleKey)
 			if err != nil {
 				telemetry.TraceError(span, err)
 				return nil, err
@@ -930,7 +930,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					storage.NewTupleKeyIteratorFromTupleIterator(iter),
 					validation.FilterInvalidTuples(typesys),
 				),
-				TupleKeyConditionalFilter(ctx, req.GetContext(), typesys),
+				buildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 			)
 			defer filteredIter.Stop()
 
@@ -1171,7 +1171,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
 				validation.FilterInvalidTuples(typesys),
 			),
-			TupleKeyConditionalFilter(ctx, req.GetContext(), typesys),
+			buildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 		)
 		defer filteredIter.Stop()
 
