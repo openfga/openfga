@@ -124,6 +124,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
 		}
 		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
 		var actual []*openfgav1.TupleKey
 		for {
 			tk, err := iter.Next(context.Background())
@@ -147,10 +148,12 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition1", nil),
 		}
 		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
 		var actual []*openfgav1.TupleKey
 		for {
 			tk, err := iter.Next(context.Background())
 			if err != nil {
+				// Notice that we don't expect errors as some tuples are valid.
 				if errors.Is(err, ErrIteratorDone) {
 					break
 				}
@@ -170,10 +173,12 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition3", nil),
 		}
 		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
 		var actual []*openfgav1.TupleKey
 		for {
 			tk, err := iter.Next(context.Background())
 			if err != nil {
+				// Notice that we don't expect errors as some tuples are valid.
 				if errors.Is(err, ErrIteratorDone) {
 					break
 				}
@@ -189,6 +194,7 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 	t.Run("empty_list", func(t *testing.T) {
 		var tuples []*openfgav1.TupleKey
 		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+		t.Cleanup(iter.Stop)
 		var actual []*openfgav1.TupleKey
 		for {
 			tk, err := iter.Next(context.Background())
@@ -208,12 +214,14 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 	t.Run("all_invalid", func(t *testing.T) {
 		tuples := []*openfgav1.TupleKey{
 			tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:jon", "condition3", nil),
-			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition3", nil),
-			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition3", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:elbuo", "condition4", nil),
+			tuple.NewTupleKeyWithCondition("document:doc1", "editor", "user:maria", "condition5", nil),
 		}
 		iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
 		tk, err := iter.Next(context.Background())
-		require.Error(t, err)
+
+		// only the last error is returned
+		require.Equal(t, "unknown condition: condition5", err.Error())
 		require.Nil(t, tk)
 	})
 }
