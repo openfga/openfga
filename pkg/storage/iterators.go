@@ -207,19 +207,19 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 // Errors will be treated as false. The iterator can return the last seen error before ErrIteratorDone.
 type TupleKeyConditionFilterFunc func(tupleKey *openfgav1.TupleKey) (bool, error)
 
-type conditionsFilteredTupleKeyIterator struct {
+type ConditionsFilteredTupleKeyIterator struct {
 	iter      TupleKeyIterator
 	filter    TupleKeyConditionFilterFunc
 	lastError error
 	onceValid bool
 }
 
-var _ TupleKeyIterator = &conditionsFilteredTupleKeyIterator{}
+var _ TupleKeyIterator = &ConditionsFilteredTupleKeyIterator{}
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
 // This function is not thread-safe.
-func (f *conditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
 	for {
 		tuple, err := f.iter.Next(ctx)
 		if err != nil {
@@ -248,14 +248,14 @@ func (f *conditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 }
 
 // Stop see [Iterator.Stop].
-func (f *conditionsFilteredTupleKeyIterator) Stop() {
+func (f *ConditionsFilteredTupleKeyIterator) Stop() {
 	f.iter.Stop()
 }
 
 // NewConditionsFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
 // [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
-func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyConditionFilterFunc) TupleKeyIterator {
-	return &conditionsFilteredTupleKeyIterator{
+func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyConditionFilterFunc) *ConditionsFilteredTupleKeyIterator {
+	return &ConditionsFilteredTupleKeyIterator{
 		iter:   iter,
 		filter: filter,
 	}
