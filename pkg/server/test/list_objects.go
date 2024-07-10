@@ -499,11 +499,11 @@ condition condition1(x: int) {
 				graph.WithMaxCacheSize(100),
 				graph.WithCacheTTL(10 * time.Second),
 			}
-			checkBuilderOpts := []graph.CheckQueryBuilderOpt{
-				graph.WithCachedCheckResolver(cacheOpts...),
-				graph.WithLocalChecker(localCheckOpts...),
+			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
+				graph.WithCachedCheckResolverOpts(cacheOpts...),
+				graph.WithLocalCheckerOpts(localCheckOpts...),
 			}
-			checkResolver, closer := graph.NewCheckQueryBuilder(checkBuilderOpts...).Build()
+			checkResolver, closer := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
 			t.Cleanup(closer)
 
 			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
