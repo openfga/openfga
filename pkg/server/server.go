@@ -491,42 +491,37 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	// below this point, don't throw errors or we may leak resources in tests
-	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		}...),
-		graph.WithCachedCheckResolverOpts([]graph.CachedCheckResolverOpt{
+
+	cacheOptions := []graph.CachedCheckResolverOpt{}
+	if s.checkQueryCacheEnabled {
+		cacheOptions = []graph.CachedCheckResolverOpt{
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		}...),
-		graph.WithDispatchThrottlingCheckResolverOpts([]graph.DispatchThrottlingCheckResolverOpt{
+		}
+	}
+	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
+	if s.checkDispatchThrottlingEnabled {
+		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
 			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
 				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
 			}),
+			// only create the throttler if the feature is enabled, so that we can clean it afterwards
 			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
 				"check_dispatch_throttle")),
+		}
+	}
+	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		}...),
+		graph.WithCachedCheckResolverOpts(cacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(checkDispatchThrottlingOptions...),
 	}...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {
-		s.logger.Info("Enabling ListObjects dispatch throttling",
-			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
-			zap.Uint32("DefaultThreshold", s.listObjectsDispatchDefaultThreshold),
-			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
-		)
-
-		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
-	}
-
-	if s.listObjectsDispatchThrottlingEnabled {
-		s.logger.Info("Enabling ListObjects dispatch throttling",
-			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
-			zap.Uint32("DefaultThreshold", s.listObjectsDispatchDefaultThreshold),
-			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
-		)
-
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 
