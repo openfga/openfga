@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/concurrency"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 
@@ -429,7 +429,7 @@ func (l *listUsersQuery) expandDirect(
 	)
 	defer filteredIter.Stop()
 
-	pool := utils.NewPool(ctx, int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	var errs error
 	var hasCycle atomic.Bool
@@ -510,7 +510,7 @@ func (l *listUsersQuery) expandIntersection(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandIntersection")
 	defer span.End()
-	pool := utils.NewPool(ctx, int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
@@ -614,7 +614,7 @@ func (l *listUsersQuery) expandUnion(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandUnion")
 	defer span.End()
-	pool := utils.NewPool(ctx, int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Union.GetChild()
 	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
@@ -856,7 +856,7 @@ func (l *listUsersQuery) expandTTU(
 	)
 	defer filteredIter.Stop()
 
-	pool := utils.NewPool(ctx, int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	var errs error
 

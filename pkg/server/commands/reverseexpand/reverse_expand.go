@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/concurrency"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -327,7 +327,7 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	pool := utils.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 
@@ -506,7 +506,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	)
 	defer filteredIter.Stop()
 
-	pool := utils.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 
