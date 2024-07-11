@@ -799,7 +799,6 @@ func TestReleasesConnections(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(s.Close)
 
@@ -944,7 +943,6 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1013,8 +1011,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()

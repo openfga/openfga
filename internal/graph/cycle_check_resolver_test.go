@@ -34,11 +34,10 @@ func TestCycleDetectionCheckResolver(t *testing.T) {
 		visitedPaths[tuple.TupleKeyToString(cyclicalTuple)] = struct{}{}
 
 		resp, err := cycleDetectionCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-			AuthorizationModelID: ulid.Make().String(),
-			StoreID:              ulid.Make().String(),
-			TupleKey:             cyclicalTuple,
-			RequestMetadata:      NewCheckRequestMetadata(defaultResolveNodeLimit),
-			VisitedPaths:         visitedPaths,
+			StoreID:         ulid.Make().String(),
+			TupleKey:        cyclicalTuple,
+			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			VisitedPaths:    visitedPaths,
 		})
 
 		require.NoError(t, err)

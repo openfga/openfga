@@ -160,7 +160,6 @@ func TestListUsersValidation(t *testing.T) {
 
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
-				WithExperimentals(ExperimentalEnableListUsers),
 			)
 			t.Cleanup(s.Close)
 
@@ -201,7 +200,6 @@ func TestModelIdNotFound(t *testing.T) {
 
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -295,7 +293,6 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),
-			WithExperimentals(ExperimentalEnableListUsers),
 		)
 		t.Cleanup(s.Close)
 
