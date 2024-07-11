@@ -21,6 +21,8 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+
+	"github.com/emirpasic/gods/sets/treeset"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -614,7 +616,13 @@ func (c *LocalChecker) ResolveCheck(
 	return resp, nil
 }
 
-func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs map[string]struct{}) CheckHandlerFunc {
+// usersetsMapType is a map where the key is object#relation and the value is a sorted set (no duplicates allowed).
+// For example, given [group:1#member, group:2#member, group:1#owner, group:3#owner] it will be stored as:
+// [group#member][1, 2]
+// [group#owner][1, 3].
+type usersetsMapType map[string]*treeset.Set
+
+func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs *treeset.Set) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 		defer span.End()
@@ -659,11 +667,15 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			})
 		}
 
+		objectIDsArrayOfStrings := make([]string, objectIDs.Size())
+		for i, objectID := range objectIDs.Values() {
+			objectIDsArrayOfStrings[i] = objectID.(string)
+		}
 		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: userFilter,
-			ObjectIDs:  maps.Keys(objectIDs),
+			ObjectIDs:  objectIDsArrayOfStrings,
 		})
 
 		if err != nil {
@@ -690,7 +702,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			}
 
 			_, objectID := tuple.SplitObject(t.GetObject())
-			if _, ok := objectIDs[objectID]; ok {
+			if objectIDs.Contains(objectID) {
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
@@ -802,11 +814,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
 
-	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
-	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1]
-	// [group#owner][1, 3]
-	usersetsMap := make(map[string]map[string]struct{})
+	usersetsMap := make(usersetsMapType)
 
 	for {
 		// NOTE: For the future, once we observe a new ObjectRelation in the usersetsMap that means that all objectIDs
@@ -826,11 +834,9 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 		objectType, objectID := tuple.SplitObject(object)
 		objectRel := tuple.ToObjectRelationString(objectType, relation)
 		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = make(map[string]struct{})
+			usersetsMap[objectRel] = treeset.NewWithStringComparator()
 		}
-		if _, ok := usersetsMap[objectRel][objectID]; !ok {
-			usersetsMap[objectRel][objectID] = struct{}{}
-		}
+		usersetsMap[objectRel].Add(objectID)
 	}
 
 	// Next, for all the ObjectRelation, compare the associated objectIDs
@@ -1081,12 +1087,9 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
 
-	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
-	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1, 2]
-	// [group#owner][1, 3]
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-	usersetsMap := make(map[string]map[string]struct{})
+
+	usersetsMap := make(usersetsMapType)
 
 	for {
 		t, err := iter.Next(ctx)
@@ -1102,11 +1105,9 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 		objectType, objectID := tuple.SplitObject(object)
 		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
 		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = make(map[string]struct{})
+			usersetsMap[objectRel] = treeset.NewWithStringComparator()
 		}
-		if _, ok := usersetsMap[objectRel][objectID]; !ok {
-			usersetsMap[objectRel][objectID] = struct{}{}
-		}
+		usersetsMap[objectRel].Add(objectID)
 	}
 
 	// Next, for each of the type in tuplesetRelationUserMap, look up what object is in computedRelation for the specified user.
