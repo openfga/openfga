@@ -515,7 +515,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		}...),
 		graph.WithCachedCheckResolverOpts(cacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(checkDispatchThrottlingOptions...),
