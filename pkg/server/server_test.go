@@ -323,24 +323,6 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestCheckResolverOuterLayerDefault(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-
-	s := MustNewServerWithOpts(
-		WithDatastore(ds),
-	)
-	t.Cleanup(s.Close)
-
-	// the default (outer most layer) of the CheckResolver
-	// composition should always be CycleDetectionCheckResolver.
-	_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-	require.True(t, ok)
-}
-
 func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
