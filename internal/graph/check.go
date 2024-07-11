@@ -641,20 +641,13 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		}
 		objectType, relation := tuple.SplitObjectRelation(objectRel)
 
-		directlyRelatedUsersetTypes, err := typesys.DirectlyRelatedUsersets(objectType, relation)
-		if err != nil {
-			return nil, err
-		}
-
 		user := reqTupleKey.GetUser()
 		userType := tuple.GetType(user)
 
-		hasPubliclyAssignedType := false
-		// TODO: memorize the check for public wildcard
-		for _, directlyRelatedUsersetType := range directlyRelatedUsersetTypes {
-			if directlyRelatedUsersetType.GetWildcard() != nil && directlyRelatedUsersetType.GetType() == userType {
-				hasPubliclyAssignedType = true
-			}
+		relationReference := typesystem.DirectRelationReference(objectType, relation)
+		hasPubliclyAssignedType, err := typesys.IsPubliclyAssignable(relationReference, userType)
+		if err != nil {
+			return nil, err
 		}
 
 		userFilter := []*openfgav1.ObjectRelation{{
