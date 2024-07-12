@@ -51,6 +51,20 @@ func (mr *MockCheckResolverMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockCheckResolver)(nil).Close))
 }
 
+// GetDelegate mocks base method.
+func (m *MockCheckResolver) GetDelegate() CheckResolver {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDelegate")
+	ret0, _ := ret[0].(CheckResolver)
+	return ret0
+}
+
+// GetDelegate indicates an expected call of GetDelegate.
+func (mr *MockCheckResolverMockRecorder) GetDelegate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDelegate", reflect.TypeOf((*MockCheckResolver)(nil).GetDelegate))
+}
+
 // ResolveCheck mocks base method.
 func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	m.ctrl.T.Helper()
@@ -67,13 +81,13 @@ func (mr *MockCheckResolverMockRecorder) ResolveCheck(ctx, req any) *gomock.Call
 }
 
 // SetDelegate mocks base method.
-func (m *MockCheckResolver) SetDelegate(resolver CheckResolver) {
+func (m *MockCheckResolver) SetDelegate(delegate CheckResolver) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetDelegate", resolver)
+	m.ctrl.Call(m, "SetDelegate", delegate)
 }
 
 // SetDelegate indicates an expected call of SetDelegate.
-func (mr *MockCheckResolverMockRecorder) SetDelegate(resolver any) *gomock.Call {
+func (mr *MockCheckResolverMockRecorder) SetDelegate(delegate any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDelegate", reflect.TypeOf((*MockCheckResolver)(nil).SetDelegate), resolver)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDelegate", reflect.TypeOf((*MockCheckResolver)(nil).SetDelegate), delegate)
 }

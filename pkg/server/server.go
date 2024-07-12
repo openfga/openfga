@@ -492,14 +492,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	cacheOptions := []graph.CachedCheckResolverOpt{}
-	if s.checkQueryCacheEnabled {
-		cacheOptions = []graph.CachedCheckResolverOpt{
-			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		}
-	}
 	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
 	if s.checkDispatchThrottlingEnabled {
 		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
@@ -507,7 +499,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
 			}),
-			// only create the throttler if the feature is enabled, so that we can clean it afterwards
+			// only create the throttler if the feature is enabled, so that we can clean it afterward
 			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
 				"check_dispatch_throttle")),
 		}
@@ -516,8 +508,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		}...),
-		graph.WithCachedCheckResolverOpts(cacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(checkDispatchThrottlingOptions...),
+		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, []graph.CachedCheckResolverOpt{
+			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		}...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {

@@ -7,13 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewCheckResolverBuilder(t *testing.T) {
+func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 	type Test struct {
-		name                               string
-		LocalCheckerOption                 []LocalCheckerOption
-		CachedCheckResolverOpt             []CachedCheckResolverOpt
-		DispatchThrottlingCheckResolverOpt []DispatchThrottlingCheckResolverOpt
-		expectedResolverOrder              []CheckResolver
+		name                                   string
+		CachedCheckResolverEnabled             bool
+		DispatchThrottlingCheckResolverEnabled bool
+		expectedResolverOrder                  []CheckResolver
 	}
 
 	tests := []Test{
@@ -22,29 +21,28 @@ func TestNewCheckResolverBuilder(t *testing.T) {
 			expectedResolverOrder: []CheckResolver{&CycleDetectionCheckResolver{}, &LocalChecker{}},
 		},
 		{
-			name:                   "when_cache_alone_is_enabled",
-			CachedCheckResolverOpt: []CachedCheckResolverOpt{WithCacheTTL(1)},
-			expectedResolverOrder:  []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &LocalChecker{}},
+			name:                       "when_cache_alone_is_enabled",
+			CachedCheckResolverEnabled: true,
+			expectedResolverOrder:      []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &LocalChecker{}},
 		},
 		{
-			name:                               "when_dispatch_throttling_alone_is_enabled",
-			DispatchThrottlingCheckResolverOpt: []DispatchThrottlingCheckResolverOpt{WithDispatchThrottlingCheckResolverConfig(DispatchThrottlingCheckResolverConfig{})},
-			expectedResolverOrder:              []CheckResolver{&CycleDetectionCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
+			name:                                   "when_dispatch_throttling_alone_is_enabled",
+			DispatchThrottlingCheckResolverEnabled: true,
+			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
 		{
-			name:                               "when_both_are_enabled",
-			DispatchThrottlingCheckResolverOpt: []DispatchThrottlingCheckResolverOpt{WithDispatchThrottlingCheckResolverConfig(DispatchThrottlingCheckResolverConfig{})},
-			CachedCheckResolverOpt:             []CachedCheckResolverOpt{WithCacheTTL(1)},
-			expectedResolverOrder:              []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
+			name:                                   "when_both_are_enabled",
+			CachedCheckResolverEnabled:             true,
+			DispatchThrottlingCheckResolverEnabled: true,
+			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			builder := NewOrderedCheckResolvers([]CheckResolverOrderedBuilderOpt{
-				WithLocalCheckerOpts(test.LocalCheckerOption...),
-				WithCachedCheckResolverOpts(test.CachedCheckResolverOpt...),
-				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverOpt...),
+				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
+				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
 			}...)
 			_, checkResolverCloser := builder.Build()
 			t.Cleanup(checkResolverCloser)

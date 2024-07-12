@@ -512,7 +512,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				graph.WithCacheTTL(10 * time.Second),
 			}
 			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
-				graph.WithCachedCheckResolverOpts(cacheOpts...),
+				graph.WithCachedCheckResolverOpts(test.useCheckCache, cacheOpts...),
 				graph.WithLocalCheckerOpts(localCheckOpts...),
 			}
 			checkResolver, closer := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
