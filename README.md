@@ -19,7 +19,7 @@ OpenFGA is designed to make it easy for developers to model their application pe
 
 It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL 14 and MySQL 8.
 
-It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Java](https://central.sonatype.com/artifact/dev.openfga/openfga-sdk), [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools. It can also be used as a library (see [example](https://pkg.go.dev/github.com/openfga/openfga/pkg/server#pkg-examples)).
+It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Java](https://central.sonatype.com/artifact/dev.openfga/openfga-sdk), [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools. It can also be used as a library (see [example](https://pkg.go.dev/github.com/openfga/openfga/pkg/server#example-NewServerWithOpts)).
 
 ## Getting Started
 
@@ -214,7 +214,7 @@ OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https:/
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Okta FGA](https://fga.dev) in production since December 2021.
 
-OpenFGA's Memory Storage Adapter was built for development purposes only and is not recommended for a production environment, because it is not designed for scalable queries and has no support for persistence.
+OpenFGA's Memory Storage Adapter was built for development purposes only, is not optimized for performance, and is not recommended for a production environment.
 
 You can learn about more organizations using OpenFGA in production [here](https://github.com/openfga/community/blob/main/ADOPTERS.md). If your organization is using OpenFGA in production please consider adding it to the list.
 
