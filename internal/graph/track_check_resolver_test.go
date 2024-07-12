@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
@@ -144,11 +145,7 @@ func TestIntegrationTracker(t *testing.T) {
 			},
 		)
 
-		tk := trackerKey{
-			store: ulid.Make().String(),
-			model: ulid.Make().String(),
-		}
-		trackChecker.nodes.Store(tk, sm)
+		trackChecker.nodes.Store(trackerKey{store: ulid.Make().String(), model: ulid.Make().String()}, sm)
 		trackChecker.logExecutionPaths(false)
 
 		_, ok := sm.Load(path)

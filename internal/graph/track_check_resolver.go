@@ -208,7 +208,9 @@ func (t *TrackerCheckResolver) ResolveCheck(
 	})
 
 	if err == nil || errors.Is(err, context.Canceled) {
-		t.addPathHits(req)
+		if resp != nil && resp.Allowed {
+			t.addPathHits(req)
+		}
 	}
 
 	return resp, err
