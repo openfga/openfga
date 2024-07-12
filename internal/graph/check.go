@@ -21,8 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-
-	"github.com/emirpasic/gods/sets/treeset"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -620,9 +618,9 @@ func (c *LocalChecker) ResolveCheck(
 // For example, given [group:1#member, group:2#member, group:1#owner, group:3#owner] it will be stored as:
 // [group#member][1, 2]
 // [group#owner][1, 3].
-type usersetsMapType map[string]*treeset.Set
+type usersetsMapType map[string]storage.SortedSet
 
-func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs *treeset.Set) CheckHandlerFunc {
+func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 		defer span.End()
@@ -631,7 +629,6 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
-
 		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
 		if !ok {
 			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
@@ -667,15 +664,11 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			})
 		}
 
-		objectIDsArrayOfStrings := make([]string, objectIDs.Size())
-		for i, objectID := range objectIDs.Values() {
-			objectIDsArrayOfStrings[i] = objectID.(string)
-		}
 		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: userFilter,
-			ObjectIDs:  objectIDsArrayOfStrings,
+			ObjectIDs:  objectIDs,
 		})
 
 		if err != nil {
@@ -702,7 +695,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			}
 
 			_, objectID := tuple.SplitObject(t.GetObject())
-			if objectIDs.Contains(objectID) {
+			if objectIDs.Exists(objectID) {
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
@@ -834,7 +827,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 		objectType, objectID := tuple.SplitObject(object)
 		objectRel := tuple.ToObjectRelationString(objectType, relation)
 		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = treeset.NewWithStringComparator()
+			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
 		usersetsMap[objectRel].Add(objectID)
 	}
@@ -1105,7 +1098,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 		objectType, objectID := tuple.SplitObject(object)
 		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
 		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = treeset.NewWithStringComparator()
+			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
 		usersetsMap[objectRel].Add(objectID)
 	}

@@ -177,9 +177,9 @@ type ReadStartingWithUserFilter struct {
 	// Mandatory.
 	UserFilter []*openfgav1.ObjectRelation
 
-	// Optional. If present, it will be sorted in ascending order.
+	// Optional. It can be nil. If present, it will be sorted in ascending order.
 	// The datastore should return the intersection between this filter and what is in the database.
-	ObjectIDs []string
+	ObjectIDs SortedSet
 }
 
 // ReadUsersetTuplesFilter specifies the filter options that
