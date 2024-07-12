@@ -642,13 +642,30 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			},
 		}
 		objectType, relation := tuple.SplitObjectRelation(objectRel)
+
+		user := reqTupleKey.GetUser()
+		userType := tuple.GetType(user)
+
+		relationReference := typesystem.DirectRelationReference(objectType, relation)
+		hasPubliclyAssignedType, err := typesys.IsPubliclyAssignable(relationReference, userType)
+		if err != nil {
+			return nil, err
+		}
+
+		userFilter := []*openfgav1.ObjectRelation{{
+			Object: user,
+		}}
+		if hasPubliclyAssignedType {
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: tuple.TypedPublicWildcard(userType),
+			})
+		}
+
 		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
-			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: reqTupleKey.GetUser(),
-			}},
-			ObjectIDs: maps.Keys(objectIDs),
+			UserFilter: userFilter,
+			ObjectIDs:  maps.Keys(objectIDs),
 		})
 
 		if err != nil {
