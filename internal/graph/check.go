@@ -645,10 +645,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		userType := tuple.GetType(user)
 
 		relationReference := typesystem.DirectRelationReference(objectType, relation)
-		hasPubliclyAssignedType, err := typesys.IsPubliclyAssignable(relationReference, userType)
-		if err != nil {
-			return nil, err
-		}
+		hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
 
 		userFilter := []*openfgav1.ObjectRelation{{
 			Object: user,

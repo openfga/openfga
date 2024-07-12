@@ -4269,46 +4269,37 @@ tests:
           model
             schema 1.1
           type user
-          type folder
+          type folder1
+          type folder2
             relations
-              define owner: [user]
-              define writer: [user,user:*] or owner
+              define viewer: [user]
           type document
             relations
-              define can_read: writer from parent
-              define parent: [document,folder]
-              define viewer: [user,user:*]
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
         tuples:
-          - user: user:anne
-            relation: owner
-            object: folder:a
-          - user: folder:a
+          - user: folder1:x
             relation: parent
-            object: document:c
-          - user: document:c
-            relation: parent
-            object: document:d
+            object: document:y
         checkAssertions:
           - tuple:
               user: user:anne
-              relation: can_read
-              object: document:c
-            expectation: true
+              relation: viewer
+              object: document:y
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:anne
               type: document
-              relation: can_read
+              relation: viewer
             expectation:
-              - document:c
         listUsersAssertions:
           - request:
               filters:
                 - user
-              object: document:c
-              relation: can_read
+              object: document:y
+              relation: viewer
             expectation:
-              - user:anne
 
   # https://github.com/openfga/openfga/issues/576
   - name: same_relation_name_different_type

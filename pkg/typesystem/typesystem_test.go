@@ -2744,14 +2744,15 @@ func TestIsDirectlyRelated(t *testing.T) {
 
 func TestIsPubliclyAssignable(t *testing.T) {
 	tests := []struct {
-		name       string
-		model      string
-		target     *openfgav1.RelationReference
-		objectType string
-		result     bool
+		name          string
+		model         string
+		target        *openfgav1.RelationReference
+		objectType    string
+		result        bool
+		expectedError string
 	}{
 		{
-			name: "1",
+			name: "is_publicly_assignable",
 			model: `
 				model
 					schema 1.1
@@ -2765,7 +2766,7 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			result:     true,
 		},
 		{
-			name: "2",
+			name: "is_not_publicly_assignable",
 			model: `
 				model
 					schema 1.1
@@ -2779,7 +2780,7 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			result:     false,
 		},
 		{
-			name: "3",
+			name: "is_not_publicly_assignable_mismatch_type",
 			model: `
 				model
 					schema 1.1
@@ -2794,7 +2795,7 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			result:     false,
 		},
 		{
-			name: "4",
+			name: "is_not_publicly_assignable_userset",
 			model: `
 				model
 					schema 1.1
@@ -2811,6 +2812,26 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			objectType: "user",
 			result:     false,
 		},
+		{
+			name: "relation_not_found",
+			model: `
+				model
+					schema 1.1
+				type user
+
+				type folder1
+				type folder2
+					relations
+						define viewer: [user]
+
+				type document
+					relations
+						define parent: [folder1, folder2]
+						define viewer: viewer from parent`,
+			target:        DirectRelationReference("folder1", "viewer"),
+			objectType:    "user",
+			expectedError: "'folder1#viewer' relation is undefined",
+		},
 	}
 
 	for _, test := range tests {
@@ -2819,8 +2840,12 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			typesys := New(model)
 
 			ok, err := typesys.IsPubliclyAssignable(test.target, test.objectType)
-			require.NoError(t, err)
-			require.Equal(t, ok, test.result)
+			if test.expectedError != "" {
+				require.ErrorContains(t, err, test.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, ok, test.result)
+			}
 		})
 	}
 }
