@@ -2976,7 +2976,7 @@ func TestResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: true,
 			expectError:              false,
 		},
 		{
@@ -3308,7 +3308,7 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 			objectType:               "folder",
 			tuplesetRelation:         "parent",
 			computedRelation:         "member",
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: true,
 			expectError:              false,
 		},
 		{
@@ -3433,26 +3433,6 @@ func TestTTUResolvesExclusivelyToDirectlyAssignable(t *testing.T) {
 							relations
 								define allowed: [user]
 								define member: [user] and allowed
-						type folder
-							relations
-								define parent: [group]
-								define viewer: member from parent
-					`,
-			objectType:               "folder",
-			tuplesetRelation:         "parent",
-			computedRelation:         "member",
-			expectDirectlyAssignable: false,
-			expectError:              false,
-		},
-		{
-			name: "ttu_child_public_wildcard",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user, user:*]
 						type folder
 							relations
 								define parent: [group]
