@@ -283,6 +283,7 @@ type Config struct {
 	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
