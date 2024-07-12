@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -85,7 +86,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-list-users`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable.")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -186,6 +187,8 @@ func NewRunCommand() *cobra.Command {
 	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects or StreamedListObjects query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
 
 	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number will consume more connections from the datastore pool and will attempt to prioritize performance for the request at the expense of other queries performance.")
+
+	flags.Uint64("max-condition-evaluation-cost", defaultConfig.MaxConditionEvaluationCost, "the maximum cost for CEL condition evaluation before a request returns an error")
 
 	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 
@@ -449,12 +452,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				grpc_recovery.StreamServerInterceptor(
+				grpc_recovery.StreamServerInterceptor( // panic middleware must be 1st in chain
 					grpc_recovery.WithRecoveryHandlerContext(
 						recovery.PanicRecoveryHandler(s.Logger),
 					),
 				),
-				requestid.NewStreamingInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(), // needed for logging
+				requestid.NewStreamingInterceptor(),    // add request_id to ctxtags
 			}...,
 		),
 	}
@@ -477,7 +481,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
 				validator.StreamServerInterceptor(),
-				grpc_ctxtags.StreamServerInterceptor(),
 			}...,
 		),
 	)
@@ -641,6 +644,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			// nolint:staticcheck // ignoring gRPC deprecations
 			grpc.WithBlock(),
 		}
+		if config.Trace.Enabled {
+			dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+		}
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
@@ -679,6 +685,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
 			return err
 		}
+		handler := http.Handler(mux)
+
+		if config.Trace.Enabled {
+			handler = otelhttp.NewHandler(handler, "grpc-gateway")
+		}
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
@@ -688,7 +699,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux), s.Logger),
+			}).Handler(handler), s.Logger),
 		}
 
 		go func() {

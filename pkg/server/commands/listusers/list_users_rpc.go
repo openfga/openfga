@@ -224,15 +224,11 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]foundUser, 1000)
-	excludedUsersUnique := make(map[tuple.UserString]struct{}, 1000)
 
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
 		for foundUser := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
-			for _, exception := range foundUser.excludedUsers {
-				excludedUsersUnique[tuple.UserProtoToString(exception)] = struct{}{}
-			}
 
 			if l.maxResults > 0 {
 				if uint32(len(foundUsersUnique)) >= l.maxResults {
@@ -279,19 +275,10 @@ func (l *listUsersQuery) ListUsers(
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
 	}
 
-	var excludedUsers []*openfgav1.ObjectOrUserset
-	if len(foundUsers) > 0 {
-		excludedUsers = make([]*openfgav1.ObjectOrUserset, 0, len(excludedUsersUnique))
-		for foundExcludedUser := range excludedUsersUnique {
-			excludedUsers = append(excludedUsers, tuple.StringToObjectOrUserset(foundExcludedUser))
-		}
-	}
-
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
 	return &listUsersResponse{
-		Users:         foundUsers,
-		ExcludedUsers: excludedUsers,
+		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 			DispatchCounter:     &dispatchCount,
