@@ -134,7 +134,7 @@ func TestIntegrationTracker(t *testing.T) {
 	})
 
 	t.Run("tracker_prints_and_delete_path", func(t *testing.T) {
-		path := "user#member#group:1"
+		path := "group:1#member@user"
 		sm := &sync.Map{}
 		sm.Store(
 			path,
@@ -144,8 +144,11 @@ func TestIntegrationTracker(t *testing.T) {
 			},
 		)
 
-		model := ulid.Make().String()
-		trackChecker.nodes.Store(model, sm)
+		tk := trackerKey{
+			store: ulid.Make().String(),
+			model: ulid.Make().String(),
+		}
+		trackChecker.nodes.Store(tk, sm)
 		trackChecker.logExecutionPaths(false)
 
 		_, ok := sm.Load(path)
