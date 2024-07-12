@@ -1274,6 +1274,36 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 
 		require.Empty(t, objects)
 	})
+
+	t.Run("returns_results_that_match_objectids_provided", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(t, err)
+
+		tupleIterator, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{
+					{
+						Object: "user:jon",
+					},
+				},
+				ObjectIDs: []string{"doc1", "doc2", "doc3"},
+			},
+			storage.ReadStartingWithUserOptions{},
+		)
+		require.NoError(t, err)
+
+		tuples := iterateThroughAllTuples(t, tupleIterator)
+
+		require.Len(t, tuples, 1)
+		_, objectID := tuple.SplitObject(tuples[0].GetObject())
+		require.Equal(t, "doc1", objectID)
+	})
 }
 
 func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {

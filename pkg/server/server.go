@@ -51,7 +51,6 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader                                  = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey                                     = "authorization_model_id"
-	ExperimentalEnableListUsers         ExperimentalFeatureFlag = "enable-list-users"
 	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 )
 

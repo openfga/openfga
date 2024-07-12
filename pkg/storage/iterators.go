@@ -199,3 +199,65 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 		filter,
 	}
 }
+
+// TupleKeyConditionFilterFunc is a filter function that is used to filter out
+// tuples from a [TupleKeyIterator] that don't meet the tuple the conditions provided by the request.
+// Implementations should return true if the tuple should be returned
+// and false if it should be filtered out.
+// Errors will be treated as false. If none of the tuples are valid AND there are errors, Next() will return
+// the last error.
+type TupleKeyConditionFilterFunc func(tupleKey *openfgav1.TupleKey) (bool, error)
+
+type ConditionsFilteredTupleKeyIterator struct {
+	iter      TupleKeyIterator
+	filter    TupleKeyConditionFilterFunc
+	lastError error
+	onceValid bool
+}
+
+var _ TupleKeyIterator = &ConditionsFilteredTupleKeyIterator{}
+
+// Next returns the next most tuple in the underlying iterator that meets
+// the filter function this iterator was constructed with.
+// This function is not thread-safe.
+func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+	for {
+		tuple, err := f.iter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				if f.onceValid || f.lastError == nil {
+					return nil, ErrIteratorDone
+				}
+				lastError := f.lastError
+				f.lastError = nil
+				return nil, lastError
+			}
+			return nil, err
+		}
+
+		valid, err := f.filter(tuple)
+		if err != nil {
+			f.lastError = err
+			continue
+		}
+		if !valid {
+			continue
+		}
+		f.onceValid = true
+		return tuple, nil
+	}
+}
+
+// Stop see [Iterator.Stop].
+func (f *ConditionsFilteredTupleKeyIterator) Stop() {
+	f.iter.Stop()
+}
+
+// NewConditionsFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
+// [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
+func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyConditionFilterFunc) *ConditionsFilteredTupleKeyIterator {
+	return &ConditionsFilteredTupleKeyIterator{
+		iter:   iter,
+		filter: filter,
+	}
+}

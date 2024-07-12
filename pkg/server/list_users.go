@@ -32,10 +32,6 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
-	if !s.IsExperimentallyEnabled(ExperimentalEnableListUsers) {
-		return nil, status.Error(codes.Unimplemented, "ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server")
-	}
-
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
