@@ -434,6 +434,44 @@ func WithListObjectsDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAS
 	}
 }
 
+// WithListUsersDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
+func WithListUsersDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingEnabled = enabled
+	}
+}
+
+// WithListUsersDispatchThrottlingFrequency defines how frequent dispatch throttling
+// will be evaluated for List Objects requests.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithListUsersDispatchThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingFrequency = frequency
+	}
+}
+
+// WithListUsersDispatchThrottlingThreshold define the number of dispatches to be throttled
+// for List Objects requests.
+func WithListUsersDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchDefaultThreshold = threshold
+	}
+}
+
+// WithListUsersDispatchThrottlingMaxThreshold define the maximum threshold values allowed
+// It will ensure listUsersDispatchThrottlingMaxThreshold will never be smaller than threshold.
+func WithListUsersDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingMaxThreshold = maxThreshold
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
