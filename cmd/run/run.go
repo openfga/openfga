@@ -249,7 +249,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
-	flags.Bool("check-tracker-enabled", defaultConfig.CheckTrackerEnabled, `enabled/disabled tracking tuples`)
+	flags.Bool("check-tracker-enabled", defaultConfig.CheckTrackerEnabled, `enabled/disabled logging the number of hits on an edge`)
 
 	// NOTE: if you add a new flag here, update the function below, too
 

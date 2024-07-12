@@ -45,7 +45,7 @@ func TestIntegrationTracker(t *testing.T) {
 	trackChecker.SetDelegate(localChecker)
 	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
-	t.Run("tracker_delegates_request", func(t *testing.T) {
+	t.Run("tracker_integrates_with_cycle_and_local_checker", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 

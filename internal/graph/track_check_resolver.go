@@ -21,15 +21,26 @@ import (
 const (
 	trackerLogLines    = 10
 	trackerLogBurst    = 15
-	trackerLogInterval = time.Second
+	trackerLogInterval = time.Duration(500) * time.Millisecond
 	trackerInterval    = time.Duration(60) * time.Second
 )
 
 // TrackerCheckResolverOpt defines an option pattern that can be used to change the behavior of TrackerCheckResolver.
 type TrackerCheckResolverOpt func(checkResolver *TrackerCheckResolver)
+
+type trackerKey struct {
+	store string
+	model string
+}
+
 type resolutionTree struct {
 	tm   time.Time
 	hits *atomic.Uint64
+}
+
+// Expired check the current tuple entry expiration.
+func (r *resolutionTree) expired() bool {
+	return time.Since(r.tm) > trackerInterval
 }
 
 type TrackerCheckResolver struct {
@@ -55,11 +66,6 @@ func WithTrackerContext(ctx context.Context) TrackerCheckResolverOpt {
 	}
 }
 
-// Expired check the current tuple entry expiration.
-func (r *resolutionTree) expired() bool {
-	return time.Since(r.tm) > trackerInterval
-}
-
 // NewTrackCheckResolver creates an instance tracker Resolver.
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
 	t := &TrackerCheckResolver{
@@ -79,7 +85,7 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 // LogExecutionPaths reports the model and tuple path.
 func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 	t.nodes.Range(func(k, v any) bool {
-		modelid := k.(string)
+		key := k.(trackerKey)
 		paths, _ := v.(*sync.Map)
 		paths.Range(func(k, v any) bool {
 			tree, _ := v.(*resolutionTree)
@@ -87,7 +93,8 @@ func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 			if tree.expired() || flush {
 				if t.limiter.Allow() {
 					t.logger.Info("execution path hits",
-						zap.String("model", modelid),
+						zap.String("store", key.store),
+						zap.String("model", key.model),
 						zap.String("path", path),
 						zap.Uint64("hits", tree.hits.Load()))
 					paths.Delete(path)
@@ -141,12 +148,12 @@ func (t *TrackerCheckResolver) getTK(tk *openfgav1.TupleKey) string {
 
 // LoadModel populate model id for individual tuple paths.
 func (t *TrackerCheckResolver) loadModel(r *ResolveCheckRequest) (value any, ok bool) {
-	model := r.GetAuthorizationModelID()
-	value, ok = t.nodes.Load(model)
+	key := trackerKey{store: r.GetStoreID(), model: r.GetAuthorizationModelID()}
+	value, ok = t.nodes.Load(key)
 	if !ok {
 		value = &sync.Map{}
 		value.(*sync.Map).Store(t.getTK(r.GetTupleKey()), &resolutionTree{tm: time.Now(), hits: &atomic.Uint64{}})
-		t.nodes.Store(model, value)
+		t.nodes.Store(key, value)
 	}
 	return value, ok
 }

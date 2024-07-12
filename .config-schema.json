@@ -124,7 +124,7 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "Enable/disable tracking tuples.",
+                    "description": "Enable/disable logging the number of hits on an edge .",
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
