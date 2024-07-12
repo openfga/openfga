@@ -134,7 +134,7 @@ func (t *TrackerCheckResolver) userType(userKey string) string {
 	return string(tuple.GetUserTypeFromUser(userKey))
 }
 
-// GetTK returns formatted tuple suitable insertion into list.
+// GetTK returns formatted tuple suitable insertion into list. For example: a tuple such as doc:1#viewer@user:maria will be converted to ....
 func (t *TrackerCheckResolver) getTK(tk *openfgav1.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()))
 }
