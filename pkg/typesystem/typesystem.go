@@ -165,6 +165,8 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
+	connectedTypes TypesystemConnectedTypes
+
 	modelID       string
 	schemaVersion string
 }
@@ -216,6 +218,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		relations:       relations,
 		conditions:      uncompiledConditions,
 		ttuRelations:    ttuRelations,
+		connectedTypes:  make(TypesystemConnectedTypes),
 	}
 }
 
@@ -411,33 +414,19 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	return false, nil
 }
 
-// TTUResolvesExclusivelyToDirectlyAssignable returns whether the computedRelation of object's tupleRelation is directly assignable.
-func (t *TypeSystem) TTUResolvesExclusivelyToDirectlyAssignable(objectType, tuplesetRelation, computedRelation string) (bool, error) {
-	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
-	if err != nil {
-		return false, err
-	}
-	if !directlyAssignable {
-		return false, nil
-	}
-	var relationUndefinedError *RelationUndefinedError
-	for _, tuplesetRelationType := range tuplesetRelationTypes {
-		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
-		if err != nil {
-			// in the case of errors due to relation undefined, we can ignore the error because it is possible
-			// that some parents do not have the relation defined.
-			if errors.As(err, &relationUndefinedError) {
-				continue
-			}
+// TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
+func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType string) bool {
+	terminalRelations := t.GetTerminalRelationsForTTUFastPath(objectType, computedRelation, userType)
 
-			// otherwise, we do not know what the error is.  It is better to return error at this point.
-			return false, err
-		}
-		if !childDirectlyAssignable {
-			return false, nil
-		}
-	}
-	return true, nil
+	can := len(terminalRelations) > 0
+
+	return can
+}
+
+// TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
+func (t *TypeSystem) GetTerminalRelationsForTTUFastPath(objectType, computedRelation, userType string) []string {
+	terminalRelations := t.connectedTypes[objectType][computedRelation][userType]
+	return terminalRelations
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
@@ -850,6 +839,7 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 			if err != nil {
 				return nil, err
 			}
+			t.AssignTerminalTypes(typeName, relationName)
 		}
 	}
 
