@@ -297,20 +297,8 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 		cachedChecker,
 	)
 
-	// First run a check with HIGHER_CONSISTENCY that will evaluate against the known tuples
+	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
 	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
-		StoreId:     storeID,
-		Type:        "folder",
-		Relation:    "viewer",
-		User:        "user:jon",
-		Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-	})
-
-	require.NoError(t, err)
-	require.Len(t, resp.Objects, 3)
-
-	// Now run a check with MINIMIZE_LATENCY that will use the cache entry we added
-	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:     storeID,
 		Type:        "folder",
 		Relation:    "viewer",
@@ -321,13 +309,25 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Objects, 2)
 
-	// And finally run a check with HIGHER_CONSISTENCY that should still return 3 objects
+	// Now run a check with HIGHER_CONSISTENCY that will evaluate against the known tuples and return 3 tuples
 	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:     storeID,
 		Type:        "folder",
 		Relation:    "viewer",
 		User:        "user:jon",
 		Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 3)
+
+	// Rerun check with MINIMIZE_LATENCY to ensure the cache was updated with the tuple we retrieved during the previous call
+	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 	})
 
 	require.NoError(t, err)
