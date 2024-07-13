@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	trackerLogLines    = 10
-	trackerLogBurst    = 15
+	trackerLogLines    = 15
+	trackerLogBurst    = 12
 	trackerLogInterval = time.Duration(500) * time.Millisecond
 	trackerInterval    = time.Duration(60) * time.Second
 )
@@ -33,13 +33,13 @@ type trackerKey struct {
 	model string
 }
 
-type resolutionTree struct {
+type resolutionNode struct {
 	tm   time.Time
 	hits *atomic.Uint64
 }
 
 // Expired check the current tuple entry expiration.
-func (r *resolutionTree) expired() bool {
+func (r *resolutionNode) expired() bool {
 	return time.Since(r.tm) > trackerInterval
 }
 
@@ -69,7 +69,7 @@ func WithTrackerContext(ctx context.Context) TrackerCheckResolverOpt {
 // NewTrackCheckResolver creates an instance tracker Resolver.
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
 	t := &TrackerCheckResolver{
-		limiter: rate.NewLimiter(rate.Limit(trackerLogLines/trackerLogInterval), trackerLogBurst),
+		limiter: rate.NewLimiter(rate.Every(trackerLogInterval)/2, trackerLogLines),
 		ticker:  time.NewTicker(trackerInterval),
 	}
 
@@ -78,27 +78,44 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 	}
 
 	t.delegate = t
-	t.launchFlush()
+
+	if t.validate() {
+		t.launchFlush()
+	}
+
 	return t
+}
+
+// Validate options.
+func (t *TrackerCheckResolver) validate() bool {
+	if t.ctx == nil {
+		return false
+	}
+
+	if t.logger == nil {
+		return false
+	}
+	return true
 }
 
 // LogExecutionPaths reports the model and tuple path.
 func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 	t.nodes.Range(func(k, v any) bool {
-		key := k.(trackerKey)
-		paths, _ := v.(*sync.Map)
+		paths := v.(*sync.Map)
+		storeModel := k.(trackerKey)
 		paths.Range(func(k, v any) bool {
-			tree, _ := v.(*resolutionTree)
 			path := k.(string)
+			tree := v.(*resolutionNode)
 			if tree.expired() || flush {
-				if t.limiter.Allow() {
-					t.logger.Info("execution path hits",
-						zap.String("store", key.store),
-						zap.String("model", key.model),
-						zap.String("path", path),
-						zap.Uint64("hits", tree.hits.Load()))
-					paths.Delete(path)
+				if !t.limiter.Allow() {
+					return false
 				}
+				t.logger.Info("execution path hits",
+					zap.String("store", storeModel.store),
+					zap.String("model", storeModel.model),
+					zap.String("path", path),
+					zap.Uint64("hits", tree.hits.Load()))
+				paths.Delete(path)
 			}
 			return true
 		})
@@ -152,7 +169,7 @@ func (t *TrackerCheckResolver) loadModel(r *ResolveCheckRequest) (value any, ok 
 	value, ok = t.nodes.Load(key)
 	if !ok {
 		value = &sync.Map{}
-		value.(*sync.Map).Store(t.getTK(r.GetTupleKey()), &resolutionTree{tm: time.Now(), hits: &atomic.Uint64{}})
+		value.(*sync.Map).Store(t.getTK(r.GetTupleKey()), &resolutionNode{tm: time.Now(), hits: &atomic.Uint64{}})
 		t.nodes.Store(key, value)
 	}
 	return value, ok
@@ -162,7 +179,7 @@ func (t *TrackerCheckResolver) loadModel(r *ResolveCheckRequest) (value any, ok 
 func (t *TrackerCheckResolver) loadPath(value any, path string) {
 	paths, _ := value.(*sync.Map)
 	if _, ok := paths.Load(path); !ok {
-		paths.Store(path, &resolutionTree{tm: time.Now(), hits: &atomic.Uint64{}})
+		paths.Store(path, &resolutionNode{tm: time.Now(), hits: &atomic.Uint64{}})
 	}
 }
 
@@ -170,7 +187,7 @@ func (t *TrackerCheckResolver) loadPath(value any, path string) {
 func (t *TrackerCheckResolver) incrementPath(paths *sync.Map, path string) {
 	value, ok := paths.Load(path)
 	if ok {
-		value.(*resolutionTree).hits.Add(1)
+		value.(*resolutionNode).hits.Add(1)
 	}
 }
 

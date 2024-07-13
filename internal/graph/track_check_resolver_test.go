@@ -127,10 +127,10 @@ func TestIntegrationTracker(t *testing.T) {
 	})
 
 	t.Run("traacker_expires_paths", func(t *testing.T) {
-		r := resolutionTree{tm: time.Now().Add(-trackerInterval)}
+		r := resolutionNode{tm: time.Now().Add(-trackerInterval)}
 		require.True(t, r.expired())
 
-		r = resolutionTree{tm: time.Now().Add(trackerInterval)}
+		r = resolutionNode{tm: time.Now().Add(trackerInterval)}
 		require.False(t, r.expired())
 	})
 
@@ -139,7 +139,7 @@ func TestIntegrationTracker(t *testing.T) {
 		sm := &sync.Map{}
 		sm.Store(
 			path,
-			&resolutionTree{
+			&resolutionNode{
 				tm:   time.Now().Add(-trackerInterval),
 				hits: &atomic.Uint64{},
 			},
@@ -147,6 +147,37 @@ func TestIntegrationTracker(t *testing.T) {
 
 		trackChecker.nodes.Store(trackerKey{store: ulid.Make().String(), model: ulid.Make().String()}, sm)
 		trackChecker.logExecutionPaths(false)
+
+		_, ok := sm.Load(path)
+		require.False(t, ok)
+	})
+
+	t.Run("tracker_success_launch_flush", func(t *testing.T) {
+		wg := sync.WaitGroup{}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(time.Duration(10) * time.Millisecond)
+			cancel()
+		}()
+
+		path := "group:1#member@user"
+		sm := &sync.Map{}
+		sm.Store(
+			path,
+			&resolutionNode{
+				tm:   time.Now().Add(-trackerInterval),
+				hits: &atomic.Uint64{},
+			},
+		)
+
+		trackChecker.nodes.Store(trackerKey{store: ulid.Make().String(), model: ulid.Make().String()}, sm)
+
+		trackChecker.ticker.Reset(time.Duration(2) * time.Millisecond)
+		trackChecker.launchFlush()
+
+		wg.Wait()
 
 		_, ok := sm.Load(path)
 		require.False(t, ok)

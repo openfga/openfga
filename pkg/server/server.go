@@ -516,11 +516,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	if s.checkTrackerEnabled {
-		trackChecker := graph.NewTrackCheckResolver(
-			graph.WithTrackerContext(s.ctx),
-			graph.WithTrackerLogger(s.logger))
+	trackChecker := graph.NewTrackCheckResolver(
+		graph.WithTrackerContext(s.ctx),
+		graph.WithTrackerLogger(s.logger))
 
+	if s.checkTrackerEnabled {
 		cycleDetectionCheckResolver.SetDelegate(trackChecker)
 		trackChecker.SetDelegate(localChecker)
 		localChecker.SetDelegate(cycleDetectionCheckResolver)
@@ -541,8 +541,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 		s.cachedCheckResolver = cachedCheckResolver
 
-		cachedCheckResolver.SetDelegate(localChecker)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		if s.checkTrackerEnabled {
+			cycleDetectionCheckResolver.SetDelegate(trackChecker)
+			trackChecker.SetDelegate(cachedCheckResolver)
+			cachedCheckResolver.SetDelegate(localChecker)
+			localChecker.SetDelegate(cycleDetectionCheckResolver)
+		} else {
+			cachedCheckResolver.SetDelegate(localChecker)
+			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
+		}
 	}
 
 	if s.checkDispatchThrottlingEnabled {
