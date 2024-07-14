@@ -107,15 +107,14 @@ func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 			path := k.(string)
 			tree := v.(*resolutionNode)
 			if tree.expired() || flush {
-				if !t.limiter.Allow() {
-					return false
+				if t.limiter.Allow() {
+					t.logger.Info("execution path hits",
+						zap.String("store", storeModel.store),
+						zap.String("model", storeModel.model),
+						zap.String("path", path),
+						zap.Uint64("hits", tree.hits.Load()))
+					paths.Delete(path)
 				}
-				t.logger.Info("execution path hits",
-					zap.String("store", storeModel.store),
-					zap.String("model", storeModel.model),
-					zap.String("path", path),
-					zap.Uint64("hits", tree.hits.Load()))
-				paths.Delete(path)
 			}
 			return true
 		})

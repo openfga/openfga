@@ -153,13 +153,15 @@ func TestIntegrationTracker(t *testing.T) {
 	})
 
 	t.Run("tracker_success_launch_flush", func(t *testing.T) {
+		require.False(t, NewTrackCheckResolver(WithTrackerContext(ctx)).validate())
+		require.False(t, NewTrackCheckResolver().validate())
+
 		wg := sync.WaitGroup{}
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			time.Sleep(time.Duration(10) * time.Millisecond)
-			cancel()
 		}()
 
 		path := "group:1#member@user"
@@ -181,5 +183,30 @@ func TestIntegrationTracker(t *testing.T) {
 
 		_, ok := sm.Load(path)
 		require.False(t, ok)
+	})
+
+	t.Run("tracker_success_loadModel_addPath", func(t *testing.T) {
+		require.False(t, NewTrackCheckResolver(WithTrackerContext(ctx)).validate())
+		require.False(t, NewTrackCheckResolver().validate())
+
+		r := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:abc", "viewer", "user:somebody"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+		value, ok := trackChecker.loadModel(r)
+		require.NotNil(t, value)
+		require.False(t, ok)
+
+		path := trackChecker.getTK(r.GetTupleKey())
+		trackChecker.loadPath(value, path)
+		trackChecker.addPathHits(r)
+
+		paths, ok := value.(*sync.Map)
+		require.True(t, ok)
+
+		_, ok = paths.Load(path)
+		require.True(t, ok)
 	})
 }
