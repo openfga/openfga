@@ -5511,6 +5511,79 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+  - name: simple_userset_child_wildcard_only
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type user2
+          type group
+            relations
+              define member: [user:*, user2:*]
+          type folder
+            relations
+              define viewer: [group#member]
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
   - name: simple_userset_child_wildcard
     stages:
       - model: |
@@ -5602,6 +5675,80 @@ tests:
               relation: viewer
             expectation:
               - user:maria
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
+  - name: simple_ttu_child_wildcard_only
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type user2
+          type group
+            relations
+              define member: [user:*, user2:*]
+          type folder
+            relations
+              define viewer: member from owner
+              define owner: [group]
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: group:fga
+            relation: owner
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:*
           - request:
               filters:
                 - user2
@@ -8408,3 +8555,175 @@ tests:
               relation: a
             expectation:
             - doc:1#b
+  - name: ttu_mix_with_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, user:*]
+          type folder
+            relations
+              define viewer: [user,group#member]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:1
+          - user: user:anne
+            relation: member
+            object: group:2
+          - user: user:bob
+            relation: member
+            object: group:2
+          - user: user:charlie
+            relation: member
+            object: group:1
+          - user: group:1#member
+            relation: viewer
+            object: folder:a
+          - user: group:2#member
+            relation: viewer
+            object: folder:a
+          - user: user:daemon
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: user:elle
+            relation: member
+            object: group:3
+          - user: user:*
+            relation: member
+            object: group:public
+          - user: group:public#member
+            relation: viewer
+            object: folder:public
+          - user: folder:public
+            relation: parent
+            object: document:public
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:b
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:a
+            expectation: false
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:public
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:daemon
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:elle
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
