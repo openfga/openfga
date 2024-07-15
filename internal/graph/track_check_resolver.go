@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,10 +19,15 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+var (
+	trackerInterval time.Duration
+)
+
 const (
 	trackerLogLines    = 15
+	trackerMaxInterval = 60
+	trackerMinInterval = 30
 	trackerLogInterval = time.Duration(500) * time.Millisecond
-	trackerInterval    = time.Duration(30) * time.Second
 )
 
 // TrackerCheckResolverOpt defines an option pattern that can be used to change the behavior of TrackerCheckResolver.
@@ -70,7 +76,7 @@ func WithTrackerContext(ctx context.Context) TrackerCheckResolverOpt {
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
 	t := &TrackerCheckResolver{
 		limiter: rate.NewLimiter(rate.Every(trackerLogInterval), trackerLogLines),
-		ticker:  time.NewTicker(trackerInterval),
+		ticker:  time.NewTicker(randomLogging()),
 	}
 
 	for _, opt := range opts {
@@ -84,6 +90,13 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 	}
 
 	return t
+}
+
+// RandomLogging allows multiple processes to log at different interval.
+func randomLogging() time.Duration {
+	val := rand.Intn(trackerMaxInterval-trackerMinInterval) + trackerMinInterval
+	trackerInterval = time.Duration(val) * time.Second
+	return trackerInterval
 }
 
 // Validate options.
