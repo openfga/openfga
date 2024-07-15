@@ -198,7 +198,7 @@ func TestIntegrationTracker(t *testing.T) {
 		require.False(t, ok)
 	})
 
-	t.Run("loadPath_and_logExecutionPaths_limiter_disallow", func(t *testing.T) {
+	t.Run("success_loadModel_and_loadPaths", func(t *testing.T) {
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -209,7 +209,7 @@ func TestIntegrationTracker(t *testing.T) {
 		require.NotNil(t, value)
 		require.False(t, ok)
 
-		path := trackChecker.getTK(r.GetTupleKey())
+		path := trackChecker.getTK(tuple.NewTupleKey("folder:test", "reader", "user:somebody"))
 		trackChecker.loadPath(value, path)
 		trackChecker.addPathHits(r)
 
@@ -222,14 +222,35 @@ func TestIntegrationTracker(t *testing.T) {
 		require.True(t, ok)
 		_, ok = paths.Load(path)
 		require.True(t, ok)
+	})
+
+	t.Run("success_limiter_disallow", func(t *testing.T) {
+		r := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:okta", "viewer", "user:alice"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+		value, ok := trackChecker.loadModel(r)
+		require.NotNil(t, value)
+		require.False(t, ok)
+
+		path := trackChecker.getTK(r.GetTupleKey())
+		paths, _ := value.(*sync.Map)
+
+		val, _ := paths.Load(path)
+
+		rn := val.(*resolutionNode)
+		rn.tm = time.Now().Add(-trackerInterval)
+		paths.Store(path, rn)
 
 		oldBurst := trackChecker.limiter.Burst()
 		trackChecker.limiter.SetBurst(0)
 
-		trackChecker.logExecutionPaths(true)
+		trackChecker.logExecutionPaths(false)
 		trackChecker.limiter.SetBurst(oldBurst)
 
 		_, ok = paths.Load(path)
-		require.False(t, ok)
+		require.True(t, ok)
 	})
 }
