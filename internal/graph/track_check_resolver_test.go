@@ -115,7 +115,15 @@ func TestIntegrationTracker(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("tracker_user_type_and_expiration", func(t *testing.T) {
+	t.Run("tracker_user_type_validate_and_expiration", func(t *testing.T) {
+		require.True(t, trackChecker.validate())
+
+		tc := &TrackerCheckResolver{}
+		require.False(t, tc.validate())
+
+		tc = &TrackerCheckResolver{ctx: context.Background()}
+		require.False(t, tc.validate())
+
 		userType := trackChecker.userType("group:1#member")
 		require.Equal(t, "userset", userType)
 
@@ -190,7 +198,7 @@ func TestIntegrationTracker(t *testing.T) {
 		require.False(t, ok)
 	})
 
-	t.Run("logExecutionPaths_limiter_disallow", func(t *testing.T) {
+	t.Run("loadPath_and_logExecutionPaths_limiter_disallow", func(t *testing.T) {
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
