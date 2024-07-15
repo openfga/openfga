@@ -6,10 +6,16 @@ import "github.com/emirpasic/gods/trees/redblacktree"
 // in a way that also provides fast sorted access.
 type SortedSet interface {
 	Size() int
+
+	// Min returns an empty string if the set is empty.
 	Min() string
+
+	// Max returns an empty string if the set is empty.
 	Max() string
-	Add(key string)
-	Exists(key string) bool
+	Add(value string)
+	Exists(value string) bool
+
+	// Values returns the elements in the set in sorted order (ascending).
 	Values() []string
 }
 
@@ -27,19 +33,25 @@ func NewSortedSet() *RedBlackTreeSet {
 }
 
 func (r *RedBlackTreeSet) Min() string {
-	return r.inner.Left().Value.(string)
+	if r.Size() == 0 {
+		return ""
+	}
+	return r.inner.Left().Key.(string)
 }
 
 func (r *RedBlackTreeSet) Max() string {
-	return r.inner.Right().Value.(string)
+	if r.Size() == 0 {
+		return ""
+	}
+	return r.inner.Right().Key.(string)
 }
 
-func (r *RedBlackTreeSet) Add(key string) {
-	r.inner.Put(key, nil)
+func (r *RedBlackTreeSet) Add(value string) {
+	r.inner.Put(value, nil)
 }
 
-func (r *RedBlackTreeSet) Exists(key string) bool {
-	_, ok := r.inner.Get(key)
+func (r *RedBlackTreeSet) Exists(value string) bool {
+	_, ok := r.inner.Get(value)
 	return ok
 }
 

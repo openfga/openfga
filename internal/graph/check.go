@@ -629,6 +629,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
+
 		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
 		if !ok {
 			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
