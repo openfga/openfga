@@ -146,6 +146,7 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	ctx                          context.Context
 	checkTrackerEnabled          bool
+	trackerCheckResolver         *graph.TrackerCheckResolver
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -516,18 +517,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 	)
 
-	trackChecker := graph.NewTrackCheckResolver(
-		graph.WithTrackerContext(s.ctx),
-		graph.WithTrackerLogger(s.logger))
-
-	if s.checkTrackerEnabled {
-		cycleDetectionCheckResolver.SetDelegate(trackChecker)
-		trackChecker.SetDelegate(localChecker)
-		localChecker.SetDelegate(cycleDetectionCheckResolver)
-	} else {
-		cycleDetectionCheckResolver.SetDelegate(localChecker)
-		localChecker.SetDelegate(cycleDetectionCheckResolver)
-	}
+	cycleDetectionCheckResolver.SetDelegate(localChecker)
+	localChecker.SetDelegate(cycleDetectionCheckResolver)
 
 	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
@@ -541,15 +532,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 		s.cachedCheckResolver = cachedCheckResolver
 
-		if s.checkTrackerEnabled {
-			cycleDetectionCheckResolver.SetDelegate(trackChecker)
-			trackChecker.SetDelegate(cachedCheckResolver)
-			cachedCheckResolver.SetDelegate(localChecker)
-			localChecker.SetDelegate(cycleDetectionCheckResolver)
-		} else {
-			cachedCheckResolver.SetDelegate(localChecker)
-			cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
-		}
+		cachedCheckResolver.SetDelegate(localChecker)
+		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
 	}
 
 	if s.checkDispatchThrottlingEnabled {
@@ -576,6 +560,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		} else {
 			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
 		}
+	}
+
+	if s.checkTrackerEnabled {
+		trackerCheckResolver := graph.NewTrackCheckResolver(
+			graph.WithTrackerContext(s.ctx),
+			graph.WithTrackerLogger(s.logger))
+
+		s.trackerCheckResolver = trackerCheckResolver
+		trackerCheckResolver.SetDelegate(cycleDetectionCheckResolver.GetDelegate())
+		cycleDetectionCheckResolver.SetDelegate(trackerCheckResolver)
 	}
 
 	if s.listObjectsDispatchThrottlingEnabled {

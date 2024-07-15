@@ -20,9 +20,8 @@ import (
 
 const (
 	trackerLogLines    = 15
-	trackerLogBurst    = 12
 	trackerLogInterval = time.Duration(500) * time.Millisecond
-	trackerInterval    = time.Duration(60) * time.Second
+	trackerInterval    = time.Duration(30) * time.Second
 )
 
 // TrackerCheckResolverOpt defines an option pattern that can be used to change the behavior of TrackerCheckResolver.
@@ -48,6 +47,7 @@ type TrackerCheckResolver struct {
 	ticker   *time.Ticker
 	logger   logger.Logger
 	limiter  *rate.Limiter
+	running  bool
 	ctx      context.Context
 	nodes    sync.Map
 }
@@ -69,7 +69,7 @@ func WithTrackerContext(ctx context.Context) TrackerCheckResolverOpt {
 // NewTrackCheckResolver creates an instance tracker Resolver.
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
 	t := &TrackerCheckResolver{
-		limiter: rate.NewLimiter(rate.Every(trackerLogInterval)/2, trackerLogLines),
+		limiter: rate.NewLimiter(rate.Every(trackerLogInterval), trackerLogLines),
 		ticker:  time.NewTicker(trackerInterval),
 	}
 
@@ -79,7 +79,7 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 
 	t.delegate = t
 
-	if t.validate() {
+	if t.running = t.validate(); t.running {
 		t.launchFlush()
 	}
 
@@ -107,14 +107,16 @@ func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 			path := k.(string)
 			tree := v.(*resolutionNode)
 			if tree.expired() || flush {
-				if t.limiter.Allow() {
-					t.logger.Info("execution path hits",
-						zap.String("store", storeModel.store),
-						zap.String("model", storeModel.model),
-						zap.String("path", path),
-						zap.Uint64("hits", tree.hits.Load()))
-					paths.Delete(path)
+				if !t.limiter.Allow() && !flush {
+					return false
 				}
+				t.logger.Info("execution path hits",
+					zap.String("store", storeModel.store),
+					zap.String("model", storeModel.model),
+					zap.String("path", path),
+					zap.Uint64("hits", tree.hits.Load()))
+
+				paths.Delete(path)
 			}
 			return true
 		})
@@ -223,10 +225,8 @@ func (t *TrackerCheckResolver) ResolveCheck(
 		Context:              req.GetContext(),
 	})
 
-	if err == nil || errors.Is(err, context.Canceled) {
-		if resp != nil && resp.Allowed {
-			t.addPathHits(req)
-		}
+	if t.running && (err == nil || errors.Is(err, context.Canceled)) {
+		t.addPathHits(req)
 	}
 
 	return resp, err

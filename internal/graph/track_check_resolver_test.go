@@ -115,7 +115,7 @@ func TestIntegrationTracker(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("tracker_user_type", func(t *testing.T) {
+	t.Run("tracker_user_type_and_expiration", func(t *testing.T) {
 		userType := trackChecker.userType("group:1#member")
 		require.Equal(t, "userset", userType)
 
@@ -124,9 +124,7 @@ func TestIntegrationTracker(t *testing.T) {
 
 		userType = trackChecker.userType("user:*")
 		require.Equal(t, "userset", userType)
-	})
 
-	t.Run("traacker_expires_paths", func(t *testing.T) {
 		r := resolutionNode{tm: time.Now().Add(-trackerInterval)}
 		require.True(t, r.expired())
 
@@ -135,6 +133,16 @@ func TestIntegrationTracker(t *testing.T) {
 	})
 
 	t.Run("tracker_prints_and_delete_path", func(t *testing.T) {
+		r := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:abc", "viewer", "user:somebody"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+		value, ok := trackChecker.loadModel(r)
+		require.NotNil(t, value)
+		require.False(t, ok)
+
 		path := "group:1#member@user"
 		sm := &sync.Map{}
 		sm.Store(
@@ -148,14 +156,11 @@ func TestIntegrationTracker(t *testing.T) {
 		trackChecker.nodes.Store(trackerKey{store: ulid.Make().String(), model: ulid.Make().String()}, sm)
 		trackChecker.logExecutionPaths(false)
 
-		_, ok := sm.Load(path)
+		_, ok = sm.Load(path)
 		require.False(t, ok)
 	})
 
 	t.Run("tracker_success_launch_flush", func(t *testing.T) {
-		require.False(t, NewTrackCheckResolver(WithTrackerContext(ctx)).validate())
-		require.False(t, NewTrackCheckResolver().validate())
-
 		wg := sync.WaitGroup{}
 
 		wg.Add(1)
@@ -185,10 +190,7 @@ func TestIntegrationTracker(t *testing.T) {
 		require.False(t, ok)
 	})
 
-	t.Run("tracker_success_loadModel_addPath", func(t *testing.T) {
-		require.False(t, NewTrackCheckResolver(WithTrackerContext(ctx)).validate())
-		require.False(t, NewTrackCheckResolver().validate())
-
+	t.Run("logExecutionPaths_limiter_disallow", func(t *testing.T) {
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -205,8 +207,21 @@ func TestIntegrationTracker(t *testing.T) {
 
 		paths, ok := value.(*sync.Map)
 		require.True(t, ok)
-
 		_, ok = paths.Load(path)
 		require.True(t, ok)
+
+		paths, ok = value.(*sync.Map)
+		require.True(t, ok)
+		_, ok = paths.Load(path)
+		require.True(t, ok)
+
+		oldBurst := trackChecker.limiter.Burst()
+		trackChecker.limiter.SetBurst(0)
+
+		trackChecker.logExecutionPaths(true)
+		trackChecker.limiter.SetBurst(oldBurst)
+
+		_, ok = paths.Load(path)
+		require.False(t, ok)
 	})
 }
