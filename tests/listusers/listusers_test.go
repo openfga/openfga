@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -46,7 +45,6 @@ func testRunAll(t *testing.T, engine string) {
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	cfg.ListUsersDeadline = 6 * time.Second
 
 	tests.StartServer(t, cfg)
 

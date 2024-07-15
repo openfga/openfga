@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -495,10 +494,8 @@ func (s *MemoryBackend) ReadStartingWithUser(
 			continue
 		}
 
-		if len(filter.ObjectIDs) > 0 {
-			if !slices.Contains(filter.ObjectIDs, t.ObjectID) {
-				continue
-			}
+		if filter.ObjectIDs != nil && !filter.ObjectIDs.Exists(t.ObjectID) {
+			continue
 		}
 
 		for _, userFilter := range filter.UserFilter {

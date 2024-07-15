@@ -12,6 +12,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/docker/docker v26.0.2+incompatible
 	github.com/docker/go-connections v0.5.0
+	github.com/emirpasic/gods v1.18.1
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/cel-go v0.20.1
