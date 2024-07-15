@@ -2839,12 +2839,13 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys := New(model)
 
-			ok, err := typesys.IsPubliclyAssignable(test.target, test.objectType)
+			actualResult, err := typesys.IsPubliclyAssignable(test.target, test.objectType)
 			if test.expectedError != "" {
+				require.False(t, actualResult)
 				require.ErrorContains(t, err, test.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, ok, test.result)
+				require.Equal(t, test.result, actualResult)
 			}
 		})
 	}
