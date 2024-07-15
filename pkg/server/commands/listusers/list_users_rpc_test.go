@@ -3515,6 +3515,29 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 		expectMinResults    uint32
 		expectError         string
 	}{
+		`infinite_deadline_does_not_block_return_of_errors`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type repo
+					relations
+						define admin: [user with condX]
+				condition condX(x: int) {
+					x > 0
+				}`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("repo:target", "admin", "user:1", "condX", nil),
+			},
+			inputRequest: &openfgav1.ListUsersRequest{
+				Object:      &openfgav1.Object{Type: "repo", Id: "target"},
+				Relation:    "admin",
+				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			},
+			inputConfigDeadline: 0 * time.Millisecond, // infinite
+			inputReadDelay:      50 * time.Millisecond,
+			expectError:         "context is missing parameters '[x]'",
+		},
 		`deadline_very_small_returns_nothing`: {
 			inputModel: `
 				model
