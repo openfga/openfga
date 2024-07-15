@@ -94,7 +94,7 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 
 // RandomLogging allows multiple processes to log at different interval.
 func randomLogging() time.Duration {
-	val := rand.Intn(trackerMaxInterval-trackerMinInterval +1) + trackerMinInterval
+	val := rand.Intn(trackerMaxInterval-trackerMinInterval+1) + trackerMinInterval
 	trackerInterval = time.Duration(val) * time.Second
 	return trackerInterval
 }
