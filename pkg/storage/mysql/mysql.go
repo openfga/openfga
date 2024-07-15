@@ -347,8 +347,8 @@ func (m *MySQL) ReadStartingWithUser(
 			"_user":       targetUsersArg,
 		})
 
-	if len(opts.ObjectIDs) > 0 {
-		builder = builder.Where(sq.Eq{"object_id": opts.ObjectIDs})
+	if opts.ObjectIDs != nil && opts.ObjectIDs.Size() > 0 {
+		builder = builder.Where(sq.Eq{"object_id": opts.ObjectIDs.Values()})
 	}
 
 	rows, err := builder.QueryContext(ctx)
