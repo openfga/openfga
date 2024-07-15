@@ -1137,6 +1137,24 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		},
 	}
 
+	t.Run("accepts_nil_object_ids", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		_, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{
+					{
+						Object: "user:maria",
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+	})
+
 	t.Run("returns_results_with_two_user_filters", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
@@ -1250,6 +1268,10 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(t, err)
+		objectIDs := storage.NewSortedSet()
+		for _, v := range []string{"doc1", "doc2", "doc3"} {
+			objectIDs.Add(v)
+		}
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
@@ -1262,7 +1284,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 						Object: "user:jon",
 					},
 				},
-				ObjectIDs: []string{"doc1", "doc2", "doc3"},
+				ObjectIDs: objectIDs,
 			},
 		)
 		require.NoError(t, err)

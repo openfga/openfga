@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -430,7 +431,7 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, gomock.Any()).
-			Return(nil, context.DeadlineExceeded).
+			Return(nil, fmt.Errorf("internal error from storage")).
 			Times(1)
 
 		s := MustNewServerWithOpts(
