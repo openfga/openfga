@@ -178,8 +178,7 @@ func TestListUsersValidation(t *testing.T) {
 }
 
 func TestModelIdNotFound(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	req := &openfgav1.ListUsersRequest{
 		StoreId: ulid.Make().String(),
@@ -217,8 +216,7 @@ func TestModelIdNotFound(t *testing.T) {
 }
 
 func TestExperimentalListUsers(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	storeID := ulid.Make().String()
 
@@ -285,8 +283,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	store := ulid.Make().String()
 
