@@ -313,7 +313,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 
 // telemetryConfig returns the function that must be called to shut down tracing.
 // The context provided to this function should be error-free, or shut down will be incomplete.
-func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx context.Context) error {
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
@@ -333,12 +333,13 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx co
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		return func(ctx context.Context) error {
-			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
+		return func() error {
+			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
+			return errors.Join(tp.ForceFlush(context.Background()), tp.Shutdown(context.Background()))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	return func(ctx context.Context) error {
+	return func() error {
 		return nil
 	}
 }
@@ -841,10 +842,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	authenticator.Close()
 
-	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	if err := tracerProviderCloser(ctx); err != nil {
+	if err := tracerProviderCloser(); err != nil {
 		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
 	}
 
