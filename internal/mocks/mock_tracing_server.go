@@ -39,7 +39,7 @@ func NewMockTracingServer(t testing.TB, port int) *mockTracingServer {
 	go func() {
 		if err := mockServer.server.Serve(listener); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
-				t.Log("mock tracing server failed to serve: %v", err)
+				t.Log("mock tracing server failed to serve", err)
 			}
 		}
 	}()
