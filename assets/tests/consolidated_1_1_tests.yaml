@@ -5439,7 +5439,7 @@ tests:
               relation: viewer
               object: document:1
             expectation: true
-  - name: xx_ttu_and_computed_ttu
+  - name: ttu_and_computed_ttu
     stages:
       - model: |
           model
