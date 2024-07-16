@@ -606,6 +606,11 @@ func (s *Server) Close() {
 	if s.checkResolver != nil {
 		s.checkResolver.Close()
 	}
+
+	if s.trackerCheckResolver != nil {
+		s.trackerCheckResolver.Close()
+	}
+
 	s.datastore.Close()
 	s.typesystemResolverStop()
 }

@@ -144,7 +144,6 @@ func (t *TrackerCheckResolver) launchFlush() {
 			select {
 			case <-t.ctx.Done():
 				t.ticker.Stop()
-				t.logExecutionPaths(true)
 				return
 			case <-t.ticker.C:
 				t.logExecutionPaths(false)
@@ -165,7 +164,9 @@ func (t *TrackerCheckResolver) GetDelegate() CheckResolver {
 }
 
 // Close implements CheckResolver.
-func (*TrackerCheckResolver) Close() {}
+func (t *TrackerCheckResolver) Close() {
+	t.logExecutionPaths(true)
+}
 
 // UserType returns the associated tuple user type.
 func (t *TrackerCheckResolver) userType(userKey string) string {
