@@ -357,6 +357,10 @@ func (l *listUsersQuery) expand(
 
 	relation, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
+		var relationUndefinedError *typesystem.RelationUndefinedError
+		if errors.As(err, &relationUndefinedError) {
+			return expandResponse{}
+		}
 		return expandResponse{
 			err: err,
 		}
