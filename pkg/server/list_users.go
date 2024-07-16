@@ -109,7 +109,8 @@ func (s *Server) ListUsers(
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListUsersResponse{
-		Users: resp.GetUsers(),
+		Users:    resp.GetUsers(),
+		Excluded: resp.GetExcluded(),
 	}, nil
 }
 
