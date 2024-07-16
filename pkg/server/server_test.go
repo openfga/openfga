@@ -609,7 +609,6 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	const dispatchThreshold = 5
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
@@ -1087,6 +1086,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
