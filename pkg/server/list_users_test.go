@@ -284,7 +284,6 @@ func TestListUsers_ErrorCases(t *testing.T) {
 	})
 
 	ctx := context.Background()
-
 	store := ulid.Make().String()
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {

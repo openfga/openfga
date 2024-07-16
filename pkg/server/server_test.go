@@ -717,9 +717,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -904,9 +902,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -1091,9 +1087,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -1293,6 +1287,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	ctx := context.Background()
+
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
 		store := ulid.Make().String()
 
@@ -1393,9 +1388,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			goleak.IgnoreTopFunction("testing.(*B).doBench"),
 		)
 	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -1459,7 +1452,6 @@ func TestListObjects_ErrorCases(t *testing.T) {
 	})
 
 	ctx := context.Background()
-
 	store := ulid.Make().String()
 
 	mockController := gomock.NewController(t)
@@ -1596,9 +1588,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -1751,7 +1741,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.CheckDispatchThrottling.Enabled)
@@ -1991,9 +1980,7 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	storeID := ulid.Make().String()
 
 	mockController := gomock.NewController(t)
@@ -2037,8 +2024,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
 
 	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds))
+		s := MustNewServerWithOpts(WithDatastore(ds))
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
