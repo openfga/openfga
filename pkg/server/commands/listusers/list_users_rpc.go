@@ -197,13 +197,15 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]foundUser, 1000)
-	excludedUsersNum := 0
+	foundExcludeUsersUnique := make(map[tuple.UserString]struct{}, 1000)
 
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
 		for foundUser := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
-			excludedUsersNum += len(foundUser.excludedUsers)
+			for _, excludedUser := range foundUser.excludedUsers {
+				foundExcludeUsersUnique[tuple.UserProtoToString(excludedUser)] = struct{}{}
+			}
 
 			if l.maxResults > 0 {
 				if uint32(len(foundUsersUnique)) >= l.maxResults {
@@ -252,17 +254,16 @@ func (l *listUsersQuery) ListUsers(
 	cancelCtx()
 
 	foundUsers := make([]*openfgav1.User, 0, len(foundUsersUnique))
-	excludedUsers := make([]*openfgav1.User, 0, excludedUsersNum)
+	excludedUsers := make([]*openfgav1.User, 0, len(foundExcludeUsersUnique))
 	for foundUserKey, foundUser := range foundUsersUnique {
 		if foundUser.relationshipStatus == NoRelationship {
 			continue
 		}
 
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
-
-		for _, excludedUser := range foundUser.excludedUsers {
-			excludedUsers = append(excludedUsers, excludedUser)
-		}
+	}
+	for excludedUserKey := range foundExcludeUsersUnique {
+		excludedUsers = append(excludedUsers, tuple.StringToUserProto(excludedUserKey))
 	}
 
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -165,8 +166,21 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 						}
 
 						if assertion.ErrorCode == 0 {
+							users := []string{}
+							excluded := []string{}
+							for _, user := range assertion.Expectation {
+								if strings.HasPrefix(user, "(excluded)") {
+									excluded = append(excluded, strings.TrimPrefix(user, "(excluded)"))
+								} else {
+									users = append(users, user)
+								}
+							}
+
 							require.NoError(t, err, detailedInfo)
-							require.ElementsMatch(t, assertion.Expectation, listuserstest.FromUsersProto(resp.GetUsers()), detailedInfo)
+							require.ElementsMatch(t, users, listuserstest.FromUsersProto(resp.GetUsers()), detailedInfo)
+							if len(excluded) > 0 {
+								require.ElementsMatch(t, excluded, listuserstest.FromUsersProto(resp.GetExcluded()), detailedInfo)
+							}
 
 							// assert 2: each user in the response of ListUsers should return check -> true
 							for _, user := range resp.GetUsers() {
