@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
