@@ -4301,6 +4301,81 @@ tests:
               object: document:d
               relation: viewer
             expectation:
+  - name: ttu_some_parent_type_removed
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder1
+            relations
+              define viewer: [user]
+          type folder2
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
+        tuples:
+          - user: folder1:x
+            relation: parent
+            object: document:d
+          - user: user:anne
+            relation: viewer
+            object: folder1:x
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:d
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:d
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: viewer
+            expectation:
+              - user:anne
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder1
+          type folder2
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: viewer
+            expectation:
   - name: relations_not_defined_in_some_child_type_truthy
     stages:
       - model: |
@@ -9021,7 +9096,6 @@ tests:
             expectation:
               - user:anne
               - user:bob
-      # notice we are removing group2
       - model: |
           model
             schema 1.1
@@ -9034,6 +9108,7 @@ tests:
               define member: [user, user:*]
           type document
             relations
+              # notice we are removing group2
               define parent: [group1]
               define viewer: member from parent
         checkAssertions:
@@ -9128,7 +9203,6 @@ tests:
             expectation:
               - user:anne
               - user:bob
-      # notice we are removing group2
       - model: |
           model
             schema 1.1
@@ -9141,6 +9215,7 @@ tests:
               define member: [user, user:*]
           type document
             relations
+              # notice we are removing group2
               define viewer: [group1#member]
         checkAssertions:
           - tuple:
@@ -9232,13 +9307,13 @@ tests:
             expectation:
               - user:anne
               - user:*
-      # notice we are removing user:*
       - model: |
           model
             schema 1.1
           type user
           type group
             relations
+              # notice we are removing user:*
               define member: [user]
           type document
             relations
@@ -9297,17 +9372,18 @@ tests:
           - user: group:*
             relation: parent
             object: document:1
-      # Notice we have added viewer and removed group:* from parent
       - model: |
           model
             schema 1.1
           type user
           type group
             relations
+              # Notice we have removed group:* from parent
               define member: [user]
           type document
             relations
               define parent: [group]
+              # Notice we have added viewer
               define viewer: member from parent
         checkAssertions:
           - tuple:
