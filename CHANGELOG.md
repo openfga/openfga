@@ -18,6 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Performance improvements to userset subproblem resolutions in Check in certain scenarios [#1734](https://github.com/openfga/openfga/pull/1734)
 * Performance improvements to tuple-to-userset subproblem resolutions in Check in certain scenarios [#1735](https://github.com/openfga/openfga/pull/1735)
 * Warning when log level set to `none` [#1705](https://github.com/openfga/openfga/pull/1705) - thank you, @Siddhant-K-code!
+* Minor performance improvement for queries when model ID not specified [#1754](https://github.com/openfga/openfga/pull/1754)
 
 ### Fixed
 
