@@ -8,6 +8,28 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+
+## [1.5.6] - 2024-07-17
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.5...v1.5.6)
+
+### Added
+
+* Performance improvements to userset subproblem resolutions in Check in certain scenarios [#1734](https://github.com/openfga/openfga/pull/1734)
+* Performance improvements to tuple-to-userset subproblem resolutions in Check in certain scenarios [#1735](https://github.com/openfga/openfga/pull/1735)
+* Warning when log level set to `none` [#1705](https://github.com/openfga/openfga/pull/1705) - thank you, @Siddhant-K-code!
+* Minor performance improvement for queries when model ID not specified [#1754](https://github.com/openfga/openfga/pull/1754)
+
+### Fixed
+
+* Race condition in ListUsers which could erroneously swallow errors [#1755](https://github.com/openfga/openfga/pull/1755)
+* "relation is undefined" error in Check and ListUsers [#1767](https://github.com/openfga/openfga/pull/1767)
+* Request ID included with Streaming ListObjects responses [#1636](https://github.com/openfga/openfga/pull/1636)
+
+### Removed
+
+* ListUsers experimental flag (will continue to work if passed) [#1730](https://github.com/openfga/openfga/pull/1730)
+
 ## [1.5.5] - 2024-06-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.4...v1.5.5)
@@ -1057,7 +1079,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.6...HEAD
+[1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
 [1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5
 [1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
 [1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3
