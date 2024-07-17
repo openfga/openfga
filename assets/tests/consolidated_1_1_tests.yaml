@@ -9034,68 +9034,6 @@ tests:
               - user:*
               - user:anne
               - user:bob
-  - name: ttu_orphan_parent
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-          type group1
-            relations
-              define member: [user, user:*]
-          type group2
-            relations
-              define member: [user, user:*]
-          type document
-            relations
-              define parent: [group1, group2]
-              define viewer: member from parent
-        tuples:
-          - user: user:anne
-            relation: member
-            object: group1:1
-          - user: user:bob
-            relation: member
-            object: group2:1
-          - user: group2:1
-            relation: parent
-            object: document:1
-          - user: group1:1
-            relation: parent
-            object: document:1
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:1
-            expectation: true
-          - tuple:
-              user: user:bob
-              relation: viewer
-              object: document:1
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: document
-              relation: viewer
-            expectation:
-              - document:1
-          - request:
-              user: user:bob
-              type: document
-              relation: viewer
-            expectation:
-              - document:1
-        listUsersAssertions:
-          - request:
-              filters:
-                - user
-              object: document:1
-              relation: viewer
-            expectation:
-              - user:anne
-              - user:bob
       - model: |
           model
             schema 1.1
@@ -9118,10 +9056,100 @@ tests:
               object: document:1
             expectation: true
           - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
               user: user:bob
               relation: viewer
               object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:3
             expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:2
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:2
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:pub1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: user:anne
@@ -9129,11 +9157,32 @@ tests:
               relation: viewer
             expectation:
               - document:1
+              - document:2
+              - document:pub
+              - document:pub1
           - request:
               user: user:bob
               type: document
               relation: viewer
             expectation:
+              - document:1
+              - document:2
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            expectation:
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:dylan
+              type: document
+              relation: viewer
+            expectation:
+              - document:pub
+              - document:pub1
         listUsersAssertions:
           - request:
               filters:
@@ -9142,6 +9191,37 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:pub
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:pub1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:anne
+              - user:bob
   - name: userset_orphan_parent
     stages:
       - model: |
