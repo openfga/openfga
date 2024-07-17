@@ -253,4 +253,28 @@ func TestIntegrationTracker(t *testing.T) {
 		_, ok = paths.Load(path)
 		require.True(t, ok)
 	})
+	t.Run("tracker_records_hits_per_path", func(t *testing.T) {
+		r := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:99", "viewer", "user:somebody"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+		value, ok := trackChecker.loadModel(r)
+		require.NotNil(t, value)
+		require.False(t, ok)
+
+		paths, ok := value.(*sync.Map)
+		require.True(t, ok)
+
+		path := trackChecker.getTK(r.GetTupleKey())
+		trackChecker.incrementPath(paths, path)
+
+		value, ok = paths.Load(trackChecker.getTK(r.GetTupleKey()))
+		require.True(t, ok)
+
+		rn, ok := value.(*resolutionNode)
+		require.True(t, ok)
+		require.Equal(t, uint64(1), rn.hits.Load())
+	})
 }
