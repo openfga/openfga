@@ -133,14 +133,16 @@ type RelationshipTupleReader interface {
 	) (TupleIterator, error)
 
 	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
-	// more user(s) or userset(s) and filtered by object type and relation.
+	// more user(s) or userset(s) and filtered by object type and relation and possibly a list of object IDs.
 	//
 	// For example, given the following relationship tuples:
 	//   document:doc1, viewer, user:jon
 	//   document:doc2, viewer, group:eng#member
 	//   document:doc3, editor, user:jon
+	//   document:doc4, viewer, group:eng#member
 	//
-	// ReverseReadTuples for ['user:jon', 'group:eng#member'] filtered by 'document#viewer' would
+	// ReadStartingWithUser for ['user:jon', 'group:eng#member'] filtered by 'document#viewer'
+	// and 'document:doc1, document:doc2' would
 	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
 	// There is NO guarantee on the order returned on the iterator.
 	ReadStartingWithUser(
@@ -168,10 +170,16 @@ type RelationshipTupleWriter interface {
 // ReadStartingWithUserFilter specifies the filter options that will be used
 // to constrain the [RelationshipTupleReader.ReadStartingWithUser] query.
 type ReadStartingWithUserFilter struct {
+	// Mandatory.
 	ObjectType string
-	Relation   string
+	// Mandatory.
+	Relation string
+	// Mandatory.
 	UserFilter []*openfgav1.ObjectRelation
-	ObjectIDs  []string // Optional. If present, the datastore returns the intersection between this filter and what is in the database
+
+	// Optional. It can be nil. If present, it will be sorted in ascending order.
+	// The datastore should return the intersection between this filter and what is in the database.
+	ObjectIDs SortedSet
 }
 
 // ReadUsersetTuplesFilter specifies the filter options that

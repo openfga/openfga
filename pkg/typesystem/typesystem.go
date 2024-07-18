@@ -459,6 +459,7 @@ func (t *TypeSystem) GetTerminalRelationsForTTUFastPath(objectType, computedRela
 //	    define viewer: [user:*]
 //
 // In the example above, the 'user' objectType is publicly assignable to the 'document#viewer' relation.
+// If the input target is not a defined relation, it returns false and RelationUndefinedError.
 func (t *TypeSystem) IsPubliclyAssignable(target *openfgav1.RelationReference, objectType string) (bool, error) {
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
 	if err != nil {

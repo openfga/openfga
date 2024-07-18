@@ -4263,53 +4263,161 @@ tests:
               type: repo
               relation: unknown
             errorCode: 2022 # relation 'unknown' not found
-  - name: relations_not_defined_in_some_child_type
+  - name: relations_not_defined_in_some_child_type_falsy
+    # even if there are no truthy paths available we should not error.
     stages:
       - model: |
           model
             schema 1.1
           type user
-          type folder
+          type folder1
+          type folder2
             relations
-              define owner: [user]
-              define writer: [user,user:*] or owner
+              define viewer: [user]
           type document
             relations
-              define can_read: writer from parent
-              define parent: [document,folder]
-              define viewer: [user,user:*]
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
         tuples:
-          - user: user:anne
-            relation: owner
-            object: folder:a
-          - user: folder:a
-            relation: parent
-            object: document:c
-          - user: document:c
+          - user: folder1:x
             relation: parent
             object: document:d
         checkAssertions:
           - tuple:
               user: user:anne
-              relation: can_read
-              object: document:c
+              relation: viewer
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: viewer
+            expectation:
+  - name: ttu_some_parent_type_removed
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder1
+            relations
+              define viewer: [user]
+          type folder2
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
+        tuples:
+          - user: folder1:x
+            relation: parent
+            object: document:d
+          - user: user:anne
+            relation: viewer
+            object: folder1:x
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:d
             expectation: true
         listObjectsAssertions:
           - request:
               user: user:anne
               type: document
-              relation: can_read
+              relation: viewer
             expectation:
-              - document:c
+              - document:d
         listUsersAssertions:
           - request:
               filters:
                 - user
-              object: document:c
-              relation: can_read
+              object: document:d
+              relation: viewer
             expectation:
               - user:anne
-
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder1
+          type folder2
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: viewer
+            expectation:
+  - name: relations_not_defined_in_some_child_type_truthy
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder1
+          type folder2
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
+        tuples:
+          - user: folder2:x
+            relation: parent
+            object: document:d
+          - user: user:anne
+            relation: viewer
+            object: folder2:x
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:d
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:d
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: viewer
+            expectation:
+              - user:anne
   # https://github.com/openfga/openfga/issues/576
   - name: same_relation_name_different_type
     stages:
@@ -5550,6 +5658,79 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+  - name: simple_userset_child_wildcard_only
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type user2
+          type group
+            relations
+              define member: [user:*, user2:*]
+          type folder
+            relations
+              define viewer: [group#member]
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
   - name: simple_userset_child_wildcard
     stages:
       - model: |
@@ -5641,6 +5822,80 @@ tests:
               relation: viewer
             expectation:
               - user:maria
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
+  - name: simple_ttu_child_wildcard_only
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type user2
+          type group
+            relations
+              define member: [user:*, user2:*]
+          type folder
+            relations
+              define viewer: member from owner
+              define owner: [group]
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: group:fga
+            relation: owner
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:*
           - request:
               filters:
                 - user2
@@ -8447,3 +8702,869 @@ tests:
               relation: a
             expectation:
             - doc:1#b
+  - name: ttu_mix_with_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, user:*]
+          type folder
+            relations
+              define viewer: [user,group#member]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:1
+          - user: user:anne
+            relation: member
+            object: group:2
+          - user: user:bob
+            relation: member
+            object: group:2
+          - user: user:charlie
+            relation: member
+            object: group:1
+          - user: group:1#member
+            relation: viewer
+            object: folder:a
+          - user: group:2#member
+            relation: viewer
+            object: folder:a
+          - user: user:daemon
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: user:elle
+            relation: member
+            object: group:3
+          - user: user:*
+            relation: member
+            object: group:public
+          - user: group:public#member
+            relation: viewer
+            object: folder:public
+          - user: folder:public
+            relation: parent
+            object: document:public
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:b
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:daemon
+              relation: viewer
+              object: document:public
+            expectation: true
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:a
+            expectation: false
+          - tuple:
+              user: user:elle
+              relation: viewer
+              object: document:public
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:daemon
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:public
+          - request:
+              user: user:elle
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:a
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: folder:a
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+              - user:daemon
+          - request:
+              filters:
+                - user
+              object: document:public
+              relation: viewer
+            expectation:
+              - user:*
+  - name: ttu_multiple_parents
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:*]
+          type group2
+            relations
+              define member: [user, user:*]
+          type document
+            relations
+              define parent: [group1, group2]
+              define viewer: member from parent
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group1:1
+          - user: user:anne
+            relation: member
+            object: group2:1
+          - user: user:bob
+            relation: member
+            object: group1:1
+          - user: user:charlie
+            relation: member
+            object: group2:1
+          - user: user:*
+            relation: member
+            object: group1:pub
+          - user: group2:1
+            relation: parent
+            object: document:1
+          - user: group1:1
+            relation: parent
+            object: document:1
+          - user: group1:1
+            relation: parent
+            object: document:2
+          - user: group2:1
+            relation: parent
+            object: document:3
+          - user: group1:pub
+            relation: parent
+            object: document:pub
+          - user: group1:pub
+            relation: parent
+            object: document:pub1
+          - user: group1:1
+            relation: parent
+            object: document:pub1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:3
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:2
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:3
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:2
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:pub1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:2
+              - document:3
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:2
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:3
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:dylan
+              type: document
+              relation: viewer
+            expectation:
+              - document:pub
+              - document:pub1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+              - user:charlie
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:charlie
+          - request:
+              filters:
+                - user
+              object: document:pub
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:pub1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:anne
+              - user:bob
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:*]
+          type group2
+            relations
+              define member: [user, user:*]
+          type document
+            relations
+              # notice we are removing group2
+              define parent: [group1]
+              define viewer: member from parent
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:2
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:charlie
+              relation: viewer
+              object: document:pub1
+            expectation: true
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:2
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:3
+            expectation: false
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:pub
+            expectation: true
+          - tuple:
+              user: user:dylan
+              relation: viewer
+              object: document:pub1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:2
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:2
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:charlie
+              type: document
+              relation: viewer
+            expectation:
+              - document:pub
+              - document:pub1
+          - request:
+              user: user:dylan
+              type: document
+              relation: viewer
+            expectation:
+              - document:pub
+              - document:pub1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:2
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+          - request:
+              filters:
+                - user
+              object: document:3
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user
+              object: document:pub
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: document:pub1
+              relation: viewer
+            expectation:
+              - user:*
+              - user:anne
+              - user:bob
+  - name: userset_orphan_parent
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:*]
+          type group2
+            relations
+              define member: [user, user:*]
+          type document
+            relations
+              define viewer: [group1#member, group2#member]
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group1:1
+          - user: user:bob
+            relation: member
+            object: group2:1
+          - user: group2:1#member
+            relation: viewer
+            object: document:1
+          - user: group1:1#member
+            relation: viewer
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:bob
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:*]
+          type group2
+            relations
+              define member: [user, user:*]
+          type document
+            relations
+              # notice we are removing group2
+              define viewer: [group1#member]
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
+  - name: ttu_remove_public_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, user:*]
+          type document
+            relations
+              define parent: [group]
+              define viewer: member from parent
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:1
+          - user: group:1
+            relation: parent
+            object: document:1
+          - user: user:*
+            relation: member
+            object: group:pub
+          - user: group:pub
+            relation: parent
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
+              - user:*
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              # notice we are removing user:*
+              define member: [user]
+          type document
+            relations
+              define parent: [group]
+              define viewer: member from parent
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
+  - name: ttu_orphan_public_wildcard_parent
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define parent: [group, group:*]
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:1
+          - user: group:1
+            relation: parent
+            object: document:1
+          - user: group:*
+            relation: parent
+            object: document:1
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              # Notice we have removed group:* from parent
+              define member: [user]
+          type document
+            relations
+              define parent: [group]
+              # Notice we have added viewer
+              define viewer: member from parent
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            expectation:
+              - user:anne
