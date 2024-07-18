@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -452,12 +452,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		),
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
-				grpc_recovery.StreamServerInterceptor(
+				grpc_recovery.StreamServerInterceptor( // panic middleware must be 1st in chain
 					grpc_recovery.WithRecoveryHandlerContext(
 						recovery.PanicRecoveryHandler(s.Logger),
 					),
 				),
-				requestid.NewStreamingInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(), // needed for logging
+				requestid.NewStreamingInterceptor(),    // add request_id to ctxtags
 			}...,
 		),
 	}
@@ -480,7 +481,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		grpc.ChainStreamInterceptor(
 			[]grpc.StreamServerInterceptor{
 				validator.StreamServerInterceptor(),
-				grpc_ctxtags.StreamServerInterceptor(),
 			}...,
 		),
 	)

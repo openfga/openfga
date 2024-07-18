@@ -4263,53 +4263,86 @@ tests:
               type: repo
               relation: unknown
             errorCode: 2022 # relation 'unknown' not found
-  - name: relations_not_defined_in_some_child_type
+  - name: relations_not_defined_in_some_child_type_falsy
+    # even if there are no truthy paths available we should not error.
     stages:
       - model: |
           model
             schema 1.1
           type user
-          type folder
+          type folder1
+          type folder2
             relations
-              define owner: [user]
-              define writer: [user,user:*] or owner
+              define viewer: [user]
           type document
             relations
-              define can_read: writer from parent
-              define parent: [document,folder]
-              define viewer: [user,user:*]
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
         tuples:
-          - user: user:anne
-            relation: owner
-            object: folder:a
-          - user: folder:a
-            relation: parent
-            object: document:c
-          - user: document:c
+          - user: folder1:x
             relation: parent
             object: document:d
         checkAssertions:
           - tuple:
               user: user:anne
-              relation: can_read
-              object: document:c
+              relation: viewer
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:d
+              relation: viewer
+            expectation:
+  - name: relations_not_defined_in_some_child_type_truthy
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder1
+          type folder2
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define viewer: viewer from parent
+              define parent: [folder1,folder2]
+        tuples:
+          - user: folder2:x
+            relation: parent
+            object: document:d
+          - user: user:anne
+            relation: viewer
+            object: folder2:x
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:d
             expectation: true
         listObjectsAssertions:
           - request:
               user: user:anne
               type: document
-              relation: can_read
+              relation: viewer
             expectation:
-              - document:c
+              - document:d
         listUsersAssertions:
           - request:
               filters:
                 - user
-              object: document:c
-              relation: can_read
+              object: document:d
+              relation: viewer
             expectation:
               - user:anne
-
   # https://github.com/openfga/openfga/issues/576
   - name: same_relation_name_different_type
     stages:
@@ -5478,6 +5511,213 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+  - name: simple_userset_child_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type user2
+          type group
+            relations
+              define member: [user, user:*, user2, user2:*]
+          type folder
+            relations
+              define viewer: [group#member]
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: user:maria
+            relation: member
+            object: group:engineering
+          - user: group:fga#member
+            relation: viewer
+            object: folder:1
+          - user: group:engineering#member
+            relation: viewer
+            object: folder:2
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user:maria
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:maria
+              relation: viewer
+              object: folder:2
+            expectation: true
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: user:maria
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+              - folder:2
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: folder:2
+              relation: viewer
+            expectation:
+              - user:maria
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
+  - name: simple_ttu_child_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type user2
+          type group
+            relations
+              define member: [user, user:*, user2, user2:*]
+          type folder
+            relations
+              define viewer: member from owner
+              define owner: [group]
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: user:maria
+            relation: member
+            object: group:engineering
+          - user: group:fga
+            relation: owner
+            object: folder:1
+          - user: group:engineering
+            relation: owner
+            object: folder:2
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user:maria
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:maria
+              relation: viewer
+              object: folder:2
+            expectation: true
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: user2:foo
+              relation: viewer
+              object: folder:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: user:maria
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+              - folder:2
+          - request:
+              user: user2:foo
+              type: folder
+              relation: viewer
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:*
+          - request:
+              filters:
+                - user
+              object: folder:2
+              relation: viewer
+            expectation:
+              - user:maria
+          - request:
+              filters:
+                - user2
+              object: folder:1
+              relation: viewer
+            expectation:
+          - request:
+              filters:
+                - user2
+              object: folder:2
+              relation: viewer
+            expectation:
   - name: ttu_and_computed_ttu_wildcard
     stages:
       - model: |

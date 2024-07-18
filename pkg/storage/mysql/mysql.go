@@ -334,7 +334,7 @@ func (m *MySQL) ReadStartingWithUser(
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	rows, err := m.stbl.
+	builder := m.stbl.
 		Select(
 			"store", "object_type", "object_id", "relation", "_user",
 			"condition_name", "condition_context", "ulid", "inserted_at",
@@ -345,7 +345,13 @@ func (m *MySQL) ReadStartingWithUser(
 			"object_type": opts.ObjectType,
 			"relation":    opts.Relation,
 			"_user":       targetUsersArg,
-		}).QueryContext(ctx)
+		})
+
+	if opts.ObjectIDs != nil && opts.ObjectIDs.Size() > 0 {
+		builder = builder.Where(sq.Eq{"object_id": opts.ObjectIDs.Values()})
+	}
+
+	rows, err := builder.QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
