@@ -1211,8 +1211,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
 		if !tuple.IsObjectRelation(tk.GetUser()) {
-			if canShortCircuit := typesys.TTUCanFastPath(
-				tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canShortCircuit {
+			if canFastPath := typesys.TTUCanFastPath(
+				tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
 				resolver = c.checkTTUFastPath
 			}
 		}

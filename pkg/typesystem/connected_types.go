@@ -78,6 +78,7 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 			t := assignableType.GetType()
 			if assignableType.GetWildcard() != nil {
 				t = tuple.TypedPublicWildcard(assignableType.GetType())
+				// return []terminalTypesAndRelation{}
 			}
 			assignableTypes = append(assignableTypes, t)
 
@@ -106,11 +107,6 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 		}
 
 		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-			// if assignableType.GetCondition() != "" {
-			// 	// Conditions not yet supported
-			// 	return []terminalTypesAndRelation{}
-			// }
-
 			assignableTypeName := assignableType.GetType()
 
 			if _, ok := t.relations[assignableTypeName][computedRelationName]; ok {

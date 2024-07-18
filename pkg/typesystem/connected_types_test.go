@@ -122,7 +122,9 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 					"parent": {
 						"folder": {"parent"},
 					},
-					// "public" contains wildcard, not yet supported
+					"public": {
+						"user:*": {"public"},
+					},
 					// "can_share" contains userset, not supported yet
 				},
 				"folder": map[string]map[string][]string{
@@ -213,9 +215,17 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 			`,
 			expectedConnectedTypes: TypesystemConnectedTypes{
 				"document": map[string]map[string][]string{
+					"can_read": {
+						"user":   {"viewer"},
+						"user:*": {"viewer"},
+					},
 					"parent": {
 						"document": {"parent"},
 						"folder":   {"parent"},
+					},
+					"viewer": {
+						"user":   {"viewer"},
+						"user:*": {"viewer"},
 					},
 				},
 				"folder": map[string]map[string][]string{
