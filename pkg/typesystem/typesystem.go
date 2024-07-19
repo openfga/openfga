@@ -416,7 +416,6 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 
 // TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
 func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType string) bool {
-
 	tuplesetRelation := t.relations[objectType][computedRelation].GetRewrite().GetTupleToUserset().GetTupleset().GetRelation()
 
 	computedUsersetRelation := t.relations[objectType][computedRelation].GetRewrite().GetTupleToUserset().GetComputedUserset().GetRelation()
