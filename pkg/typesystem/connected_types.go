@@ -60,17 +60,17 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 		return terminalTypesAndRelations
 	}
 
-	relation, ok := t.relations[typeName][relationName]
-	if !ok {
-		return []terminalTypesAndRelation{}
-	}
-
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		assignableTypes := []string{}
 		var terminalRelation string
 
-		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		thisRelation, ok := t.relations[typeName][relationName]
+		if !ok {
+			return []terminalTypesAndRelation{}
+		}
+
+		for _, assignableType := range thisRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelation() != "" {
 				// Usersets not yet supported
 				return []terminalTypesAndRelation{}
