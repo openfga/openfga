@@ -95,6 +95,7 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 		return t.getTerminalUserTypeAndRelationsForConnectedTypes(typeName, rw.ComputedUserset.GetRelation(), numTTU)
 	case *openfgav1.Userset_TupleToUserset:
 		if numTTU > 0 {
+			// Ensures that no chained TTU rewrites are eligible for fast-path TTU
 			return []terminalTypesAndRelation{}
 		}
 
