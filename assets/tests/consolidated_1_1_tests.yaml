@@ -5503,7 +5503,79 @@ tests:
               relation: can_read
             expectation:
               - user:anne
+  - name: ttu_multiple_tupleset_types
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type employee
+
+          type group
+            relations
+              define can_view: [employee]
+
+          type folder
+            relations
+              define can_view: [user]
+
+          type document
+            relations
+              define parent: [employee,group,folder]
+              define viewer: can_view from parent
+        tuples:
+          - user: employee:1
+            relation: can_view
+            object: group:1
+          - user: group:1
+            relation: parent
+            object: document:1
+          - user: user:1
+            relation: can_view
+            object: folder:1
+          - user: folder:1
+            relation: parent
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: employee:1
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: viewer
+              object: document:1
+            expectation: true
   - name: ttu_and_computed_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: owner
+              define owner: [user]
+
+          type document
+            relations
+              define parent: [folder]
+              define can_view: viewer from parent
+        tuples:
+          - user: folder:1
+            relation: parent
+            object: document:1
+          - user: user:jose
+            relation: owner
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:jose
+              relation: can_view
+              object: document:1
+            expectation: true
+  - name: ttu_and_computed_ttu_with_union
     stages:
       - model: |
           model
