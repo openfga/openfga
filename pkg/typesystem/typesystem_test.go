@@ -3460,6 +3460,27 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			expectCanFastPath: true,
 		},
 		{
+
+			name: "multiple_ttu_references_only_one_has_tupleset_relation",
+			model: `
+				model
+					schema 1.1
+				type user1
+				type user2
+				type group1
+					relations
+						define member: [user1, user2]
+				type group2
+				type folder
+					relations
+						define owner: [group1, group2]
+						define viewer: member from owner`,
+			objectType:        "folder",
+			computedRelation:  "viewer",
+			userType:          "user1",
+			expectCanFastPath: true,
+		},
+		{
 			name: "multiple_ttu_references_different_terminal_types",
 			model: `
 				model
