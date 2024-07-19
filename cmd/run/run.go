@@ -335,7 +335,9 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 		tp := telemetry.MustNewTracerProvider(options...)
 		return func() error {
 			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
-			return errors.Join(tp.ForceFlush(context.Background()), tp.Shutdown(context.Background()))
+			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+			defer cancel()
+			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
