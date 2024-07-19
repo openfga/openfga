@@ -21,8 +21,9 @@ func (f TypesystemConnectedTypes) assign(objectType string, relation string, sub
 	f[objectType][relation][subjectType] = append(f[objectType][relation][subjectType], terminalRelation)
 }
 
-// AssignTerminalTypes will populate the `connectedTypes` property on the typesystem to indicate for a given object type
-// what the terminal user types and relations.
+// AssignTerminalTypes will populate the `connectedTypes` property on the typesystem to indicate for a given
+// object type what the terminal user types and relations are. This is useful for quickly determining if two types
+// are connected via a relation and also for determining if the TTU "fast path" optimization can be applied.
 func (t *TypeSystem) AssignTerminalTypes(typeName, relationName string) {
 	terminalTypesAndRelations := t.getTerminalUserTypeAndRelationsForConnectedTypes(typeName, relationName, 0)
 	for _, terminalTypesAndRelation := range terminalTypesAndRelations {
@@ -72,14 +73,12 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 
 		for _, assignableType := range thisRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelation() != "" {
-				// Usersets not yet supported
-				return []terminalTypesAndRelation{}
+				return []terminalTypesAndRelation{} // Usersets not yet supported
 			}
 
 			t := assignableType.GetType()
 			if assignableType.GetWildcard() != nil {
 				t = tuple.TypedPublicWildcard(assignableType.GetType())
-				// return []terminalTypesAndRelation{}
 			}
 			assignableTypes = append(assignableTypes, t)
 
