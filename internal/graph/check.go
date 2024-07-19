@@ -672,6 +672,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		})
 
 		if err != nil {
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 		// filter out invalid tuples yielded by the database iterator
@@ -730,7 +731,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter *storage.C
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 
