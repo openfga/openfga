@@ -64,7 +64,6 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		assignableTypes := []string{}
-		var terminalRelation string
 
 		thisRelation, ok := t.relations[typeName][relationName]
 		if !ok {
@@ -81,14 +80,12 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 				t = tuple.TypedPublicWildcard(assignableType.GetType())
 			}
 			assignableTypes = append(assignableTypes, t)
-
-			terminalRelation = relationName
 		}
 
 		return []terminalTypesAndRelation{
 			{
 				terminalTypes:    assignableTypes,
-				terminalRelation: terminalRelation,
+				terminalRelation: relationName,
 			},
 		}
 	case *openfgav1.Userset_ComputedUserset:
