@@ -115,6 +115,8 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 				return t.getTerminalUserTypeAndRelationsForConnectedTypes(assignableTypeName, computedRelationName, numTTU+1)
 			}
 		}
+	case *openfgav1.Userset_Intersection, *openfgav1.Userset_Difference, *openfgav1.Userset_Union:
+		return []terminalTypesAndRelation{}
 	}
 
 	return []terminalTypesAndRelation{}

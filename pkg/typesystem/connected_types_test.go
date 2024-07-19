@@ -101,6 +101,9 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 						define viewer: creator
 						define editor: [user] or creator
 						define collaborator: viewer and editor
+						define collaborator_computed: collaborator
+						define restricted: viewer but not owner
+						define restricted_computed: restricted
 						define creator: [user]
 						define owner: [group]
 						define admin: admin from owner

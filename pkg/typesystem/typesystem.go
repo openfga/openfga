@@ -422,6 +422,7 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 	ttuParentTypes := t.relations[objectType][tuplesetRelation].GetTypeInfo().GetDirectlyRelatedUserTypes()
 
 	if len(ttuParentTypes) > 1 {
+		// For TTU with multiple assignable types, need to verify that each type has the computed relation and is eligible for fast-path
 		for _, parentType := range ttuParentTypes {
 			_, relationExists := t.relations[parentType.GetType()][computedUsersetRelation]
 			if !relationExists {
