@@ -36,7 +36,6 @@ func WithDispatchThrottlingCheckResolverOpts(enabled bool, opts ...DispatchThrot
 
 func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckResolverOrderedBuilder {
 	checkResolverBuilder := &CheckResolverOrderedBuilder{}
-	checkResolverBuilder.resolvers = []CheckResolver{}
 	for _, opt := range opts {
 		opt(checkResolverBuilder)
 	}
@@ -53,6 +52,7 @@ func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckReso
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the list.
 func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverCloser) {
+	c.resolvers = []CheckResolver{}
 	c.resolvers = append(c.resolvers, NewCycleDetectionCheckResolver())
 
 	if c.cachedCheckResolverEnabled {
