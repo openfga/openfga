@@ -670,6 +670,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		})
 
 		if err != nil {
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 		// filter out invalid tuples yielded by the database iterator
@@ -728,7 +729,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter *storage.C
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
 
@@ -1074,12 +1075,28 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 //
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
+
 func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
 
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
 
+	terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(
+		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
+	)
+	if len(terminalRelations) != 1 {
+		return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+	}
+
+	computedRelation := terminalRelations[0]
+	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
+	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
+	// [group#member][1, 2]
+	// [group#owner][1, 3]
 	usersetsMap := make(usersetsMapType)
 
 	for {
@@ -1190,8 +1207,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
 		if !tuple.IsObjectRelation(tk.GetUser()) {
-			if canShortCircuit, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(
-				tuple.GetType(object), tuplesetRelation, computedRelation); err == nil && canShortCircuit {
+			if canFastPath := typesys.TTUCanFastPath(
+				tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
 				resolver = c.checkTTUFastPath
 			}
 		}
