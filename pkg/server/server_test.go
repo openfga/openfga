@@ -323,24 +323,6 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestCheckResolverOuterLayerDefault(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-
-	s := MustNewServerWithOpts(
-		WithDatastore(ds),
-	)
-	t.Cleanup(s.Close)
-
-	// the default (outer most layer) of the CheckResolver
-	// composition should always be CycleDetectionCheckResolver.
-	_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-	require.True(t, ok)
-}
-
 func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1753,11 +1735,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDatastore(ds),
 		)
 		t.Cleanup(s.Close)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
@@ -1782,12 +1762,10 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
@@ -1815,12 +1793,10 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
@@ -1850,12 +1826,10 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
@@ -1880,10 +1854,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkDispatchThrottlingEnabled)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
 
 		require.True(t, s.checkQueryCacheEnabled)
-		require.NotNil(t, s.cachedCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
@@ -1913,7 +1885,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
 		require.True(t, ok)
@@ -1922,7 +1893,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, ok)
 
 		require.True(t, s.checkQueryCacheEnabled)
-		require.NotNil(t, s.cachedCheckResolver)
 
 		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)

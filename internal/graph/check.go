@@ -198,7 +198,7 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 //
 // The constructed LocalChecker is not wrapped with cycle detection. Developers
 // wanting a LocalChecker without other wrapped layers (e.g caching and others)
-// are encouraged to use [[NewLocalCheckerWithCycleDetection]] instead.
+// are encouraged to use [[NewOrderedCheckResolvers]] instead.
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
@@ -216,6 +216,8 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 
 // NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
 // which can be used to evaluate a Check request locally with cycle detection enabled.
+//
+// Deprecated: use NewOrderedCheckResolvers with no options.
 func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 	localCheckResolver := NewLocalChecker(opts...)
