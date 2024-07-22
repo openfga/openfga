@@ -280,21 +280,17 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.NoError(t, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	checker := graph.NewLocalCheckerWithCycleDetection(
-		graph.WithMaxConcurrentReads(1),
-	)
-
-	cachedChecker := graph.NewCachedCheckResolver(
-		graph.WithEnabledConsistencyParams(true),
-		graph.WithExistingCache(checkCache),
-	)
-	t.Cleanup(checker.Close)
-
-	cachedChecker.SetDelegate(checker)
+	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithCachedCheckResolverOpts(true, []graph.CachedCheckResolverOpt{
+			graph.WithEnabledConsistencyParams(true),
+			graph.WithExistingCache(checkCache),
+		}...),
+	}...).Build()
+	t.Cleanup(checkResolverCloser)
 
 	q, _ := NewListObjectsQuery(
 		ds,
-		cachedChecker,
+		checkResolver,
 	)
 
 	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
