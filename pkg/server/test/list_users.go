@@ -187,7 +187,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 					ListUsers(ctx, bm.inputRequest)
 				require.NoError(b, err)
 				require.NotNil(b, resp)
-				require.Len(b, resp.GetUsers(), bm.expectedResults)
+				require.Equal(b, len(resp.GetUsers()), bm.expectedResults, "total number of records returned should match")
 			}
 			if name == "all_found_without_conditions" {
 				allResultsIterations = b.N

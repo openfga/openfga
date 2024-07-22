@@ -680,7 +680,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)
-			require.Len(b, r.Objects, numberObjectsAccessible)
+			require.Len(b, len(r.Objects), numberObjectsAccessible, "total number of records returned should match")
 		}
 
 		listObjectsResponse = r
