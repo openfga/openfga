@@ -259,7 +259,7 @@ func TestExperimentalListUsers(t *testing.T) {
 		})
 
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
 
 		e, ok := status.FromError(err)
 		require.True(t, ok)

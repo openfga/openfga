@@ -155,7 +155,7 @@ func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
 	if r != nil {
 		return r.Consistency
 	}
-	return openfgav1.ConsistencyPreference_MINIMIZE_LATENCY
+	return openfgav1.ConsistencyPreference_UNSPECIFIED
 }
 
 type setOperatorType int

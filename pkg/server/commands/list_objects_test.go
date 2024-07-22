@@ -332,4 +332,20 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, resp.Objects, 3)
+
+	// Now set the third item as `allowed: false` in the cache and run with `UNSPECIFIED`, it should use the cache and only return two item
+	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
+		Allowed: false,
+	}, 10*time.Second)
+
+	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 2)
 }
