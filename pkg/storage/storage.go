@@ -74,31 +74,6 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
-// ReadAuthorizationModelOptions represents the options that can
-// be used with the ReadAuthorizationModels method.
-type ReadAuthorizationModelsOptions struct {
-	Pagination PaginationOptions
-}
-
-// ListStoresOptions represents the options that can
-// be used with the ListStores method.
-type ListStoresOptions struct {
-	Pagination PaginationOptions
-}
-
-// ReadChangesOptions represents the options that can
-// be used with the ReadChanges method.
-type ReadChangesOptions struct {
-	Pagination PaginationOptions
-}
-
-// ReadPageOptions represents the options that can
-// be used with the ReadPage method.
-type ReadPageOptions struct {
-	Pagination  PaginationOptions
-	Consistency ConsistencyOptions
-}
-
 // ConsistencyOptions represents the options that can
 // be used for methods that accept a consistency preference.
 type ConsistencyOptions struct {
@@ -111,22 +86,13 @@ type ReadOptions struct {
 	Consistency ConsistencyOptions
 }
 
-// ReadUserTupleOptions represents the options that can
-// be used with the ReadUserTuple method.
-type ReadUserTupleOptions struct {
+type ReadWithPaginationOptions struct {
+	Pagination  PaginationOptions
 	Consistency ConsistencyOptions
 }
 
-// ReadUsersetTuplesOptions represents the options that can
-// be used with the ReadUsersetTuples method.
-type ReadUsersetTuplesOptions struct {
-	Consistency ConsistencyOptions
-}
-
-// ReadStartingWithUserOptions represents the options that can
-// be used with the ReadStartingWithUser method.
-type ReadStartingWithUserOptions struct {
-	Consistency ConsistencyOptions
+type ListOptions struct {
+	Pagination PaginationOptions
 }
 
 // Writes is a typesafe alias for Write arguments.
@@ -154,14 +120,14 @@ type RelationshipTupleReader interface {
 	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadOptions) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
-	// mandatory ReadPageOptions options. PageSize will always be greater than zero.
+	// mandatory ReadOptions options. PageSize will always be greater than zero.
 	// It returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	// There is NO guarantee on the order of the tuples in one page.
 	ReadPage(
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
-		options ReadPageOptions,
+		options ReadWithPaginationOptions,
 	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
@@ -170,7 +136,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		tupleKey *openfgav1.TupleKey,
-		options ReadUserTupleOptions,
+		options ReadOptions,
 	) (*openfgav1.Tuple, error)
 
 	// ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -186,7 +152,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		filter ReadUsersetTuplesFilter,
-		options ReadUsersetTuplesOptions,
+		options ReadOptions,
 	) (TupleIterator, error)
 
 	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -206,7 +172,7 @@ type RelationshipTupleReader interface {
 		ctx context.Context,
 		store string,
 		filter ReadStartingWithUserFilter,
-		options ReadStartingWithUserOptions,
+		options ReadOptions,
 	) (TupleIterator, error)
 }
 
@@ -255,7 +221,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
-	ReadAuthorizationModels(ctx context.Context, store string, options ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options ListOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
@@ -283,7 +249,7 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
-	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, []byte, error)
+	ListStores(ctx context.Context, options ListOptions) ([]*openfgav1.Store, []byte, error)
 }
 
 // AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
@@ -305,7 +271,7 @@ type ChangelogBackend interface {
 	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
-	ReadChanges(ctx context.Context, store, objectType string, options ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
+	ReadChanges(ctx context.Context, store, objectType string, options ListOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting
