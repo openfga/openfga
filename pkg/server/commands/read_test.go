@@ -85,7 +85,7 @@ func TestReadCommand(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		opts := storage.ReadPageOptions{
+		opts := storage.ReadWithPaginationOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: storage.DefaultPageSize,
 				From:     "",
@@ -116,7 +116,7 @@ func TestReadCommand(t *testing.T) {
 		mockEncoder.EXPECT().Encode(gomock.Any()).Return("encodedtoken", nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		opts := storage.ReadPageOptions{
+		opts := storage.ReadWithPaginationOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: int(pageSize),
 				From:     "",

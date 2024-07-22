@@ -137,7 +137,7 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadWithPaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
@@ -150,7 +150,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.
 	return iter.ToArray(options.Pagination)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.ReadWithPaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -211,7 +211,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadOptions) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUserTuple")
 	defer span.End()
 
@@ -268,7 +268,7 @@ func (m *MySQL) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	_ storage.ReadUsersetTuplesOptions,
+	_ storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
@@ -317,7 +317,7 @@ func (m *MySQL) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	opts storage.ReadStartingWithUserFilter,
-	_ storage.ReadStartingWithUserOptions,
+	_ storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadStartingWithUser")
 	defer span.End()
@@ -370,7 +370,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, options storage.ListOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModels")
 	defer span.End()
 
@@ -547,7 +547,7 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, erro
 }
 
 // ListStores provides a paginated list of all stores present in the MySQL storage.
-func (m *MySQL) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *MySQL) ListStores(ctx context.Context, options storage.ListOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
 
@@ -679,7 +679,7 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (m *MySQL) ReadChanges(ctx context.Context, store, objectTypeFilter string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MySQL) ReadChanges(ctx context.Context, store, objectTypeFilter string, options storage.ListOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
 

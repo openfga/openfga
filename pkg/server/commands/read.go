@@ -73,7 +73,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		return nil, serverErrors.InvalidContinuationToken
 	}
 
-	opts := storage.ReadPageOptions{
+	opts := storage.ReadWithPaginationOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
 	}
 	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), opts)

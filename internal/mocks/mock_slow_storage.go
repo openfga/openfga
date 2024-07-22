@@ -31,17 +31,17 @@ func (m *slowDataStorage) Read(ctx context.Context, store string, key *openfgav1
 	return m.OpenFGADatastore.Read(ctx, store, key, options)
 }
 
-func (m *slowDataStorage) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *slowDataStorage) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadWithPaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.ReadPage(ctx, store, key, options)
 }
 
-func (m *slowDataStorage) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (m *slowDataStorage) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadOptions) (*openfgav1.Tuple, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.ReadUserTuple(ctx, store, key, options)
 }
 
-func (m *slowDataStorage) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+func (m *slowDataStorage) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.ReadUsersetTuples(ctx, store, filter, options)
 }
@@ -50,7 +50,7 @@ func (m *slowDataStorage) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-	options storage.ReadStartingWithUserOptions,
+	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.ReadStartingWithUser(ctx, store, filter, options)

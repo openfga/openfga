@@ -499,7 +499,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   relationFilter,
 		UserFilter: userFilter,
-	}, storage.ReadStartingWithUserOptions{Consistency: consistencyOptions})
+	}, storage.ReadOptions{Consistency: consistencyOptions})
 	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err

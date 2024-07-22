@@ -72,7 +72,7 @@ func (mr *MockTupleBackendMockRecorder) Read(ctx, store, tupleKey, options any) 
 }
 
 // ReadPage mocks base method.
-func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadWithPaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
@@ -88,7 +88,7 @@ func (mr *MockTupleBackendMockRecorder) ReadPage(ctx, store, tupleKey, options a
 }
 
 // ReadStartingWithUser mocks base method.
-func (m *MockTupleBackend) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -103,7 +103,7 @@ func (mr *MockTupleBackendMockRecorder) ReadStartingWithUser(ctx, store, filter,
 }
 
 // ReadUserTuple mocks base method.
-func (m *MockTupleBackend) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (m *MockTupleBackend) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUserTuple", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].(*openfgav1.Tuple)
@@ -118,7 +118,7 @@ func (mr *MockTupleBackendMockRecorder) ReadUserTuple(ctx, store, tupleKey, opti
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -185,7 +185,7 @@ func (mr *MockRelationshipTupleReaderMockRecorder) Read(ctx, store, tupleKey, op
 }
 
 // ReadPage mocks base method.
-func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadWithPaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
@@ -201,7 +201,7 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadPage(ctx, store, tupleKey
 }
 
 // ReadStartingWithUser mocks base method.
-func (m *MockRelationshipTupleReader) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+func (m *MockRelationshipTupleReader) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -216,7 +216,7 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadStartingWithUser(ctx, sto
 }
 
 // ReadUserTuple mocks base method.
-func (m *MockRelationshipTupleReader) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (m *MockRelationshipTupleReader) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUserTuple", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].(*openfgav1.Tuple)
@@ -231,7 +231,7 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadUserTuple(ctx, store, tup
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -350,7 +350,7 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ListOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
@@ -484,7 +484,7 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModel(ctx,
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ListOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
@@ -581,7 +581,7 @@ func (mr *MockStoresBackendMockRecorder) GetStore(ctx, id any) *gomock.Call {
 }
 
 // ListStores mocks base method.
-func (m *MockStoresBackend) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *MockStoresBackend) ListStores(ctx context.Context, options storage.ListOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListStores", ctx, options)
 	ret0, _ := ret[0].([]*openfgav1.Store)
@@ -672,7 +672,7 @@ func (m *MockChangelogBackend) EXPECT() *MockChangelogBackendMockRecorder {
 }
 
 // ReadChanges mocks base method.
-func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectType string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectType string, options storage.ListOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, options, horizonOffset)
 	ret0, _ := ret[0].([]*openfgav1.TupleChange)
@@ -797,7 +797,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) IsReady(ctx any) *gomock.Call {
 }
 
 // ListStores mocks base method.
-func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options storage.ListOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListStores", ctx, options)
 	ret0, _ := ret[0].([]*openfgav1.Store)
@@ -886,7 +886,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModel(ctx, store, i
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ListOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
@@ -902,7 +902,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, 
 }
 
 // ReadChanges mocks base method.
-func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectType string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectType string, options storage.ListOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, options, horizonOffset)
 	ret0, _ := ret[0].([]*openfgav1.TupleChange)
@@ -918,7 +918,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadChanges(ctx, store, objectType, 
 }
 
 // ReadPage mocks base method.
-func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadWithPaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
@@ -934,7 +934,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(ctx, store, tupleKey, optio
 }
 
 // ReadStartingWithUser mocks base method.
-func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -949,7 +949,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadStartingWithUser(ctx, store, fil
 }
 
 // ReadUserTuple mocks base method.
-func (m *MockOpenFGADatastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (m *MockOpenFGADatastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUserTuple", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].(*openfgav1.Tuple)
@@ -964,7 +964,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUserTuple(ctx, store, tupleKey, 
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)

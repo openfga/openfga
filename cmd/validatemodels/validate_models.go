@@ -98,7 +98,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 	for {
 		// fetch a page of stores
-		opts := storage.ListStoresOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(100, continuationTokenStores),
 		}
 		stores, tokenStores, err := db.ListStores(ctx, opts)
@@ -117,7 +117,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 			for {
 				// fetch a page of models for that store
-				opts := storage.ReadAuthorizationModelsOptions{
+				opts := storage.ListOptions{
 					Pagination: storage.NewPaginationOptions(100, continuationTokenModels),
 				}
 				models, tokenModels, err := db.ReadAuthorizationModels(ctx, store.GetId(), opts)

@@ -63,7 +63,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
-	opts := storage.ReadChangesOptions{
+	opts := storage.ListOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
 	}
 	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), req.GetType(), opts, q.horizonOffset)

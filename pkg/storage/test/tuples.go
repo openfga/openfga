@@ -169,14 +169,14 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
 		_, token, err := datastore.ReadChanges(ctx, storeID, "", opts, 0)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 
-		opts = storage.ReadChangesOptions{
+		opts = storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
 		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", opts, 0)
@@ -201,7 +201,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
 		_, token, err := datastore.ReadChanges(ctx, storeID, "", opts, 1*time.Minute)
@@ -267,7 +267,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		var continuationToken []byte
 		var err error
 		for {
-			opts := storage.ReadChangesOptions{
+			opts := storage.ListOptions{
 				Pagination: storage.NewPaginationOptions(10, string(continuationToken)),
 			}
 			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", opts, 1*time.Millisecond)
@@ -475,13 +475,13 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(1, ""),
 		}
 		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", opts, 0)
 		require.Len(t, changesFolder, 1)
 
-		opts = storage.ReadChangesOptions{
+		opts = storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(1, string(tokenFolder)),
 		}
 		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", opts, 0)
@@ -623,7 +623,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		// Ensure it is not there.
-		_, err = datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadUserTupleOptions{})
+		_, err = datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadOptions{})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -712,28 +712,28 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple1, tuple2, tuple3, tuple4})
 		require.NoError(t, err)
 
-		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1, storage.ReadUserTupleOptions{})
+		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple1, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2, storage.ReadUserTupleOptions{})
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple2, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3, storage.ReadUserTupleOptions{})
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple3, gotTuple.GetKey(), cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple4, storage.ReadUserTupleOptions{})
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple4, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple4, gotTuple.GetKey(), cmpOpts...); diff != "" {
@@ -745,7 +745,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		_, err := datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadUserTupleOptions{})
+		_, err := datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadOptions{})
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -780,7 +780,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "doc:readme",
 			Relation: "owner",
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -814,7 +814,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	t.Run("reading_userset_tuples_that_don't_exist_should_return_an_empty_iterator", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "doc:readme", Relation: "owner"}, storage.ReadUsersetTuplesOptions{})
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "doc:readme", Relation: "owner"}, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 
@@ -840,7 +840,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -877,7 +877,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				typesystem.DirectRelationReference("group", "member"),
 				typesystem.DirectRelationReference("grouping", "member"),
 			},
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -918,7 +918,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.WildcardRelationReference("user"),
 			},
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -955,7 +955,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				typesystem.DirectRelationReference("group", "member"),
 				typesystem.WildcardRelationReference("user"),
 			},
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
@@ -1011,7 +1011,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		opts := storage.ReadPageOptions{
+		opts := storage.ReadWithPaginationOptions{
 			Pagination: storage.NewPaginationOptions(2, ""),
 		}
 		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, opts)
@@ -1020,14 +1020,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Nil(t, tuples[0].GetKey().GetCondition())
 		require.Nil(t, tuples[1].GetKey().GetCondition())
 
-		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1, storage.ReadUserTupleOptions{})
+		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1, storage.ReadOptions{})
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
 		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   tupleKey2.GetObject(),
 			Relation: tupleKey2.GetRelation(),
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1041,7 +1041,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: tupleKey1.GetUser()},
 			},
-		}, storage.ReadStartingWithUserOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1049,7 +1049,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
-		readChangesOpts := storage.ReadChangesOptions{
+		readChangesOpts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
 		changes, _, err := datastore.ReadChanges(ctx, storeID, "", readChangesOpts, 0)
@@ -1100,7 +1100,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 		require.Empty(t, tp.GetKey().GetCondition().GetContext())
 
-		opts := storage.ReadPageOptions{
+		opts := storage.ReadWithPaginationOptions{
 			Pagination: storage.NewPaginationOptions(2, ""),
 		}
 		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, opts)
@@ -1109,14 +1109,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotNil(t, tuples[0].GetKey().GetCondition().GetContext())
 		require.NotNil(t, tuples[1].GetKey().GetCondition().GetContext())
 
-		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1, storage.ReadUserTupleOptions{})
+		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1, storage.ReadOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
 		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   tupleKey2.GetObject(),
 			Relation: tupleKey2.GetRelation(),
-		}, storage.ReadUsersetTuplesOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1130,7 +1130,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: tupleKey1.GetUser()},
 			},
-		}, storage.ReadStartingWithUserOptions{})
+		}, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -1138,7 +1138,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
-		readChangesOpts := storage.ReadChangesOptions{
+		readChangesOpts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
 		changes, _, err := datastore.ReadChanges(ctx, storeID, "", readChangesOpts, 0)
@@ -1181,7 +1181,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
-			storage.ReadStartingWithUserOptions{},
+			storage.ReadOptions{},
 		)
 		require.NoError(t, err)
 	})
@@ -1207,7 +1207,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 						Relation: "member",
 					},
 				},
-			}, storage.ReadStartingWithUserOptions{},
+			}, storage.ReadOptions{},
 		)
 		require.NoError(t, err)
 
@@ -1233,7 +1233,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 						Object: "user:maria",
 					},
 				},
-			}, storage.ReadStartingWithUserOptions{},
+			}, storage.ReadOptions{},
 		)
 		require.NoError(t, err)
 
@@ -1259,7 +1259,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 						Object: "user:jon",
 					},
 				},
-			}, storage.ReadStartingWithUserOptions{},
+			}, storage.ReadOptions{},
 		)
 		require.NoError(t, err)
 
@@ -1285,7 +1285,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 						Object: "user:jon",
 					},
 				},
-			}, storage.ReadStartingWithUserOptions{},
+			}, storage.ReadOptions{},
 		)
 		require.NoError(t, err)
 
@@ -1317,7 +1317,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 				ObjectIDs: objectIDs,
 			},
-			storage.ReadStartingWithUserOptions{},
+			storage.ReadOptions{},
 		)
 		require.NoError(t, err)
 
@@ -1541,7 +1541,7 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 		err               error
 	)
 	for {
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: pageSize,
 				From:     string(continuationToken),
@@ -1576,7 +1576,7 @@ func readWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID string,
 		err               error
 	)
 	for {
-		opts := storage.ReadPageOptions{
+		opts := storage.ReadWithPaginationOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: pageSize,
 				From:     string(continuationToken),

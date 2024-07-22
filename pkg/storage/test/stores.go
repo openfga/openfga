@@ -39,7 +39,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 
 	t.Run("list_stores_succeeds", func(t *testing.T) {
-		opts := storage.ListStoresOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(1, ""),
 		}
 		gotStores, ct, err := datastore.ListStores(ctx, opts)
@@ -48,7 +48,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.Len(t, gotStores, 1)
 		require.NotEmpty(t, len(ct))
 
-		opts = storage.ListStoresOptions{
+		opts = storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(100, string(ct)),
 		}
 		_, ct, err = datastore.ListStores(ctx, opts)
@@ -87,7 +87,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		// Store id should not appear in the list of store ids.
-		opts := storage.ListStoresOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
 		gotStores, _, err := datastore.ListStores(ctx, opts)

@@ -51,7 +51,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
-	options storage.ReadUserTupleOptions,
+	options storage.ReadOptions,
 ) (*openfgav1.Tuple, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
@@ -84,7 +84,7 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	options storage.ReadUsersetTuplesOptions,
+	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {
@@ -104,7 +104,7 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-	options storage.ReadStartingWithUserOptions,
+	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	err := b.waitForLimiter(ctx)
 	if err != nil {

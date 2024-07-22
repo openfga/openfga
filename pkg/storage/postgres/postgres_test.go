@@ -119,7 +119,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
-	opts := storage.ReadPageOptions{
+	opts := storage.ReadWithPaginationOptions{
 		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 	}
 	tuples, _, err := ds.ReadPage(ctx,
@@ -191,7 +191,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tk, curTuple.GetKey())
 
-	opts := storage.ReadPageOptions{
+	opts := storage.ReadWithPaginationOptions{
 		Pagination: storage.NewPaginationOptions(2, ""),
 	}
 	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, opts)
@@ -199,7 +199,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Len(t, tuples, 1)
 	require.Equal(t, tk, tuples[0].GetKey())
 
-	userTuple, err := ds.ReadUserTuple(ctx, "store", tk, storage.ReadUserTupleOptions{})
+	userTuple, err := ds.ReadUserTuple(ctx, "store", tk, storage.ReadOptions{})
 	require.NoError(t, err)
 	require.Equal(t, tk, userTuple.GetKey())
 
@@ -210,7 +210,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"}, storage.ReadUsersetTuplesOptions{})
+	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"}, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -224,7 +224,7 @@ func TestAllowNullCondition(t *testing.T) {
 		UserFilter: []*openfgav1.ObjectRelation{
 			{Object: "user:anne"},
 		},
-	}, storage.ReadStartingWithUserOptions{})
+	}, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -250,7 +250,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	readChangesOpts := storage.ReadChangesOptions{
+	readChangesOpts := storage.ListOptions{
 		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 	}
 	changes, _, err := ds.ReadChanges(ctx, "store", "folder", readChangesOpts, 0)

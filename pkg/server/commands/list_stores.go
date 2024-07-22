@@ -50,7 +50,7 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStores
 		return nil, serverErrors.InvalidContinuationToken
 	}
 
-	opts := storage.ListStoresOptions{
+	opts := storage.ListOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
 	}
 	stores, continuationToken, err := q.storesBackend.ListStores(ctx, opts)

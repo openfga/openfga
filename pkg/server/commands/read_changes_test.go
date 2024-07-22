@@ -43,7 +43,7 @@ func TestReadChangesQuery(t *testing.T) {
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		// Assert on specific inputs passed in.
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: reqPageSize,
 				From:     reqToken,
@@ -75,7 +75,7 @@ func TestReadChangesQuery(t *testing.T) {
 		mockEncoder.EXPECT().Encode(gomock.Any()).Return(respToken, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: storage.DefaultPageSize,
 				From:     "",
@@ -124,7 +124,7 @@ func TestReadChangesQuery(t *testing.T) {
 		mockEncoder.EXPECT().Decode(reqToken).Return([]byte{}, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		opts := storage.ReadChangesOptions{
+		opts := storage.ListOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: storage.DefaultPageSize,
 				From:     "",

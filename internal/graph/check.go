@@ -671,7 +671,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			})
 		}
 
-		opts := storage.ReadStartingWithUserOptions{
+		opts := storage.ReadOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: req.GetConsistency(),
 			},
@@ -908,7 +908,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			opts := storage.ReadUserTupleOptions{
+			opts := storage.ReadOptions{
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
 				},
@@ -951,7 +951,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				return nil, ctx.Err()
 			}
 
-			opts := storage.ReadUsersetTuplesOptions{
+			opts := storage.ReadOptions{
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
 				},
