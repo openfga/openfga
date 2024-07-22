@@ -713,7 +713,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	ttuLocalChecker.Close()
 
 	require.NoError(t, err)
-	require.Equal(t, uint32(2), res.GetResolutionMetadata().DatastoreQueryCount)
+	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
