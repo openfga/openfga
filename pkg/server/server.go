@@ -1342,7 +1342,7 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 // returns an error.
 func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) error {
 	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY == c {
-		return status.Error(codes.InvalidArgument, "Consistency parameters is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+		return status.Error(codes.InvalidArgument, "Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
 	}
 	return nil
 }
