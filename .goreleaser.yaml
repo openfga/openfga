@@ -36,6 +36,13 @@ dockers:
       - "openfga/openfga:v{{ .Major }}-amd64"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:latest-amd64"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
 
     use: buildx
     build_flag_templates:
@@ -56,6 +63,13 @@ dockers:
       - "openfga/openfga:v{{ .Major }}-arm64"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:latest-arm64"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
 
     use: buildx
 
@@ -70,22 +84,37 @@ docker_manifests:
     image_templates:
       - openfga/openfga:latest-amd64
       - openfga/openfga:latest-arm64
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:latest-amd64"
+      - "ghcr.io/openfga/openfga:latest-arm64"
   - name_template: openfga/openfga:v{{ .Version }}
     image_templates:
       - openfga/openfga:v{{ .Version }}-amd64
       - openfga/openfga:v{{ .Version }}-arm64
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}-arm64"
   - name_template: openfga/openfga:v{{ .Major }}
     image_templates:
       - openfga/openfga:v{{ .Major }}-amd64
       - openfga/openfga:v{{ .Major }}-arm64
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}-arm64"
   - name_template: openfga/openfga:v{{ .Major }}.{{ .Minor }}
     image_templates:
       - openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64
       - openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
   - name_template: openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}
     image_templates:
       - openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64
       - openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64
+      # ghcr.io
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
 
 release:
   github:
