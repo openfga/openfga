@@ -1772,11 +1772,8 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithLogger(logger.NewNoopLogger()),
 		)
 		t.Cleanup(s.Close)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
 		require.False(t, s.checkDispatchThrottlingEnabled)
-
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.NotNil(t, s.checkResolver)
 		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)

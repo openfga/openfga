@@ -521,6 +521,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 				"check_dispatch_throttle")),
 		}
 	}
+
+	checkTrackerOptions := []graph.TrackerCheckResolverOpt{}
+	if s.checkTrackerEnabled {
+		checkTrackerOptions = []graph.TrackerCheckResolverOpt{
+			graph.WithTrackerContext(s.ctx),
+			graph.WithTrackerLogger(s.logger),
+		}
+	}
+
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -531,17 +540,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		}...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
 	}...).Build()
-
-	if s.checkTrackerEnabled {
-		trackerCheckResolver := graph.NewTrackCheckResolver(
-			graph.WithTrackerContext(s.ctx),
-			graph.WithTrackerLogger(s.logger))
-
-		s.trackerCheckResolver = trackerCheckResolver
-		trackerCheckResolver.SetDelegate(cycleDetectionCheckResolver.GetDelegate())
-		cycleDetectionCheckResolver.SetDelegate(trackerCheckResolver)
-	}
 
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
