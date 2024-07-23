@@ -1591,7 +1591,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
-		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(0), checkRequestMetadata.DispatchCounter.Load())
 	})
 }
 
