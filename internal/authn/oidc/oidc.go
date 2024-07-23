@@ -27,6 +27,7 @@ type RemoteOidcAuthenticator struct {
 	MainIssuer    string
 	IssuerAliases []string
 	Audience      string
+	Subjects      []string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -49,13 +50,14 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
 		MainIssuer:    mainIssuer,
 		IssuerAliases: issuerAliases,
 		Audience:      audience,
+		Subjects:      subjects,
 		httpClient:    client.StandardClient(),
 	}
 	err := fetchJWKs(oidc)
@@ -106,6 +108,17 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 
 	if err := jwt.NewValidator(jwt.WithAudience(oidc.Audience)).Validate(claims); err != nil {
 		return nil, errInvalidAudience
+	}
+
+	if len(oidc.Subjects) > 0 {
+		ok = slices.ContainsFunc(oidc.Subjects, func(subject string) bool {
+			v := jwt.NewValidator(jwt.WithSubject(subject))
+			err := v.Validate(claims)
+			return err == nil
+		})
+		if !ok {
+			return nil, errInvalidSubject
+		}
 	}
 
 	// optional subject

@@ -612,6 +612,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	oidcServerPort2, oidcServerPortReleaser2 := testutils.TCPRandomPort()
 	oidcServerURL1 := fmt.Sprintf("http://localhost:%d", oidcServerPort1)
 	oidcServerURL2 := fmt.Sprintf("http://localhost:%d", oidcServerPort2)
+	subject := "some-user"
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
@@ -619,6 +620,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 		Audience:      "openfga.dev",
 		Issuer:        oidcServerURL1,
 		IssuerAliases: []string{oidcServerURL2},
+		Subjects:      []string{subject},
 	}
 
 	oidcServerPortReleaser1()
@@ -631,7 +633,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	trustedIssuerServer2 := trustedIssuerServer1.NewAliasMockServer(oidcServerURL2)
 	t.Cleanup(trustedIssuerServer2.Stop)
 
-	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", "some-user")
+	trustedTokenFromAlias, err := trustedIssuerServer2.GetToken("openfga.dev", subject)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
