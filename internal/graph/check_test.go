@@ -733,6 +733,9 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 }
 
 func TestNonStratifiableCheckQueries(t *testing.T) {
+	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	t.Cleanup(checkResolverCloser)
+
 	t.Run("example_1", func(t *testing.T) {
 		ds := memory.New()
 
@@ -743,9 +746,6 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 			tuple.NewTupleKey("document:1", "restricted", "document:1#viewer"),
 		})
 		require.NoError(t, err)
-
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -786,9 +786,6 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
-
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
@@ -821,6 +818,9 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 }
 
 func TestResolveCheckDeterministic(t *testing.T) {
+	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	t.Cleanup(checkResolverCloser)
+
 	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
 		t.Parallel()
 
@@ -839,9 +839,6 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
 		})
 		require.NoError(t, err)
-
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -912,9 +909,6 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
-
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
 			typesystem.New(model),
@@ -962,9 +956,6 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
-
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
 			typesystem.New(model),
@@ -1003,8 +994,10 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalCheckerWithCycleDetection(WithResolveNodeBreadthLimit(concurrencyLimit))
-	t.Cleanup(checker.Close)
+	checker, checkResolverCloser := NewOrderedCheckResolvers(
+		WithLocalCheckerOpts(WithResolveNodeBreadthLimit(concurrencyLimit)),
+	).Build()
+	t.Cleanup(checkResolverCloser)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
@@ -1266,10 +1259,10 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		},
 	}
 
-	checker := NewLocalCheckerWithCycleDetection(
-		WithMaxConcurrentReads(1),
-	)
-	t.Cleanup(checker.Close)
+	checker, checkResolverCloser := NewOrderedCheckResolvers(
+		WithLocalCheckerOpts(WithMaxConcurrentReads(1)),
+	).Build()
+	t.Cleanup(checkResolverCloser)
 
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
@@ -1351,8 +1344,8 @@ func TestCheckConditions(t *testing.T) {
 	err = ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	checker := NewLocalCheckerWithCycleDetection()
-	t.Cleanup(checker.Close)
+	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	t.Cleanup(checkResolverCloser)
 
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),
