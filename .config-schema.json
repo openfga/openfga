@@ -567,12 +567,18 @@
                 },
                 "issuerAliases": {
                     "description": "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens.",
-                    "type": "string",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_ISSUER_ALIASES"
                 },
                 "subjects": {
                     "description": "the OIDC subject names to authenticate whom the token refers to.",
-                    "type": "string",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_SUBJECTS"
                 }
             },
