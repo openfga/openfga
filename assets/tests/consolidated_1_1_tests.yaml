@@ -7634,8 +7634,8 @@ tests:
           - request:
               filters:
                 - user
-              object: resource:abc
-              relation: a1
+              object: resource:1
+              relation: can_view
             errorCode: 2002
   - name: race_condition_same_user_same_object_diff_relation
     stages:
@@ -7909,8 +7909,8 @@ tests:
           - request:
               filters:
                 - user
-              object: document:1
-              relation: viewer
+              object: resource:1
+              relation: can_view
             errorCode: 2002
   - name: direct_relationships_with_intersection
     stages:
