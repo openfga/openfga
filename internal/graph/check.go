@@ -214,20 +214,6 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	return checker
 }
 
-// NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
-// which can be used to evaluate a Check request locally with cycle detection enabled.
-//
-// Deprecated: use NewOrderedCheckResolvers with no options.
-func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
-	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
-	localCheckResolver := NewLocalChecker(opts...)
-
-	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
-
-	return cycleDetectionCheckResolver
-}
-
 // SetDelegate sets this LocalChecker's dispatch delegate.
 func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
 	c.delegate = delegate
