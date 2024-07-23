@@ -189,7 +189,7 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 //
 // The constructed LocalChecker is not wrapped with cycle detection. Developers
 // wanting a LocalChecker without other wrapped layers (e.g caching and others)
-// are encouraged to use [[NewLocalCheckerWithCycleDetection]] instead.
+// are encouraged to use [[NewOrderedCheckResolvers]] instead.
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
@@ -207,6 +207,8 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 
 // NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
 // which can be used to evaluate a Check request locally with cycle detection enabled.
+//
+// Deprecated: use NewOrderedCheckResolvers with no options.
 func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
 	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
 	localCheckResolver := NewLocalChecker(opts...)
@@ -1075,12 +1077,28 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 //
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
+
 func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
 
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
 
+	terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(
+		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
+	)
+	if len(terminalRelations) != 1 {
+		return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+	}
+
+	computedRelation := terminalRelations[0]
+	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
+	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
+	// [group#member][1, 2]
+	// [group#owner][1, 3]
 	usersetsMap := make(usersetsMapType)
 
 	for {
@@ -1191,8 +1209,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
 		if !tuple.IsObjectRelation(tk.GetUser()) {
-			if canShortCircuit, err := typesys.TTUResolvesExclusivelyToDirectlyAssignable(
-				tuple.GetType(object), tuplesetRelation, computedRelation); err == nil && canShortCircuit {
+			if canFastPath := typesys.TTUCanFastPath(
+				tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
 				resolver = c.checkTTUFastPath
 			}
 		}

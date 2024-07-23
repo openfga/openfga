@@ -54,7 +54,7 @@ func TestServerLogs(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	// create mock OTLP server
+	// create mock OTLP server so we can assert that field "trace_id" is populated
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
