@@ -15,9 +15,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Breaking Changes :warning:
 
+> [!NOTE]
+> The following breaking changes are related to the storage interface. If you are not implementing a storage adaptor, then there are these changes should not impact your usage of OpenFGA.
+
 #### Removal of `PaginationOptions` in favour of a per-method `Options` type [#1732](https://github.com/openfga/openfga/pull/1732)
 
-In the storage interface, the options parameter of type `PaginationOptions` has been replaced with a per-method type that contains a `Pagination` field that contains this data in the following methods:
+The options parameter of type `PaginationOptions` has been replaced with a per-method type that contains a `Pagination` field that contains this data in the following methods:
 
 * `ReadAuthorizationModels` - Type is `ReadAuthorizationModelsOptions`
 * `ListStores` - Type is `ListStoresOptions`
@@ -26,7 +29,7 @@ In the storage interface, the options parameter of type `PaginationOptions` has 
 
 #### Introduction of new `Options` types to certain methods in the storage interface to facilitate consistency data [#1750](https://github.com/openfga/openfga/pull/1750)
 
-In the storage interface, the following methods have had an options parameter introduced to the method signature to include consistency data, or the existing options parameter has been expanded to hold consistency data.
+The following methods have had an options parameter introduced to the method signature to include consistency data, or the existing options parameter has been expanded to hold consistency data.
 
 This consistency data should be used to help determine whether any form of caching should be used as part of the read performed by the storage adapter.
 
