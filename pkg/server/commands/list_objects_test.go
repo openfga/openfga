@@ -20,7 +20,9 @@ import (
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		q, err := NewListObjectsQuery(nil, graph.NewLocalCheckerWithCycleDetection())
+		checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+		t.Cleanup(checkResolverCloser)
+		q, err := NewListObjectsQuery(nil, checkResolver)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
@@ -195,9 +197,9 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			checker := graph.NewLocalCheckerWithCycleDetection(
-				graph.WithMaxConcurrentReads(1),
-			)
+			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
+				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
+			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
 				ds,
