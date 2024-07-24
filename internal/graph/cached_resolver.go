@@ -110,10 +110,11 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 
 	if checker.cache == nil {
 		checker.allocatedCache = true
-		var optsCache []storage.InMemoryLRUCacheOpt[*ResolveCheckResponse]
-		optsCache = append(optsCache, storage.WithMaxCacheSize[*ResolveCheckResponse](checker.maxCacheSize))
-		optsCache = append(optsCache, storage.WithDefaultTTL[*ResolveCheckResponse](checker.cacheTTL))
-		checker.cache = storage.NewInMemoryLRUCache[*ResolveCheckResponse](optsCache...)
+		cacheOptions := []storage.InMemoryLRUCacheOpt[*ResolveCheckResponse]{
+			storage.WithMaxCacheSize[*ResolveCheckResponse](checker.maxCacheSize),
+			storage.WithDefaultTTL[*ResolveCheckResponse](checker.cacheTTL),
+		}
+		checker.cache = storage.NewInMemoryLRUCache[*ResolveCheckResponse](cacheOptions...)
 	}
 
 	return checker
