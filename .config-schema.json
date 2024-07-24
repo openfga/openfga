@@ -566,7 +566,7 @@
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_AUDIENCE"
                 },
                 "issuerAliases": {
-                    "description": "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens.",
+                    "description": "the OIDC issuer DNS aliases that will be accepted as valid when verifying the `iss` field of the JWTs.",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -574,7 +574,7 @@
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_ISSUER_ALIASES"
                 },
                 "subjects": {
-                    "description": "the OIDC subject names to authenticate whom the token refers to.",
+                    "description": "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed",
                     "type": "array",
                     "items": {
                         "type": "string"
