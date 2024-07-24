@@ -1949,11 +1949,16 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 }
 
 func TestIsExperimentallyEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ds := memory.New() // Datastore required for server instantiation
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
+	t.Cleanup(ds.Close)
 
 	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
 		s := MustNewServerWithOpts(WithDatastore(ds))
+		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1962,6 +1967,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(someExperimentalFlag),
 		)
+		t.Cleanup(s.Close)
 		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1970,6 +1976,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
 		)
+		t.Cleanup(s.Close)
 		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1978,13 +1985,19 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
 		)
+		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 }
 
 func TestErrorThrownIfConsistencyRequestedWithoutFlagEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ds := memory.New()
+	t.Cleanup(ds.Close)
 	openfga := MustNewServerWithOpts(WithDatastore(ds))
+	t.Cleanup(openfga.Close)
 
 	t.Run("check_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
 		_, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{

@@ -158,9 +158,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	skipCache := c.enableConsistencyOptions && req.Consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+	tryCache := !c.enableConsistencyOptions || req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-	if !skipCache {
+	if tryCache {
 		checkCacheTotalCounter.Inc()
 
 		cachedResp := c.cache.Get(cacheKey)

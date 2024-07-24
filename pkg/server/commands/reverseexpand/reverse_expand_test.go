@@ -76,7 +76,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata(), storage.ConsistencyOptions{})
+		}, resultChan, NewResolutionMetadata())
 		t.Logf("after execute reverse expand")
 
 		if err != nil {
@@ -149,7 +149,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata(), storage.ConsistencyOptions{})
+		}, resultChan, NewResolutionMetadata())
 		t.Logf("after execute reverse expand")
 
 		if err != nil {
@@ -221,7 +221,7 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata(), storage.ConsistencyOptions{})
+		}, resultChan, NewResolutionMetadata())
 
 		if err != nil {
 			errChan <- err
@@ -290,7 +290,7 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 				},
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata(), storage.ConsistencyOptions{})
+		}, resultChan, NewResolutionMetadata())
 		if err != nil {
 			errChan <- err
 		}
@@ -352,7 +352,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 					},
 				},
 				ContextualTuples: []*openfgav1.TupleKey{},
-			}, resultChan, NewResolutionMetadata(), storage.ConsistencyOptions{})
+			}, resultChan, NewResolutionMetadata())
 			t.Logf("after produce")
 
 			if err != nil {
@@ -436,7 +436,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			Relation:         "member",
 			User:             &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
 			ContextualTuples: []*openfgav1.TupleKey{},
-		}, resultChan, NewResolutionMetadata(), storage.ConsistencyOptions{})
+		}, resultChan, NewResolutionMetadata())
 
 		if err != nil {
 			errChan <- err
@@ -716,7 +716,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 					ObjectType: test.objectType,
 					Relation:   test.relation,
 					User:       test.user,
-				}, resultChan, resolutionMetadata, storage.ConsistencyOptions{})
+				}, resultChan, resolutionMetadata)
 
 				if err != nil {
 					errChan <- err
