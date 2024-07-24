@@ -978,6 +978,7 @@ func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveChe
 	_, span := tracer.Start(ctx, "checkComputedUserset")
 	defer span.End()
 
+	seen := map[string]struct{}{}
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	tk := tuple.NewTupleKey(
@@ -985,7 +986,6 @@ func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveChe
 		req.GetTupleKey().GetRelation(),
 		req.GetTupleKey().GetUser(),
 	)
-	seen := map[string]struct{}{}
 
 	for {
 		tk = tuple.NewTupleKey(
@@ -1005,6 +1005,21 @@ func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveChe
 			}
 		}
 		seen[key] = struct{}{}
+
+		userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+
+		// Check(document:1#viewer@document:1#viewer) will always return true
+		if tk.GetRelation() == userRelation && tk.GetObject() == userObject {
+			return func(ctx context.Context) (*ResolveCheckResponse, error) {
+				return &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+					},
+				}, nil
+			}
+		}
+
 		rw, err := typesys.GetRelation(tuple.GetType(tk.GetObject()), tk.GetRelation())
 		if err != nil {
 			return func(ctx context.Context) (*ResolveCheckResponse, error) {
