@@ -1977,8 +1977,6 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 func TestComputedUsersetDetectsCycle(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-
 	storeID := ulid.Make().String()
 
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -1990,10 +1988,12 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 					define x: x
 					define y: x`)
 
-	ctx = typesystem.ContextWithTypesystem(
+	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model), // not NewAndValidate because this model isn't valid
+		typesystem.New(model),
 	)
+
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)
