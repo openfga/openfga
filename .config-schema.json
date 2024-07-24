@@ -124,7 +124,7 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "Enable/Disable capturing and logging the number of hits on an edge of the authorization model graph.",
+                    "description": "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.",
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
