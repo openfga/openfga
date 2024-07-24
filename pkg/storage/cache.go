@@ -9,7 +9,6 @@ import (
 )
 
 const defaultMaxCacheSize = 10000
-const defaultCacheTTL = 10 * time.Second
 
 // InMemoryCache is a general purpose cache to store things in memory.
 type InMemoryCache[T any] interface {
