@@ -70,8 +70,8 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		}
 
 		key = fmt.Sprintf("%s/%s", storeID, modelID)
-		item, ok := cache.Get(key)
-		if ok {
+		item := cache.Get(key)
+		if item != nil {
 			return item.Value, nil
 		}
 

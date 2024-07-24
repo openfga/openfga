@@ -112,7 +112,6 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 		checker.allocatedCache = true
 		cacheOptions := []storage.InMemoryLRUCacheOpt[*ResolveCheckResponse]{
 			storage.WithMaxCacheSize[*ResolveCheckResponse](checker.maxCacheSize),
-			storage.WithDefaultTTL[*ResolveCheckResponse](checker.cacheTTL),
 		}
 		checker.cache = storage.NewInMemoryLRUCache[*ResolveCheckResponse](cacheOptions...)
 	}
@@ -152,8 +151,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	cachedResp, ok := c.cache.Get(cacheKey)
-	isCached := ok && !cachedResp.Expired
+	cachedResp := c.cache.Get(cacheKey)
+	isCached := cachedResp != nil && !cachedResp.Expired
 	span.SetAttributes(attribute.Bool("is_cached", isCached))
 	if isCached {
 		checkCacheHitCounter.Inc()

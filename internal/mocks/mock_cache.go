@@ -41,12 +41,11 @@ func (m *MockInMemoryCache[T]) EXPECT() *MockInMemoryCacheMockRecorder[T] {
 }
 
 // Get mocks base method.
-func (m *MockInMemoryCache[T]) Get(key string) (*storage.CachedResult[T], bool) {
+func (m *MockInMemoryCache[T]) Get(key string) *storage.CachedResult[T] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", key)
 	ret0, _ := ret[0].(*storage.CachedResult[T])
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
+	return ret0
 }
 
 // Get indicates an expected call of Get.

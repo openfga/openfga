@@ -922,7 +922,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
-				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes, // group#poewner, group#member
 			})
 			if err != nil {
 				return nil, err

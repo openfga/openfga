@@ -35,9 +35,9 @@ func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cac
 // ReadAuthorizationModel reads the model corresponding to store and model ID.
 func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgav1.AuthorizationModel, error) {
 	cacheKey := fmt.Sprintf("%s:%s", storeID, modelID)
-	cachedEntry, ok := c.cache.Get(cacheKey)
+	cachedEntry := c.cache.Get(cacheKey)
 
-	if ok {
+	if cachedEntry != nil {
 		return cachedEntry.Value, nil
 	}
 

@@ -622,7 +622,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.NoError(t, err)
 
 	// The first check is a cache miss, so goes to DB and populates cache.
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(nil, false)
+	mockCache.EXPECT().Get(reqKey).Times(1).Return(nil)
 	mockCache.EXPECT().Set(reqKey, gomock.Any(), gomock.Any()).Times(1)
 	res, err := cachedCheckResolver.ResolveCheck(ctx, req)
 
@@ -630,14 +630,14 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 
 	// The second check is a cache hit.
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}}, true)
+	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
 	res, err = cachedCheckResolver.ResolveCheck(ctx, req)
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(0), res.GetResolutionMetadata().DatastoreQueryCount)
 
 	// The third check will use partial result from the cache and partial result from the local checker
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}}, true)
+	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
 	res, err = localCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:          storeID,
 		TupleKey:         tuple.NewTupleKey("document:x", "ttu", "user:maria"),

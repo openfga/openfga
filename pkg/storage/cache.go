@@ -14,9 +14,8 @@ const defaultCacheTTL = 10 * time.Second
 // InMemoryCache is a general purpose cache to store things in memory.
 type InMemoryCache[T any] interface {
 
-	// Get If the key exists, returns the value and "true".
-	// If the key didn't exist, returns nil, false.
-	Get(key string) (*CachedResult[T], bool)
+	// Get If the key exists, returns the value. If the key didn't exist, returns nil.
+	Get(key string) *CachedResult[T]
 	Set(key string, value T, ttl time.Duration)
 
 	// Stop cleans resources.
@@ -33,7 +32,6 @@ type CachedResult[T any] struct {
 type InMemoryLRUCache[T any] struct {
 	ccache      *ccache.Cache[T]
 	maxElements int64
-	ttl         time.Duration
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -44,35 +42,27 @@ func WithMaxCacheSize[T any](maxElements int64) InMemoryLRUCacheOpt[T] {
 	}
 }
 
-func WithDefaultTTL[T any](ttl time.Duration) InMemoryLRUCacheOpt[T] {
-	return func(i *InMemoryLRUCache[T]) {
-		i.ttl = ttl
-	}
-}
-
 var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCache[T] {
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
-		ttl:         defaultCacheTTL,
 	}
 
 	for _, opt := range opts {
 		opt(t)
 	}
 
-	t.ccache = ccache.New(
-		ccache.Configure[T]().MaxSize(t.maxElements))
+	t.ccache = ccache.New(ccache.Configure[T]().MaxSize(t.maxElements))
 	return t
 }
 
-func (i InMemoryLRUCache[T]) Get(key string) (*CachedResult[T], bool) {
+func (i InMemoryLRUCache[T]) Get(key string) *CachedResult[T] {
 	item := i.ccache.Get(key)
 	if item != nil {
-		return &CachedResult[T]{Value: item.Value(), Expired: item.Expired()}, true
+		return &CachedResult[T]{Value: item.Value(), Expired: item.Expired()}
 	}
-	return nil, false
+	return nil
 }
 
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {

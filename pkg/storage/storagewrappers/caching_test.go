@@ -58,8 +58,8 @@ func TestReadAuthorizationModel(t *testing.T) {
 
 	// Check what's stored inside the cache.
 	modelKey := fmt.Sprintf("%s:%s", storeID, model.GetId())
-	cachedModel, ok := cachingBackend.cache.Get(modelKey)
-	require.True(t, ok)
+	cachedModel := cachingBackend.cache.Get(modelKey)
+	require.NotNil(t, cachedModel)
 	require.Equal(t, model, cachedModel.Value)
 
 	// Check that second hit to cache -> hit.
