@@ -1011,10 +1011,10 @@ func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveChe
 				return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", tk.GetRelation(), tuple.GetType(tk.GetObject()))
 			}
 		}
-		if _, isComputed := rw.GetRewrite().GetUserset().(*openfgav1.Userset_ComputedUserset); !isComputed {
+		rewrite = rw.GetRewrite()
+		if _, isComputed := rewrite.GetUserset().(*openfgav1.Userset_ComputedUserset); !isComputed {
 			break
 		}
-		rewrite = rw.GetRewrite()
 	}
 
 	childRequest := clone(req)
@@ -1291,7 +1291,7 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:
-		return c.checkComputedUserset(ctx, req, rw)
+		return c.checkComputedUserset(ctx, req, rewrite)
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
