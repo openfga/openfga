@@ -1973,3 +1973,39 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
 	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 }
+
+func TestComputedUsersetDetectsCycle(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+
+	storeID := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define x: x
+					define y: x`)
+
+	ctx = typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model), // not NewAndValidate because this model isn't valid
+	)
+
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+		RequestMetadata:      NewCheckRequestMetadata(20),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.GetAllowed())
+	require.True(t, resp.GetCycleDetected())
+}
