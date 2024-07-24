@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
@@ -44,7 +45,7 @@ var (
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        *ccache.Cache[*ResolveCheckResponse]
+	cache        storage.InMemoryCache[*ResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
@@ -77,7 +78,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 // WithExistingCache sets the cache to the specified cache.
 // Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
 // to check whether the original cache should be stopped.
-func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
@@ -109,9 +110,10 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 
 	if checker.cache == nil {
 		checker.allocatedCache = true
-		checker.cache = ccache.New(
-			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
-		)
+		var optsCache []storage.InMemoryLRUCacheOpt[*ResolveCheckResponse]
+		optsCache = append(optsCache, storage.WithMaxCacheSize[*ResolveCheckResponse](checker.maxCacheSize))
+		optsCache = append(optsCache, storage.WithDefaultTTL[*ResolveCheckResponse](checker.cacheTTL))
+		checker.cache = storage.NewInMemoryLRUCache[*ResolveCheckResponse](optsCache...)
 	}
 
 	return checker
@@ -149,14 +151,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired()
+	cachedResp, ok := c.cache.Get(cacheKey)
+	isCached := ok && !cachedResp.Expired
 	span.SetAttributes(attribute.Bool("is_cached", isCached))
 	if isCached {
 		checkCacheHitCounter.Inc()
 
 		// return a copy to avoid races across goroutines
-		return CloneResolveCheckResponse(cachedResp.Value()), nil
+		return CloneResolveCheckResponse(cachedResp.Value), nil
 	}
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)

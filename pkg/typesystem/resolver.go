@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,7 +34,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 	lookupGroup := singleflight.Group{}
 
 	// cache holds models that have already been validated.
-	cache := ccache.New(ccache.Configure[*TypeSystem]())
+	cache := storage.NewInMemoryLRUCache[*TypeSystem]()
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
 		ctx, span := tracer.Start(ctx, "MemoizedTypesystemResolverFunc", trace.WithAttributes(
@@ -71,9 +70,9 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		}
 
 		key = fmt.Sprintf("%s/%s", storeID, modelID)
-		item := cache.Get(key)
-		if item != nil {
-			return item.Value(), nil
+		item, ok := cache.Get(key)
+		if ok {
+			return item.Value, nil
 		}
 
 		if model == nil {

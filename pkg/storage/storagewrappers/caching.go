@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/sync/singleflight"
 
@@ -19,26 +18,27 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
 	lookupGroup singleflight.Group
-	cache       *ccache.Cache[*openfgav1.AuthorizationModel]
+	cache       storage.InMemoryCache[*openfgav1.AuthorizationModel]
 }
 
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize
 // [*openfgav1.AuthorizationModel] on every call to storage.ReadAuthorizationModel.
 // It caches with unlimited TTL because models are immutable. It uses LRU for eviction.
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
+	cache := storage.NewInMemoryLRUCache[*openfgav1.AuthorizationModel](storage.WithMaxCacheSize[*openfgav1.AuthorizationModel](int64(maxSize)))
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
-		cache:            ccache.New(ccache.Configure[*openfgav1.AuthorizationModel]().MaxSize(int64(maxSize))),
+		cache:            *cache,
 	}
 }
 
 // ReadAuthorizationModel reads the model corresponding to store and model ID.
 func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgav1.AuthorizationModel, error) {
 	cacheKey := fmt.Sprintf("%s:%s", storeID, modelID)
-	cachedEntry := c.cache.Get(cacheKey)
+	cachedEntry, ok := c.cache.Get(cacheKey)
 
-	if cachedEntry != nil {
-		return cachedEntry.Value(), nil
+	if ok {
+		return cachedEntry.Value, nil
 	}
 
 	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)
