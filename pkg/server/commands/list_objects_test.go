@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -258,9 +257,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	checkCache := ccache.New(
-		ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(100),
-	)
+	checkCache := storage.NewInMemoryLRUCache[*graph.ResolveCheckResponse]()
 	defer checkCache.Stop()
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
