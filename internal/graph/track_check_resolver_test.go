@@ -364,8 +364,13 @@ func TestIntegrationTracker(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
+		observerLogger, logs := observer.New(zap.DebugLevel)
+		logger := &logger.ZapLogger{
+			Logger: zap.New(observerLogger),
+		}
+
 		resolvers := NewOrderedCheckResolvers(
-			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx), WithTrackerLogger(logger)),
 		)
 
 		_, checkResolverCloser := resolvers.Build()
@@ -404,6 +409,9 @@ func TestIntegrationTracker(t *testing.T) {
 
 		_, ok = paths.Load(path)
 		require.True(t, ok)
+
+		actualLogs := logs.All()
+		require.Len(t, actualLogs, 0)
 	})
 
 	t.Run("tracker_records_hits_per_path", func(t *testing.T) {
