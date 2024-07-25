@@ -1591,7 +1591,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
-		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(0), checkRequestMetadata.DispatchCounter.Load())
 	})
 }
 
@@ -1972,4 +1972,40 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	require.NotNil(t, clonedResp2.ResolutionMetadata)
 	require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
 	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
+}
+
+func TestComputedUsersetDetectsCycle(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	storeID := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define x: x
+					define y: x`)
+
+	ctx := typesystem.ContextWithTypesystem(
+		context.Background(),
+		typesystem.New(model),
+	)
+
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+		RequestMetadata:      NewCheckRequestMetadata(20),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.GetAllowed())
+	require.True(t, resp.GetCycleDetected())
 }

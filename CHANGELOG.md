@@ -8,6 +8,35 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+
+* Support requesting a different consistency option per request in `Check`, `Expand`, `ListObjects`, `ListUsers`, and `Read` [#1764](https://github.com/openfga/openfga/pull/1764)
+  * When `HIGHER_CONSISTENCY` is requested, OpenFGA will skip the check resolver cache. For storage implementors it is recommended to skip any caching and perform a stronger read if `HIGHER_CONSISTENCY` is requested. This can be accessed in the `Consistency` options provided to the relevant methods of the storage interface.
+
+### Breaking Changes :warning:
+
+> [!NOTE]
+> The following breaking changes are related to the storage interface. If you are not implementing a storage adaptor, then there are these changes should not impact your usage of OpenFGA.
+
+#### Removal of `PaginationOptions` in favour of a per-method `Options` type [#1732](https://github.com/openfga/openfga/pull/1732)
+
+The options parameter of type `PaginationOptions` has been replaced with a per-method type that contains a `Pagination` field that contains this data in the following methods:
+
+* `ReadAuthorizationModels` - Type is `ReadAuthorizationModelsOptions`
+* `ListStores` - Type is `ListStoresOptions`
+* `ReadChanges` - Type is `ReadChangesOptions`
+* `ReadPage` - Type is `ReadPageOptions`
+
+#### Introduction of new `Options` types to certain methods in the storage interface to facilitate consistency data [#1750](https://github.com/openfga/openfga/pull/1750)
+
+The following methods have had an options parameter introduced to the method signature to include consistency data, or the existing options parameter has been expanded to hold consistency data.
+
+This consistency data should be used to help determine whether any form of caching should be used as part of the read performed by the storage adapter.
+
+* `Read` - Added a new parameter of type `ReadOptions`
+* `ReadPage` - Added `Consistency` to existing `ReadPageOptions` type
+* `ReadUserSetTuples` - Added a new parameter of type `ReadUserSetTuplesOptions`
+* `ReadStartingWithUser` - Added a new parameter of type `ReadStartingWithUserOptions`
 
 ## [1.5.6] - 2024-07-17
 

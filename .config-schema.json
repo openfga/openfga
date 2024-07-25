@@ -115,7 +115,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": []
+                "enum": ["enable-consistency-params"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
