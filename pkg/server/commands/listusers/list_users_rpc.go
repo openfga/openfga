@@ -414,10 +414,15 @@ func (l *listUsersQuery) expandDirect(
 		}
 	}
 
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{
@@ -841,10 +846,15 @@ func (l *listUsersQuery) expandTTU(
 		}
 	}
 
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{

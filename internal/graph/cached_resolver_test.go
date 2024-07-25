@@ -35,11 +35,12 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 	// if the tuple is different, it should result in fetching from cache
 	tests := []struct {
-		name                string
-		initialReq          *ResolveCheckRequest
-		subsequentReq       *ResolveCheckRequest
-		setInitialResult    func(mock *MockCheckResolver, request *ResolveCheckRequest)
-		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		name                     string
+		initialReq               *ResolveCheckRequest
+		subsequentReq            *ResolveCheckRequest
+		setInitialResult         func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		setTestExpectations      func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		consistencyOptionEnabled bool
 	}{
 		{
 			name: "same_request_returns_results_from_cache",
@@ -48,6 +49,81 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
+			name:                     "same_request_returns_results_from_cache_when_minimize_latency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
+			name:                     "same_request_returns_results_from_cache_when_no_consistency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
+			name:                     "same_request_does_not_use_cache_if_higher_consistency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+		},
+		{
+			name:                     "result_added_to_cache_when_higher_consistency_requested",
+			consistencyOptionEnabled: true,
+			initialReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -394,7 +470,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			test.setInitialResult(mockResolver, initialReq)
 
 			// expect first call to result in actual resolve call
-			dut := NewCachedCheckResolver(WithMaxCacheSize(10))
+			dut := NewCachedCheckResolver(WithMaxCacheSize(10), WithEnabledConsistencyParams(test.consistencyOptionEnabled))
 			defer dut.Close()
 
 			dut.SetDelegate(mockResolver)
@@ -403,7 +479,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			test.setTestExpectations(mockResolver, test.subsequentReq)
 
-			dut2 := NewCachedCheckResolver(WithExistingCache(dut.cache))
+			dut2 := NewCachedCheckResolver(WithExistingCache(dut.cache), WithEnabledConsistencyParams(test.consistencyOptionEnabled))
 			defer dut2.Close()
 
 			dut2.SetDelegate(dut)
