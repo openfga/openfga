@@ -813,6 +813,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 	if !ok {
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
+	reqUserType := tuple.GetType(req.GetTupleKey().GetUser())
 
 	usersetsMap := make(usersetsMapType)
 
@@ -832,9 +833,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(
-			objectType, relation, tuple.GetType(req.GetTupleKey().GetUser()),
-		)
+		terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(objectType, relation, reqUserType)
 		if len(terminalRelations) != 1 {
 			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
 		}
