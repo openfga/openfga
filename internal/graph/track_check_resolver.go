@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,14 +12,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/exp/rand"
 	"golang.org/x/time/rate"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
-)
-
-var (
-	trackerInterval time.Duration
 )
 
 const (
@@ -44,18 +40,22 @@ type resolutionNode struct {
 }
 
 // Expired check the current tuple entry expiration.
-func (r *resolutionNode) expired() bool {
+func (r *resolutionNode) expired(trackerInterval time.Duration) bool {
 	return time.Since(r.tm) > trackerInterval
 }
 
 type TrackerCheckResolver struct {
-	delegate CheckResolver
-	ticker   *time.Ticker
-	logger   logger.Logger
-	limiter  *rate.Limiter
-	running  bool
-	ctx      context.Context
-	nodes    sync.Map
+	delegate       CheckResolver
+	ticker         *time.Ticker
+	tickerInterval time.Duration
+	logger         logger.Logger
+	limiter        *rate.Limiter
+	ctx            context.Context
+	cancel         context.CancelFunc
+	nodes          sync.Map
+
+	// testhookFlush is used purely for testing.
+	testhookFlush func()
 }
 
 var _ CheckResolver = (*TrackerCheckResolver)(nil)
@@ -72,11 +72,23 @@ func WithTrackerContext(ctx context.Context) TrackerCheckResolverOpt {
 	}
 }
 
+func WithTrackerInterval(d time.Duration) TrackerCheckResolverOpt {
+	return func(t *TrackerCheckResolver) {
+		t.tickerInterval = d
+		t.ticker = time.NewTicker(d)
+	}
+}
+
 // NewTrackCheckResolver creates an instance tracker Resolver.
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
+	randomInterval := rand.Intn(trackerMaxInterval-trackerMinInterval+1) + trackerMinInterval
+	defaultTickerInterval := time.Duration(randomInterval) * time.Second
+
 	t := &TrackerCheckResolver{
-		limiter: rate.NewLimiter(rate.Every(trackerLogInterval), trackerLogLines),
-		ticker:  time.NewTicker(randomLogging()),
+		logger:         logger.NewNoopLogger(),
+		limiter:        rate.NewLimiter(rate.Every(trackerLogInterval), trackerLogLines),
+		ticker:         time.NewTicker(defaultTickerInterval),
+		tickerInterval: defaultTickerInterval,
 	}
 
 	for _, opt := range opts {
@@ -85,30 +97,13 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 
 	t.delegate = t
 
-	if t.running = t.validate(); t.running {
-		t.launchFlush()
+	if t.ctx == nil {
+		t.ctx, t.cancel = context.WithCancel(context.Background())
 	}
+
+	t.launchFlush()
 
 	return t
-}
-
-// RandomLogging allows multiple processes to log at different interval.
-func randomLogging() time.Duration {
-	val := rand.Intn(trackerMaxInterval-trackerMinInterval+1) + trackerMinInterval
-	trackerInterval = time.Duration(val) * time.Second
-	return trackerInterval
-}
-
-// Validate options.
-func (t *TrackerCheckResolver) validate() bool {
-	if t.ctx == nil {
-		return false
-	}
-
-	if t.logger == nil {
-		return false
-	}
-	return true
 }
 
 // LogExecutionPaths reports the model and tuple path.
@@ -118,8 +113,8 @@ func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 		storeModel := k.(trackerKey)
 		paths.Range(func(k, v any) bool {
 			path := k.(string)
-			tree := v.(*resolutionNode)
-			if tree.expired() || flush {
+			node := v.(*resolutionNode)
+			if node.expired(t.tickerInterval) || flush {
 				if !t.limiter.Allow() && !flush {
 					return false
 				}
@@ -127,7 +122,7 @@ func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 					zap.String("store", storeModel.store),
 					zap.String("model", storeModel.model),
 					zap.String("path", path),
-					zap.Uint64("hits", tree.hits.Load()))
+					zap.Uint64("hits", node.hits.Load()))
 
 				paths.Delete(path)
 			}
@@ -147,7 +142,11 @@ func (t *TrackerCheckResolver) launchFlush() {
 				return
 			case <-t.ticker.C:
 				t.logExecutionPaths(false)
-				t.ticker.Reset(trackerInterval)
+				t.ticker.Reset(t.tickerInterval)
+
+				if t.testhookFlush != nil {
+					t.testhookFlush()
+				}
 			}
 		}
 	}()
@@ -165,6 +164,10 @@ func (t *TrackerCheckResolver) GetDelegate() CheckResolver {
 
 // Close implements CheckResolver.
 func (t *TrackerCheckResolver) Close() {
+	if t.cancel != nil {
+		t.cancel()
+	}
+
 	t.logExecutionPaths(true)
 }
 
@@ -173,8 +176,10 @@ func (t *TrackerCheckResolver) userType(userKey string) string {
 	return string(tuple.GetUserTypeFromUser(userKey))
 }
 
-// GetTK returns formatted tuple suitable insertion into list formatted object#relation@user.
-func (t *TrackerCheckResolver) getTK(tk *openfgav1.TupleKey) string {
+// getFormattedNode for a tuple like (user:anne, viewer, doc:1) returns doc:1#viewer@user.
+// for a tuple like (group:fga#member, viewer, doc:1), returns doc:1#viewer@?????
+// // for a tuple like (user:*, viewer, doc:1), returns doc:1#viewer@?????
+func (t *TrackerCheckResolver) getFormattedNode(tk *openfgav1.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()))
 }
 
@@ -184,40 +189,30 @@ func (t *TrackerCheckResolver) loadModel(r *ResolveCheckRequest) (value any, ok 
 	value, ok = t.nodes.Load(key)
 	if !ok {
 		value = &sync.Map{}
-		value.(*sync.Map).Store(t.getTK(r.GetTupleKey()), &resolutionNode{tm: time.Now(), hits: &atomic.Uint64{}})
+		value.(*sync.Map).Store(t.getFormattedNode(r.GetTupleKey()), &resolutionNode{tm: time.Now().UTC(), hits: &atomic.Uint64{}})
 		t.nodes.Store(key, value)
 	}
 	return value, ok
 }
 
-// LoadPath populates the individual tuple paths.
-func (t *TrackerCheckResolver) loadPath(value any, path string) {
-	paths, _ := value.(*sync.Map)
-	if _, ok := paths.Load(path); !ok {
-		paths.Store(path, &resolutionNode{tm: time.Now(), hits: &atomic.Uint64{}})
-	}
-}
-
-// IncrementPath counter.
-func (t *TrackerCheckResolver) incrementPath(paths *sync.Map, path string) {
-	value, ok := paths.Load(path)
-	if ok {
-		value.(*resolutionNode).hits.Add(1)
-	}
-}
-
 // AddPathHits to list of path by model.
 func (t *TrackerCheckResolver) addPathHits(r *ResolveCheckRequest) {
-	path := t.getTK(r.GetTupleKey())
+	path := t.getFormattedNode(r.GetTupleKey())
 
 	value, ok := t.loadModel(r)
 	if ok {
-		t.loadPath(value, path)
+		paths, _ := value.(*sync.Map)
+		if _, ok := paths.Load(path); !ok {
+			paths.Store(path, &resolutionNode{tm: time.Now(), hits: &atomic.Uint64{}})
+		}
 	}
 
 	paths, ok := value.(*sync.Map)
 	if ok {
-		t.incrementPath(paths, path)
+		value, ok := paths.Load(path)
+		if ok {
+			value.(*resolutionNode).hits.Add(1)
+		}
 	}
 }
 
@@ -239,7 +234,7 @@ func (t *TrackerCheckResolver) ResolveCheck(
 		Context:              req.GetContext(),
 	})
 
-	if t.running && (err == nil || errors.Is(err, context.Canceled)) {
+	if err == nil || errors.Is(err, context.Canceled) {
 		t.addPathHits(req)
 	}
 

@@ -145,7 +145,6 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	ctx                          context.Context
 	checkTrackerEnabled          bool
-	trackerCheckResolver         *graph.TrackerCheckResolver
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -469,6 +468,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkResolver:          nil,
+		checkTrackerEnabled:    serverconfig.DefaultCheckTrackerEnabled,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -558,10 +558,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 func (s *Server) Close() {
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
-	}
-
-	if s.trackerCheckResolver != nil {
-		s.trackerCheckResolver.Close()
 	}
 
 	s.checkResolverCloser()

@@ -14,6 +14,8 @@ import (
 
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -27,26 +29,17 @@ func TestIntegrationTracker(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	logger := logger.NewNoopLogger()
-	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
-	t.Cleanup(cycleDetectionCheckResolver.Close)
-
-	localChecker := NewLocalChecker()
-	t.Cleanup(localChecker.Close)
-
-	trackChecker := NewTrackCheckResolver(
-		WithTrackerContext(ctx),
-		WithTrackerLogger(logger))
-	t.Cleanup(trackChecker.Close)
-
-	cycleDetectionCheckResolver.SetDelegate(trackChecker)
-	trackChecker.SetDelegate(localChecker)
-	localChecker.SetDelegate(cycleDetectionCheckResolver)
-
 	t.Run("tracker_integrates_with_cycle_and_local_checker", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+		)
+
+		checker, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 
@@ -83,7 +76,7 @@ func TestIntegrationTracker(t *testing.T) {
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		resp, err := trackChecker.ResolveCheck(ctx, &ResolveCheckRequest{
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			AuthorizationModelID: ulid.Make().String(),
 			StoreID:              storeID,
 			TupleKey:             tuple.NewTupleKey("group:1", "blocked", "user:jon"),
@@ -95,6 +88,16 @@ func TestIntegrationTracker(t *testing.T) {
 	})
 
 	t.Run("tracker_delegates_request", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+		)
+
+		checker, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -102,9 +105,9 @@ func TestIntegrationTracker(t *testing.T) {
 		mockLocalChecker.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: true,
 		}, nil).Times(1)
-		trackChecker.SetDelegate(mockLocalChecker)
+		checker.SetDelegate(mockLocalChecker)
 
-		resp, err := trackChecker.ResolveCheck(ctx, &ResolveCheckRequest{
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         ulid.Make().String(),
 			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:will"),
 			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
@@ -115,14 +118,25 @@ func TestIntegrationTracker(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("tracker_user_type_validate_and_expiration", func(t *testing.T) {
-		require.True(t, trackChecker.validate())
+	t.Run("tracker_user_type", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
 
-		tc := &TrackerCheckResolver{}
-		require.False(t, tc.validate())
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+		)
 
-		tc = &TrackerCheckResolver{ctx: context.Background()}
-		require.False(t, tc.validate())
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
 
 		userType := trackChecker.userType("group:1#member")
 		require.Equal(t, "userset", userType)
@@ -132,15 +146,60 @@ func TestIntegrationTracker(t *testing.T) {
 
 		userType = trackChecker.userType("user:*")
 		require.Equal(t, "userset", userType)
+	})
 
-		r := resolutionNode{tm: time.Now().Add(-trackerInterval)}
-		require.True(t, r.expired())
+	t.Run("tracker_expiration", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
 
-		r = resolutionNode{tm: time.Now().Add(trackerInterval)}
-		require.False(t, r.expired())
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+		)
+
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
+
+		r := resolutionNode{tm: time.Now().Add(-trackChecker.tickerInterval)}
+		require.True(t, r.expired(trackChecker.tickerInterval))
+
+		r = resolutionNode{tm: time.Now().Add(trackChecker.tickerInterval)}
+		require.False(t, r.expired(trackChecker.tickerInterval))
 	})
 
 	t.Run("tracker_prints_and_delete_path", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		observerLogger, logs := observer.New(zap.DebugLevel)
+		logger := &logger.ZapLogger{
+			Logger: zap.New(observerLogger),
+		}
+
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx), WithTrackerLogger(logger)),
+		)
+
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
+
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -156,49 +215,119 @@ func TestIntegrationTracker(t *testing.T) {
 		sm.Store(
 			path,
 			&resolutionNode{
-				tm:   time.Now().Add(-trackerInterval),
+				tm:   time.Now().Add(-trackChecker.tickerInterval),
 				hits: &atomic.Uint64{},
 			},
 		)
 
-		trackChecker.nodes.Store(trackerKey{store: ulid.Make().String(), model: ulid.Make().String()}, sm)
+		trackChecker.nodes.Store(trackerKey{store: r.StoreID, model: r.AuthorizationModelID}, sm)
 		trackChecker.logExecutionPaths(false)
 
 		_, ok = sm.Load(path)
 		require.False(t, ok)
+
+		actualLogs := logs.All()
+		require.Len(t, actualLogs, 1)
+
+		fields := actualLogs[0].ContextMap()
+		require.Equal(t, uint64(0), fields["hits"])
+		require.Equal(t, r.StoreID, fields["store"])
+		require.Equal(t, r.AuthorizationModelID, fields["model"])
+		require.Equal(t, path, fields["path"])
 	})
 
 	t.Run("tracker_success_launch_flush", func(t *testing.T) {
-		wg := sync.WaitGroup{}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(time.Duration(10) * time.Millisecond)
-		}()
+		observerLogger, logs := observer.New(zap.DebugLevel)
+		logger := &logger.ZapLogger{
+			Logger: zap.New(observerLogger),
+		}
 
-		path := "group:1#member@user"
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true,
+				WithTrackerContext(ctx),
+				WithTrackerLogger(logger),
+				WithTrackerInterval(time.Nanosecond),
+			),
+		)
+
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
+
+		storeID := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		tk := tuple.NewTupleKey("group:1", "member", "user:somebody")
+		path := trackChecker.getFormattedNode(tk)
+
 		sm := &sync.Map{}
 		sm.Store(
 			path,
 			&resolutionNode{
-				tm:   time.Now().Add(-trackerInterval),
+				tm:   time.Now().Add(-trackChecker.tickerInterval),
 				hits: &atomic.Uint64{},
 			},
 		)
 
-		trackChecker.nodes.Store(trackerKey{store: ulid.Make().String(), model: ulid.Make().String()}, sm)
+		trackChecker.nodes.Store(trackerKey{store: storeID, model: modelID}, sm)
 
-		trackChecker.ticker.Reset(time.Duration(2) * time.Millisecond)
+		trackChecker.addPathHits(&ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: modelID,
+			TupleKey:             tk,
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+
+		trackChecker.testhookFlush = cancel
+
 		trackChecker.launchFlush()
 
-		wg.Wait()
+		<-ctx.Done()
 
 		_, ok := sm.Load(path)
 		require.False(t, ok)
+
+		actualLogs := logs.All()
+		require.Len(t, actualLogs, 1)
+
+		fields := actualLogs[0].ContextMap()
+		require.Equal(t, uint64(1), fields["hits"])
+		require.Equal(t, storeID, fields["store"])
+		require.Equal(t, modelID, fields["model"])
+		require.Equal(t, path, fields["path"])
 	})
 
 	t.Run("success_loadModel_and_loadPaths", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+		)
+
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
+
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -209,9 +338,16 @@ func TestIntegrationTracker(t *testing.T) {
 		require.NotNil(t, value)
 		require.False(t, ok)
 
-		path := trackChecker.getTK(tuple.NewTupleKey("folder:test", "reader", "user:somebody"))
-		trackChecker.loadPath(value, path)
 		trackChecker.addPathHits(r)
+
+		tk := tuple.NewTupleKey("folder:test", "reader", "user:somebody")
+		path := trackChecker.getFormattedNode(tk)
+		trackChecker.addPathHits(&ResolveCheckRequest{
+			StoreID:              r.StoreID,
+			AuthorizationModelID: r.AuthorizationModelID,
+			TupleKey:             tk,
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
 
 		paths, ok := value.(*sync.Map)
 		require.True(t, ok)
@@ -225,6 +361,25 @@ func TestIntegrationTracker(t *testing.T) {
 	})
 
 	t.Run("success_limiter_disallow", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx)),
+		)
+
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
+
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -235,25 +390,47 @@ func TestIntegrationTracker(t *testing.T) {
 		require.NotNil(t, value)
 		require.False(t, ok)
 
-		path := trackChecker.getTK(r.GetTupleKey())
+		path := trackChecker.getFormattedNode(r.GetTupleKey())
 		paths, _ := value.(*sync.Map)
 
 		val, _ := paths.Load(path)
 
 		rn := val.(*resolutionNode)
-		rn.tm = time.Now().Add(-trackerInterval)
+		rn.tm = time.Now().Add(-trackChecker.tickerInterval)
 		paths.Store(path, rn)
 
-		oldBurst := trackChecker.limiter.Burst()
 		trackChecker.limiter.SetBurst(0)
-
 		trackChecker.logExecutionPaths(false)
-		trackChecker.limiter.SetBurst(oldBurst)
 
 		_, ok = paths.Load(path)
 		require.True(t, ok)
 	})
+
 	t.Run("tracker_records_hits_per_path", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		observerLogger, _ := observer.New(zap.DebugLevel)
+		logger := &logger.ZapLogger{
+			Logger: zap.New(observerLogger),
+		}
+
+		resolvers := NewOrderedCheckResolvers(
+			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx), WithTrackerLogger(logger)),
+		)
+
+		_, checkResolverCloser := resolvers.Build()
+		t.Cleanup(checkResolverCloser)
+
+		var trackChecker *TrackerCheckResolver
+		for _, resolver := range resolvers.resolvers {
+			switch r := resolver.(type) {
+			case *TrackerCheckResolver:
+				trackChecker = r
+				break
+			}
+		}
+
 		r := &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -267,10 +444,15 @@ func TestIntegrationTracker(t *testing.T) {
 		paths, ok := value.(*sync.Map)
 		require.True(t, ok)
 
-		path := trackChecker.getTK(r.GetTupleKey())
-		trackChecker.incrementPath(paths, path)
+		path := trackChecker.getFormattedNode(r.GetTupleKey())
+		trackChecker.addPathHits(&ResolveCheckRequest{
+			StoreID:              r.StoreID,
+			AuthorizationModelID: r.AuthorizationModelID,
+			TupleKey:             r.GetTupleKey(),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
 
-		value, ok = paths.Load(trackChecker.getTK(r.GetTupleKey()))
+		value, ok = paths.Load(path)
 		require.True(t, ok)
 
 		rn, ok := value.(*resolutionNode)

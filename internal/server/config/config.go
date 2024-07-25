@@ -50,9 +50,10 @@ const (
 	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
 	DefaultListObjectsDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
-	DefaultRequestTimeout = 3 * time.Second
-
+	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
+
+	DefaultCheckTrackerEnabled = false
 )
 
 type DatastoreMetricsConfig struct {
@@ -592,7 +593,8 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
+		RequestTimeout:      DefaultRequestTimeout,
+		CheckTrackerEnabled: DefaultCheckTrackerEnabled,
 	}
 }
 
