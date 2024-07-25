@@ -558,13 +558,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	var metricsServer *http.Server
 	if config.Metrics.Enabled {
-		s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+
+		metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
 
 		go func() {
-			mux := http.NewServeMux()
-			mux.Handle("/metrics", promhttp.Handler())
-
-			metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
+			s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 			if err := metricsServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
