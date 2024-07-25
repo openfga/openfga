@@ -35,11 +35,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 		RequestMetadata:      NewCheckRequestMetadata(20),
 	}
-	result := &ResolveCheckResponse{Allowed: true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 10,
-			CycleDetected:       true,
-		}}
+	result := &ResolveCheckResponse{Allowed: true}
 
 	// if the tuple is different, it should result in fetching from cache
 	tests := []struct {
@@ -467,24 +463,20 @@ func TestResolveCheckFromCache(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
 
 			// build cached resolver
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 			mockResolver := NewMockCheckResolver(ctrl)
-			initialReq := req
-			if test.initialReq != nil {
-				initialReq = test.initialReq
-			}
-
-			cache := storage.NewInMemoryLRUCache[*ResolveCheckResponse]()
-			defer cache.Stop()
-			// expect first call to result in actual resolve call
-			dut := NewCachedCheckResolver(WithExistingCache(cache), WithEnabledConsistencyParams(test.consistencyOptionEnabled))
+			dut := NewCachedCheckResolver(WithEnabledConsistencyParams(test.consistencyOptionEnabled))
 			defer dut.Close()
 			dut.SetDelegate(mockResolver)
 
 			// make assertions on initial call
+			initialReq := req
+			if test.initialReq != nil {
+				initialReq = test.initialReq
+			}
 			test.setInitialResult(mockResolver, initialReq)
 			actualResult, err := dut.ResolveCheck(ctx, initialReq)
 			if err == nil {
