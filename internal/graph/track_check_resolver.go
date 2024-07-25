@@ -177,13 +177,13 @@ func (t *TrackerCheckResolver) userType(userKey string) string {
 }
 
 // getFormattedNode for a tuple like (user:anne, viewer, doc:1) returns doc:1#viewer@user.
-// for a tuple like (group:fga#member, viewer, doc:1), returns doc:1#viewer@?????
-// // for a tuple like (user:*, viewer, doc:1), returns doc:1#viewer@?????
+// for a tuple like (group:fga#member, viewer, doc:1), returns doc:1#viewer@userset
+// for a tuple like (user:*, viewer, doc:1), returns doc:1#viewer@userset
 func (t *TrackerCheckResolver) getFormattedNode(tk *openfgav1.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()))
 }
 
-// LoadModel populate model id for individual tuple paths.
+// loadModel populate model id for individual tuple paths.
 func (t *TrackerCheckResolver) loadModel(r *ResolveCheckRequest) (value any, ok bool) {
 	key := trackerKey{store: r.GetStoreID(), model: r.GetAuthorizationModelID()}
 	value, ok = t.nodes.Load(key)
@@ -216,7 +216,6 @@ func (t *TrackerCheckResolver) addPathHits(r *ResolveCheckRequest) {
 	}
 }
 
-// ResolveCheck implements CheckResolver.
 func (t *TrackerCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
