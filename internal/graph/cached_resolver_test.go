@@ -43,105 +43,181 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 	// if the tuple is different, it should result in fetching from cache
 	tests := []struct {
-		name                      string
-		firstRequest              *ResolveCheckRequest
-		secondRequest             *ResolveCheckRequest
-		setFirstCallExpectations  func(mock *MockCheckResolver, request *ResolveCheckRequest)
-		setSecondCallExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		name                     string
+		initialReq               *ResolveCheckRequest
+		subsequentReq            *ResolveCheckRequest
+		setInitialResult         func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		setTestExpectations      func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		consistencyOptionEnabled bool
 	}{
 		{
 			name: "same_request_returns_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
+			name:                     "same_request_returns_results_from_cache_when_minimize_latency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
+			name:                     "same_request_returns_results_from_cache_when_no_consistency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
+			},
+		},
+		{
+			name:                     "same_request_does_not_use_cache_if_higher_consistency_requested",
+			consistencyOptionEnabled: true,
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+		},
+		{
+			name:                     "result_added_to_cache_when_higher_consistency_requested",
+			consistencyOptionEnabled: true,
+			initialReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 		{
 			name: "request_for_different_store_does_not_return_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "22",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "request_for_different_model_id_does_not_return_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "request_for_different_tuple_object_does_not_return_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "request_for_different_tuple_relation_does_not_return_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "request_for_different_tuple_user_does_not_return_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "request_with_different_contextual_tuple_does_not_return_results_from_cache",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -154,31 +230,31 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "response_with_error_not_cached",
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "identical_contextual_tuples_return_results_from_cache",
-			firstRequest: &ResolveCheckRequest{
+			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -196,7 +272,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -214,16 +290,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0).Return(result, nil)
 			},
 		},
 		{
 			name: "different_order_contextual_tuples_results_in_cache_hit",
-			firstRequest: &ResolveCheckRequest{
+			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -241,7 +317,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -259,16 +335,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(0)
 			},
 		},
 		{
 			name: "separates_tuple_key_and_contextual_tuples",
-			firstRequest: &ResolveCheckRequest{
+			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:pre"),
@@ -281,7 +357,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:prefi"),
@@ -294,16 +370,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "extra_contextual_tuples_does_not_return_results_from_cache",
-			firstRequest: &ResolveCheckRequest{
+			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -321,7 +397,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -344,16 +420,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
 		{
 			name: "first_contextual_tuples_then_no_contextual_tuples_does_not_return_results_from_cache",
-			firstRequest: &ResolveCheckRequest{
+			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -371,17 +447,17 @@ func TestResolveCheckFromCache(t *testing.T) {
 				},
 				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			secondRequest: &ResolveCheckRequest{
+			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				ContextualTuples:     []*openfgav1.TupleKey{},
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
-			setFirstCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
-			setSecondCallExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
 			},
 		},
@@ -397,26 +473,27 @@ func TestResolveCheckFromCache(t *testing.T) {
 			// build cached resolver
 			mockResolver := NewMockCheckResolver(ctrl)
 			initialReq := req
-			if test.firstRequest != nil {
-				initialReq = test.firstRequest
+			if test.initialReq != nil {
+				initialReq = test.initialReq
 			}
 
 			cache := storage.NewInMemoryLRUCache[*ResolveCheckResponse]()
 			defer cache.Stop()
-			dut := NewCachedCheckResolver(WithExistingCache(cache))
+			// expect first call to result in actual resolve call
+			dut := NewCachedCheckResolver(WithExistingCache(cache), WithEnabledConsistencyParams(test.consistencyOptionEnabled))
 			defer dut.Close()
 			dut.SetDelegate(mockResolver)
 
 			// make assertions on initial call
-			test.setFirstCallExpectations(mockResolver, initialReq)
+			test.setInitialResult(mockResolver, initialReq)
 			actualResult, err := dut.ResolveCheck(ctx, initialReq)
 			if err == nil {
 				require.Equal(t, result.Allowed, actualResult.Allowed)
 			}
 
 			// make assertions on subsequent call
-			test.setSecondCallExpectations(mockResolver, test.secondRequest)
-			actualResult, err = dut.ResolveCheck(ctx, test.secondRequest)
+			test.setTestExpectations(mockResolver, test.subsequentReq)
+			actualResult, err = dut.ResolveCheck(ctx, test.subsequentReq)
 			require.NoError(t, err)
 			require.Equal(t, result.Allowed, actualResult.Allowed)
 		})

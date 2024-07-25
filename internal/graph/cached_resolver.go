@@ -6,10 +6,13 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -51,7 +54,8 @@ type CachedCheckResolver struct {
 	logger       logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
-	allocatedCache bool
+	allocatedCache           bool
+	enableConsistencyOptions bool
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -88,6 +92,12 @@ func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) Cache
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
+	}
+}
+
+func WithEnabledConsistencyParams(enable bool) CachedCheckResolverOpt {
+	return func(ccr *CachedCheckResolver) {
+		ccr.enableConsistencyOptions = enable
 	}
 }
 
@@ -142,7 +152,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
-	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
@@ -151,16 +160,23 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired
-	span.SetAttributes(attribute.Bool("is_cached", isCached))
-	if isCached {
-		checkCacheHitCounter.Inc()
+	tryCache := !c.enableConsistencyOptions || req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-		// return a copy to avoid races across goroutines
-		return CloneResolveCheckResponse(cachedResp.Value), nil
+	if tryCache {
+		checkCacheTotalCounter.Inc()
+
+		cachedResp := c.cache.Get(cacheKey)
+		isCached := cachedResp != nil && !cachedResp.Expired
+		span.SetAttributes(attribute.Bool("is_cached", isCached))
+		if isCached {
+			checkCacheHitCounter.Inc()
+
+			// return a copy to avoid races across goroutines
+			return CloneResolveCheckResponse(cachedResp.Value), nil
+		}
 	}
 
+	// not in cache, or consistency options experimental flag is set, and consistency param set to HIGHER_CONSISTENCY
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
