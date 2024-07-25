@@ -8,10 +8,18 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.7] - 2024-07-25
+
 ### Added
 
 * Support requesting a different consistency option per request in `Check`, `Expand`, `ListObjects`, `ListUsers`, and `Read` [#1764](https://github.com/openfga/openfga/pull/1764)
+  * This is currently experimental and needs to be enabled by configuring `OPENFGA_EXPERIMENTALS=enable-consistency-params` or passing `--experimentals enable-consistency-params` to `openfga run`.
   * When `HIGHER_CONSISTENCY` is requested, OpenFGA will skip the check resolver cache. For storage implementors it is recommended to skip any caching and perform a stronger read if `HIGHER_CONSISTENCY` is requested. This can be accessed in the `Consistency` options provided to the relevant methods of the storage interface.
+* Publish images to GitHub Container Registry [#1775](https://github.com/openfga/openfga/pull/1775) - Thanks @JAORMX!
+
+### Changed
+
+* Update to Go 1.22 in container image [#1776](https://github.com/openfga/openfga/pull/1776) - Thanks @tranngoclam!
 
 ### Breaking Changes :warning:
 
