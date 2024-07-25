@@ -17,6 +17,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   * When `HIGHER_CONSISTENCY` is requested, OpenFGA will skip the check resolver cache. For storage implementors it is recommended to skip any caching and perform a stronger read if `HIGHER_CONSISTENCY` is requested. This can be accessed in the `Consistency` options provided to the relevant methods of the storage interface.
 * Start publishing images to `ghcr.io/openfga/openfga` as alternative to DockerHub [#1775](https://github.com/openfga/openfga/pull/1775) - Thanks @JAORMX!
 * Performance improvements for parent child relations in Check [#1765](https://github.com/openfga/openfga/pull/1765)
+* Performance improvement in Check: computed relations don't consume from the resolution depth quota, don't trigger additional goroutines, and don't get cached [#1786](https://github.com/openfga/openfga/pull/1786)
 
 ### Changed
 
