@@ -43,10 +43,13 @@ func TestReadChangesQuery(t *testing.T) {
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		// Assert on specific inputs passed in.
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, reqType, storage.PaginationOptions{
-			PageSize: reqPageSize,
-			From:     reqToken,
-		}, horizonOffset).Times(1)
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: reqPageSize,
+				From:     reqToken,
+			},
+		}
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, reqType, opts, horizonOffset).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangeQueryHorizonOffset(int(horizonOffset.Minutes())))
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
@@ -72,10 +75,13 @@ func TestReadChangesQuery(t *testing.T) {
 		mockEncoder.EXPECT().Encode(gomock.Any()).Return(respToken, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
-			From:     "",
-		}, 0*time.Minute).Times(1)
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			},
+		}
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", opts, 0*time.Minute).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
@@ -118,10 +124,13 @@ func TestReadChangesQuery(t *testing.T) {
 		mockEncoder.EXPECT().Decode(reqToken).Return([]byte{}, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
-			From:     "",
-		}, 0*time.Minute).Times(1).Return(nil, []byte{}, storage.ErrNotFound)
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			},
+		}
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", opts, 0*time.Minute).Times(1).Return(nil, []byte{}, storage.ErrNotFound)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
