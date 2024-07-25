@@ -5658,6 +5658,96 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+  - name: simple_userset_child_computed_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+              define member_c1: member
+              define member_c2: member_c1
+              define member_c3: member_c2
+              define member_c4: member_c3
+          type folder
+            relations
+              define viewer: [group#member_c4]
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:fga
+          - user: group:fga#member_c4
+            relation: viewer
+            object: folder:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:2
+            expectation: false
+          - tuple:
+              user: user:foo
+              relation: viewer
+              object: folder:1
+            expectation: false
+          - tuple:
+              user: group:fga#member
+              relation: viewer
+              object: folder:1
+            expectation: true
+          - tuple:
+              user: group:fga#member_c4
+              relation: viewer
+              object: folder:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: group:fga#member
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+          - request:
+              user: group:fga#member_c4
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: folder:1
+              relation: viewer
+            expectation:
+              - user:anne
+          - request:
+              filters:
+                - group#member
+              object: folder:1
+              relation: viewer
+            expectation:
+              - group:fga#member
+          - request:
+              filters:
+                - group#member_c4
+              object: folder:1
+              relation: viewer
+            expectation:
+              - group:fga#member_c4
   - name: simple_userset_child_wildcard_only
     stages:
       - model: |

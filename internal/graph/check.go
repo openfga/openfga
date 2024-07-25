@@ -809,6 +809,11 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
 
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("typesystem missing in context")
+	}
+
 	usersetsMap := make(usersetsMapType)
 
 	for {
@@ -827,7 +832,14 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		objectRel := tuple.ToObjectRelationString(objectType, relation)
+		terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(
+			objectType, relation, tuple.GetType(req.GetTupleKey().GetUser()),
+		)
+		if len(terminalRelations) != 1 {
+			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+		}
+		computedRelation := terminalRelations[0]
+		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
 		if _, ok := usersetsMap[objectRel]; !ok {
 			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
@@ -964,10 +976,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			resolver := c.checkUsersetSlowPath
 
-			if canShortCircuit, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes); err == nil {
-				if canShortCircuit {
-					resolver = c.checkUsersetFastPath
-				}
+			if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
+				resolver = c.checkUsersetFastPath
 			}
 
 			return resolver(ctx, filteredIter, req)
