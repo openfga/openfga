@@ -337,7 +337,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 // UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
 func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
 	for _, rr := range relationReferences {
-		terminalRelations := t.GetTerminalRelationsForTTUFastPath(rr.GetType(), rr.GetRelation(), userType)
+		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
 		if len(terminalRelations) == 0 {
 			return false
 		}
@@ -389,22 +389,21 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 				continue
 			}
 
-			terminalRelations := t.GetTerminalRelationsForTTUFastPath(parentType.GetType(), computedUsersetRelation, userType)
+			terminalRelations := t.GetTerminalRelations(parentType.GetType(), computedUsersetRelation, userType)
 			if len(terminalRelations) == 0 {
 				return false
 			}
 		}
 	}
 
-	terminalRelations := t.GetTerminalRelationsForTTUFastPath(objectType, computedRelation, userType)
+	terminalRelations := t.GetTerminalRelations(objectType, computedRelation, userType)
 
 	return len(terminalRelations) > 0
 }
 
-// TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
-func (t *TypeSystem) GetTerminalRelationsForTTUFastPath(objectType, computedRelation, userType string) []string {
-	terminalRelations := t.connectedTypes[objectType][computedRelation][userType]
-	return terminalRelations
+// GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.
+func (t *TypeSystem) GetTerminalRelations(objectType, relation, userType string) []string {
+	return t.connectedTypes[objectType][relation][userType]
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
