@@ -256,6 +256,7 @@ func TestServerLogs(t *testing.T) {
 				var resp *http.Response
 
 				resp, err = client.Do(httpReq)
+				_, _ = io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
