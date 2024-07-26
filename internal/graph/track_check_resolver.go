@@ -53,9 +53,6 @@ type TrackerCheckResolver struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	nodes          sync.Map
-
-	// testhookFlush is used purely for testing.
-	testhookFlush func()
 }
 
 var _ CheckResolver = (*TrackerCheckResolver)(nil)
@@ -143,10 +140,6 @@ func (t *TrackerCheckResolver) launchFlush() {
 			case <-t.ticker.C:
 				t.logExecutionPaths(false)
 				t.ticker.Reset(t.tickerInterval)
-
-				if t.testhookFlush != nil {
-					t.testhookFlush()
-				}
 			}
 		}
 	}()

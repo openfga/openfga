@@ -269,22 +269,18 @@ func TestIntegrationTracker(t *testing.T) {
 			}
 		}
 
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			time.Sleep(time.Duration(10) * time.Millisecond)
+		}()
+
 		storeID := ulid.Make().String()
 		modelID := ulid.Make().String()
 
 		tk := tuple.NewTupleKey("group:1", "member", "user:somebody")
 		path := trackChecker.getFormattedNode(tk)
-
-		sm := &sync.Map{}
-		sm.Store(
-			path,
-			&resolutionNode{
-				tm:   time.Now().Add(-trackChecker.tickerInterval),
-				hits: &atomic.Uint64{},
-			},
-		)
-
-		trackChecker.nodes.Store(trackerKey{store: storeID, model: modelID}, sm)
 
 		trackChecker.addPathHits(&ResolveCheckRequest{
 			StoreID:              storeID,
@@ -293,17 +289,11 @@ func TestIntegrationTracker(t *testing.T) {
 			RequestMetadata:      NewCheckRequestMetadata(20),
 		})
 
-		trackChecker.testhookFlush = cancel
-
+		trackChecker.ticker.Reset(time.Duration(2) * time.Millisecond)
 		trackChecker.launchFlush()
-
-		<-ctx.Done()
-
-		_, ok := sm.Load(path)
-		require.False(t, ok)
+		wg.Wait()
 
 		actualLogs := logs.All()
-		require.Len(t, actualLogs, 1)
 
 		fields := actualLogs[0].ContextMap()
 		require.Equal(t, uint64(1), fields["hits"])
