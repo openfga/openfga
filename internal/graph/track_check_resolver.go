@@ -171,14 +171,14 @@ func (t *TrackerCheckResolver) Close() {
 	t.logExecutionPaths(true)
 }
 
-// UserType returns the associated tuple user type.
+// userType returns the associated tuple user type: userset or user.
 func (t *TrackerCheckResolver) userType(userKey string) string {
 	return string(tuple.GetUserTypeFromUser(userKey))
 }
 
-// getFormattedNode for a tuple like (user:anne, viewer, doc:1) returns doc:1#viewer@user.
+// getFormattedNode for a tuple like (user:anne, viewer, doc:1) returns doc:1#viewer@user
 // for a tuple like (group:fga#member, viewer, doc:1), returns doc:1#viewer@userset
-// for a tuple like (user:*, viewer, doc:1), returns doc:1#viewer@userset
+// for a tuple like (user:*, viewer, doc:1), returns doc:1#viewer@userset.
 func (t *TrackerCheckResolver) getFormattedNode(tk *openfgav1.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()))
 }
