@@ -1985,7 +1985,7 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 			type user
 			type document
 				relations
-					define x: x
+					define x: y
 					define y: x`)
 
 	ctx := typesystem.ContextWithTypesystem(
