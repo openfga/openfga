@@ -51,15 +51,7 @@ func (c *CycleDetectionCheckResolver) ResolveCheck(
 
 	req.VisitedPaths[key] = struct{}{}
 
-	return c.delegate.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              req.GetStoreID(),
-		AuthorizationModelID: req.GetAuthorizationModelID(),
-		TupleKey:             req.GetTupleKey(),
-		ContextualTuples:     req.GetContextualTuples(),
-		RequestMetadata:      req.GetRequestMetadata(),
-		VisitedPaths:         req.VisitedPaths,
-		Context:              req.GetContext(),
-	})
+	return c.delegate.ResolveCheck(ctx, clone(req))
 }
 
 func (c *CycleDetectionCheckResolver) SetDelegate(delegate CheckResolver) {

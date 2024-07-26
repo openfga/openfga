@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -86,7 +86,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable.")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -204,7 +204,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
 
-	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
+	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "enable caching of Check requests. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs.")
 
 	flags.Uint32("check-query-cache-limit", defaultConfig.CheckQueryCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
 
@@ -313,7 +313,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 
 // telemetryConfig returns the function that must be called to shut down tracing.
 // The context provided to this function should be error-free, or shut down will be incomplete.
-func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx context.Context) error {
+func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() error {
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
@@ -333,12 +333,15 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func(ctx co
 		}
 
 		tp := telemetry.MustNewTracerProvider(options...)
-		return func(ctx context.Context) error {
+		return func() error {
+			// can take up to 5 seconds to complete (https://github.com/open-telemetry/opentelemetry-go/blob/aebcbfcbc2962957a578e9cb3e25dc834125e318/sdk/trace/batch_span_processor.go#L97)
+			ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+			defer cancel()
 			return errors.Join(tp.ForceFlush(ctx), tp.Shutdown(ctx))
 		}
 	}
 	otel.SetTracerProvider(noop.NewTracerProvider())
-	return func(ctx context.Context) error {
+	return func() error {
 		return nil
 	}
 }
@@ -555,13 +558,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	var metricsServer *http.Server
 	if config.Metrics.Enabled {
-		s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+
+		metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
 
 		go func() {
-			mux := http.NewServeMux()
-			mux.Handle("/metrics", promhttp.Handler())
-
-			metricsServer = &http.Server{Addr: config.Metrics.Addr, Handler: mux}
+			s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 			if err := metricsServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
@@ -841,10 +844,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	authenticator.Close()
 
-	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	if err := tracerProviderCloser(ctx); err != nil {
+	if err := tracerProviderCloser(); err != nil {
 		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
 	}
 

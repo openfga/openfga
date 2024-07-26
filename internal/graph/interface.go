@@ -1,4 +1,4 @@
-//go:generate mockgen -source interface.go -destination ./mock_check_resolver.go -package graph CheckResolver
+//go:generate mockgen -source interface.go -destination ./mock_check_resolver_test.go -package graph CheckResolver
 
 package graph
 
@@ -28,4 +28,10 @@ type CheckResolver interface {
 
 	// Close releases resources. It must be called after the CheckResolver is done processing all requests.
 	Close()
+
+	// SetDelegate sets the next resolver in the chain. It can be the same resolver,
+	// but a call to Delegate.ResolveCheck must not create infinite recursion.
+	SetDelegate(delegate CheckResolver)
+
+	GetDelegate() CheckResolver
 }
