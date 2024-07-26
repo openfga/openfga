@@ -2008,4 +2008,15 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 	require.NotNil(t, resp)
 	require.False(t, resp.GetAllowed())
 	require.True(t, resp.GetCycleDetected())
+
+	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+		RequestMetadata:      NewCheckRequestMetadata(20),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.GetAllowed())
+	require.True(t, resp.GetCycleDetected())
 }
