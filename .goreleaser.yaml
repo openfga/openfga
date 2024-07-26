@@ -84,6 +84,10 @@ docker_manifests:
     image_templates:
       - openfga/openfga:latest-amd64
       - openfga/openfga:latest-arm64
+  - name_template: openfga/openfga:v{{ .Tag }}
+    image_templates:
+      - "openfga/openfga:v{{ .Tag }}-amd64"
+      - "openfga/openfga:v{{ .Tag }}-arm64"
   - name_template: openfga/openfga:v{{ .Version }}
     image_templates:
       - openfga/openfga:v{{ .Version }}-amd64
@@ -108,6 +112,10 @@ docker_manifests:
     image_templates:
       - "ghcr.io/openfga/openfga:v{{ .Version }}-amd64"
       - "ghcr.io/openfga/openfga:v{{ .Version }}-arm64"
+  - name_template: ghcr.io/openfga/openfga:v{{ .Tag }}
+    image_templates:
+      - "ghcr.io/openfga/openfga:v{{ .Tag }}-amd64"
+      - "ghcr.io/openfga/openfga:v{{ .Tag }}-arm64"
   - name_template: ghcr.io/openfga/openfga:v{{ .Major }}
     image_templates:
       - "ghcr.io/openfga/openfga:v{{ .Major }}-amd64"
