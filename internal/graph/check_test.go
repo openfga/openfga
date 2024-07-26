@@ -1992,8 +1992,9 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 				schema 1.1
 			type document
 				relations
-					define x: x
-					define y: x`)
+					define x: y
+					define y: z
+					define z: x`)
 
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
@@ -2013,6 +2014,6 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
+	require.True(t, resp.GetAllowed())
+	require.False(t, resp.GetCycleDetected())
 }
