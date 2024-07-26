@@ -50,9 +50,10 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.InvalidContinuationToken
 	}
 
-	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-
-	models, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), paginationOptions)
+	opts := storage.ReadAuthorizationModelsOptions{
+		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+	}
+	models, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
