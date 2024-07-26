@@ -809,6 +809,12 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
 
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	// We had just checked for the existence of the typesys in the caller.
+	// So, we are guaranteed for the presence of the context.
+
+	reqUserType := tuple.GetType(req.GetTupleKey().GetUser())
+
 	usersetsMap := make(usersetsMapType)
 
 	for {
@@ -827,7 +833,13 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		objectRel := tuple.ToObjectRelationString(objectType, relation)
+		terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
+		// the terminalRelations is expected to be 1 (as we checked earlier in typesys.UsersetCanFastPath)
+		if len(terminalRelations) != 1 {
+			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+		}
+		computedRelation := terminalRelations[0]
+		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
 		if _, ok := usersetsMap[objectRel]; !ok {
 			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
@@ -964,10 +976,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			resolver := c.checkUsersetSlowPath
 
-			if canShortCircuit, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes); err == nil {
-				if canShortCircuit {
-					resolver = c.checkUsersetFastPath
-				}
+			if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
+				resolver = c.checkUsersetFastPath
 			}
 
 			return resolver(ctx, filteredIter, req)
@@ -1143,7 +1153,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
 
-	terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(
+	terminalRelations := typesys.GetTerminalRelations(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
 	)
 	if len(terminalRelations) != 1 {
