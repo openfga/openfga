@@ -8,10 +8,20 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.7] - 2024-07-25
+
 ### Added
 
 * Support requesting a different consistency option per request in `Check`, `Expand`, `ListObjects`, `ListUsers`, and `Read` [#1764](https://github.com/openfga/openfga/pull/1764)
+  * This is currently experimental and needs to be enabled by configuring `OPENFGA_EXPERIMENTALS=enable-consistency-params` or passing `--experimentals enable-consistency-params` to `openfga run`.
   * When `HIGHER_CONSISTENCY` is requested, OpenFGA will skip the check resolver cache. For storage implementors it is recommended to skip any caching and perform a stronger read if `HIGHER_CONSISTENCY` is requested. This can be accessed in the `Consistency` options provided to the relevant methods of the storage interface.
+* Start publishing images to `ghcr.io/openfga/openfga` as alternative to DockerHub [#1775](https://github.com/openfga/openfga/pull/1775) - Thanks @JAORMX!
+* Performance improvements for parent child relations in Check [#1765](https://github.com/openfga/openfga/pull/1765)
+* Performance improvement in Check: computed relations don't consume from the resolution depth quota, don't trigger additional goroutines, and don't get cached [#1786](https://github.com/openfga/openfga/pull/1786)
+
+### Changed
+
+* Update to Go 1.22 in container image [#1776](https://github.com/openfga/openfga/pull/1776) - Thanks @tranngoclam!
 
 ### Breaking Changes :warning:
 
@@ -1108,7 +1118,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.7...HEAD
+[1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
 [1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
 [1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5
 [1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
