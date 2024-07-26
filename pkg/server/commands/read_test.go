@@ -85,10 +85,13 @@ func TestReadCommand(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
-			From:     "",
-		}).Times(1)
+		opts := storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			},
+		}
+		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, opts).Times(1)
 
 		cmd := NewReadQuery(mockDatastore)
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
@@ -113,10 +116,13 @@ func TestReadCommand(t *testing.T) {
 		mockEncoder.EXPECT().Encode(gomock.Any()).Return("encodedtoken", nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, storage.PaginationOptions{
-			PageSize: int(pageSize),
-			From:     "",
-		}).Times(1)
+		opts := storage.ReadPageOptions{
+			Pagination: storage.PaginationOptions{
+				PageSize: int(pageSize),
+				From:     "",
+			},
+		}
+		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, opts).Times(1)
 
 		cmd := NewReadQuery(mockDatastore, WithReadQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{

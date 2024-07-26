@@ -40,6 +40,7 @@ type ReverseExpandRequest struct {
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
 	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
 
 	edge *graph.RelationshipEdge
 }
@@ -493,6 +494,10 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   relationFilter,
 		UserFilter: userFilter,
+	}, storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.Consistency,
+		},
 	})
 	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {

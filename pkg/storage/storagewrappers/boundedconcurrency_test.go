@@ -41,7 +41,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	start := time.Now()
 
 	wg.Go(func() error {
-		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"))
+		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
 		return err
 	})
 
@@ -49,12 +49,12 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 		_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
 			Object:   "obj:1",
 			Relation: "viewer",
-		})
+		}, storage.ReadUsersetTuplesOptions{})
 		return err
 	})
 
 	wg.Go(func() error {
-		_, err := limitedTupleReader.Read(context.Background(), store, nil)
+		_, err := limitedTupleReader.Read(context.Background(), store, nil, storage.ReadOptions{})
 		return err
 	})
 
@@ -68,7 +68,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 						Object:   "obj",
 						Relation: "viewer",
 					},
-				}})
+				}}, storage.ReadStartingWithUserOptions{})
 		return err
 	})
 
@@ -96,22 +96,22 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	}{
 		`read`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{})
+				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.ReadOptions{})
 			},
 		},
 		`read_user_tuple`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{})
+				return dut.ReadUserTuple(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.ReadUserTupleOptions{})
 			},
 		},
 		`read_userset_tuples`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadUsersetTuples(ctx, ulid.Make().String(), storage.ReadUsersetTuplesFilter{})
+				return dut.ReadUsersetTuples(ctx, ulid.Make().String(), storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{})
 			},
 		},
 		`read_starting_with_user`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.ReadStartingWithUser(ctx, ulid.Make().String(), storage.ReadStartingWithUserFilter{})
+				return dut.ReadStartingWithUser(ctx, ulid.Make().String(), storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{})
 			},
 		},
 	}

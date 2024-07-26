@@ -115,7 +115,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": []
+                "enum": ["enable-consistency-params"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -448,7 +448,7 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses",
+                    "description": "enable caching of Check requests. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs.",
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
