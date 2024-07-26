@@ -134,7 +134,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
@@ -164,7 +165,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
@@ -196,7 +198,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
@@ -261,7 +264,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
@@ -324,7 +328,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
@@ -381,7 +386,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
@@ -411,7 +417,7 @@ func TestIntegrationTracker(t *testing.T) {
 		require.True(t, ok)
 
 		actualLogs := logs.All()
-		require.Len(t, actualLogs, 0)
+		require.Empty(t, actualLogs)
 	})
 
 	t.Run("tracker_records_hits_per_path", func(t *testing.T) {
@@ -435,7 +441,8 @@ func TestIntegrationTracker(t *testing.T) {
 			switch r := resolver.(type) {
 			case *TrackerCheckResolver:
 				trackChecker = r
-				break
+			default:
+				continue
 			}
 		}
 
