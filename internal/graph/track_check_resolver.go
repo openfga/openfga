@@ -26,7 +26,6 @@ const (
 	trackerLogInterval = time.Duration(500) * time.Millisecond
 )
 
-// TrackerCheckResolverOpt defines an option pattern that can be used to change the behavior of TrackerCheckResolver.
 type TrackerCheckResolverOpt func(checkResolver *TrackerCheckResolver)
 
 type trackerKey struct {
@@ -39,7 +38,6 @@ type resolutionNode struct {
 	hits *atomic.Uint64
 }
 
-// Expired check the current tuple entry expiration.
 func (r *resolutionNode) expired(trackerInterval time.Duration) bool {
 	return time.Since(r.tm) > trackerInterval
 }
@@ -52,7 +50,8 @@ type TrackerCheckResolver struct {
 	limiter        *rate.Limiter
 	ctx            context.Context
 	cancel         context.CancelFunc
-	nodes          sync.Map
+
+	nodes sync.Map // key is a string store#model and value is another map where key has the shape doc:1#viewer@user and value is the number of hits.
 }
 
 var _ CheckResolver = (*TrackerCheckResolver)(nil)
@@ -71,12 +70,12 @@ func WithTrackerContext(ctx context.Context) TrackerCheckResolverOpt {
 
 func WithTrackerInterval(d time.Duration) TrackerCheckResolverOpt {
 	return func(t *TrackerCheckResolver) {
+		t.ticker.Stop() // clear the default
 		t.tickerInterval = d
 		t.ticker = time.NewTicker(d)
 	}
 }
 
-// NewTrackCheckResolver creates an instance tracker Resolver.
 func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolver {
 	randomInterval := rand.Intn(trackerMaxInterval-trackerMinInterval+1) + trackerMinInterval
 	defaultTickerInterval := time.Duration(randomInterval) * time.Second
@@ -96,37 +95,14 @@ func NewTrackCheckResolver(opts ...TrackerCheckResolverOpt) *TrackerCheckResolve
 
 	if t.ctx == nil {
 		t.ctx, t.cancel = context.WithCancel(context.Background())
+	} else {
+		t.cancel = func() { // no op
+		}
 	}
 
 	t.launchFlush()
 
 	return t
-}
-
-// LogExecutionPaths reports the model and tuple path.
-func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
-	t.nodes.Range(func(k, v any) bool {
-		paths := v.(*sync.Map)
-		storeModel := k.(trackerKey)
-		paths.Range(func(k, v any) bool {
-			path := k.(string)
-			node := v.(*resolutionNode)
-			if node.expired(t.tickerInterval) || flush {
-				if !t.limiter.Allow() && !flush {
-					return false
-				}
-				t.logger.Info("execution path hits",
-					zap.String("store", storeModel.store),
-					zap.String("model", storeModel.model),
-					zap.String("path", path),
-					zap.Uint64("hits", node.hits.Load()))
-
-				paths.Delete(path)
-			}
-			return true
-		})
-		return true
-	})
 }
 
 // LaunchFlush starts the execution path logging and removal of entries.
@@ -145,52 +121,64 @@ func (t *TrackerCheckResolver) launchFlush() {
 	}()
 }
 
-// SetDelete assigns the next deletegate in the chain.
 func (t *TrackerCheckResolver) SetDelegate(delegate CheckResolver) {
 	t.delegate = delegate
 }
 
-// GetDelegate return the assigned delegate.
 func (t *TrackerCheckResolver) GetDelegate() CheckResolver {
 	return t.delegate
 }
 
-// Close implements CheckResolver.
 func (t *TrackerCheckResolver) Close() {
-	if t.cancel != nil {
-		t.cancel()
-	}
-
+	t.cancel()
 	t.logExecutionPaths(true)
 }
 
-// userType returns the associated tuple user type: userset or user.
-func (t *TrackerCheckResolver) userType(userKey string) string {
-	return string(tuple.GetUserTypeFromUser(userKey))
+func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
+	t.nodes.Range(func(k, v any) bool {
+		paths := v.(*sync.Map)
+		storeModel := k.(trackerKey)
+		paths.Range(func(k, v any) bool {
+			path := k.(string)
+			node := v.(*resolutionNode)
+			if node.expired(t.tickerInterval) || flush {
+				if !t.limiter.Allow() && !flush {
+					return false
+				}
+				t.logger.Info("hits",
+					zap.String("store_id", storeModel.store),
+					zap.String("model_id", storeModel.model),
+					zap.String("path", path),
+					zap.Uint64("hits", node.hits.Load()))
+
+				paths.Delete(path)
+			}
+			return true
+		})
+		return true
+	})
 }
 
-// getFormattedNode for a tuple like (user:anne, viewer, doc:1) returns doc:1#viewer@user
+// getTupleKeyAsPath for a tuple like (user:anne, viewer, doc:1) returns doc:1#viewer@user
 // for a tuple like (group:fga#member, viewer, doc:1), returns doc:1#viewer@userset
 // for a tuple like (user:*, viewer, doc:1), returns doc:1#viewer@userset.
-func (t *TrackerCheckResolver) getFormattedNode(tk *openfgav1.TupleKey) string {
-	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), t.userType(tk.GetUser()))
+func getTupleKeyAsPath(tk *openfgav1.TupleKey) string {
+	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), string(tuple.GetUserTypeFromUser(tk.GetUser())))
 }
 
-// loadModel populate model id for individual tuple paths.
 func (t *TrackerCheckResolver) loadModel(r *ResolveCheckRequest) (value any, ok bool) {
 	key := trackerKey{store: r.GetStoreID(), model: r.GetAuthorizationModelID()}
 	value, ok = t.nodes.Load(key)
 	if !ok {
 		value = &sync.Map{}
-		value.(*sync.Map).Store(t.getFormattedNode(r.GetTupleKey()), &resolutionNode{tm: time.Now().UTC(), hits: &atomic.Uint64{}})
+		value.(*sync.Map).Store(getTupleKeyAsPath(r.GetTupleKey()), &resolutionNode{tm: time.Now().UTC(), hits: &atomic.Uint64{}})
 		t.nodes.Store(key, value)
 	}
 	return value, ok
 }
 
-// AddPathHits to list of path by model.
 func (t *TrackerCheckResolver) addPathHits(r *ResolveCheckRequest) {
-	path := t.getFormattedNode(r.GetTupleKey())
+	path := getTupleKeyAsPath(r.GetTupleKey())
 
 	value, ok := t.loadModel(r)
 	if ok {
@@ -226,7 +214,7 @@ func (t *TrackerCheckResolver) ResolveCheck(
 		Context:              req.GetContext(),
 	})
 
-	if err == nil || errors.Is(err, context.Canceled) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		t.addPathHits(req)
 	}
 
