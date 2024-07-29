@@ -457,7 +457,7 @@ func WithListUsersDispatchThrottlingFrequency(frequency time.Duration) OpenFGASe
 }
 
 // WithListUsersDispatchThrottlingThreshold define the number of dispatches to be throttled
-// for List Objects requests.
+// for ListUsers requests.
 func WithListUsersDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listUsersDispatchDefaultThreshold = threshold
