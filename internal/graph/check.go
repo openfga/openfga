@@ -13,6 +13,8 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/concurrency"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -815,54 +817,132 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 
 	reqUserType := tuple.GetType(req.GetTupleKey().GetUser())
 
+	type customType struct {
+		err            error
+		objectRelation string
+		objectIDs      storage.SortedSet
+	}
+
+	usersetsChan := make(chan customType)
 	usersetsMap := make(usersetsMapType)
 
-	for {
-		// NOTE: For the future, once we observe a new ObjectRelation in the usersetsMap that means that all objectIDs
-		// needed for the intersection lookup for that ObjectRelation are in memory. There is no need to build the full
-		// usersetMap by draining the full iterator, it can start processing in batches of ObjectRelation.
-		// Consider doing it when we have better concurrency tooling for "streaming" operations.
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	pool.Go(func(ctx context.Context) error {
+		defer close(usersetsChan)
+		for {
+			t, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) {
+					break
+				}
+
+				telemetry.TraceError(span, err)
+				usersetsChan <- customType{err: err}
 				break
 			}
-			telemetry.TraceError(span, err)
-			return nil, err
+
+			object, relation := tuple.SplitObjectRelation(t.GetUser())
+			objectType, objectID := tuple.SplitObject(object)
+			terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
+			// the terminalRelations is expected to be 1 (as we checked earlier in typesys.UsersetCanFastPath)
+			if len(terminalRelations) != 1 {
+				usersetsChan <- customType{err: fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))}
+				break
+			}
+			computedRelation := terminalRelations[0]
+			objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
+
+			if _, ok := usersetsMap[objectRel]; !ok {
+				if len(usersetsMap) >= 1 {
+					// flush previous results
+					for k, v := range usersetsMap {
+						select {
+						case <-ctx.Done():
+							return nil
+						case usersetsChan <- customType{
+							objectRelation: k,
+							objectIDs:      v,
+						}:
+							delete(usersetsMap, k)
+						}
+					}
+				}
+				usersetsMap[objectRel] = storage.NewSortedSet()
+			}
+
+			usersetsMap[objectRel].Add(objectID)
+			if usersetsMap[objectRel].Size() > 1000 {
+				select {
+				case <-ctx.Done():
+					return nil
+				case usersetsChan <- customType{
+					objectRelation: objectRel,
+					objectIDs:      usersetsMap[objectRel],
+				}:
+					// ok
+					usersetsMap[objectRel] = storage.NewSortedSet()
+				}
+			}
 		}
 
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
-		// the terminalRelations is expected to be 1 (as we checked earlier in typesys.UsersetCanFastPath)
-		if len(terminalRelations) != 1 {
-			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+		// flush all remaining results
+		for k, v := range usersetsMap {
+			select {
+			case <-ctx.Done():
+				return nil
+			case usersetsChan <- customType{
+				objectRelation: k,
+				objectIDs:      v,
+			}:
+				// ok
+			}
 		}
-		computedRelation := terminalRelations[0]
-		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
-		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = storage.NewSortedSet()
+
+		return nil
+	})
+	defer func() {
+		cancelFunc()
+		_ = pool.Wait() // error handled through the channel
+	}()
+	var finalErr error
+
+ConsumerLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case newBatch, channelOpen := <-usersetsChan:
+			if newBatch.err != nil {
+				finalErr = newBatch.err
+				break ConsumerLoop
+			}
+			if !channelOpen {
+				break ConsumerLoop
+			}
+			objectRel := newBatch.objectRelation
+			objectIDs := newBatch.objectIDs
+
+			resp, err := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)(ctx)
+			if err != nil {
+				finalErr = err
+			} else if resp.Allowed {
+				resp.GetResolutionMetadata().DatastoreQueryCount++
+				return resp, nil
+			}
 		}
-		usersetsMap[objectRel].Add(objectID)
 	}
 
-	// Next, for all the ObjectRelation, compare the associated objectIDs
-	// to the users associated objects
-	// all of this can likely bee its own function
-	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	for objectRel, objectIDs := range usersetsMap {
-		handler := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)
-		handlers = append(handlers, handler)
-	}
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return nil, err
+	if finalErr != nil {
+		return nil, finalErr
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount++
-
-	return resp, nil
+	return &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+		},
+	}, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
