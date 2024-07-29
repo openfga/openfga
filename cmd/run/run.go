@@ -232,22 +232,24 @@ func NewRunCommand() *cobra.Command {
 	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
 
 	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
-    
+
     Enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.`)
 
-	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead. 
-    
+	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead.
+
     Defines how frequent Check dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch Check requests are dispatched.`)
 
-	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead. 
+	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead.
 
 	Define the default threshold on number of dispatches above which requests will be throttled.`)
 
-	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead. 
+	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead.
 
 	Define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum`)
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
+
+	flags.Bool("check-tracker-enabled", defaultConfig.CheckTrackerEnabled, "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -606,6 +608,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListObjectsDispatchThrottlingThreshold(config.ListObjectsDispatchThrottling.Threshold),
 		server.WithListObjectsDispatchThrottlingMaxThreshold(config.ListObjectsDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
+		server.WithContext(ctx),
+		server.WithCheckTrackerEnabled(config.CheckTrackerEnabled),
 	)
 
 	s.Logger.Info(
