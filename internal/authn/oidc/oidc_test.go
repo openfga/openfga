@@ -189,7 +189,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			expectedError: "invalid subject",
 		},
 		{
-			testDescription: "when_the_subject_of_the_token_is_not_a_string,_MUST_return_'invalid_subject'_error",
+			testDescription: "when_the_subject_of_the_token_is_a_string_but_subject_is_not_valid,_MUST_return_'invalid_subject'_error",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup(
 					"kid_1",
@@ -197,7 +197,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_issuer",
 					"right_audience",
 					nil,
-					[]string{"some-user"},
+					[]string{"valid-sub-1", "valid-sub-2"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
