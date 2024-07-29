@@ -12,6 +12,7 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 		name                                   string
 		CachedCheckResolverEnabled             bool
 		DispatchThrottlingCheckResolverEnabled bool
+		TrackerCheckResolverEnabled            bool
 		expectedResolverOrder                  []CheckResolver
 	}
 
@@ -31,10 +32,16 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
 		{
-			name:                                   "when_both_are_enabled",
+			name:                        "when_track_check_is_enabled",
+			TrackerCheckResolverEnabled: true,
+			expectedResolverOrder:       []CheckResolver{&CycleDetectionCheckResolver{}, &TrackerCheckResolver{}, &LocalChecker{}},
+		},
+		{
+			name:                                   "when_all_are_enabled",
 			CachedCheckResolverEnabled:             true,
 			DispatchThrottlingCheckResolverEnabled: true,
-			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
+			TrackerCheckResolverEnabled:            true,
+			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &TrackerCheckResolver{}, &LocalChecker{}},
 		},
 	}
 
@@ -43,6 +50,7 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 			builder := NewOrderedCheckResolvers([]CheckResolverOrderedBuilderOpt{
 				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
 				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
+				WithTrackerCheckResolverOpts(test.TrackerCheckResolverEnabled),
 			}...)
 			_, checkResolverCloser := builder.Build()
 			t.Cleanup(checkResolverCloser)

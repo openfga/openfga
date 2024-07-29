@@ -144,6 +144,8 @@ type Server struct {
 	listObjectsDispatchThrottlingMaxThreshold uint32
 
 	listObjectsDispatchThrottler throttler.Throttler
+	ctx                          context.Context
+	checkTrackerEnabled          bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -153,6 +155,20 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+// WithContext passes the server context to allow for graceful shutdowns.
+func WithContext(ctx context.Context) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.ctx = ctx
+	}
+}
+
+// WithCheckTrackerEnabled enables/disables tracker Check results.
+func WithCheckTrackerEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkTrackerEnabled = enabled
 	}
 }
 
@@ -453,6 +469,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkResolver:          nil,
+		checkTrackerEnabled:    serverconfig.DefaultCheckTrackerEnabled,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -506,6 +523,14 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
+	checkTrackerOptions := []graph.TrackerCheckResolverOpt{}
+	if s.checkTrackerEnabled {
+		checkTrackerOptions = []graph.TrackerCheckResolverOpt{
+			graph.WithTrackerContext(s.ctx),
+			graph.WithTrackerLogger(s.logger),
+		}
+	}
+
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -517,6 +542,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithEnabledConsistencyParams(s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams)),
 		}...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
 	}...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {
