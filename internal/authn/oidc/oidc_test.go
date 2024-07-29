@@ -292,6 +292,27 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				)
 			},
 		},
+		{
+			testDescription: "when_validation_subjects_is_empty_and_pass_any_sub,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					nil,
+					nil,
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "some-user",
+						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
+					},
+					nil,
+				)
+			},
+		},
 	}
 
 	for _, testC := range successTestCases {
@@ -302,7 +323,12 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			}
 			authClaims, err := oidc.Authenticate(requestContext)
 			require.NoError(t, err)
-			require.Equal(t, "openfga client", authClaims.Subject)
+
+			// only verify subjects when authn.oidc.subjects is not empty
+			// when it is empty, it indicates any 'sub' should pass
+			if len(oidc.Subjects) != 0 {
+				require.Equal(t, "openfga client", authClaims.Subject)
+			}
 			scopesList := strings.Split(scopes, " ")
 			require.Equal(t, len(scopesList), len(authClaims.Scopes))
 			for _, scope := range scopesList {
