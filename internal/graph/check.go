@@ -33,6 +33,7 @@ type ResolveCheckRequest struct {
 	Context              *structpb.Struct
 	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
+	Consistency          openfgav1.ConsistencyPreference
 }
 
 func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
@@ -49,6 +50,7 @@ func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
 			WasThrottled:        r.GetRequestMetadata().WasThrottled,
 		},
 		VisitedPaths: maps.Clone(r.VisitedPaths),
+		Consistency:  r.Consistency,
 	}
 }
 
@@ -149,6 +151,13 @@ func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
 	return nil
 }
 
+func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
+	if r != nil {
+		return r.Consistency
+	}
+	return openfgav1.ConsistencyPreference_UNSPECIFIED
+}
+
 type setOperatorType int
 
 const (
@@ -203,20 +212,6 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	}
 
 	return checker
-}
-
-// NewLocalCheckerWithCycleDetection constructs a LocalChecker wrapped with a [[CycleDetectionCheckResolver]]
-// which can be used to evaluate a Check request locally with cycle detection enabled.
-//
-// Deprecated: use NewOrderedCheckResolvers with no options.
-func NewLocalCheckerWithCycleDetection(opts ...LocalCheckerOption) CheckResolver {
-	cycleDetectionCheckResolver := NewCycleDetectionCheckResolver()
-	localCheckResolver := NewLocalChecker(opts...)
-
-	cycleDetectionCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(cycleDetectionCheckResolver)
-
-	return cycleDetectionCheckResolver
 }
 
 // SetDelegate sets this LocalChecker's dispatch delegate.
@@ -664,12 +659,18 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			})
 		}
 
+		opts := storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+
 		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: userFilter,
 			ObjectIDs:  objectIDs,
-		})
+		}, opts)
 
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -808,6 +809,12 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
 
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	// We had just checked for the existence of the typesys in the caller.
+	// So, we are guaranteed for the presence of the context.
+
+	reqUserType := tuple.GetType(req.GetTupleKey().GetUser())
+
 	usersetsMap := make(usersetsMapType)
 
 	for {
@@ -826,7 +833,13 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		objectRel := tuple.ToObjectRelationString(objectType, relation)
+		terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
+		// the terminalRelations is expected to be 1 (as we checked earlier in typesys.UsersetCanFastPath)
+		if len(terminalRelations) != 1 {
+			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+		}
+		computedRelation := terminalRelations[0]
+		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
 		if _, ok := usersetsMap[objectRel]; !ok {
 			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
@@ -895,7 +908,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey)
+			opts := storage.ReadUserTupleOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
+			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -933,11 +951,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				return nil, ctx.Err()
 			}
 
+			opts := storage.ReadUsersetTuplesOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-			})
+			}, opts)
 			if err != nil {
 				return nil, err
 			}
@@ -953,10 +976,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			resolver := c.checkUsersetSlowPath
 
-			if canShortCircuit, err := typesys.ResolvesExclusivelyToDirectlyAssignable(directlyRelatedUsersetTypes); err == nil {
-				if canShortCircuit {
-					resolver = c.checkUsersetFastPath
-				}
+			if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
+				resolver = c.checkUsersetFastPath
 			}
 
 			return resolver(ctx, filteredIter, req)
@@ -988,23 +1009,68 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset_ComputedUserset) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkComputedUserset")
-		defer span.End()
+func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
+	_, span := tracer.Start(ctx, "checkComputedUserset")
+	defer span.End()
 
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+	seen := map[string]struct{}{}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	tk := tuple.NewTupleKey(
+		req.GetTupleKey().GetObject(),
+		req.GetTupleKey().GetRelation(),
+		req.GetTupleKey().GetUser(),
+	)
+
+	for {
+		tk = tuple.NewTupleKey(
+			tk.GetObject(),
+			rewrite.GetComputedUserset().GetRelation(),
+			tk.GetUser(),
+		)
+		key := tuple.TupleKeyToString(tk)
+		if _, cycleDetected := seen[key]; cycleDetected {
+			return func(ctx context.Context) (*ResolveCheckResponse, error) {
+				return &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						CycleDetected: true,
+					},
+				}, nil
+			}
+		}
+		seen[key] = struct{}{}
+
+		userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
+
+		// Check(document:1#viewer@document:1#viewer) will always return true
+		if tk.GetRelation() == userRelation && tk.GetObject() == userObject {
+			return func(ctx context.Context) (*ResolveCheckResponse, error) {
+				return &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+					},
+				}, nil
+			}
 		}
 
-		rewrittenTupleKey := tuple.NewTupleKey(
-			req.GetTupleKey().GetObject(),
-			rewrite.ComputedUserset.GetRelation(),
-			req.GetTupleKey().GetUser(),
-		)
-
-		return c.dispatch(ctx, req, rewrittenTupleKey)(ctx)
+		rw, err := typesys.GetRelation(tuple.GetType(tk.GetObject()), tk.GetRelation())
+		if err != nil {
+			return func(ctx context.Context) (*ResolveCheckResponse, error) {
+				return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", tk.GetRelation(), tuple.GetType(tk.GetObject()))
+			}
+		}
+		rewrite = rw.GetRewrite()
+		if _, isComputed := rewrite.GetUserset().(*openfgav1.Userset_ComputedUserset); !isComputed {
+			break
+		}
 	}
+
+	childRequest := clone(req)
+	childRequest.TupleKey = tk
+
+	return c.checkRewrite(ctx, childRequest, rewrite)
 }
 
 // checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
@@ -1087,7 +1153,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 		return nil, fmt.Errorf("typesystem missing in context")
 	}
 
-	terminalRelations := typesys.GetTerminalRelationsForTTUFastPath(
+	terminalRelations := typesys.GetTerminalRelations(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
 	)
 	if len(terminalRelations) != 1 {
@@ -1182,11 +1248,18 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("computed_relation", computedRelation),
 		)
 
+		opts := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+
 		storeID := req.GetStoreID()
 		iter, err := ds.Read(
 			ctx,
 			storeID,
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
+			opts,
 		)
 		if err != nil {
 			return nil, err
@@ -1275,7 +1348,7 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:
-		return c.checkComputedUserset(ctx, req, rw)
+		return c.checkComputedUserset(ctx, req, rewrite)
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:

@@ -334,55 +334,15 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
-// resolvesTypeRelationToDirectlyAssignable returns whether the input object#relation is related ONLY to concrete types.
-// Otherwise, it will return nil as slice.
-// TODO: memorized so that we do not need to reparse the type system in subsequent calls.
-func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
-	relation, err := t.GetRelation(objectType, relationName)
-	if err != nil {
-		return nil, false, err
-	}
-	_, ok := relation.GetRewrite().GetUserset().(*openfgav1.Userset_This)
-	if !ok {
-		return nil, false, nil
-	}
-
-	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-
-	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
-	// need to check whether these are simple types as well
-	for _, ref := range directlyRelatedTypes {
-		if ref.GetRelationOrWildcard() != nil {
-			if _, ok := ref.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-				// For now, we don't allow if these types are another userset
-				// because local check with these relations cannot be evaluated via simple datastore query.
-				return nil, false, nil
-			}
-		}
-		assignableTypes = append(assignableTypes, ref.GetType())
-	}
-	return assignableTypes, true, nil
-}
-
-// ResolvesExclusivelyToDirectlyAssignable returns whether all relationReferences are relations that are exclusively directly assignable.
-// For now, it will return false if the directly assignable relations are public wildcard or is another userset because
-// check resolver using these relations cannot be evaluated via simple datastore query.
-func (t *TypeSystem) ResolvesExclusivelyToDirectlyAssignable(relationReferences []*openfgav1.RelationReference) (bool, error) {
+// UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
+func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
 	for _, rr := range relationReferences {
-		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
-		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
-		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
-			return false, nil
-		}
-		_, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation())
-		if err != nil {
-			return false, err
-		}
-		if !directlyAssignable {
-			return false, nil
+		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
+		if len(terminalRelations) == 0 {
+			return false
 		}
 	}
-	return true, nil
+	return true
 }
 
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
@@ -429,22 +389,21 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 				continue
 			}
 
-			terminalRelations := t.GetTerminalRelationsForTTUFastPath(parentType.GetType(), computedUsersetRelation, userType)
+			terminalRelations := t.GetTerminalRelations(parentType.GetType(), computedUsersetRelation, userType)
 			if len(terminalRelations) == 0 {
 				return false
 			}
 		}
 	}
 
-	terminalRelations := t.GetTerminalRelationsForTTUFastPath(objectType, computedRelation, userType)
+	terminalRelations := t.GetTerminalRelations(objectType, computedRelation, userType)
 
 	return len(terminalRelations) > 0
 }
 
-// TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
-func (t *TypeSystem) GetTerminalRelationsForTTUFastPath(objectType, computedRelation, userType string) []string {
-	terminalRelations := t.connectedTypes[objectType][computedRelation][userType]
-	return terminalRelations
+// GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.
+func (t *TypeSystem) GetTerminalRelations(objectType, relation, userType string) []string {
+	return t.connectedTypes[objectType][relation][userType]
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
