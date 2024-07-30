@@ -1049,6 +1049,7 @@ func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveChe
 	childRequest.TupleKey = rewrittenTupleKey
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		// No dispatch here, as we don't want to increase resolution depth.
 		return c.ResolveCheck(ctx, childRequest)
 	}
 }
