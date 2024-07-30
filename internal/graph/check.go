@@ -189,7 +189,7 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	}
 }
 
-// WithResolveNodeBreadthLimit see server.WithUsersetBatchSize.
+// WithUsersetBatchSize see server.WithUsersetBatchSize.
 func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.usersetBatchSize = usersetBatchSize
