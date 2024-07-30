@@ -23,7 +23,7 @@ const (
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
-	DefaultUsersetBatchSize                 = 100
+	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
