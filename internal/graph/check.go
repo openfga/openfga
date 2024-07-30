@@ -802,10 +802,10 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userT
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
 		if cr == "" {
-			terminalRelations := typesys.GetTerminalRelations(objectType, relation, userType)
-			// terminalRelations is expected to be 1 (as checked earlier in typesys.*CanFastPath)
-			if len(terminalRelations) != 1 {
-				return "", "", fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+			// terminalRelations is expected to be 1 (because we checked earlier)
+			terminalRelations, err := typesys.HasOneTerminalRelation(objectType, relation, userType)
+			if err != nil {
+				return "", "", err
 			}
 			cr = terminalRelations[0]
 		}
@@ -851,16 +851,17 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	// since this is an unbuffered channel, producer will be blocked until consumer catches up
 	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
 	usersetsChan := make(chan usersets)
-	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
-	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1, 2]
-	// [group#owner][1, 3]
-	usersetsMap := make(usersetsMapType)
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+
 	// sending to channel in batches up to a pre-configured value of usersets to subsequently checkMembership for.
 	pool := concurrency.NewPool(cancellableCtx, 1)
 	pool.Go(func(ctx context.Context) error {
+		// usersetsMap is a map of all ObjectRelations and its Ids. For example,
+		// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
+		// [group#member][1, 2]
+		// [group#owner][1, 3]
+		usersetsMap := make(usersetsMapType)
 		defer close(usersetsChan)
 		for {
 			t, err := iter.Next(ctx)
@@ -885,7 +886,8 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 
 			if _, ok := usersetsMap[objectRel]; !ok {
 				if len(usersetsMap) >= 1 {
-					// flush previous results
+					// Flush results from other usersets so that we can start processing those now.
+					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
 					for k, v := range usersetsMap {
 						select {
 						case <-ctx.Done():
@@ -903,6 +905,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 
 			usersetsMap[objectRel].Add(objectID)
 			if usersetsMap[objectRel].Size() > 1000 {
+				// flush current results
 				select {
 				case <-ctx.Done():
 					return nil
@@ -916,7 +919,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 			}
 		}
 
-		// flush all remaining entries
+		// flush remaining results
 		for k, v := range usersetsMap {
 			select {
 			case <-ctx.Done():
@@ -933,7 +936,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	})
 	defer func() {
 		cancelFunc()
-		_ = pool.Wait() // error handled through the channel
+		_ = pool.Wait() // error is handled through the channel
 	}()
 	var finalErr error
 
@@ -947,6 +950,7 @@ ConsumerLoop:
 				break ConsumerLoop
 			}
 			if newBatch.err != nil {
+				// Irrecoverable error when fetching usersets, so we abort.
 				finalErr = newBatch.err
 				break ConsumerLoop
 			}
@@ -955,6 +959,8 @@ ConsumerLoop:
 
 			resp, err := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)(ctx)
 			if err != nil {
+				// We don't exit because we do a best effort to find the objectId that will give `allowed=true`.
+				// If that doesn't happen, we will return this error down below.
 				finalErr = err
 			} else if resp.Allowed {
 				resp.GetResolutionMetadata().DatastoreQueryCount++
@@ -1261,11 +1267,11 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	terminalRelations := typesys.GetTerminalRelations(
+	terminalRelations, err := typesys.HasOneTerminalRelation(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
 	)
-	if len(terminalRelations) != 1 {
-		return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
+	if err != nil {
+		return nil, err
 	}
 
 	computedRelation := terminalRelations[0]
