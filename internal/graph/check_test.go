@@ -15,6 +15,8 @@ import (
 	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -73,21 +75,17 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 	concurrencyLimit := uint32(10)
 
 	t.Run("requires_exactly_two_handlers", func(t *testing.T) {
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit)
-		})
+		_, err := exclusion(ctx, concurrencyLimit)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.NotPanics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
+		require.NoError(t, err)
 	})
 
 	t.Run("true_butnot_true_return_false", func(t *testing.T) {

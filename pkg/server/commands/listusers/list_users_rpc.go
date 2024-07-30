@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
 	"github.com/openfga/openfga/internal/concurrency"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -127,7 +129,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
 			typesys, exists := typesystem.TypesystemFromContext(ctx)
 			if !exists {
-				return nil, fmt.Errorf("typesystem not provided in context")
+				return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 			}
 
 			return typesys, nil
@@ -167,7 +169,7 @@ func (l *listUsersQuery) ListUsers(
 	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	userFilter := req.GetUserFilters()[0]

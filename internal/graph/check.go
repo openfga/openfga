@@ -13,6 +13,8 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -408,7 +410,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 // handled concurrently relative to one another.
 func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
-		panic(fmt.Sprintf("expected two rewrite operands for exclusion operator, but got '%d'", len(handlers)))
+		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
 
 	span := trace.SpanFromContext(ctx)
@@ -555,7 +557,6 @@ func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckReques
 var _ CheckResolver = (*LocalChecker)(nil)
 
 // ResolveCheck implements [[CheckResolver.ResolveCheck]].
-// If the typesystem isn't set in the context, it will panic.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
@@ -577,7 +578,7 @@ func (c *LocalChecker) ResolveCheck(
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		panic("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	tupleKey := req.GetTupleKey()
@@ -624,7 +625,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 
 		typesys, ok := typesystem.TypesystemFromContext(ctx)
 		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+			return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 		}
 
 		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
@@ -716,7 +717,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter *storage.C
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	response := &ResolveCheckResponse{
@@ -880,7 +881,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+			return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 		}
 
 		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
@@ -1083,7 +1084,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
@@ -1150,7 +1151,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	terminalRelations := typesys.GetTerminalRelations(
@@ -1226,7 +1227,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+			return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 		}
 
 		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
@@ -1320,7 +1321,9 @@ func (c *LocalChecker) checkSetOperation(
 			handlers = append(handlers, c.checkRewrite(ctx, req, child))
 		}
 	default:
-		panic("unexpected set operator type encountered")
+		return func(ctx context.Context) (*ResolveCheckResponse, error) {
+			return nil, fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+		}
 	}
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1358,6 +1361,8 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_Difference:
 		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
-		panic("unexpected userset rewrite encountered")
+		return func(ctx context.Context) (*ResolveCheckResponse, error) {
+			return nil, fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+		}
 	}
 }

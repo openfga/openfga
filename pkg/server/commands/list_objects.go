@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
@@ -210,7 +212,7 @@ func (q *ListObjectsQuery) evaluate(
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		panic("typesystem missing in context")
+		return fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
