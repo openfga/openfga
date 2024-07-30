@@ -1974,11 +1974,11 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 }
 
-func TestComputedUsersetDetectsCycle(t *testing.T) {
+func TestCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	storeID := ulid.Make().String()
 
+	storeID := ulid.Make().String()
 	model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
@@ -1998,25 +1998,31 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
+	t.Run("computed_userset", func(t *testing.T) {
+		t.Run("disconnected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
 
-	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
+		t.Run("connected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
 	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
 }
