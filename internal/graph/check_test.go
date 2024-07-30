@@ -1940,6 +1940,60 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 	})
 }
 
+func TestCheckWithFastPathOptimization(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	usersetBatchSize := uint32(10)
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	storeID := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type folder
+				relations
+					define viewer: [user]
+			type doc
+				relations
+					define viewer: viewer from parent
+					define parent: [folder]`)
+
+	// add some folders as parents of the document
+	maxFolderID := int(usersetBatchSize * 10)
+	for i := 0; i <= maxFolderID; i++ {
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("folder:%d", i)),
+		})
+		require.NoError(t, err)
+	}
+
+	// the user is viewer of the last folder so we force early flushing of the batches when computing membership
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey(fmt.Sprintf("folder:%d", maxFolderID), "viewer", "user:maria"),
+	})
+	require.NoError(t, err)
+
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(storage.ContextWithRelationshipTupleReader(context.Background(), ds), ts)
+
+	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize))
+	t.Cleanup(checker.Close)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+		RequestMetadata:      NewCheckRequestMetadata(20),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.True(t, resp.GetAllowed())
+}
+
 func TestCloneResolveCheckResponse(t *testing.T) {
 	resp1 := &ResolveCheckResponse{
 		Allowed: true,

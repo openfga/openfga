@@ -177,6 +177,7 @@ type LocalChecker struct {
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
+	usersetBatchSize   uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -185,6 +186,13 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
+	}
+}
+
+// WithResolveNodeBreadthLimit see server.WithUsersetBatchSize.
+func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.usersetBatchSize = usersetBatchSize
 	}
 }
 
@@ -205,6 +213,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
+		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 	}
 	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -904,7 +913,8 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 			}
 
 			usersetsMap[objectRel].Add(objectID)
-			if usersetsMap[objectRel].Size() > 1000 {
+			fmt.Println(usersetsMap[objectRel].Size())
+			if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
 				// flush current results
 				select {
 				case <-ctx.Done():
