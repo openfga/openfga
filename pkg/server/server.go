@@ -25,7 +25,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/build"
@@ -568,12 +570,12 @@ func (s *Server) Close() {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	start := time.Now()
+
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
 	}
-
-	start := time.Now()
 
 	targetObjectType := req.GetType()
 
@@ -672,18 +674,22 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	// Set the fga-query-duration-ms header
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	start := time.Now()
+
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return err
 	}
-
-	start := time.Now()
 
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
@@ -771,10 +777,16 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	// Set the fga-query-duration-ms header
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(srv.Context(), metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return nil
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	start := time.Now()
+
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
@@ -803,16 +815,26 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		commands.WithReadQueryLogger(s.logger),
 		commands.WithReadQueryEncoder(s.encoder),
 	)
-	return q.Execute(ctx, &openfgav1.ReadRequest{
+	res, err := q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),
 		TupleKey:          tk,
 		PageSize:          req.GetPageSize(),
 		ContinuationToken: req.GetContinuationToken(),
 		Consistency:       req.GetConsistency(),
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
 
@@ -838,21 +860,29 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
 	)
-	return cmd.Execute(ctx, &openfgav1.WriteRequest{
+	res, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
-}
-
-func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
 	}
 
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
+}
+
+func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	start := time.Now()
+
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
 
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
@@ -969,10 +999,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return res, nil
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
+	start := time.Now()
+
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
@@ -1005,15 +1040,25 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	}
 
 	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
-	return q.Execute(ctx, &openfgav1.ExpandRequest{
+	res, err := q.Execute(ctx, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tk,
 		Consistency:          req.GetConsistency(),
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel", trace.WithAttributes(
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
@@ -1031,10 +1076,20 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 	})
 
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
-	return q.Execute(ctx, req)
+	res, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
@@ -1060,10 +1115,15 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 
 	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
 
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return res, nil
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
@@ -1082,10 +1142,20 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		commands.WithReadAuthModelsQueryLogger(s.logger),
 		commands.WithReadAuthModelsQueryEncoder(s.encoder),
 	)
-	return c.Execute(ctx, req)
+	res, err := c.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
 
@@ -1119,10 +1189,15 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 
 	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent))
 
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return res, nil
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
@@ -1143,10 +1218,20 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 	}
 
 	q := commands.NewReadAssertionsQuery(s.datastore, commands.WithReadAssertionsQueryLogger(s.logger))
-	return q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
+	res, err := q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "ReadChangesQuery", trace.WithAttributes(
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
@@ -1168,10 +1253,20 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		commands.WithReadChangesQueryEncoder(s.encoder),
 		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
 	)
-	return q.Execute(ctx, req)
+	res, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "CreateStore")
 	defer span.End()
 
@@ -1194,10 +1289,15 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 
 	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
 
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return res, nil
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "DeleteStore")
 	defer span.End()
 
@@ -1220,10 +1320,15 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 
 	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent))
 
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
 	return res, nil
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "GetStore")
 	defer span.End()
 
@@ -1239,10 +1344,20 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 	})
 
 	q := commands.NewGetStoreQuery(s.datastore, commands.WithGetStoreQueryLogger(s.logger))
-	return q.Execute(ctx, req)
+	res, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, "ListStores")
 	defer span.End()
 
@@ -1261,7 +1376,15 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		commands.WithListStoresQueryLogger(s.logger),
 		commands.WithListStoresQueryEncoder(s.encoder),
 	)
-	return q.Execute(ctx, req)
+	res, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(start).Milliseconds()
+	grpc.SendHeader(ctx, metadata.Pairs("fga-query-duration-ms", fmt.Sprintf("%d", duration)))
+
+	return res, nil
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
