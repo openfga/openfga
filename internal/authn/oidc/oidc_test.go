@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MicahParks/keyfunc"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/MicahParks/keyfunc/v2"
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
@@ -49,6 +49,25 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			expectedError: "invalid bearer token",
 		},
 		{
+			testDescription: "when_no_expiration_set,_return_'invalid_bearer_token'",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"right_issuer",
+					"right_audience",
+					nil,
+					jwt.MapClaims{
+						"iss": "right_issuer",
+						"aud": "right_audience",
+						"sub": "openfga client",
+					},
+					nil,
+				)
+			},
+			expectedError: "invalid bearer token",
+		},
+		{
 			testDescription: "when_the_JWT_contains_a_future_'iat',_return_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				return quickConfigSetup(
@@ -62,6 +81,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud": "right_audience",
 						"sub": "openfga client",
 						"iat": time.Now().Add(10 * time.Minute).Unix(),
+						"exp": time.Now().Add(100 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -71,7 +91,17 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		{
 			testDescription: "when_JWT_and_JWK_kid_don't_match,_returns_'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
-				return quickConfigSetup("kid_1", "kid_2", "", "", nil, jwt.MapClaims{}, nil)
+				return quickConfigSetup(
+					"kid_1",
+					"kid_2",
+					"",
+					"",
+					nil,
+					jwt.MapClaims{
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					nil,
+				)
 			},
 			expectedError: "invalid bearer token",
 		},
@@ -79,7 +109,17 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			testDescription: "when_token_is_signed_using_different_public/private_key_pairs,_returns__'invalid_bearer_token'",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
 				privateKey, _ := generateJWTSignatureKeys()
-				return quickConfigSetup("kid_1", "kid_1", "", "", nil, jwt.MapClaims{}, privateKey)
+				return quickConfigSetup(
+					"kid_1",
+					"kid_1",
+					"",
+					"",
+					nil,
+					jwt.MapClaims{
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKey,
+				)
 			},
 			expectedError: "invalid bearer token",
 		},
@@ -94,6 +134,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 					jwt.MapClaims{
 						"iss": "wrong_issuer",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -112,6 +153,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "wrong_audience",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -131,6 +173,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"iss": "right_issuer",
 						"aud": "right_audience",
 						"sub": 12,
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -171,6 +214,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud":   "right_audience",
 						"sub":   "openfga client",
 						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -190,6 +234,27 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"aud":   "right_audience",
 						"sub":   "openfga client",
 						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
+					},
+					nil,
+				)
+			},
+		},
+		{
+			testDescription: "when_issuer_alias_set_token_is_valid_with_orig_issuer,_it_MUST_return_the_token_subject_and_its_associated_scopes",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, error) {
+				return quickConfigSetup(
+					"kid_2",
+					"kid_2",
+					"right_issuer",
+					"right_audience",
+					[]string{"issuer_alias"},
+					jwt.MapClaims{
+						"iss":   "right_issuer",
+						"aud":   "right_audience",
+						"sub":   "openfga client",
+						"scope": scopes,
+						"exp":   time.Now().Add(10 * time.Minute).Unix(),
 					},
 					nil,
 				)
@@ -259,7 +324,7 @@ func generateJWTSignatureKeys() (*rsa.PrivateKey, *rsa.PublicKey) {
 // fetchKeysMock returns a function that sets up a mock JWKS.
 func fetchKeysMock(publicKey *rsa.PublicKey, kid string) func(oidc *RemoteOidcAuthenticator) error {
 	// Create a keyfunc with the given RSA public key and RS256 algorithm
-	givenKeys := keyfunc.NewGivenRSACustomWithOptions(publicKey, keyfunc.GivenKeyOptions{
+	givenKeys := keyfunc.NewGivenCustom(publicKey, keyfunc.GivenKeyOptions{
 		Algorithm: "RS256",
 	})
 	// Return a function that sets up the mock JWKS with the provided kid

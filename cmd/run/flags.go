@@ -162,6 +162,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("maxConcurrentReadsForCheck", flags.Lookup("max-concurrent-reads-for-check"))
 		util.MustBindEnv("maxConcurrentReadsForCheck", "OPENFGA_MAX_CONCURRENT_READS_FOR_CHECK", "OPENFGA_MAXCONCURRENTREADSFORCHECK")
 
+		util.MustBindPFlag("maxConditionEvaluationCost", flags.Lookup("max-condition-evaluation-cost"))
+		util.MustBindEnv("maxConditionEvaluationCost", "OPENFGA_MAX_CONDITION_EVALUATION_COST", "OPENFGA_MAXCONDITIONEVALUATIONCOST")
+
 		util.MustBindPFlag("changelogHorizonOffset", flags.Lookup("changelog-horizon-offset"))
 		util.MustBindEnv("changelogHorizonOffset", "OPENFGA_CHANGELOG_HORIZON_OFFSET", "OPENFGA_CHANGELOGHORIZONOFFSET")
 

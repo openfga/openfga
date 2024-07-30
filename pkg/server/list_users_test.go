@@ -30,13 +30,13 @@ func TestListUsersValidation(t *testing.T) {
 	})
 
 	model := `
-	model
-		schema 1.1
-	type user
+		model
+			schema 1.1
+		type user
 
-	type document
-		relations
-			define viewer: [user]`
+		type document
+			relations
+				define viewer: [user]`
 
 	tests := []struct {
 		name              string
@@ -160,7 +160,6 @@ func TestListUsersValidation(t *testing.T) {
 
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),
-				WithExperimentals(ExperimentalEnableListUsers),
 			)
 			t.Cleanup(s.Close)
 
@@ -200,7 +199,6 @@ func TestModelIdNotFound(t *testing.T) {
 
 	server := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -245,20 +243,9 @@ func TestExperimentalListUsers(t *testing.T) {
 		server.Close()
 	})
 
-	t.Run("list_users_errors_if_not_experimentally_enabled", func(t *testing.T) {
-		_, err := server.ListUsers(ctx, req)
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Unimplemented desc = ListUsers is not enabled. It can be enabled for experimental use by passing the `--experimentals enable-list-users` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Unimplemented, e.Code())
-	})
-
 	t.Run("list_users_returns_error_if_latest_model_not_found", func(t *testing.T) {
 		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
 
-		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 		_, err := server.ListUsers(ctx, req)
 
 		st, ok := status.FromError(err)
@@ -271,7 +258,6 @@ func TestExperimentalListUsers(t *testing.T) {
 			ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, storage.ErrNotFound)
 
-		server.experimentals = []ExperimentalFeatureFlag{ExperimentalEnableListUsers}
 		_, err := server.ListUsers(ctx, &openfgav1.ListUsersRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: ulid.Make().String(),
@@ -303,24 +289,24 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),
-			WithExperimentals(ExperimentalEnableListUsers),
 		)
 		t.Cleanup(s.Close)
 
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
 
-type group
-  relations
-	define member: [user, group#member]
+				type group
+					relations
+						define member: [user, group#member]
 
-type document
-  relations
-	define viewer: [group#member]`).GetTypeDefinitions(),
+				type document
+					relations
+						define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -367,17 +353,17 @@ func TestListUsers_Deadline(t *testing.T) {
 		t.Cleanup(ds.Close)
 
 		modelStr := `
-		model
-		schema 1.1
-		type user
+			model
+				schema 1.1
+			type user
 
-		type group
-		relations
-			define member: [user]
+			type group
+			relations
+				define member: [user]
 
-		type document
-		relations
-			define viewer: [user, group#member]`
+			type document
+			relations
+				define viewer: [user, group#member]`
 
 		tuples := []string{
 			"document:1#viewer@user:jon",
@@ -392,7 +378,6 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(30*time.Millisecond), // 30ms is enough for first read, but not others
 		)
 		t.Cleanup(s.Close)
@@ -427,13 +412,13 @@ func TestListUsers_Deadline(t *testing.T) {
 			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 			Return(
 				testutils.MustTransformDSLToProtoWithID(`
-				model
-				  schema 1.1
-				type user
+					model
+						schema 1.1
+					type user
 
-				type document
-				  relations
-				    define viewer: [user]`),
+					type document
+						relations
+							define viewer: [user]`),
 				nil,
 			).
 			Times(1)
@@ -446,7 +431,6 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
-			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(1*time.Minute),
 		)
 		t.Cleanup(s.Close)
@@ -483,13 +467,13 @@ func TestListUsers_Deadline(t *testing.T) {
 			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 			Return(
 				testutils.MustTransformDSLToProtoWithID(`
-				model
-				  schema 1.1
-				type user
+					model
+						schema 1.1
+					type user
 
-				type document
-				  relations
-				    define viewer: [user]`),
+					type document
+						relations
+							define viewer: [user]`),
 				nil,
 			).
 			Times(1)
@@ -505,7 +489,6 @@ func TestListUsers_Deadline(t *testing.T) {
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
-			WithExperimentals(ExperimentalEnableListUsers),
 			WithListUsersDeadline(5*time.Millisecond),
 		)
 		t.Cleanup(s.Close)
