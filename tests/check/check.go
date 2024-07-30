@@ -54,6 +54,7 @@ type ClientInterface interface {
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("Check", func(t *testing.T) {
+			t.Parallel()
 			runTests(t, testParams{typesystem.SchemaVersion1_1, client})
 		})
 	})
@@ -106,6 +107,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			t.Skipf("multi-stages test has expectation tuples are in system")
 		}
 
+		t.Parallel()
 		ctx := context.Background()
 
 		resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
