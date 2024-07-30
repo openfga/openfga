@@ -897,25 +897,13 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 				if len(usersetsMap) >= 1 {
 					// Flush results from other usersets so that we can start processing those now.
 					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
-					for k, v := range usersetsMap {
-						select {
-						case <-ctx.Done():
-							return nil
-						case usersetsChan <- usersets{
-							objectRelation: k,
-							objectIDs:      v,
-						}:
-							delete(usersetsMap, k)
-						}
-					}
+					flushUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 				}
 				usersetsMap[objectRel] = storage.NewSortedSet()
 			}
 
 			usersetsMap[objectRel].Add(objectID)
-			fmt.Println(usersetsMap[objectRel].Size())
 			if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
-				// flush current results
 				select {
 				case <-ctx.Done():
 					return nil
@@ -923,30 +911,22 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 					objectRelation: objectRel,
 					objectIDs:      usersetsMap[objectRel],
 				}:
-					// flushed chunk, restarting objectRel entry
+					// flushed current batch, restarting objectRel entry
 					usersetsMap[objectRel] = storage.NewSortedSet()
 				}
 			}
 		}
 
-		// flush remaining results
-		for k, v := range usersetsMap {
-			select {
-			case <-ctx.Done():
-				return nil
-			case usersetsChan <- usersets{
-				objectRelation: k,
-				objectIDs:      v,
-			}:
-				// noop
-			}
-		}
+		flushUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 
 		return nil
 	})
 	defer func() {
 		cancelFunc()
-		_ = pool.Wait() // error is handled through the channel
+
+		// Error is handled through the channel so we can ignore here.
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
 	}()
 	var finalErr error
 
@@ -990,6 +970,20 @@ ConsumerLoop:
 			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 		},
 	}, nil
+}
+
+func flushUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersets) {
+	for k, v := range usersetsMap {
+		select {
+		case <-ctx.Done():
+			return
+		case usersetsChan <- usersets{
+			objectRelation: k,
+			objectIDs:      v,
+		}:
+			delete(usersetsMap, k)
+		}
+	}
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
