@@ -795,7 +795,7 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
 // buildUsersetDetails given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
-// This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType
+// This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType.
 func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userType string) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
 		cr := computedRelation
