@@ -404,6 +404,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.ListUsersDispatchThrottling.Enabled {
+		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
+		}
+	}
+
 	if cfg.RequestTimeout < 0 {
 		return errors.New("requestTimeout must be a non-negative time duration")
 	}
@@ -414,6 +426,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.ListObjectsDeadline < 0 {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if cfg.ListUsersDeadline < 0 {
+		return errors.New("listUsersDeadline must be non-negative time duration")
 	}
 
 	if cfg.MaxConditionEvaluationCost < 100 {
