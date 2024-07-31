@@ -13,6 +13,8 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/logger"
+
 	"github.com/openfga/openfga/internal/concurrency"
 
 	"github.com/openfga/openfga/internal/condition"
@@ -178,6 +180,7 @@ type LocalChecker struct {
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
 	usersetBatchSize   uint32
+	logger             logger.Logger
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -203,6 +206,12 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
+func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.logger = logger
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
@@ -214,6 +223,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
+		logger:             logger.NewNoopLogger(),
 	}
 	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -964,6 +974,10 @@ ConsumerLoop:
 				return resp, nil
 			}
 		}
+	}
+
+	if ctx.Err() != nil {
+		finalErr = ctx.Err()
 	}
 
 	if finalErr != nil {

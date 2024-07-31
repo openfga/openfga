@@ -15,6 +15,8 @@ import (
 	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/logger"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -1980,7 +1982,8 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 
 	ctx := typesystem.ContextWithTypesystem(storage.ContextWithRelationshipTupleReader(context.Background(), ds), ts)
 
-	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize))
+	newL, _ := logger.NewLogger(logger.WithFormat("text"), logger.WithLevel("debug"))
+	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL))
 	t.Cleanup(checker.Close)
 
 	t.Run("without_context_cancellation", func(t *testing.T) {
