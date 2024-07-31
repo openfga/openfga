@@ -8,6 +8,67 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.7] - 2024-07-25
+
+### Added
+
+* Support requesting a different consistency option per request in `Check`, `Expand`, `ListObjects`, `ListUsers`, and `Read` [#1764](https://github.com/openfga/openfga/pull/1764)
+  * This is currently experimental and needs to be enabled by configuring `OPENFGA_EXPERIMENTALS=enable-consistency-params` or passing `--experimentals enable-consistency-params` to `openfga run`.
+  * When `HIGHER_CONSISTENCY` is requested, OpenFGA will skip the check resolver cache. For storage implementors it is recommended to skip any caching and perform a stronger read if `HIGHER_CONSISTENCY` is requested. This can be accessed in the `Consistency` options provided to the relevant methods of the storage interface.
+* Start publishing images to `ghcr.io/openfga/openfga` as alternative to DockerHub [#1775](https://github.com/openfga/openfga/pull/1775) - Thanks @JAORMX!
+* Performance improvements for parent child relations in Check [#1765](https://github.com/openfga/openfga/pull/1765)
+* Performance improvement in Check: computed relations don't consume from the resolution depth quota, don't trigger additional goroutines, and don't get cached [#1786](https://github.com/openfga/openfga/pull/1786)
+
+### Changed
+
+* Update to Go 1.22 in container image [#1776](https://github.com/openfga/openfga/pull/1776) - Thanks @tranngoclam!
+
+### Breaking Changes :warning:
+
+> [!NOTE]
+> The following breaking changes are related to the storage interface. If you are not implementing a storage adaptor, then there are these changes should not impact your usage of OpenFGA.
+
+#### Removal of `PaginationOptions` in favour of a per-method `Options` type [#1732](https://github.com/openfga/openfga/pull/1732)
+
+The options parameter of type `PaginationOptions` has been replaced with a per-method type that contains a `Pagination` field that contains this data in the following methods:
+
+* `ReadAuthorizationModels` - Type is `ReadAuthorizationModelsOptions`
+* `ListStores` - Type is `ListStoresOptions`
+* `ReadChanges` - Type is `ReadChangesOptions`
+* `ReadPage` - Type is `ReadPageOptions`
+
+#### Introduction of new `Options` types to certain methods in the storage interface to facilitate consistency data [#1750](https://github.com/openfga/openfga/pull/1750)
+
+The following methods have had an options parameter introduced to the method signature to include consistency data, or the existing options parameter has been expanded to hold consistency data.
+
+This consistency data should be used to help determine whether any form of caching should be used as part of the read performed by the storage adapter.
+
+* `Read` - Added a new parameter of type `ReadOptions`
+* `ReadPage` - Added `Consistency` to existing `ReadPageOptions` type
+* `ReadUserSetTuples` - Added a new parameter of type `ReadUserSetTuplesOptions`
+* `ReadStartingWithUser` - Added a new parameter of type `ReadStartingWithUserOptions`
+
+## [1.5.6] - 2024-07-17
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.5...v1.5.6)
+
+### Added
+
+* Performance improvements to userset subproblem resolutions in Check in certain scenarios [#1734](https://github.com/openfga/openfga/pull/1734)
+* Performance improvements to tuple-to-userset subproblem resolutions in Check in certain scenarios [#1735](https://github.com/openfga/openfga/pull/1735)
+* Warning when log level set to `none` [#1705](https://github.com/openfga/openfga/pull/1705) - thank you, @Siddhant-K-code!
+* Minor performance improvement for queries when model ID not specified [#1754](https://github.com/openfga/openfga/pull/1754)
+
+### Fixed
+
+* Race condition in ListUsers which could erroneously swallow errors [#1755](https://github.com/openfga/openfga/pull/1755)
+* "relation is undefined" error in Check and ListUsers [#1767](https://github.com/openfga/openfga/pull/1767)
+* Request ID included with Streaming ListObjects responses [#1636](https://github.com/openfga/openfga/pull/1636)
+
+### Removed
+
+* ListUsers experimental flag (will continue to work if passed) [#1730](https://github.com/openfga/openfga/pull/1730)
+
 ## [1.5.5] - 2024-06-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.4...v1.5.5)
@@ -1057,7 +1118,9 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.7...HEAD
+[1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
+[1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
 [1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5
 [1.5.4]: https://github.com/openfga/openfga/releases/tag/v1.5.4
 [1.5.3]: https://github.com/openfga/openfga/releases/tag/v1.5.3

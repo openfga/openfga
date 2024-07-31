@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/graph"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -14,7 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -502,19 +503,19 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
-			checkResolver, closer := graph.NewLayeredCheckResolver(
-				[]graph.LocalCheckerOption{
-					graph.WithResolveNodeBreadthLimit(100),
-					graph.WithMaxConcurrentReads(30),
-				},
-				test.useCheckCache,
-				false,
-				[]graph.CachedCheckResolverOpt{
-					graph.WithMaxCacheSize(100),
-					graph.WithCacheTTL(10 * time.Second),
-				},
-				[]graph.DispatchThrottlingCheckResolverOpt{},
-			)
+			localCheckOpts := []graph.LocalCheckerOption{
+				graph.WithResolveNodeBreadthLimit(100),
+				graph.WithMaxConcurrentReads(30),
+			}
+			cacheOpts := []graph.CachedCheckResolverOpt{
+				graph.WithMaxCacheSize(100),
+				graph.WithCacheTTL(10 * time.Second),
+			}
+			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
+				graph.WithCachedCheckResolverOpts(test.useCheckCache, cacheOpts...),
+				graph.WithLocalCheckerOpts(localCheckOpts...),
+			}
+			checkResolver, closer := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
 			t.Cleanup(closer)
 
 			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
@@ -651,10 +652,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 
 	var oneResultIterations, allResultsIterations int
 
+	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+	b.Cleanup(checkResolverCloser)
+
 	b.Run("oneResult", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
-			graph.NewLocalCheckerWithCycleDetection(),
+			checkResolver,
 			commands.WithListObjectsMaxResults(1),
 		)
 		require.NoError(b, err)
@@ -671,7 +675,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	b.Run("allResults", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
-			graph.NewLocalCheckerWithCycleDetection(),
+			checkResolver,
 			commands.WithListObjectsMaxResults(0),
 		)
 		require.NoError(b, err)
@@ -679,7 +683,8 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)
-			require.Len(b, r.Objects, numberObjectsAccessible)
+			totalObjects := len(r.Objects)
+			require.Equal(b, numberObjectsAccessible, totalObjects, "total number of records returned should match")
 		}
 
 		listObjectsResponse = r

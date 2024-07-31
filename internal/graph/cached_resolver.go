@@ -6,13 +6,17 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/cespare/xxhash/v2"
-	"github.com/karlseguin/ccache/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
@@ -44,13 +48,14 @@ var (
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        *ccache.Cache[*ResolveCheckResponse]
+	cache        storage.InMemoryCache[*ResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
-	allocatedCache bool
+	allocatedCache           bool
+	enableConsistencyOptions bool
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -77,7 +82,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 // WithExistingCache sets the cache to the specified cache.
 // Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
 // to check whether the original cache should be stopped.
-func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
@@ -87,6 +92,12 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
+	}
+}
+
+func WithEnabledConsistencyParams(enable bool) CachedCheckResolverOpt {
+	return func(ccr *CachedCheckResolver) {
+		ccr.enableConsistencyOptions = enable
 	}
 }
 
@@ -109,9 +120,10 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 
 	if checker.cache == nil {
 		checker.allocatedCache = true
-		checker.cache = ccache.New(
-			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
-		)
+		cacheOptions := []storage.InMemoryLRUCacheOpt[*ResolveCheckResponse]{
+			storage.WithMaxCacheSize[*ResolveCheckResponse](checker.maxCacheSize),
+		}
+		checker.cache = storage.NewInMemoryLRUCache[*ResolveCheckResponse](cacheOptions...)
 	}
 
 	return checker
@@ -140,7 +152,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
-	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
@@ -149,16 +160,23 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired()
-	span.SetAttributes(attribute.Bool("is_cached", isCached))
-	if isCached {
-		checkCacheHitCounter.Inc()
+	tryCache := !c.enableConsistencyOptions || req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-		// return a copy to avoid races across goroutines
-		return CloneResolveCheckResponse(cachedResp.Value()), nil
+	if tryCache {
+		checkCacheTotalCounter.Inc()
+
+		cachedResp := c.cache.Get(cacheKey)
+		isCached := cachedResp != nil && !cachedResp.Expired
+		span.SetAttributes(attribute.Bool("is_cached", isCached))
+		if isCached {
+			checkCacheHitCounter.Inc()
+
+			// return a copy to avoid races across goroutines
+			return CloneResolveCheckResponse(cachedResp.Value), nil
+		}
 	}
 
+	// not in cache, or consistency options experimental flag is set, and consistency param set to HIGHER_CONSISTENCY
 	resp, err := c.delegate.ResolveCheck(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)

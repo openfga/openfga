@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -46,7 +45,6 @@ func testRunAll(t *testing.T, engine string) {
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	cfg.ListUsersDeadline = 6 * time.Second
 
 	tests.StartServer(t, cfg)
 
@@ -154,7 +152,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -174,7 +172,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -196,7 +194,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid ListUsersRequest.Object: value is required"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
@@ -215,7 +213,7 @@ func TestListUsersLogs(t *testing.T) {
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid ListUsersRequest.Object: value is required"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",

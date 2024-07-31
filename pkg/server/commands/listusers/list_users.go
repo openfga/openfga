@@ -16,6 +16,7 @@ type listUsersRequest interface {
 	GetUserFilters() []*openfgav1.UserTypeFilter
 	GetContextualTuples() []*openfgav1.TupleKey
 	GetContext() *structpb.Struct
+	GetConsistency() openfgav1.ConsistencyPreference
 }
 
 type internalListUsersRequest struct {
@@ -149,6 +150,7 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 			UserFilters:          o.GetUserFilters(),
 			ContextualTuples:     o.GetContextualTuples(),
 			Context:              o.GetContext(),
+			Consistency:          o.GetConsistency(),
 		},
 		visitedUsersetsMap:  make(map[string]struct{}),
 		depth:               0,
