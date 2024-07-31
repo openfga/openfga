@@ -14,7 +14,6 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -430,6 +429,9 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
+	defer stop()
+
 	tracerProviderCloser := s.telemetryConfig(config)
 
 	if len(config.Experimentals) > 0 {
@@ -820,13 +822,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}()
 	}
 
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-	}
+	// wait for cancellation signal
+	<-ctx.Done()
 	s.Logger.Info("attempting to shutdown gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
