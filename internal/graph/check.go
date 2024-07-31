@@ -863,6 +863,30 @@ type usersetsChannelType struct {
 	objectIDs      storage.SortedSet // eg. [1,2,3] (no duplicates allowed, sorted)
 }
 
+// checkMembership for this model
+//
+// type user
+// type org
+//
+//	relations
+//		define viewer: [user]
+//
+// type folder
+//
+//	relations
+//		define viewer: [user]
+//
+// type doc
+//
+//	relations
+//		define viewer: viewer from parent
+//		define parent: [folder, org]
+//
+// works as follows.
+// If the request is Check(user:maria, viewer, doc:1).
+// 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
+// 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
+// 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
 func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
@@ -906,8 +930,8 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 
 			if _, ok := usersetsMap[objectRel]; !ok {
 				if len(usersetsMap) >= 1 {
-					// Flush results from other usersetsChannelType so that we can start processing those now.
-					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersetsChannelType in order.
+					// Flush results from other usersets so that we can start processing those now.
+					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
 					trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 				}
 				usersetsMap[objectRel] = storage.NewSortedSet()
@@ -945,7 +969,7 @@ ConsumerLoop:
 				break ConsumerLoop
 			}
 			if newBatch.err != nil {
-				// Irrecoverable error when fetching usersetsChannelType, so we abort.
+				// Irrecoverable error when fetching usersets, so we abort.
 				finalErr = newBatch.err
 				break ConsumerLoop
 			}
@@ -1005,7 +1029,7 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
-// while the second handler looks up relationships between the target 'object#relation' and any usersetsChannelType
+// while the second handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {

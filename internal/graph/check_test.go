@@ -1986,7 +1986,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL))
 	t.Cleanup(checker.Close)
 
-	t.Run("without_context_cancellation", func(t *testing.T) {
+	t.Run("without_context_timeout", func(t *testing.T) {
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
@@ -1998,7 +1998,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 	})
 
-	t.Run("with_context_cancellation", func(t *testing.T) {
+	t.Run("with_context_timeout", func(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			// run in a for loop to hopefully trigger context cancellations at different points in execution
 			t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
