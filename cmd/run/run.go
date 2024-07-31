@@ -14,7 +14,6 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -124,7 +123,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens, and where the keys will be fetched from")
 
-	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying tokens")
+	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying the `iss` field of the JWTs.")
+
+	flags.StringSlice("authn-oidc-subjects", defaultConfig.Authn.Subjects, "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -407,7 +408,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects)
 	default:
 		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -420,6 +421,9 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
+	defer stop()
+
 	tracerProviderCloser := s.telemetryConfig(config)
 
 	if len(config.Experimentals) > 0 {
@@ -806,13 +810,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}()
 	}
 
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-	}
+	// wait for cancellation signal
+	<-ctx.Done()
 	s.Logger.Info("attempting to shutdown gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

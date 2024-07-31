@@ -131,6 +131,7 @@ type AuthnConfig struct {
 type AuthnOIDCConfig struct {
 	Issuer        string
 	IssuerAliases []string
+	Subjects      []string
 	Audience      string
 }
 
