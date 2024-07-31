@@ -857,10 +857,10 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveChe
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
-type usersets struct {
+type usersetsChannelType struct {
 	err            error
-	objectRelation string
-	objectIDs      storage.SortedSet
+	objectRelation string            // e.g. group#member
+	objectIDs      storage.SortedSet // eg. [1,2,3] (no duplicates allowed, sorted)
 }
 
 func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) (*ResolveCheckResponse, error) {
@@ -869,17 +869,18 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 
 	// since this is an unbuffered channel, producer will be blocked until consumer catches up
 	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
-	usersetsChan := make(chan usersets)
+	usersetsChan := make(chan usersetsChannelType)
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-
-	// sending to channel in batches up to a pre-configured value of usersets to subsequently checkMembership for.
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
 	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// Error is handled through the channel so we can ignore here.
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
 	pool.Go(func(ctx context.Context) error {
-		// usersetsMap is a map of all ObjectRelations and its Ids. For example,
-		// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-		// [group#member][1, 2]
-		// [group#owner][1, 3]
 		usersetsMap := make(usersetsMapType)
 		defer close(usersetsChan)
 		for {
@@ -889,32 +890,25 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 					break
 				}
 				// cancelled doesn't need to flush nor send errors back to main routine
-				if errors.Is(err, context.Canceled) {
-					return nil
+				if !errors.Is(err, context.Canceled) {
+					telemetry.TraceError(span, err)
+					trySendError(ctx, err, usersetsChan)
 				}
 
-				telemetry.TraceError(span, err)
-				select {
-				case <-ctx.Done():
-				case usersetsChan <- usersets{err: err}:
-				}
 				return nil
 			}
 
 			objectRel, objectID, err := usersetDetails(t)
 			if err != nil {
-				select {
-				case <-ctx.Done():
-					return nil
-				case usersetsChan <- usersets{err: err}:
-				}
+				trySendError(ctx, err, usersetsChan)
+				return nil
 			}
 
 			if _, ok := usersetsMap[objectRel]; !ok {
 				if len(usersetsMap) >= 1 {
-					// Flush results from other usersets so that we can start processing those now.
-					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
-					flushUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+					// Flush results from other usersetsChannelType so that we can start processing those now.
+					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersetsChannelType in order.
+					trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 				}
 				usersetsMap[objectRel] = storage.NewSortedSet()
 			}
@@ -924,7 +918,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 				select {
 				case <-ctx.Done():
 					return nil
-				case usersetsChan <- usersets{
+				case usersetsChan <- usersetsChannelType{
 					objectRelation: objectRel,
 					objectIDs:      usersetsMap[objectRel],
 				}:
@@ -934,17 +928,11 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 			}
 		}
 
-		flushUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+		trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 
 		return nil
 	})
-	defer func() {
-		cancelFunc()
 
-		// Error is handled through the channel so we can ignore here.
-		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
-	}()
 	var finalErr error
 
 ConsumerLoop:
@@ -957,7 +945,7 @@ ConsumerLoop:
 				break ConsumerLoop
 			}
 			if newBatch.err != nil {
-				// Irrecoverable error when fetching usersets, so we abort.
+				// Irrecoverable error when fetching usersetsChannelType, so we abort.
 				finalErr = newBatch.err
 				break ConsumerLoop
 			}
@@ -976,6 +964,7 @@ ConsumerLoop:
 		}
 	}
 
+	// context cancellation from upstream (e.g. client)
 	if ctx.Err() != nil {
 		finalErr = ctx.Err()
 	}
@@ -993,12 +982,19 @@ ConsumerLoop:
 	}, nil
 }
 
-func flushUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersets) {
+func trySendError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
+	select {
+	case <-ctx.Done():
+	case errorChan <- usersetsChannelType{err: err}:
+	}
+}
+
+func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
 	for k, v := range usersetsMap {
 		select {
 		case <-ctx.Done():
 			return
-		case usersetsChan <- usersets{
+		case usersetsChan <- usersetsChannelType{
 			objectRelation: k,
 			objectIDs:      v,
 		}:
@@ -1009,7 +1005,7 @@ func flushUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapT
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
-// while the second handler looks up relationships between the target 'object#relation' and any usersets
+// while the second handler looks up relationships between the target 'object#relation' and any usersetsChannelType
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
