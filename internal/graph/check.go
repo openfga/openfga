@@ -900,60 +900,11 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	pool := concurrency.NewPool(cancellableCtx, 1)
 	defer func() {
 		cancelFunc()
-		// Error is handled through the channel so we can ignore here.
 		// We need to wait always to avoid a goroutine leak.
 		_ = pool.Wait()
 	}()
 	pool.Go(func(ctx context.Context) error {
-		usersetsMap := make(usersetsMapType)
-		defer close(usersetsChan)
-		for {
-			t, err := iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				// cancelled doesn't need to flush nor send errors back to main routine
-				if !errors.Is(err, context.Canceled) {
-					telemetry.TraceError(span, err)
-					trySendError(ctx, err, usersetsChan)
-				}
-
-				return nil
-			}
-
-			objectRel, objectID, err := usersetDetails(t)
-			if err != nil {
-				trySendError(ctx, err, usersetsChan)
-				return nil
-			}
-
-			if _, ok := usersetsMap[objectRel]; !ok {
-				if len(usersetsMap) >= 1 {
-					// Flush results from other usersets so that we can start processing those now.
-					// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
-					trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
-				}
-				usersetsMap[objectRel] = storage.NewSortedSet()
-			}
-
-			usersetsMap[objectRel].Add(objectID)
-			if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
-				select {
-				case <-ctx.Done():
-					return nil
-				case usersetsChan <- usersetsChannelType{
-					objectRelation: objectRel,
-					objectIDs:      usersetsMap[objectRel],
-				}:
-					// flushed current batch, restarting objectRel entry
-					usersetsMap[objectRel] = storage.NewSortedSet()
-				}
-			}
-		}
-
-		trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
-
+		c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
 		return nil
 	})
 
@@ -1004,6 +955,53 @@ ConsumerLoop:
 			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 		},
 	}, nil
+}
+
+func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) {
+	usersetsMap := make(usersetsMapType)
+	defer close(usersetsChan)
+ProducerLoop:
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			// cancelled doesn't need to flush nor send errors back to main routine
+			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) {
+				trySendError(ctx, err, usersetsChan)
+			}
+			break ProducerLoop
+		}
+
+		objectRel, objectID, err := usersetDetails(t)
+		if err != nil {
+			trySendError(ctx, err, usersetsChan)
+			break ProducerLoop
+		}
+
+		if _, ok := usersetsMap[objectRel]; !ok {
+			if len(usersetsMap) >= 1 {
+				// Flush results from other usersets so that we can start processing those now.
+				// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
+				trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+			}
+			usersetsMap[objectRel] = storage.NewSortedSet()
+		}
+
+		usersetsMap[objectRel].Add(objectID)
+		if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
+			select {
+			case <-ctx.Done():
+				break ProducerLoop
+			case usersetsChan <- usersetsChannelType{
+				objectRelation: objectRel,
+				objectIDs:      usersetsMap[objectRel],
+			}:
+				// flushed current batch, restarting objectRel entry
+				usersetsMap[objectRel] = storage.NewSortedSet()
+			}
+		}
+	}
+
+	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 }
 
 func trySendError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
