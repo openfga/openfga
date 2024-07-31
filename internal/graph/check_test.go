@@ -1983,15 +1983,39 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize))
 	t.Cleanup(checker.Close)
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
+	t.Run("without_context_cancellation", func(t *testing.T) {
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.GetAllowed())
 	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.True(t, resp.GetAllowed())
+
+	t.Run("with_context_cancellation", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			// run in a for loop to hopefully trigger context cancellations at different points in execution
+			t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
+				newCtx, cancel := context.WithTimeout(ctx, 10*time.Microsecond)
+				defer cancel()
+				resp, err := checker.ResolveCheck(newCtx, &ResolveCheckRequest{
+					StoreID:              storeID,
+					AuthorizationModelID: model.GetId(),
+					TupleKey:             tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				})
+				if err != nil {
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+				} else {
+					require.NotNil(t, resp)
+					require.True(t, resp.GetAllowed())
+				}
+			})
+		}
+	})
 }
 
 func TestCloneResolveCheckResponse(t *testing.T) {

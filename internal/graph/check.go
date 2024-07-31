@@ -884,13 +884,20 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 				}
 
 				telemetry.TraceError(span, err)
-				usersetsChan <- usersets{err: err}
+				select {
+				case <-ctx.Done():
+				case usersetsChan <- usersets{err: err}:
+				}
 				return nil
 			}
 
 			objectRel, objectID, err := usersetDetails(t)
 			if err != nil {
-				usersetsChan <- usersets{err: err}
+				select {
+				case <-ctx.Done():
+					return nil
+				case usersetsChan <- usersets{err: err}:
+				}
 			}
 
 			if _, ok := usersetsMap[objectRel]; !ok {
