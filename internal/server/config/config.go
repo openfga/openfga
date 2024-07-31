@@ -55,7 +55,7 @@ const (
 	DefaultListUsersDispatchThrottlingDefaultThreshold = 100
 	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
-	DefaultRequestTimeout = 3 * time.Second
+	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
 	DefaultCheckTrackerEnabled = false
@@ -616,18 +616,14 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
-<<<<<<< HEAD
 		ListUsersDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultListUsersDispatchThrottlingEnabled,
 			Frequency:    DefaultListUsersDispatchThrottlingFrequency,
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
-=======
 		RequestTimeout:      DefaultRequestTimeout,
 		CheckTrackerEnabled: DefaultCheckTrackerEnabled,
->>>>>>> 2b0f0836b14bc1117a0c2c19d6a8e988296d6daa
 	}
 }
 
