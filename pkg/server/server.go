@@ -148,8 +148,6 @@ type Server struct {
 	listUsersDispatchDefaultThreshold       uint32
 	listUsersDispatchThrottlingMaxThreshold uint32
 
-	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
-
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
