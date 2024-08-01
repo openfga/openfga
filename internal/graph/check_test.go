@@ -13,6 +13,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -1974,12 +1975,44 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 }
 
-func TestComputedUsersetDetectsCycle(t *testing.T) {
+func TestCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	storeID := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockDelegate := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockDelegate)
+
+	// assert that we never call dispatch
+	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+
+	t.Run("returns_true_if_path_visited", func(t *testing.T) {
+		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
+
+		resp, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+			StoreID:         ulid.Make().String(),
+			TupleKey:        cyclicalTuple, // here
+			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			VisitedPaths: map[string]struct{}{
+				tuple.TupleKeyToString(cyclicalTuple): {}, // and here
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+		require.NotNil(t, resp.ResolutionMetadata)
+	})
+
+	t.Run("returns_true_if_computed_userset", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
 			type user
@@ -1988,35 +2021,37 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 					define x: y
 					define y: x`)
 
-	ctx := typesystem.ContextWithTypesystem(
-		context.Background(),
-		typesystem.New(model),
-	)
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
 
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
-	checker := NewLocalChecker()
-	t.Cleanup(checker.Close)
+		t.Run("disconnected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
+		t.Run("connected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
 	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
-
-	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
 }
