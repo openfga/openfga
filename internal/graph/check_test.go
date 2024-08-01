@@ -1971,9 +1971,9 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// the user is viewer of the last folder so we force early flushing of the batches when computing membership
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey(fmt.Sprintf("folder:%d", maxFolderID), "viewer", "user:maria"),
+		tuple.NewTupleKey("folder:1", "viewer", "user:a"),
+		tuple.NewTupleKey(fmt.Sprintf("folder:%d", maxFolderID), "viewer", "user:b"),
 	})
 	require.NoError(t, err)
 
@@ -1986,39 +1986,59 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL))
 	t.Cleanup(checker.Close)
 
-	t.Run("without_context_timeout", func(t *testing.T) {
-		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: model.GetId(),
-			TupleKey:             tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(20),
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.True(t, resp.GetAllowed())
-	})
+	var testCases = map[string]struct {
+		request       *openfgav1.TupleKey
+		expectAllowed bool
+	}{
+		// first folder so the producer is forced to abort iteration early
+		`first_folder`: {
+			request:       tuple.NewTupleKey("doc:1", "viewer", "user:a"),
+			expectAllowed: true,
+		},
+		// last folder so the producer has to read the entire iterator
+		`last_folder`: {
+			request:       tuple.NewTupleKey("doc:1", "viewer", "user:b"),
+			expectAllowed: true,
+		},
+	}
 
-	t.Run("with_context_timeout", func(t *testing.T) {
-		for i := 0; i < 100; i++ {
-			// run in a for loop to hopefully trigger context cancellations at different points in execution
-			t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
-				newCtx, cancel := context.WithTimeout(ctx, 10*time.Microsecond)
-				defer cancel()
-				resp, err := checker.ResolveCheck(newCtx, &ResolveCheckRequest{
+	for testname, test := range testCases {
+		t.Run(testname, func(t *testing.T) {
+			t.Run("without_context_timeout", func(t *testing.T) {
+				resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 					StoreID:              storeID,
 					AuthorizationModelID: model.GetId(),
-					TupleKey:             tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+					TupleKey:             test.request,
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				})
-				if err != nil {
-					require.ErrorIs(t, err, context.DeadlineExceeded)
-				} else {
-					require.NotNil(t, resp)
-					require.True(t, resp.GetAllowed())
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.Equal(t, test.expectAllowed, resp.Allowed)
+			})
+
+			t.Run("with_context_timeout", func(t *testing.T) {
+				for i := 0; i < 100; i++ {
+					// run in a for loop to hopefully trigger context cancellations at different points in execution
+					t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
+						newCtx, cancel := context.WithTimeout(ctx, 10*time.Microsecond)
+						defer cancel()
+						resp, err := checker.ResolveCheck(newCtx, &ResolveCheckRequest{
+							StoreID:              storeID,
+							AuthorizationModelID: model.GetId(),
+							TupleKey:             test.request,
+							RequestMetadata:      NewCheckRequestMetadata(20),
+						})
+						if err != nil {
+							require.ErrorIs(t, err, context.DeadlineExceeded)
+						} else {
+							require.NotNil(t, resp)
+							require.Equal(t, test.expectAllowed, resp.Allowed)
+						}
+					})
 				}
 			})
-		}
-	})
+		})
+	}
 }
 
 func TestCloneResolveCheckResponse(t *testing.T) {

@@ -966,14 +966,14 @@ ProducerLoop:
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
 			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) {
-				trySendError(ctx, err, usersetsChan)
+				trySendUsersetsError(ctx, err, usersetsChan)
 			}
 			break ProducerLoop
 		}
 
 		objectRel, objectID, err := usersetDetails(t)
 		if err != nil {
-			trySendError(ctx, err, usersetsChan)
+			trySendUsersetsError(ctx, err, usersetsChan)
 			break ProducerLoop
 		}
 
@@ -1004,7 +1004,7 @@ ProducerLoop:
 	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 }
 
-func trySendError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
+func trySendUsersetsError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
 	select {
 	case <-ctx.Done():
 	case errorChan <- usersetsChannelType{err: err}:
