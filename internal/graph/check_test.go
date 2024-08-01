@@ -13,6 +13,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -733,6 +734,9 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 }
 
 func TestNonStratifiableCheckQueries(t *testing.T) {
+	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	t.Cleanup(checkResolverCloser)
+
 	t.Run("example_1", func(t *testing.T) {
 		ds := memory.New()
 
@@ -743,9 +747,6 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 			tuple.NewTupleKey("document:1", "restricted", "document:1#viewer"),
 		})
 		require.NoError(t, err)
-
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -786,9 +787,6 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
-
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
@@ -821,6 +819,9 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 }
 
 func TestResolveCheckDeterministic(t *testing.T) {
+	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	t.Cleanup(checkResolverCloser)
+
 	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
 		t.Parallel()
 
@@ -839,9 +840,6 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
 		})
 		require.NoError(t, err)
-
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -912,9 +910,6 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
-
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
 			typesystem.New(model),
@@ -962,9 +957,6 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
-		checker := NewLocalCheckerWithCycleDetection()
-		t.Cleanup(checker.Close)
-
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
 			typesystem.New(model),
@@ -1003,8 +995,10 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalCheckerWithCycleDetection(WithResolveNodeBreadthLimit(concurrencyLimit))
-	t.Cleanup(checker.Close)
+	checker, checkResolverCloser := NewOrderedCheckResolvers(
+		WithLocalCheckerOpts(WithResolveNodeBreadthLimit(concurrencyLimit)),
+	).Build()
+	t.Cleanup(checkResolverCloser)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
@@ -1266,10 +1260,10 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		},
 	}
 
-	checker := NewLocalCheckerWithCycleDetection(
-		WithMaxConcurrentReads(1),
-	)
-	t.Cleanup(checker.Close)
+	checker, checkResolverCloser := NewOrderedCheckResolvers(
+		WithLocalCheckerOpts(WithMaxConcurrentReads(1)),
+	).Build()
+	t.Cleanup(checkResolverCloser)
 
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
@@ -1351,8 +1345,8 @@ func TestCheckConditions(t *testing.T) {
 	err = ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	checker := NewLocalCheckerWithCycleDetection()
-	t.Cleanup(checker.Close)
+	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	t.Cleanup(checkResolverCloser)
 
 	typesys, err := typesystem.NewAndValidate(
 		context.Background(),
@@ -1598,7 +1592,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
-		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(0), checkRequestMetadata.DispatchCounter.Load())
 	})
 }
 
@@ -1979,4 +1973,85 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	require.NotNil(t, clonedResp2.ResolutionMetadata)
 	require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
 	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
+}
+
+func TestCycleDetection(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockDelegate := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockDelegate)
+
+	// assert that we never call dispatch
+	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+
+	t.Run("returns_true_if_path_visited", func(t *testing.T) {
+		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
+
+		resp, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+			StoreID:         ulid.Make().String(),
+			TupleKey:        cyclicalTuple, // here
+			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			VisitedPaths: map[string]struct{}{
+				tuple.TupleKeyToString(cyclicalTuple): {}, // and here
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+		require.NotNil(t, resp.ResolutionMetadata)
+	})
+
+	t.Run("returns_true_if_computed_userset", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define x: y
+					define y: x`)
+
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
+
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+		t.Run("disconnected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
+
+		t.Run("connected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
+	})
 }

@@ -54,7 +54,7 @@ func TestServerLogs(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	// create mock OTLP server
+	// create mock OTLP server so we can assert that field "trace_id" is populated
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
@@ -143,7 +143,7 @@ func TestServerLogs(t *testing.T) {
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -166,7 +166,7 @@ func TestServerLogs(t *testing.T) {
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -187,7 +187,7 @@ func TestServerLogs(t *testing.T) {
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid CheckRequestTupleKey.Object: value does not match regex pattern \"^[^\\\\s]{2,256}$\""}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
@@ -209,7 +209,7 @@ func TestServerLogs(t *testing.T) {
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid CheckRequestTupleKey.Object: value does not match regex pattern \"^[^\\\\s]{2,256}$\""}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",
@@ -230,7 +230,7 @@ func TestServerLogs(t *testing.T) {
 				"grpc_method":            "StreamedListObjects",
 				"grpc_type":              "server_stream",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"authorization_model_id":"%s","context":null,"contextual_tuples":null,"relation":"viewer","store_id":"%s","type":"document","user":"user:anne"}`, authorizationModelID, storeID),
+				"raw_request":            fmt.Sprintf(`{"authorization_model_id":"%s","context":null,"contextual_tuples":null,"relation":"viewer","store_id":"%s","type":"document","user":"user:anne","consistency":"UNSPECIFIED"}`, authorizationModelID, storeID),
 				"raw_response":           `{"object":"document:1"}`,
 				"store_id":               storeID,
 				"authorization_model_id": authorizationModelID,
@@ -256,6 +256,7 @@ func TestServerLogs(t *testing.T) {
 				var resp *http.Response
 
 				resp, err = client.Do(httpReq)
+				_, _ = io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
