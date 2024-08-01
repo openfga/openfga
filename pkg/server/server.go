@@ -451,7 +451,7 @@ func WithListObjectsDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAS
 	}
 }
 
-// WithListUsersDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
+// WithListUsersDispatchThrottlingEnabled sets whether dispatch throttling is enabled for ListUsers requests.
 // Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
 // threshold over requests whose dispatch count exceeds the configured threshold.
 func WithListUsersDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -461,7 +461,7 @@ func WithListUsersDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option
 }
 
 // WithListUsersDispatchThrottlingFrequency defines how frequent dispatch throttling
-// will be evaluated for List Objects requests.
+// will be evaluated for ListUsers requests.
 // Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
 // it can be processed.
 // This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
@@ -618,6 +618,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 func (s *Server) Close() {
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
+	}
+	if s.listUsersDispatchThrottler != nil {
+		s.listUsersDispatchThrottler.Close()
 	}
 
 	s.checkResolverCloser()
