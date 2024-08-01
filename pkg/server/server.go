@@ -604,12 +604,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	if s.listUsersDispatchThrottlingEnabled {
-		s.logger.Info("Enabling ListUsers dispatch throttling",
-			zap.Duration("Frequency", s.listUsersDispatchThrottlingFrequency),
-			zap.Uint32("DefaultThreshold", s.listUsersDispatchDefaultThreshold),
-			zap.Uint32("MaxThreshold", s.listUsersDispatchThrottlingMaxThreshold),
-		)
-
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
