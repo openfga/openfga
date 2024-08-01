@@ -18,6 +18,12 @@ func (f TypesystemConnectedTypes) assign(objectType string, relation string, sub
 		f[objectType][relation] = make(map[string][]string)
 	}
 
+	for _, v := range f[objectType][relation][subjectType] {
+		if v == terminalRelation {
+			return // already exists
+		}
+	}
+
 	f[objectType][relation][subjectType] = append(f[objectType][relation][subjectType], terminalRelation)
 }
 
@@ -106,7 +112,6 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 
 		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			assignableTypeName := assignableType.GetType()
-
 			if _, ok := t.relations[assignableTypeName][computedRelationName]; ok {
 				return t.getTerminalUserTypeAndRelationsForConnectedTypes(assignableTypeName, computedRelationName, numTTU+1)
 			}

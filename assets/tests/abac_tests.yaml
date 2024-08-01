@@ -1092,6 +1092,75 @@ tests:
             context:
               "x": 20
             expectation:
+  - name: simple_ttu_with_and_without_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user, user with xcond]
+          type document
+            relations
+              define parent: [folder with xcond]
+              define viewer: viewer from parent
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+            condition:
+              name: xcond
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
   - name: simple_ttu_with_condition_in_child
     stages:
       - model: |

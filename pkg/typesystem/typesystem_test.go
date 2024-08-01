@@ -3579,6 +3579,28 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			expectCanFastPath: true,
 		},
 		{
+			name: "ttu_relation_has_condition_and_no_condition",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user with x_less_than]
+				type folder
+					relations
+						define parent: [group]
+						define viewer: member from parent
+				condition x_less_than(x: int) {
+					x < 100
+				}
+			`,
+			objectType:        "folder",
+			computedRelation:  "viewer",
+			userType:          "user",
+			expectCanFastPath: true,
+		},
+		{
 			name: "ttu_child_userset",
 			model: `
 						model

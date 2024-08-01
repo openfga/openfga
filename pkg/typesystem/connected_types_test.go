@@ -43,6 +43,28 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 					schema 1.1
 				type user
 
+				type document
+					relations
+						define viewer: [user, user with condX]
+				
+				condition condX(x: int) {
+					x < 100
+				}
+			`,
+			expectedConnectedTypes: TypesystemConnectedTypes{
+				"document": map[string]map[string][]string{
+					"viewer": {
+						"user": {"viewer"},
+					},
+				},
+			},
+		},
+		{
+			model: `
+				model
+					schema 1.1
+				type user
+
 				type folder
 					relations
 						define viewer: editor
