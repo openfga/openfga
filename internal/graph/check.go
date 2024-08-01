@@ -952,7 +952,7 @@ ConsumerLoop:
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 		},
 	}, nil
 }
