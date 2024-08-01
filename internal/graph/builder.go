@@ -54,16 +54,13 @@ func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckReso
 
 // Build constructs a CheckResolver that is composed of various CheckResolvers in the manner of a circular linked list.
 // The resolvers should be added from least resource intensive to most resource intensive.
-// CycleDetectionCheckResolver is always the first resolver in the composition and LocalChecker is always the last.
 //
-//	CycleDetectionCheckResolver  <----------------------|
-//		[...Other resolvers depending on the opts order]
-//			LocalChecker    ----------------------------^
+//	[...Other resolvers depending on the opts order]
+//		LocalChecker    ----------------------------^
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the list.
 func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverCloser) {
 	c.resolvers = []CheckResolver{}
-	c.resolvers = append(c.resolvers, NewCycleDetectionCheckResolver())
 
 	if c.cachedCheckResolverEnabled {
 		c.resolvers = append(c.resolvers, NewCachedCheckResolver(c.cachedCheckResolverOptions...))
