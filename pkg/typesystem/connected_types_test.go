@@ -45,16 +45,32 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 
 				type document
 					relations
-						define viewer: [user, user with condX]
+						define only_with_condition: [user with cond1]
+						define with_and_without_condition: [user, user with cond1, user with cond2]
+						define multiple_conditions: [user with cond1, user with cond2, user with cond3]
 				
-				condition condX(x: int) {
-					x < 100
+				condition cond1(x: int) {
+					x < 1
+				}
+
+				condition cond2(x: int) {
+					x < 2
+				}
+
+				condition cond3(x: int) {
+					x < 3
 				}
 			`,
 			expectedConnectedTypes: TypesystemConnectedTypes{
 				"document": map[string]map[string][]string{
-					"viewer": {
-						"user": {"viewer"},
+					"only_with_condition": {
+						"user": {"only_with_condition"},
+					},
+					"with_and_without_condition": {
+						"user": {"with_and_without_condition"},
+					},
+					"multiple_conditions": {
+						"user": {"multiple_conditions"},
 					},
 				},
 			},

@@ -20,7 +20,7 @@ func (f TypesystemConnectedTypes) assign(objectType string, relation string, sub
 
 	for _, v := range f[objectType][relation][subjectType] {
 		if v == terminalRelation {
-			return // already exists
+			return // terminal relation already recorded
 		}
 	}
 
