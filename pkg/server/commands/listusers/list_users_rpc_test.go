@@ -3845,9 +3845,10 @@ func TestListUsers_CorrectContext(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
-	t.Run("typesystem_missing", func(t *testing.T) {
-		l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
+		l := NewListUsersQuery(ds)
 		_, err := l.ListUsers(context.Background(), &openfgav1.ListUsersRequest{})
+
 		require.ErrorContains(t, err, "typesystem missing in context")
 	})
 }

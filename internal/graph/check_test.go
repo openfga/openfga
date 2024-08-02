@@ -66,10 +66,11 @@ var (
 	}
 )
 
-func TestResolveCheckMustHaveCorrectContext(t *testing.T) {
+func TestCheck_CorrectContext(t *testing.T) {
 	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)
-	t.Run("typesystem_present", func(t *testing.T) {
+
+	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
 		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
@@ -79,7 +80,7 @@ func TestResolveCheckMustHaveCorrectContext(t *testing.T) {
 		require.ErrorContains(t, err, "typesystem missing in context")
 	})
 
-	t.Run("datastore_present", func(t *testing.T) {
+	t.Run("datastore_missing_returns_error", func(t *testing.T) {
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
@@ -88,6 +89,7 @@ func TestResolveCheckMustHaveCorrectContext(t *testing.T) {
 				relations
 					define viewer: [user]`)
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+
 		_, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: model.GetId(),
