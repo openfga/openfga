@@ -608,7 +608,7 @@ func (c *LocalChecker) ResolveCheck(
 	}
 	_, ok = storage.RelationshipTupleReaderFromContext(ctx)
 	if !ok {
-		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+		return nil, fmt.Errorf("%w: relationship tuple reader datastore missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	objectType, _ := tuple.SplitObject(object)

@@ -3836,3 +3836,18 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 		}, actualResults)
 	})
 }
+
+func TestListUsers_CorrectContext(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("typesystem_missing", func(t *testing.T) {
+		l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+		_, err := l.ListUsers(context.Background(), &openfgav1.ListUsersRequest{})
+		require.ErrorContains(t, err, "typesystem missing in context")
+	})
+}

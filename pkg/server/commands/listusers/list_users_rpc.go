@@ -38,7 +38,6 @@ var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
 type listUsersQuery struct {
 	logger                  logger.Logger
 	ds                      storage.RelationshipTupleReader
-	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
 	maxResults              uint32
@@ -124,16 +123,8 @@ func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 // NewListUsersQuery is not meant to be shared.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		logger: logger.NewNoopLogger(),
-		ds:     ds,
-		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			typesys, exists := typesystem.TypesystemFromContext(ctx)
-			if !exists {
-				return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-			}
-
-			return typesys, nil
-		},
+		logger:                  logger.NewNoopLogger(),
+		ds:                      ds,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		deadline:                serverconfig.DefaultListUsersDeadline,
@@ -338,12 +329,7 @@ func (l *listUsersQuery) expand(
 		}
 	}
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	targetObjectType := req.GetObject().GetType()
 	targetRelation := req.GetRelation()
@@ -409,12 +395,7 @@ func (l *listUsersQuery) expandDirect(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
@@ -841,12 +822,7 @@ func (l *listUsersQuery) expandTTU(
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
