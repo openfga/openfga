@@ -54,6 +54,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	store := "store"
 	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+	thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")),
@@ -72,22 +73,49 @@ func TestReadEnsureNoOrder(t *testing.T) {
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
+	// Tweak time so that ULID is smaller.
+	err = sqlcommon.Write(ctx,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")),
+		store,
+		[]*openfgav1.TupleKeyWithoutCondition{},
+		[]*openfgav1.TupleKey{thirdTuple},
+		time.Now().Add(time.Minute*-2))
+	require.NoError(t, err)
+
 	iter, err := ds.Read(ctx, store, tuple.NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
 	defer iter.Stop()
 
 	require.NoError(t, err)
 
 	// We expect that objectID1 will return first because it is inserted first.
-	curTuple, err := iter.Next(ctx)
+
+	curTuple, err := iter.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, firstTuple, curTuple.GetKey())
+
+	// calling head should not change the order
+	curTuple, err = iter.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, firstTuple, curTuple.GetKey())
+
+	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, firstTuple, curTuple.GetKey())
 
 	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, secondTuple, curTuple.GetKey())
+
+	curTuple, err = iter.Head(ctx)
+	require.NoError(t, err)
+	require.Equal(t, thirdTuple, curTuple.GetKey())
+
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, thirdTuple, curTuple.GetKey())
 }
 
-// TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid.
+// TestReadPageEnsureOrder asserts that the read page is ordered by ulid.
 func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 

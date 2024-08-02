@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -176,6 +177,8 @@ type SQLTupleIterator struct {
 	rows     *sql.Rows
 	resultCh chan *storage.TupleRecord
 	errCh    chan error
+	firstRow *storage.TupleRecord
+	mu       sync.Mutex
 }
 
 // Ensures that SQLTupleIterator implements the TupleIterator interface.
@@ -187,10 +190,74 @@ func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 		rows:     rows,
 		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
+		firstRow: nil,
+		mu:       sync.Mutex{},
 	}
 }
 
 func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
+	t.mu.Lock()
+
+	if t.firstRow != nil {
+		// If head was called previously, we don't need to scan / next
+		// again as the data is already there
+		firstRow := t.firstRow
+		t.firstRow = nil
+		t.mu.Unlock()
+		return firstRow, nil
+	}
+
+	if !t.rows.Next() {
+		t.mu.Unlock()
+		if err := t.rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, storage.ErrIteratorDone
+	}
+
+	var conditionName sql.NullString
+	var conditionContext []byte
+	var record storage.TupleRecord
+	err := t.rows.Scan(
+		&record.Store,
+		&record.ObjectType,
+		&record.ObjectID,
+		&record.Relation,
+		&record.User,
+		&conditionName,
+		&conditionContext,
+		&record.Ulid,
+		&record.InsertedAt,
+	)
+	t.mu.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+
+	record.ConditionName = conditionName.String
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
+	}
+
+	return &record, nil
+}
+
+func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.firstRow != nil {
+		// we had called head previously, there is no need to
+		// scan / next again as we don't want to increment the pointer
+		return t.firstRow, nil
+	}
+
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
 			return nil, err
@@ -225,6 +292,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
+	t.firstRow = &record
 
 	return &record, nil
 }
@@ -272,6 +340,20 @@ func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	}
 
 	record, err := t.next()
+	if err != nil {
+		return nil, err
+	}
+
+	return record.AsTuple(), nil
+}
+
+// Head will return the first available item.
+func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	record, err := t.head()
 	if err != nil {
 		return nil, err
 	}

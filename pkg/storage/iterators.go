@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
@@ -21,6 +22,10 @@ type Iterator[T any] interface {
 	// Stop terminates iteration over
 	// the underlying iterator.
 	Stop()
+
+	// Head will return the first item or ErrIteratorDone if the list
+	// is empty.
+	Head(ctx context.Context) (T, error)
 }
 
 // TupleIterator is an iterator for [*openfgav1.Tuple](s).
@@ -48,6 +53,15 @@ func (e *emptyTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error)
 
 // Stop see [Iterator.Stop].
 func (e *emptyTupleIterator) Stop() {}
+
+// Head see [Iterator.Head].
+func (e *emptyTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	return nil, ErrIteratorDone
+}
 
 type combinedIterator[T any] struct {
 	iters []Iterator[T]
@@ -83,6 +97,27 @@ func (c *combinedIterator[T]) Stop() {
 			iter.Stop()
 		}
 	}
+}
+
+// Head see [Iterator.Head].
+func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
+	for _, iter := range c.iters {
+		if iter == nil {
+			continue
+		}
+		val, err := iter.Head(ctx)
+		if err != nil {
+			if !errors.Is(err, ErrIteratorDone) {
+				return val, err
+			}
+			continue
+		}
+		return val, nil
+	}
+
+	// All iterators ended.
+	var val T
+	return val, ErrIteratorDone
 }
 
 // NewCombinedIterator takes generic iterators of a given type T
@@ -127,6 +162,12 @@ func (t *tupleKeyIterator) Stop() {
 	t.iter.Stop()
 }
 
+// Head see [Iterator.Head].
+func (t *tupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+	tuple, err := t.iter.Head(ctx)
+	return tuple.GetKey(), err
+}
+
 // NewTupleKeyIteratorFromTupleIterator takes a [TupleIterator] and yields
 // all the [*openfgav1.TupleKey](s) from it as a [TupleKeyIterator].
 func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
@@ -158,6 +199,21 @@ func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 // Stop see [Iterator.Stop].
 func (s *staticIterator[T]) Stop() {}
 
+// Head see [Iterator.Head].
+func (s *staticIterator[T]) Head(ctx context.Context) (T, error) {
+	var val T
+
+	if ctx.Err() != nil {
+		return val, ctx.Err()
+	}
+
+	if len(s.items) == 0 {
+		return val, ErrIteratorDone
+	}
+
+	return s.items[0], nil
+}
+
 // TupleKeyFilterFunc is a filter function that is used to filter out
 // tuples from a [TupleKeyIterator] that don't meet certain criteria.
 // Implementations should return true if the tuple should be returned
@@ -167,6 +223,7 @@ type TupleKeyFilterFunc func(tupleKey *openfgav1.TupleKey) bool
 type filteredTupleKeyIterator struct {
 	iter   TupleKeyIterator
 	filter TupleKeyFilterFunc
+	mu     sync.Mutex
 }
 
 var _ TupleKeyIterator = &filteredTupleKeyIterator{}
@@ -191,12 +248,35 @@ func (f *filteredTupleKeyIterator) Stop() {
 	f.iter.Stop()
 }
 
+// Head returns the next most tuple in the underlying iterator that meets
+// the filter function this iterator was constructed with.
+// Note: the underlying iterator for unmatched filter may advance until head is satisfied.
+func (f *filteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for {
+		tuple, err := f.iter.Head(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if f.filter(tuple) {
+			return tuple, nil
+		}
+		_, err = f.iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
 // NewFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
 // [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
 func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFunc) TupleKeyIterator {
 	return &filteredTupleKeyIterator{
 		iter,
 		filter,
+		sync.Mutex{},
 	}
 }
 
@@ -251,6 +331,46 @@ func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 // Stop see [Iterator.Stop].
 func (f *ConditionsFilteredTupleKeyIterator) Stop() {
 	f.iter.Stop()
+}
+
+// Head returns the next most tuple in the underlying iterator that meets
+// the filter function this iterator was constructed with.
+// The underlying iterator will not advance.
+// This function is not thread-safe.
+func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+	for {
+		tuple, err := f.iter.Head(ctx)
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				if f.onceValid || f.lastError == nil {
+					return nil, ErrIteratorDone
+				}
+				return nil, f.lastError
+			}
+			return nil, err
+		}
+
+		valid, err := f.filter(tuple)
+		if err != nil {
+			f.lastError = err
+			_, err = f.iter.Next(ctx)
+			if err != nil {
+				// should never happen
+				return nil, err
+			}
+			continue
+		}
+		if !valid {
+			_, err = f.iter.Next(ctx)
+			if err != nil {
+				// should never happen
+				return nil, err
+			}
+			continue
+		}
+		f.onceValid = true
+		return tuple, nil
+	}
 }
 
 // NewConditionsFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
