@@ -1756,13 +1756,11 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+
+		localCheckResolver, ok := s.checkResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		localCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localCheckResolver.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 	})
 
@@ -1791,16 +1789,14 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkQueryCacheEnabled)
 
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		trackCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
+		trackCheckResolver, ok := s.checkResolver.(*graph.TrackerCheckResolver)
 		require.True(t, ok)
 
 		localCheckResolver, ok := trackCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localCheckResolver.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
 		require.True(t, ok)
 	})
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
@@ -1820,16 +1816,14 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1851,16 +1845,14 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1884,16 +1876,13 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
-
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1910,16 +1899,14 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.True(t, s.checkQueryCacheEnabled)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1939,12 +1926,9 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
-
 		require.True(t, s.checkQueryCacheEnabled)
 
 		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
@@ -1953,7 +1937,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
 	})
 }
