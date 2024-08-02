@@ -66,6 +66,38 @@ var (
 	}
 )
 
+func TestResolveCheckMustHaveCorrectContext(t *testing.T) {
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+	t.Run("typesystem_present", func(t *testing.T) {
+		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.ErrorContains(t, err, "typesystem missing in context")
+	})
+
+	t.Run("datastore_present", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]`)
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+		_, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.ErrorContains(t, err, "relationship tuple reader datastore missing in context")
+	})
+}
+
 func TestExclusionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

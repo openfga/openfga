@@ -606,6 +606,10 @@ func (c *LocalChecker) ResolveCheck(
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
+	_, ok = storage.RelationshipTupleReaderFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
+	}
 
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)
@@ -649,15 +653,9 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 		defer span.End()
 
-		typesys, ok := typesystem.TypesystemFromContext(ctx)
-		if !ok {
-			return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-		}
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-		ds, ok := storage.RelationshipTupleReaderFromContext(ctx)
-		if !ok {
-			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
-		}
+		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
 		storeID := req.GetStoreID()
 		reqTupleKey := req.GetTupleKey()
@@ -741,10 +739,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter *storage.C
 	defer span.End()
 	var handlers []CheckHandlerFunc
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
@@ -837,8 +832,6 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 	defer span.End()
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	// We had just checked for the existence of the typesys in the caller.
-	// So, we are guaranteed for the presence of the context.
 
 	reqUserType := tuple.GetType(req.GetTupleKey().GetUser())
 
@@ -905,15 +898,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return nil, ctx.Err()
 		}
 
-		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
-		if !ok {
-			return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-		}
+		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
-		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
-		if !ok {
-			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
-		}
+		ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
 
 		storeID := req.GetStoreID()
 		reqTupleKey := req.GetTupleKey()
@@ -1063,10 +1050,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 
 	var handlers []CheckHandlerFunc
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 	tk := req.GetTupleKey()
@@ -1130,10 +1114,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	terminalRelations := typesys.GetTerminalRelations(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
@@ -1206,15 +1187,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return nil, ctx.Err()
 		}
 
-		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
-		if !ok {
-			return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-		}
+		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
-		ds, ok := storage.RelationshipTupleReaderFromContext(parentctx)
-		if !ok {
-			return nil, fmt.Errorf("relationship tuple reader datastore missing in context")
-		}
+		ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
