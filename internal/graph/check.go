@@ -908,6 +908,15 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		return nil
 	})
 
+	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
+	if err != nil {
+		telemetry.TraceError(span, err)
+	}
+
+	return resp, err
+}
+
+func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
 	var finalErr error
 	dbReads := req.GetRequestMetadata().DatastoreQueryCount
 
@@ -947,7 +956,6 @@ ConsumerLoop:
 	}
 
 	if finalErr != nil {
-		telemetry.TraceError(span, finalErr)
 		return nil, finalErr
 	}
 
@@ -962,7 +970,6 @@ ConsumerLoop:
 func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) {
 	usersetsMap := make(usersetsMapType)
 	defer close(usersetsChan)
-ProducerLoop:
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -970,13 +977,13 @@ ProducerLoop:
 			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) {
 				trySendUsersetsError(ctx, err, usersetsChan)
 			}
-			break ProducerLoop
+			break
 		}
 
 		objectRel, objectID, err := usersetDetails(t)
 		if err != nil {
 			trySendUsersetsError(ctx, err, usersetsChan)
-			break ProducerLoop
+			break
 		}
 
 		if _, ok := usersetsMap[objectRel]; !ok {
