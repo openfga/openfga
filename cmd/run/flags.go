@@ -228,6 +228,18 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsDispatchThrottling.maxThreshold", flags.Lookup("listObjects-dispatch-throttling-max-threshold"))
 		util.MustBindEnv("listObjectsDispatchThrottling.maxThreshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD")
 
+		util.MustBindPFlag("listUsersDispatchThrottling.enabled", flags.Lookup("listUsers-dispatch-throttling-enabled"))
+		util.MustBindEnv("listUsersDispatchThrottling.enabled", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("listUsersDispatchThrottling.frequency", flags.Lookup("listUsers-dispatch-throttling-frequency"))
+		util.MustBindEnv("listUsersDispatchThrottling.frequency", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("listUsersDispatchThrottling.threshold", flags.Lookup("listUsers-dispatch-throttling-threshold"))
+		util.MustBindEnv("listUsersDispatchThrottling.threshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("listUsersDispatchThrottling.maxThreshold", flags.Lookup("listUsers-dispatch-throttling-max-threshold"))
+		util.MustBindEnv("listUsersDispatchThrottling.maxThreshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD")
+
 		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED
 		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
 		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
