@@ -154,7 +154,10 @@ var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 // Next see [Iterator.Next].
 func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
 	tuple, err := t.iter.Next(ctx)
-	return tuple.GetKey(), err
+	if err != nil {
+		return nil, err
+	}
+	return tuple.GetKey(), nil
 }
 
 // Stop see [Iterator.Stop].
@@ -165,7 +168,10 @@ func (t *tupleKeyIterator) Stop() {
 // Head see [Iterator.Head].
 func (t *tupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
 	tuple, err := t.iter.Head(ctx)
-	return tuple.GetKey(), err
+	if err != nil {
+		return nil, err
+	}
+	return tuple.GetKey(), nil
 }
 
 // NewTupleKeyIteratorFromTupleIterator takes a [TupleIterator] and yields
@@ -355,7 +361,7 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 			f.lastError = err
 			_, err = f.iter.Next(ctx)
 			if err != nil {
-				// should never happen
+				// should never happen except if the underlying ds has error
 				return nil, err
 			}
 			continue
@@ -363,7 +369,7 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 		if !valid {
 			_, err = f.iter.Next(ctx)
 			if err != nil {
-				// should never happen
+				// should never happen except if the underlying ds has error
 				return nil, err
 			}
 			continue

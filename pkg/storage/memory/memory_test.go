@@ -23,6 +23,42 @@ func TestMemdbStorage(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
+func TestStaticTupleIterator(t *testing.T) {
+	t.Run("empty_iterator", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			mixed bool
+		}{
+			{
+				name:  "next_only",
+				mixed: false,
+			},
+			{
+				name:  "mixed",
+				mixed: true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				iter := &staticIterator{
+					records: []*storage.TupleRecord{},
+				}
+				defer iter.Stop()
+				if tt.mixed {
+					_, err := iter.Head(context.Background())
+					require.ErrorIs(t, err, storage.ErrIteratorDone)
+				}
+				_, err := iter.Next(context.Background())
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+				if tt.mixed {
+					_, err := iter.Head(context.Background())
+					require.ErrorIs(t, err, storage.ErrIteratorDone)
+				}
+			})
+		}
+	})
+}
+
 func TestStaticTupleIteratorNoRace(t *testing.T) {
 	t.Run("next_only", func(t *testing.T) {
 		now := timestamppb.Now()

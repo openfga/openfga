@@ -38,6 +38,37 @@ func TestEmptyIterator(t *testing.T) {
 		require.ErrorIs(t, err, ErrIteratorDone)
 		require.Nil(t, tk)
 	})
+	t.Run("cancelled", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			mixed bool
+		}{
+			{
+				name:  "next_only",
+				mixed: false,
+			},
+			{
+				name:  "mixed",
+				mixed: true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				iter := emptyTupleIterator{}
+				defer iter.Stop()
+				ctx, cancel := context.WithCancel(context.Background())
+
+				cancel()
+				var err error
+				if tt.mixed {
+					_, err = iter.Next(ctx)
+				} else {
+					_, err = iter.Head(ctx)
+				}
+				require.ErrorIs(t, err, context.Canceled)
+			})
+		}
+	})
 }
 
 func TestStaticTupleKeyIterator(t *testing.T) {
@@ -191,6 +222,7 @@ func TestCombinedIterator(t *testing.T) {
 		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]})
 		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1]})
 		iter := NewCombinedIterator(iter1, iter2)
+		defer iter.Stop()
 
 		var actual []*openfgav1.TupleKey
 		for {
@@ -213,11 +245,29 @@ func TestCombinedIterator(t *testing.T) {
 		if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
+
+		_, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
 	})
 	t.Run("head_empty_slices", func(t *testing.T) {
 		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{})
 		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{})
 		iter := NewCombinedIterator(iter1, iter2)
+		defer iter.Stop()
+		tk, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+		require.Nil(t, tk)
+	})
+	t.Run("head_empty_iter", func(t *testing.T) {
+		iter := NewCombinedIterator[[]*openfgav1.Tuple]()
+		defer iter.Stop()
+		tk, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+		require.Nil(t, tk)
+	})
+	t.Run("nil_iterator", func(t *testing.T) {
+		iter := NewCombinedIterator[[]*openfgav1.Tuple](nil)
+		defer iter.Stop()
 		tk, err := iter.Head(context.Background())
 		require.ErrorIs(t, err, ErrIteratorDone)
 		require.Nil(t, tk)
@@ -232,13 +282,54 @@ func TestCombinedIterator(t *testing.T) {
 		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]})
 		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1], expected[2]})
 		iter := NewCombinedIterator(iter1, iter2)
-		tk, err := iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, expected[0], tk)
+		defer iter.Stop()
 
-		tk, err = iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, expected[0], tk)
+		for i := 0; i < len(expected); i++ {
+			tk, err := iter.Head(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, expected[i], tk)
+
+			tk, err = iter.Head(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, expected[i], tk)
+
+			tk, err = iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, expected[i], tk)
+		}
+
+		_, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+
+		_, err = iter.Next(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+	})
+	t.Run("ctx_error_head", func(t *testing.T) {
+		tks := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "bill"),
+			tuple.NewTupleKey("document:doc2", "editor", "bob"),
+			tuple.NewTupleKey("document:doc2", "editor", "charles"),
+		}
+
+		iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tks[0]})
+		iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{tks[1], tks[2]})
+		iter := NewCombinedIterator(iter1, iter2)
+		defer iter.Stop()
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := iter.Head(ctx)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrIteratorDone)
+
+		_, err = iter.Next(ctx)
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrIteratorDone)
+	})
+}
+
+func TestTupleKeyIteratorFromTupleIterator(t *testing.T) {
+	t.Run("next", func(t *testing.T) {
+
 	})
 }
 
@@ -283,44 +374,67 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
-	t.Run("head_empty_slices", func(t *testing.T) {
-		var tuples []*openfgav1.TupleKey
+	t.Run("head", func(t *testing.T) {
+		t.Run("empty_slices", func(t *testing.T) {
+			var tuples []*openfgav1.TupleKey
 
-		iter := NewFilteredTupleKeyIterator(
-			NewStaticTupleKeyIterator(tuples),
-			func(tk *openfgav1.TupleKey) bool {
-				return tk.GetRelation() == "editor"
-			},
-		)
-		defer iter.Stop()
-		tk, err := iter.Head(context.Background())
-		require.ErrorIs(t, err, ErrIteratorDone)
-		require.Nil(t, tk)
+			iter := NewFilteredTupleKeyIterator(
+				NewStaticTupleKeyIterator(tuples),
+				func(tk *openfgav1.TupleKey) bool {
+					return tk.GetRelation() == "editor"
+				},
+			)
+			defer iter.Stop()
+			tk, err := iter.Head(context.Background())
+			require.ErrorIs(t, err, ErrIteratorDone)
+			require.Nil(t, tk)
+		})
+		t.Run("non_empty_slices", func(t *testing.T) {
+			tuples := []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
+				tuple.NewTupleKey("document:doc2", "viewer", "user:elbuo"),
+				tuple.NewTupleKey("document:doc2", "editor", "user:charlie"),
+			}
+
+			iter := NewFilteredTupleKeyIterator(
+				NewStaticTupleKeyIterator(tuples),
+				func(tk *openfgav1.TupleKey) bool {
+					return tk.GetRelation() == "editor"
+				},
+			)
+			defer iter.Stop()
+			tk, err := iter.Head(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[1], tk)
+
+			// ensure the underlying iterator is not updated
+			tk, err = iter.Head(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[1], tk)
+
+			tk, err = iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[1], tk)
+
+			// next item is tuples[2]
+			tk, err = iter.Head(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[3], tk)
+
+			tk, err = iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[3], tk)
+
+			// we should have consumed all valid items at this point
+			_, err = iter.Head(context.Background())
+			require.ErrorIs(t, err, ErrIteratorDone)
+
+			_, err = iter.Next(context.Background())
+			require.ErrorIs(t, err, ErrIteratorDone)
+		})
 	})
-	t.Run("head_non_slices", func(t *testing.T) {
-		tuples := []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
-			tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
-			tuple.NewTupleKey("document:doc2", "viewer", "user:elbuo"),
-			tuple.NewTupleKey("document:doc2", "editor", "user:charlie"),
-		}
 
-		iter := NewFilteredTupleKeyIterator(
-			NewStaticTupleKeyIterator(tuples),
-			func(tk *openfgav1.TupleKey) bool {
-				return tk.GetRelation() == "editor"
-			},
-		)
-		defer iter.Stop()
-		tk, err := iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tuples[1], tk)
-
-		// ensure the underlying iterator is not updated
-		tk, err = iter.Head(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, tuples[1], tk)
-	})
 	t.Run("race_condition", func(t *testing.T) {
 		t.Skip("TODO: underlying static tuple key iterator is not thread safe")
 		const numMatchingIterator = 50
@@ -658,6 +772,41 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 				// only the last error is returned
 				require.Equal(t, "unknown condition: condition5", err.Error())
 				require.Nil(t, tk)
+			})
+		}
+	})
+	t.Run("ctx_timeout_head", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			mixed bool
+		}{
+			{
+				name:  "next_only",
+				mixed: false,
+			},
+			{
+				name:  "mixed_head_next",
+				mixed: true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var tuples []*openfgav1.TupleKey
+				iter := NewConditionsFilteredTupleKeyIterator(NewStaticTupleKeyIterator(tuples), filter)
+				t.Cleanup(iter.Stop)
+
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				if tt.mixed {
+					_, err := iter.Head(ctx)
+					require.Error(t, err)
+					require.NotEqual(t, ErrIteratorDone, err)
+				}
+
+				_, err := iter.Next(ctx)
+				require.Error(t, err)
+				require.NotEqual(t, ErrIteratorDone, err)
 			})
 		}
 	})
