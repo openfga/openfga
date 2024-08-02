@@ -42,136 +42,178 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
 func TestReadEnsureNoOrder(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	tests := []struct {
+		name  string
+		mixed bool
+	}{
+		{
+			name:  "nextOnly",
+			mixed: false,
+		},
+		{
+			name:  "mixed",
+			mixed: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-	defer ds.Close()
+			uri := testDatastore.GetConnectionURI(true)
+			ds, err := New(uri, sqlcommon.NewConfig())
+			require.NoError(t, err)
+			defer ds.Close()
 
-	ctx := context.Background()
+			ctx := context.Background()
 
-	store := "store"
-	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-	thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			store := "store"
+			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
-		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{firstTuple},
-		time.Now())
-	require.NoError(t, err)
+			err = sqlcommon.Write(ctx,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{firstTuple},
+				time.Now())
+			require.NoError(t, err)
 
-	// Tweak time so that ULID is smaller.
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
-		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{secondTuple},
-		time.Now().Add(time.Minute*-1))
-	require.NoError(t, err)
+			// Tweak time so that ULID is smaller.
+			err = sqlcommon.Write(ctx,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{secondTuple},
+				time.Now().Add(time.Minute*-1))
+			require.NoError(t, err)
 
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
-		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{thirdTuple},
-		time.Now().Add(time.Minute*-2))
-	require.NoError(t, err)
+			err = sqlcommon.Write(ctx,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{thirdTuple},
+				time.Now().Add(time.Minute*-2))
+			require.NoError(t, err)
 
-	iter, err := ds.Read(ctx, store, tuple.
-		NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
-	defer iter.Stop()
-	require.NoError(t, err)
+			iter, err := ds.Read(ctx, store, tuple.
+				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
+			defer iter.Stop()
+			require.NoError(t, err)
 
-	// We expect that objectID1 will return first because it is inserted first.
-	curTuple, err := iter.Head(ctx)
-	require.NoError(t, err)
-	require.Equal(t, firstTuple, curTuple.GetKey())
+			// We expect that objectID1 will return first because it is inserted first.
+			if tt.mixed {
+				curTuple, err := iter.Head(ctx)
+				require.NoError(t, err)
+				require.Equal(t, firstTuple, curTuple.GetKey())
 
-	// calling head should not move the item
-	curTuple, err = iter.Head(ctx)
-	require.NoError(t, err)
-	require.Equal(t, firstTuple, curTuple.GetKey())
+				// calling head should not move the item
+				curTuple, err = iter.Head(ctx)
+				require.NoError(t, err)
+				require.Equal(t, firstTuple, curTuple.GetKey())
+			}
 
-	curTuple, err = iter.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, firstTuple, curTuple.GetKey())
+			curTuple, err := iter.Next(ctx)
+			require.NoError(t, err)
+			require.Equal(t, firstTuple, curTuple.GetKey())
 
-	curTuple, err = iter.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, secondTuple, curTuple.GetKey())
+			curTuple, err = iter.Next(ctx)
+			require.NoError(t, err)
+			require.Equal(t, secondTuple, curTuple.GetKey())
 
-	curTuple, err = iter.Head(ctx)
-	require.NoError(t, err)
-	require.Equal(t, thirdTuple, curTuple.GetKey())
+			if tt.mixed {
+				curTuple, err = iter.Head(ctx)
+				require.NoError(t, err)
+				require.Equal(t, thirdTuple, curTuple.GetKey())
+			}
 
-	curTuple, err = iter.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, thirdTuple, curTuple.GetKey())
+			curTuple, err = iter.Next(ctx)
+			require.NoError(t, err)
+			require.Equal(t, thirdTuple, curTuple.GetKey())
 
-	_, err = iter.Head(ctx)
-	require.ErrorIs(t, err, storage.ErrIteratorDone)
+			if tt.mixed {
+				_, err = iter.Head(ctx)
+				require.ErrorIs(t, err, storage.ErrIteratorDone)
+			}
 
-	_, err = iter.Next(ctx)
-	require.ErrorIs(t, err, storage.ErrIteratorDone)
+			_, err = iter.Next(ctx)
+			require.ErrorIs(t, err, storage.ErrIteratorDone)
+		})
+	}
 }
 
 func TestCtxCancel(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	tests := []struct {
+		name  string
+		mixed bool
+	}{
+		{
+			name:  "nextOnly",
+			mixed: false,
+		},
+		{
+			name:  "mixed",
+			mixed: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-	defer ds.Close()
+			uri := testDatastore.GetConnectionURI(true)
+			ds, err := New(uri, sqlcommon.NewConfig())
+			require.NoError(t, err)
+			defer ds.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(context.Background())
 
-	store := "store"
-	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-	thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			store := "store"
+			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
-		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{firstTuple},
-		time.Now())
-	require.NoError(t, err)
+			err = sqlcommon.Write(ctx,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{firstTuple},
+				time.Now())
+			require.NoError(t, err)
 
-	// Tweak time so that ULID is smaller.
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
-		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{secondTuple},
-		time.Now().Add(time.Minute*-1))
-	require.NoError(t, err)
+			// Tweak time so that ULID is smaller.
+			err = sqlcommon.Write(ctx,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{secondTuple},
+				time.Now().Add(time.Minute*-1))
+			require.NoError(t, err)
 
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
-		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{thirdTuple},
-		time.Now().Add(time.Minute*-2))
-	require.NoError(t, err)
+			err = sqlcommon.Write(ctx,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{thirdTuple},
+				time.Now().Add(time.Minute*-2))
+			require.NoError(t, err)
 
-	iter, err := ds.Read(ctx, store, tuple.
-		NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
-	defer iter.Stop()
-	require.NoError(t, err)
+			iter, err := ds.Read(ctx, store, tuple.
+				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
+			defer iter.Stop()
+			require.NoError(t, err)
 
-	cancel()
-	_, err = iter.Head(ctx)
-	require.Error(t, err)
-	require.NotEqual(t, storage.ErrIteratorDone, err)
+			cancel()
+			if tt.mixed {
+				_, err = iter.Head(ctx)
+				require.Error(t, err)
+				require.NotEqual(t, storage.ErrIteratorDone, err)
+			}
 
-	_, err = iter.Next(ctx)
-	require.Error(t, err)
-	require.NotEqual(t, storage.ErrIteratorDone, err)
+			_, err = iter.Next(ctx)
+			require.Error(t, err)
+			require.NotEqual(t, storage.ErrIteratorDone, err)
+		})
+	}
 }
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid.
