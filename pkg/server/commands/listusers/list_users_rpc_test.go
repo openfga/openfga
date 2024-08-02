@@ -14,10 +14,12 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -2545,7 +2547,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	// Times(0) ensures that we exit quickly
-	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
@@ -2902,7 +2904,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 			})
 			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), gomock.Any(), gomock.Any()).
+				Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil, fmt.Errorf("storage err")).
 				MinTimes(1).
 				MaxTimes(2) // Because DB errors will immediately halt the execution of the API function, it's possible that only one read is made
@@ -3001,14 +3003,14 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Relation: "viewer",
 			Object:   "document:1",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:eng#member")},
 			}), nil
 		}),
-		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 			}),
 	)
@@ -3053,7 +3055,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Object:   "document:1",
 			Relation: "parent",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:1")},
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:2")},
@@ -3062,7 +3064,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
 			Object:   "folder:1",
 			Relation: "viewer",
-		}).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 		}),
 	)
@@ -3834,5 +3836,98 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 				relationshipStatus: NoRelationship,
 			},
 		}, actualResults)
+	})
+}
+
+func TestListUsersThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	ctx := context.Background()
+
+	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+
+		q.throttle(ctx, uint32(190))
+	})
+
+	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+
+		q.throttle(ctx, uint32(201))
+	})
+
+	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 0,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+
+		q.throttle(ctx, uint32(190))
+	})
+
+	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    0,
+				MaxThreshold: 210,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(201)
+		ctx := context.Background()
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
+
+		q.throttle(ctx, dispatchCountValue)
+	})
+
+	t.Run("should_respect_max_threshold", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 300,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(301)
+		ctx := context.Background()
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
+
+		q.throttle(ctx, dispatchCountValue)
 	})
 }

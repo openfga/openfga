@@ -11,10 +11,12 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/concurrency"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -42,6 +44,7 @@ type listUsersQuery struct {
 	maxResults              uint32
 	maxConcurrentReads      uint32
 	deadline                time.Duration
+	dispatchThrottlerConfig threshold.Config
 }
 
 type expandResponse struct {
@@ -116,6 +119,31 @@ func WithResolveNodeBreadthLimit(limit uint32) ListUsersQueryOption {
 func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.maxConcurrentReads = limit
+	}
+}
+
+func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
+	span := trace.SpanFromContext(ctx)
+
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		l.dispatchThrottlerConfig.Threshold,
+		l.dispatchThrottlerConfig.MaxThreshold,
+	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
+		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.dispatchThrottlerConfig = config
 	}
 }
 
@@ -290,7 +318,11 @@ func (l *listUsersQuery) dispatch(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-	req.dispatchCount.Add(1)
+	newcount := req.dispatchCount.Add(1)
+	if l.dispatchThrottlerConfig.Enabled {
+		l.throttle(ctx, newcount)
+	}
+
 	return l.expand(ctx, req, foundUsersChan)
 }
 
@@ -414,10 +446,15 @@ func (l *listUsersQuery) expandDirect(
 		}
 	}
 
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{
@@ -841,10 +878,15 @@ func (l *listUsersQuery) expandTTU(
 		}
 	}
 
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{

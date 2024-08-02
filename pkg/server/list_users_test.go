@@ -244,6 +244,28 @@ func TestExperimentalListUsers(t *testing.T) {
 		server.Close()
 	})
 
+	t.Run("list_users_errors_if_not_higher_consistency_param_sent_but_not_experimentally_enabled", func(t *testing.T) {
+		_, err := server.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId: storeID,
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
 	t.Run("list_users_returns_error_if_latest_model_not_found", func(t *testing.T) {
 		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
 
@@ -426,7 +448,7 @@ func TestListUsers_Deadline(t *testing.T) {
 		mockDatastore.EXPECT().Close().Times(1)
 
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, gomock.Any()).
+			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			Return(nil, fmt.Errorf("internal error from storage")).
 			Times(1)
 
@@ -480,8 +502,8 @@ func TestListUsers_Deadline(t *testing.T) {
 			Times(1)
 
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, storeID string, tupleKey *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				time.Sleep(10 * time.Millisecond)
 				return nil, context.Canceled
 			}).

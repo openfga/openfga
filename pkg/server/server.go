@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/openfga/openfga/internal/graph"
+
 	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/internal/throttler"
@@ -28,7 +30,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
@@ -49,8 +50,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                                  = "Openfga-Authorization-Model-Id"
+	authorizationModelIDKey                                     = "authorization_model_id"
+	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -90,7 +92,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count"})
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count", "consistency"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -124,9 +126,9 @@ type Server struct {
 	checkQueryCacheEnabled bool
 	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
-	cachedCheckResolver    *graph.CachedCheckResolver
 
-	checkResolver graph.CheckResolver
+	checkResolver       graph.CheckResolver
+	checkResolverCloser func()
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -141,9 +143,16 @@ type Server struct {
 	listObjectsDispatchDefaultThreshold       uint32
 	listObjectsDispatchThrottlingMaxThreshold uint32
 
-	dispatchThrottlingCheckResolver *graph.DispatchThrottlingCheckResolver
+	listUsersDispatchThrottlingEnabled      bool
+	listUsersDispatchThrottlingFrequency    time.Duration
+	listUsersDispatchDefaultThreshold       uint32
+	listUsersDispatchThrottlingMaxThreshold uint32
 
 	listObjectsDispatchThrottler throttler.Throttler
+	listUsersDispatchThrottler   throttler.Throttler
+
+	ctx                 context.Context
+	checkTrackerEnabled bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -153,6 +162,20 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+// WithContext passes the server context to allow for graceful shutdowns.
+func WithContext(ctx context.Context) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.ctx = ctx
+	}
+}
+
+// WithCheckTrackerEnabled enables/disables tracker Check results.
+func WithCheckTrackerEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkTrackerEnabled = enabled
 	}
 }
 
@@ -428,6 +451,44 @@ func WithListObjectsDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAS
 	}
 }
 
+// WithListUsersDispatchThrottlingEnabled sets whether dispatch throttling is enabled for ListUsers requests.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
+func WithListUsersDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingEnabled = enabled
+	}
+}
+
+// WithListUsersDispatchThrottlingFrequency defines how frequent dispatch throttling
+// will be evaluated for ListUsers requests.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithListUsersDispatchThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingFrequency = frequency
+	}
+}
+
+// WithListUsersDispatchThrottlingThreshold define the number of dispatches to be throttled
+// for ListUsers requests.
+func WithListUsersDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchDefaultThreshold = threshold
+	}
+}
+
+// WithListUsersDispatchThrottlingMaxThreshold define the maximum threshold values allowed
+// It will ensure listUsersDispatchThrottlingMaxThreshold will never be smaller than threshold.
+func WithListUsersDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingMaxThreshold = maxThreshold
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -453,6 +514,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkResolver:          nil,
+		checkTrackerEnabled:    serverconfig.DefaultCheckTrackerEnabled,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -466,6 +528,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsDispatchThrottlingFrequency:    serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
 		listObjectsDispatchDefaultThreshold:       serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
 		listObjectsDispatchThrottlingMaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+
+		listUsersDispatchThrottlingEnabled:      serverconfig.DefaultListUsersDispatchThrottlingEnabled,
+		listUsersDispatchThrottlingFrequency:    serverconfig.DefaultListUsersDispatchThrottlingFrequency,
+		listUsersDispatchDefaultThreshold:       serverconfig.DefaultListUsersDispatchThrottlingDefaultThreshold,
+		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
 	}
 
 	for _, opt := range opts {
@@ -491,68 +558,53 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects")
 	}
 
+	if s.listUsersDispatchThrottlingMaxThreshold != 0 && s.listUsersDispatchDefaultThreshold > s.listUsersDispatchThrottlingMaxThreshold {
+		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
+	}
+
 	// below this point, don't throw errors or we may leak resources in tests
 
-	cycleDetectionCheckResolver := graph.NewCycleDetectionCheckResolver()
-	s.checkResolver = cycleDetectionCheckResolver
+	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
+	if s.checkDispatchThrottlingEnabled {
+		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
+			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
+				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
+			}),
+			// only create the throttler if the feature is enabled, so that we can clean it afterward
+			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
+				"check_dispatch_throttle")),
+		}
+	}
 
-	localChecker := graph.NewLocalChecker(
-		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-	)
+	checkTrackerOptions := []graph.TrackerCheckResolverOpt{}
+	if s.checkTrackerEnabled {
+		checkTrackerOptions = []graph.TrackerCheckResolverOpt{
+			graph.WithTrackerContext(s.ctx),
+			graph.WithTrackerLogger(s.logger),
+		}
+	}
 
-	cycleDetectionCheckResolver.SetDelegate(localChecker)
-	localChecker.SetDelegate(cycleDetectionCheckResolver)
-
-	if s.checkQueryCacheEnabled {
-		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
-			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
-			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
-
-		cachedCheckResolver := graph.NewCachedCheckResolver(
+	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, []graph.CachedCheckResolverOpt{
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		)
-		s.cachedCheckResolver = cachedCheckResolver
-
-		cachedCheckResolver.SetDelegate(localChecker)
-		cycleDetectionCheckResolver.SetDelegate(cachedCheckResolver)
-	}
-
-	if s.checkDispatchThrottlingEnabled {
-		s.logger.Info("Enabling Check dispatch throttling",
-			zap.Duration("Frequency", s.checkDispatchThrottlingFrequency),
-			zap.Uint32("DefaultThreshold", s.checkDispatchThrottlingDefaultThreshold),
-			zap.Uint32("MaxThreshold", s.checkDispatchThrottlingMaxThreshold),
-		)
-
-		dispatchThrottlingConfig := graph.DispatchThrottlingCheckResolverConfig{
-			DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
-			MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
-		}
-
-		dispatchThrottlingCheckResolver := graph.NewDispatchThrottlingCheckResolver(
-			graph.WithDispatchThrottlingCheckResolverConfig(dispatchThrottlingConfig),
-			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency, "check_dispatch_throttle")),
-		)
-		dispatchThrottlingCheckResolver.SetDelegate(localChecker)
-		s.dispatchThrottlingCheckResolver = dispatchThrottlingCheckResolver
-
-		if s.cachedCheckResolver != nil {
-			s.cachedCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		} else {
-			cycleDetectionCheckResolver.SetDelegate(dispatchThrottlingCheckResolver)
-		}
-	}
+			graph.WithEnabledConsistencyParams(s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams)),
+		}...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
+	}...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {
-		s.logger.Info("Enabling ListObjects dispatch throttling",
-			zap.Duration("Frequency", s.listObjectsDispatchThrottlingFrequency),
-			zap.Uint32("DefaultThreshold", s.listObjectsDispatchDefaultThreshold),
-			zap.Uint32("MaxThreshold", s.listObjectsDispatchThrottlingMaxThreshold),
-		)
-
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
+	}
+
+	if s.listUsersDispatchThrottlingEnabled {
+		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
@@ -564,26 +616,24 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	if s.dispatchThrottlingCheckResolver != nil {
-		s.dispatchThrottlingCheckResolver.Close()
-	}
-
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
 	}
-
-	if s.cachedCheckResolver != nil {
-		s.cachedCheckResolver.Close()
+	if s.listUsersDispatchThrottler != nil {
+		s.listUsersDispatchThrottler.Close()
 	}
 
-	if s.checkResolver != nil {
-		s.checkResolver.Close()
-	}
+	s.checkResolverCloser()
 	s.datastore.Close()
 	s.typesystemResolverStop()
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 
 	targetObjectType := req.GetType()
@@ -592,6 +642,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
+		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
 
@@ -645,6 +696,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			Relation:             req.GetRelation(),
 			User:                 req.GetUser(),
 			Context:              req.GetContext(),
+			Consistency:          req.GetConsistency(),
 		},
 	)
 	if err != nil {
@@ -678,6 +730,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(result.ResolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
+		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListObjectsResponse{
@@ -686,6 +739,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return err
+	}
+
 	start := time.Now()
 
 	ctx := srv.Context()
@@ -693,6 +751,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
+		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
 
@@ -770,17 +829,23 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		methodName,
 		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(resolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
+		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return nil
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
+		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
 	defer span.End()
 
@@ -804,6 +869,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		TupleKey:          tk,
 		PageSize:          req.GetPageSize(),
 		ContinuationToken: req.GetContinuationToken(),
+		Consistency:       req.GetConsistency(),
 	})
 }
 
@@ -842,6 +908,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 
 	tk := req.GetTupleKey()
@@ -850,6 +921,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
+		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
 	defer span.End()
 
@@ -901,6 +973,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),
 		RequestMetadata:      checkRequestMetadata,
+		Consistency:          req.GetConsistency(),
 	}
 
 	resp, err := s.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
@@ -954,16 +1027,23 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
+		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
 	defer span.End()
 
@@ -990,6 +1070,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tk,
+		Consistency:          req.GetConsistency(),
 	})
 }
 
@@ -1296,4 +1377,13 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
 	return typesys, nil
+}
+
+// If the requested consistency preference is not UNSPECIFIED, but the experimental flag is not enabled,
+// returns an error.
+func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) error {
+	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && openfgav1.ConsistencyPreference_UNSPECIFIED != c {
+		return status.Error(codes.InvalidArgument, "Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
+	return nil
 }

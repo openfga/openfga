@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -32,12 +33,18 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object", tuple.BuildObject(req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user_filters", userFiltersToString(req.GetUserFilters())),
+		attribute.String("consistency", req.GetConsistency().String()),
 	))
 	defer span.End()
 
@@ -68,6 +75,12 @@ func (s *Server) ListUsers(
 		listusers.WithListUsersMaxResults(s.listUsersMaxResults),
 		listusers.WithListUsersDeadline(s.listUsersDeadline),
 		listusers.WithListUsersMaxConcurrentReads(s.maxConcurrentReadsForListUsers),
+		listusers.WithDispatchThrottlerConfig(threshold.Config{
+			Throttler:    s.listUsersDispatchThrottler,
+			Enabled:      s.listUsersDispatchThrottlingEnabled,
+			Threshold:    s.listUsersDispatchDefaultThreshold,
+			MaxThreshold: s.listUsersDispatchThrottlingMaxThreshold,
+		}),
 	)
 
 	resp, err := listUsersQuery.ListUsers(ctx, req)
@@ -106,6 +119,7 @@ func (s *Server) ListUsers(
 		methodName,
 		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return &openfgav1.ListUsersResponse{

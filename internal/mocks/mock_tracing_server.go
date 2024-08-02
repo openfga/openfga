@@ -2,14 +2,13 @@ package mocks
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	otlpcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
 )
@@ -35,13 +34,14 @@ func NewMockTracingServer(t testing.TB, port int) *mockTracingServer {
 	otlpcollector.RegisterTraceServiceServer(mockServer.server, mockServer)
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	require.NoError(t, err)
-	t.Cleanup(mockServer.server.Stop)
+	t.Cleanup(mockServer.server.GracefulStop)
 
 	go func() {
 		if err := mockServer.server.Serve(listener); err != nil {
-			log.Fatalf("failed to serve: %v", err)
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				t.Log("mock tracing server failed to serve", err)
+			}
 		}
-		log.Println("server closed")
 	}()
 
 	return mockServer
