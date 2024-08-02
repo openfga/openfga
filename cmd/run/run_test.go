@@ -1223,6 +1223,22 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsDispatchThrottling.MaxThreshold)
 
+	val = res.Get("properties.listUsersDispatchThrottling.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListUsersDispatchThrottling.Enabled)
+
+	val = res.Get("properties.listUsersDispatchThrottling.properties.frequency.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDispatchThrottling.Frequency.String())
+
+	val = res.Get("properties.listUsersDispatchThrottling.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersDispatchThrottling.Threshold)
+
+	val = res.Get("properties.listUsersDispatchThrottling.properties.maxThreshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersDispatchThrottling.MaxThreshold)
+
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
