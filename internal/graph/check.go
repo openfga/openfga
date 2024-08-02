@@ -909,6 +909,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	})
 
 	var finalErr error
+	dbReads := req.GetRequestMetadata().DatastoreQueryCount
 
 ConsumerLoop:
 	for {
@@ -928,12 +929,13 @@ ConsumerLoop:
 			objectIDs := newBatch.objectIDs
 
 			resp, err := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)(ctx)
+			dbReads++
 			if err != nil {
 				// We don't exit because we do a best effort to find the objectId that will give `allowed=true`.
 				// If that doesn't happen, we will return this error down below.
 				finalErr = err
 			} else if resp.Allowed {
-				resp.GetResolutionMetadata().DatastoreQueryCount++
+				resp.ResolutionMetadata.DatastoreQueryCount = dbReads
 				return resp, nil
 			}
 		}
@@ -952,7 +954,7 @@ ConsumerLoop:
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			DatastoreQueryCount: dbReads,
 		},
 	}, nil
 }
@@ -978,26 +980,18 @@ ProducerLoop:
 		}
 
 		if _, ok := usersetsMap[objectRel]; !ok {
-			if len(usersetsMap) >= 1 {
-				// Flush results from other usersets so that we can start processing those now.
-				// The assumption (which may not be true, but we don't care) is that the datastore gives us usersets in order.
+			if len(usersetsMap) > 0 {
+				// Flush results from a previous objectRel it begin processing immediately.
+				// The assumption (which may not be true) is that the datastore yields objectRel in order.
 				trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 			}
 			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
 
 		usersetsMap[objectRel].Add(objectID)
+
 		if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
-			select {
-			case <-ctx.Done():
-				break ProducerLoop
-			case usersetsChan <- usersetsChannelType{
-				objectRelation: objectRel,
-				objectIDs:      usersetsMap[objectRel],
-			}:
-				// flushed current batch, restarting objectRel entry
-				usersetsMap[objectRel] = storage.NewSortedSet()
-			}
+			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 		}
 	}
 

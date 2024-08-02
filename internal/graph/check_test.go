@@ -1954,19 +1954,30 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 			model
 				schema 1.1
 			type user
+			type directory
+				relations
+					define viewer: [user]
 			type folder
 				relations
 					define viewer: [user]
 			type doc
 				relations
 					define viewer: viewer from parent
-					define parent: [folder]`)
+					define parent: [folder, directory]`)
 
 	// add some folders as parents of the document
-	maxFolderID := int(usersetBatchSize * 10)
+	maxFolderID := int(usersetBatchSize * 5)
+	maxDirectoryID := int(usersetBatchSize * 5)
 	for i := 0; i <= maxFolderID; i++ {
 		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("folder:%d", i)),
+		})
+		require.NoError(t, err)
+	}
+	// having 2 types will force a flush when there is a change in types "seen"
+	for i := 0; i <= maxDirectoryID; i++ {
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("directory:%d", i)),
 		})
 		require.NoError(t, err)
 	}
