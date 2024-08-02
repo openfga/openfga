@@ -1023,10 +1023,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
-	_, span := tracer.Start(ctx, "checkComputedUserset")
-	defer span.End()
-
+func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	rewrittenTupleKey := tuple.NewTupleKey(
 		req.GetTupleKey().GetObject(),
 		rewrite.GetComputedUserset().GetRelation(),
@@ -1037,6 +1034,8 @@ func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveChe
 	childRequest.TupleKey = rewrittenTupleKey
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkComputedUserset")
+		defer span.End()
 		// No dispatch here, as we don't want to increase resolution depth.
 		return c.ResolveCheck(ctx, childRequest)
 	}
