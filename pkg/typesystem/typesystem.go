@@ -398,7 +398,7 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 
 	terminalRelations := t.GetTerminalRelations(objectType, computedRelation, userType)
 
-	return len(terminalRelations) > 0
+	return len(terminalRelations) == 1
 }
 
 // GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.

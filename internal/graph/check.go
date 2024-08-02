@@ -860,10 +860,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.C
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
 		terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
-		// the terminalRelations is expected to be 1 (as we checked earlier in typesys.UsersetCanFastPath)
-		if len(terminalRelations) != 1 {
-			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
-		}
+
 		computedRelation := terminalRelations[0]
 		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
 		if _, ok := usersetsMap[objectRel]; !ok {
@@ -1136,9 +1133,6 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	terminalRelations := typesys.GetTerminalRelations(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
 	)
-	if len(terminalRelations) != 1 {
-		return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
-	}
 
 	computedRelation := terminalRelations[0]
 	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
