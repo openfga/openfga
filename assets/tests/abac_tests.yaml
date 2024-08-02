@@ -1134,15 +1134,44 @@ tests:
               "x": 10
             expectation: true
           - tuple:
-              user: user:without-condition
+              user: user:with-condition
               relation: viewer
               object: document:1
-            expectation: true
+            context:
+              "x": 99
+            expectation: false
           - tuple:
               user: user:without-condition
               relation: viewer
               object: document:1
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:without-condition
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            context:
+              "x": 99
+            expectation:
         listUsersAssertions:
           - request:
               filters:
@@ -1223,12 +1252,26 @@ tests:
               "x": 10
             expectation: true
           - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 99
+            expectation: false
+          - tuple:
               user: user:with-ycond
               relation: viewer
               object: document:1
             context:
               "y": 10
             expectation: true
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 99
+            expectation: false
           - tuple:
               user: user:with-xcond
               relation: viewer
@@ -1243,6 +1286,33 @@ tests:
             context:
               "x": 10
             errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:with-xcond
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-xcond
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:with-ycond
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-ycond
+              type: document
+              relation: viewer
+            context:
+              "y": 10
+            expectation:
+              - document:1
         listUsersAssertions:
           - request:
               filters:
