@@ -109,7 +109,7 @@ jobs:
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
-        uses: snyk/actions/docker@640e31719aac3e44867d239dc86c20c3e34c8e4f # pin@master
+        uses: snyk/actions/docker@6312a53377a551c0258438bf25fb8f378afbc977 # pin@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -124,7 +124,7 @@ jobs:
           sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@2d790406f505036ef40ecba973cc774a50395aac # pin@v2
+        uses: github/codeql-action/upload-sarif@afb54ba388a7dca6ecae48f608c4ff05ff4cc77a # pin@v2
         with:
           sarif_file: snyk.sarif
 
