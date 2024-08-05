@@ -587,7 +587,7 @@ func (c *LocalChecker) ResolveCheck(
 	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),
 		attribute.String("resolver_type", "LocalChecker"),
-		attribute.String("tuple_key", req.GetTupleKey().String()),
+		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 	))
 	defer span.End()
 
@@ -1085,7 +1085,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		// TODO(jpadilla): can we lift this function up?
 		checkDirectUserTuple := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", reqTupleKey.String())))
+			ctx, span := tracer.Start(ctx, "checkDirectUserTuple",
+				trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(reqTupleKey))))
 			defer span.End()
 
 			response := &ResolveCheckResponse{

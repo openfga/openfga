@@ -25,11 +25,10 @@ type TupleWithoutCondition interface {
 type UserType string
 
 const (
-	User    UserType = "user"
-	UserSet UserType = "userset"
+	User     UserType = "user"
+	UserSet  UserType = "userset"
+	Wildcard          = "*"
 )
-
-const Wildcard = "*"
 
 var (
 	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
@@ -157,7 +156,7 @@ func ObjectKey(obj *openfgav1.Object) string {
 type UserString = string
 
 // UserProtoToString returns a string from a User proto. Ex: 'user:maria' or 'group:fga#member'. It is
-// the opposite from StringToUserProto function.
+// the opposite of StringToUserProto function.
 func UserProtoToString(obj *openfgav1.User) UserString {
 	switch obj.GetUser().(type) {
 	case *openfgav1.User_Wildcard:
@@ -174,7 +173,7 @@ func UserProtoToString(obj *openfgav1.User) UserString {
 }
 
 // StringToUserProto returns a User proto from a string. Ex: 'user:maria#member'.
-// It is the opposite from FromUserProto function.
+// It is the opposite of UserProtoToString function.
 func StringToUserProto(userKey UserString) *openfgav1.User {
 	userObj, userRel := SplitObjectRelation(userKey)
 	userObjType, userObjID := SplitObject(userObj)
@@ -281,7 +280,12 @@ func TupleKeyToString(tk TupleWithoutCondition) string {
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyWithConditionToString(tk TupleWithCondition) string {
-	return fmt.Sprintf("%s#%s@%s (condition %s)", tk.GetObject(), tk.GetRelation(), tk.GetUser(), tk.GetCondition())
+	var sb strings.Builder
+	sb.WriteString(TupleKeyToString(tk))
+	if tk.GetCondition() != nil {
+		sb.WriteString(fmt.Sprintf(" (condition %s)", tk.GetCondition().GetName()))
+	}
+	return sb.String()
 }
 
 // IsValidObject determines if a string s is a valid object. A valid object contains exactly one `:` and no `#` or spaces.
