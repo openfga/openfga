@@ -914,19 +914,6 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
 	usersetsChan := make(chan usersetsChannelType)
 
-<<<<<<< HEAD
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
-
-		computedRelation := terminalRelations[0]
-		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
-		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = storage.NewSortedSet()
-		}
-		usersetsMap[objectRel].Add(objectID)
-	}
-=======
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
 	pool := concurrency.NewPool(cancellableCtx, 1)
@@ -939,7 +926,6 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
 		return nil
 	})
->>>>>>> 3b8039dc8caae408c24d26a71385bec393536a48
 
 	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
@@ -1293,53 +1279,6 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	terminalRelations, err := typesys.HasOneTerminalRelation(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
 	)
-<<<<<<< HEAD
-
-	computedRelation := terminalRelations[0]
-	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
-	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1, 2]
-	// [group#owner][1, 3]
-	usersetsMap := make(usersetsMapType)
-
-	for {
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
-
-		object, _ := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
-		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = storage.NewSortedSet()
-		}
-		usersetsMap[objectRel].Add(objectID)
-	}
-
-	// Next, for each of the type in tuplesetRelationUserMap, look up what object is in computedRelation for the specified user.
-	// We will then try to see if there are any intersection.
-	// Return true if user is in any of the computedRelation.  For example,
-	// type group
-	//   define member: [user]
-	// type doc
-	//   define parent: [group]
-	//   define viewer: member from parent
-	// we want to find out which group user:bob is a member of.
-	// After that, we will find the intersection.
-	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	for objectRel, objectIDs := range usersetsMap {
-		handler := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)
-		handlers = append(handlers, handler)
-	}
-
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
-=======
->>>>>>> 3b8039dc8caae408c24d26a71385bec393536a48
 	if err != nil {
 		return nil, err
 	}
