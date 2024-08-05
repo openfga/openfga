@@ -338,7 +338,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
 	for _, rr := range relationReferences {
 		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
-		if len(terminalRelations) == 0 {
+		if len(terminalRelations) != 1 {
 			return false
 		}
 	}
@@ -398,15 +398,7 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 
 	terminalRelations := t.GetTerminalRelations(objectType, computedRelation, userType)
 
-	return len(terminalRelations) > 0
-}
-
-func (t *TypeSystem) HasOneTerminalRelation(objectType, relation, userType string) ([]string, error) {
-	terminalRelations := t.GetTerminalRelations(objectType, relation, userType)
-	if len(terminalRelations) != 1 {
-		return nil, fmt.Errorf("expected exactly one terminal relation for (%s,%s,%s), received %d", objectType, relation, userType, len(terminalRelations))
-	}
-	return terminalRelations, nil
+	return len(terminalRelations) == 1
 }
 
 // GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.
