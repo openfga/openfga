@@ -43,6 +43,44 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 					schema 1.1
 				type user
 
+				type document
+					relations
+						define only_with_condition: [user with cond1]
+						define with_and_without_condition: [user, user with cond1, user with cond2]
+						define multiple_conditions: [user with cond1, user with cond2, user with cond3]
+				
+				condition cond1(x: int) {
+					x < 1
+				}
+
+				condition cond2(x: int) {
+					x < 2
+				}
+
+				condition cond3(x: int) {
+					x < 3
+				}
+			`,
+			expectedConnectedTypes: TypesystemConnectedTypes{
+				"document": map[string]map[string][]string{
+					"only_with_condition": {
+						"user": {"only_with_condition"},
+					},
+					"with_and_without_condition": {
+						"user": {"with_and_without_condition"},
+					},
+					"multiple_conditions": {
+						"user": {"multiple_conditions"},
+					},
+				},
+			},
+		},
+		{
+			model: `
+				model
+					schema 1.1
+				type user
+
 				type folder
 					relations
 						define viewer: editor

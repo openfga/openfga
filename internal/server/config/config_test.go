@@ -190,7 +190,19 @@ func TestVerifyConfig(t *testing.T) {
 		}
 
 		err := cfg.Verify()
-		require.Error(t, err)
+		require.ErrorContains(t, err, "'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
+	})
+
+	t.Run("non_positive_list_users_dispatch_throttling_frequency", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListUsersDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 0,
+			Threshold: 30,
+		}
+
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "'listUsersDispatchThrottling.frequency' must be non-negative time duration")
 	})
 
 	t.Run("non_positive_list_objects_dispatch_threshold", func(t *testing.T) {
@@ -202,7 +214,19 @@ func TestVerifyConfig(t *testing.T) {
 		}
 
 		err := cfg.Verify()
-		require.Error(t, err)
+		require.ErrorContains(t, err, "'listObjectsDispatchThrottling.threshold' must be non-negative integer")
+	})
+
+	t.Run("non_positive_list_users_dispatch_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListUsersDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:   true,
+			Frequency: 10 * time.Microsecond,
+			Threshold: 0,
+		}
+
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "'listUsersDispatchThrottling.threshold' must be non-negative integer")
 	})
 
 	t.Run("dispatch_throttling_threshold_larger_than_max_threshold", func(t *testing.T) {
@@ -226,7 +250,19 @@ func TestVerifyConfig(t *testing.T) {
 			MaxThreshold: 29,
 		}
 		err := cfg.Verify()
-		require.Error(t, err)
+		require.ErrorContains(t, err, "'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
+	})
+
+	t.Run("list_users_threshold_larger_than_max_threshold", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListUsersDispatchThrottling = DispatchThrottlingConfig{
+			Enabled:      true,
+			Frequency:    10 * time.Microsecond,
+			Threshold:    30,
+			MaxThreshold: 29,
+		}
+		err := cfg.Verify()
+		require.ErrorContains(t, err, "'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
 	})
 
 	t.Run("negative_request_timeout_duration", func(t *testing.T) {
@@ -254,6 +290,17 @@ func TestVerifyConfig(t *testing.T) {
 		cfg.HTTP.Enabled = true
 		cfg.HTTP.UpstreamTimeout = 3 * time.Second
 		cfg.ListObjectsDeadline = -4 * time.Second
+
+		err := cfg.Verify()
+		require.Error(t, err)
+	})
+
+	t.Run("negative_list_users_deadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestTimeout = 0
+		cfg.HTTP.Enabled = true
+		cfg.HTTP.UpstreamTimeout = 3 * time.Second
+		cfg.ListUsersDeadline = -4 * time.Second
 
 		err := cfg.Verify()
 		require.Error(t, err)

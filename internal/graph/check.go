@@ -215,8 +215,7 @@ func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
-// The constructed LocalChecker is not wrapped with cycle detection. Developers
-// wanting a LocalChecker without other wrapped layers (e.g caching and others)
+// Developers wanting a LocalChecker with other optional layers (e.g caching and others)
 // are encouraged to use [[NewOrderedCheckResolvers]] instead.
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
@@ -596,9 +595,15 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ErrResolutionDepthExceeded
 	}
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		panic("typesystem missing in context")
+	cycle := c.hasCycle(req)
+	if cycle {
+		span.SetAttributes(attribute.Bool("cycle_detected", true))
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				CycleDetected: true,
+			},
+		}, nil
 	}
 
 	tupleKey := req.GetTupleKey()
@@ -617,6 +622,11 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		panic("typesystem missing in context")
+	}
+
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
@@ -630,6 +640,22 @@ func (c *LocalChecker) ResolveCheck(
 	}
 
 	return resp, nil
+}
+
+// hasCycle returns true if a cycle has been found. It modifies the request object.
+func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
+	key := tuple.TupleKeyToString(req.GetTupleKey())
+	if req.VisitedPaths == nil {
+		req.VisitedPaths = map[string]struct{}{}
+	}
+
+	_, cycleDetected := req.VisitedPaths[key]
+	if cycleDetected {
+		return true
+	}
+
+	req.VisitedPaths[key] = struct{}{}
+	return false
 }
 
 // usersetsMapType is a map where the key is object#relation and the value is a sorted set (no duplicates allowed).
@@ -1170,68 +1196,22 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
-	_, span := tracer.Start(ctx, "checkComputedUserset")
-	defer span.End()
-
-	seen := map[string]struct{}{}
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	tk := tuple.NewTupleKey(
+func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
+	rewrittenTupleKey := tuple.NewTupleKey(
 		req.GetTupleKey().GetObject(),
-		req.GetTupleKey().GetRelation(),
+		rewrite.GetComputedUserset().GetRelation(),
 		req.GetTupleKey().GetUser(),
 	)
 
-	for {
-		tk = tuple.NewTupleKey(
-			tk.GetObject(),
-			rewrite.GetComputedUserset().GetRelation(),
-			tk.GetUser(),
-		)
-		key := tuple.TupleKeyToString(tk)
-		if _, cycleDetected := seen[key]; cycleDetected {
-			return func(ctx context.Context) (*ResolveCheckResponse, error) {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-		}
-		seen[key] = struct{}{}
-
-		userObject, userRelation := tuple.SplitObjectRelation(tk.GetUser())
-
-		// Check(document:1#viewer@document:1#viewer) will always return true
-		if tk.GetRelation() == userRelation && tk.GetObject() == userObject {
-			return func(ctx context.Context) (*ResolveCheckResponse, error) {
-				return &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-					},
-				}, nil
-			}
-		}
-
-		rw, err := typesys.GetRelation(tuple.GetType(tk.GetObject()), tk.GetRelation())
-		if err != nil {
-			return func(ctx context.Context) (*ResolveCheckResponse, error) {
-				return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", tk.GetRelation(), tuple.GetType(tk.GetObject()))
-			}
-		}
-		rewrite = rw.GetRewrite()
-		if _, isComputed := rewrite.GetUserset().(*openfgav1.Userset_ComputedUserset); !isComputed {
-			break
-		}
-	}
-
 	childRequest := clone(req)
-	childRequest.TupleKey = tk
+	childRequest.TupleKey = rewrittenTupleKey
 
-	return c.checkRewrite(ctx, childRequest, rewrite)
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkComputedUserset")
+		defer span.End()
+		// No dispatch here, as we don't want to increase resolution depth.
+		return c.ResolveCheck(ctx, childRequest)
+	}
 }
 
 // checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and

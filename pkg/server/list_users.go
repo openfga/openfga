@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -74,6 +75,12 @@ func (s *Server) ListUsers(
 		listusers.WithListUsersMaxResults(s.listUsersMaxResults),
 		listusers.WithListUsersDeadline(s.listUsersDeadline),
 		listusers.WithListUsersMaxConcurrentReads(s.maxConcurrentReadsForListUsers),
+		listusers.WithDispatchThrottlerConfig(threshold.Config{
+			Throttler:    s.listUsersDispatchThrottler,
+			Enabled:      s.listUsersDispatchThrottlingEnabled,
+			Threshold:    s.listUsersDispatchDefaultThreshold,
+			MaxThreshold: s.listUsersDispatchThrottlingMaxThreshold,
+		}),
 	)
 
 	resp, err := listUsersQuery.ListUsers(ctx, req)

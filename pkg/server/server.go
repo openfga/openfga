@@ -144,9 +144,16 @@ type Server struct {
 	listObjectsDispatchDefaultThreshold       uint32
 	listObjectsDispatchThrottlingMaxThreshold uint32
 
+	listUsersDispatchThrottlingEnabled      bool
+	listUsersDispatchThrottlingFrequency    time.Duration
+	listUsersDispatchDefaultThreshold       uint32
+	listUsersDispatchThrottlingMaxThreshold uint32
+
 	listObjectsDispatchThrottler throttler.Throttler
-	ctx                          context.Context
-	checkTrackerEnabled          bool
+	listUsersDispatchThrottler   throttler.Throttler
+
+	ctx                 context.Context
+	checkTrackerEnabled bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -469,6 +476,44 @@ func WithListObjectsDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAS
 	}
 }
 
+// WithListUsersDispatchThrottlingEnabled sets whether dispatch throttling is enabled for ListUsers requests.
+// Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
+// threshold over requests whose dispatch count exceeds the configured threshold.
+func WithListUsersDispatchThrottlingEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingEnabled = enabled
+	}
+}
+
+// WithListUsersDispatchThrottlingFrequency defines how frequent dispatch throttling
+// will be evaluated for ListUsers requests.
+// Frequency controls how frequently throttled dispatch requests are evaluated to determine whether
+// it can be processed.
+// This value should not be too small (i.e., in the ns ranges) as i) there are limitation in timer resolution
+// and ii) very small value will result in a higher frequency of processing dispatches,
+// which diminishes the value of the throttling.
+func WithListUsersDispatchThrottlingFrequency(frequency time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingFrequency = frequency
+	}
+}
+
+// WithListUsersDispatchThrottlingThreshold define the number of dispatches to be throttled
+// for ListUsers requests.
+func WithListUsersDispatchThrottlingThreshold(threshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchDefaultThreshold = threshold
+	}
+}
+
+// WithListUsersDispatchThrottlingMaxThreshold define the maximum threshold values allowed
+// It will ensure listUsersDispatchThrottlingMaxThreshold will never be smaller than threshold.
+func WithListUsersDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDispatchThrottlingMaxThreshold = maxThreshold
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -508,6 +553,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsDispatchThrottlingFrequency:    serverconfig.DefaultListObjectsDispatchThrottlingFrequency,
 		listObjectsDispatchDefaultThreshold:       serverconfig.DefaultListObjectsDispatchThrottlingDefaultThreshold,
 		listObjectsDispatchThrottlingMaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
+
+		listUsersDispatchThrottlingEnabled:      serverconfig.DefaultListUsersDispatchThrottlingEnabled,
+		listUsersDispatchThrottlingFrequency:    serverconfig.DefaultListUsersDispatchThrottlingFrequency,
+		listUsersDispatchDefaultThreshold:       serverconfig.DefaultListUsersDispatchThrottlingDefaultThreshold,
+		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
 	}
 
 	for _, opt := range opts {
@@ -531,6 +581,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.listObjectsDispatchThrottlingMaxThreshold != 0 && s.listObjectsDispatchDefaultThreshold > s.listObjectsDispatchThrottlingMaxThreshold {
 		return nil, fmt.Errorf("ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects")
+	}
+
+	if s.listUsersDispatchThrottlingMaxThreshold != 0 && s.listUsersDispatchDefaultThreshold > s.listUsersDispatchThrottlingMaxThreshold {
+		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
 	// below this point, don't throw errors or we may leak resources in tests
@@ -574,6 +628,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
 
+	if s.listUsersDispatchThrottlingEnabled {
+		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
+	}
+
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
@@ -585,6 +643,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 func (s *Server) Close() {
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
+	}
+	if s.listUsersDispatchThrottler != nil {
+		s.listUsersDispatchThrottler.Close()
 	}
 
 	s.checkResolverCloser()
