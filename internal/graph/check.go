@@ -840,11 +840,7 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userT
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
 		if cr == "" {
-			// terminalRelations is expected to be 1 (because we checked earlier)
-			terminalRelations, err := typesys.HasOneTerminalRelation(objectType, relation, userType)
-			if err != nil {
-				return "", "", err
-			}
+			terminalRelations := typesys.GetTerminalRelations(objectType, relation, userType)
 			cr = terminalRelations[0]
 		}
 
@@ -1276,12 +1272,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	terminalRelations, err := typesys.HasOneTerminalRelation(
-		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
-	)
-	if err != nil {
-		return nil, err
-	}
+	terminalRelations := typesys.GetTerminalRelations(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()))
 
 	computedRelation := terminalRelations[0]
 	usersetDetails := buildUsersetDetails(typesys, computedRelation, tuple.GetType(req.GetTupleKey().GetUser()))
