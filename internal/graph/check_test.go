@@ -16,6 +16,8 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -64,6 +66,40 @@ var (
 	}
 )
 
+func TestCheck_CorrectContext(t *testing.T) {
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
+		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.ErrorContains(t, err, "typesystem missing in context")
+	})
+
+	t.Run("datastore_missing_returns_error", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]`)
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+
+		_, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.ErrorContains(t, err, "relationship tuple reader datastore missing in context")
+	})
+}
+
 func TestExclusionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -74,21 +110,17 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 	concurrencyLimit := uint32(10)
 
 	t.Run("requires_exactly_two_handlers", func(t *testing.T) {
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit)
-		})
+		_, err := exclusion(ctx, concurrencyLimit)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.NotPanics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
+		require.NoError(t, err)
 	})
 
 	t.Run("true_butnot_true_return_false", func(t *testing.T) {
