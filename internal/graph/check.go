@@ -13,12 +13,13 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	openfgaErrors "github.com/openfga/openfga/internal/errors"
-
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -177,6 +178,8 @@ type LocalChecker struct {
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
+	usersetBatchSize   uint32
+	logger             logger.Logger
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -188,10 +191,23 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	}
 }
 
+// WithUsersetBatchSize see server.WithUsersetBatchSize.
+func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.usersetBatchSize = usersetBatchSize
+	}
+}
+
 // WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck.
 func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.maxConcurrentReads = limit
+	}
+}
+
+func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.logger = logger
 	}
 }
 
@@ -204,6 +220,8 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
+		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
+		logger:             logger.NewNoopLogger(),
 	}
 	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -734,7 +752,7 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 
 // checkUsersetSlowPath will check userset or public wildcard path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, iter *storage.ConditionsFilteredTupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
 	var handlers []CheckHandlerFunc
@@ -812,6 +830,28 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 	}
 }
 
+type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
+
+// buildUsersetDetails given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
+// This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType.
+func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userType string) usersetDetailsFunc {
+	return func(t *openfgav1.TupleKey) (string, string, error) {
+		cr := computedRelation
+		object, relation := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		if cr == "" {
+			// terminalRelations is expected to be 1 (because we checked earlier)
+			terminalRelations, err := typesys.HasOneTerminalRelation(objectType, relation, userType)
+			if err != nil {
+				return "", "", err
+			}
+			cr = terminalRelations[0]
+		}
+
+		return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+	}
+}
+
 // checkUsersetFastPath is the fast path to evaluate userset.
 // The general idea of the algorithm is that it tries to find intersection on the objects as identified in the userset
 // with the objects the user has the specified relation with.
@@ -827,62 +867,182 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 // Finally, find the intersection between the two.
 // To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
-func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, iter *storage.ConditionsFilteredTupleKeyIterator, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
-
+	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	usersetDetails := buildUsersetDetails(typesys, "", tuple.GetType(req.GetTupleKey().GetUser()))
+	return c.checkMembership(ctx, req, iter, usersetDetails)
+}
 
-	reqUserType := tuple.GetType(req.GetTupleKey().GetUser())
+type usersetsChannelType struct {
+	err            error
+	objectRelation string            // e.g. group#member
+	objectIDs      storage.SortedSet // eg. [1,2,3] (no duplicates allowed, sorted)
+}
 
-	usersetsMap := make(usersetsMapType)
+// checkMembership for this model
+//
+// type user
+// type org
+//
+//	relations
+//		define viewer: [user]
+//
+// type folder
+//
+//	relations
+//		define viewer: [user]
+//
+// type doc
+//
+//	relations
+//		define viewer: viewer from parent
+//		define parent: [folder, org]
+//
+// works as follows.
+// If the request is Check(user:maria, viewer, doc:1).
+// 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
+// 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
+// 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
+func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkMembership")
+	defer span.End()
 
-	for {
-		// NOTE: For the future, once we observe a new ObjectRelation in the usersetsMap that means that all objectIDs
-		// needed for the intersection lookup for that ObjectRelation are in memory. There is no need to build the full
-		// usersetMap by draining the full iterator, it can start processing in batches of ObjectRelation.
-		// Consider doing it when we have better concurrency tooling for "streaming" operations.
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
+	// since this is an unbuffered channel, producer will be blocked until consumer catches up
+	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
+	usersetsChan := make(chan usersetsChannelType)
 
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		terminalRelations := typesys.GetTerminalRelations(objectType, relation, reqUserType)
-		// the terminalRelations is expected to be 1 (as we checked earlier in typesys.UsersetCanFastPath)
-		if len(terminalRelations) != 1 {
-			return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
-		}
-		computedRelation := terminalRelations[0]
-		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
-		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = storage.NewSortedSet()
-		}
-		usersetsMap[objectRel].Add(objectID)
-	}
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+	pool.Go(func(ctx context.Context) error {
+		c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
+		return nil
+	})
 
-	// Next, for all the ObjectRelation, compare the associated objectIDs
-	// to the users associated objects
-	// all of this can likely bee its own function
-	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	for objectRel, objectIDs := range usersetsMap {
-		handler := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)
-		handlers = append(handlers, handler)
-	}
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount++
+	return resp, err
+}
 
-	return resp, nil
+func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
+	var finalErr error
+	dbReads := req.GetRequestMetadata().DatastoreQueryCount
+
+ConsumerLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case newBatch, channelOpen := <-usersetsChan:
+			if !channelOpen {
+				break ConsumerLoop
+			}
+			if newBatch.err != nil {
+				// Irrecoverable error when fetching usersets, so we abort.
+				finalErr = newBatch.err
+				break ConsumerLoop
+			}
+			objectRel := newBatch.objectRelation
+			objectIDs := newBatch.objectIDs
+
+			resp, err := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)(ctx)
+			dbReads++
+			if err != nil {
+				// We don't exit because we do a best effort to find the objectId that will give `allowed=true`.
+				// If that doesn't happen, we will return this error down below.
+				finalErr = err
+			} else if resp.Allowed {
+				resp.ResolutionMetadata.DatastoreQueryCount = dbReads
+				return resp, nil
+			}
+		}
+	}
+
+	// context cancellation from upstream (e.g. client)
+	if ctx.Err() != nil {
+		finalErr = ctx.Err()
+	}
+
+	if finalErr != nil {
+		return nil, finalErr
+	}
+
+	return &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: dbReads,
+		},
+	}, nil
+}
+
+func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) {
+	usersetsMap := make(usersetsMapType)
+	defer close(usersetsChan)
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			// cancelled doesn't need to flush nor send errors back to main routine
+			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) {
+				trySendUsersetsError(ctx, err, usersetsChan)
+			}
+			break
+		}
+
+		objectRel, objectID, err := usersetDetails(t)
+		if err != nil {
+			trySendUsersetsError(ctx, err, usersetsChan)
+			break
+		}
+
+		if _, ok := usersetsMap[objectRel]; !ok {
+			if len(usersetsMap) > 0 {
+				// Flush results from a previous objectRel it begin processing immediately.
+				// The assumption (which may not be true) is that the datastore yields objectRel in order.
+				trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+			}
+			usersetsMap[objectRel] = storage.NewSortedSet()
+		}
+
+		usersetsMap[objectRel].Add(objectID)
+
+		if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
+			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+		}
+	}
+
+	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+}
+
+func trySendUsersetsError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
+	select {
+	case <-ctx.Done():
+	case errorChan <- usersetsChannelType{err: err}:
+	}
+}
+
+func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
+	for k, v := range usersetsMap {
+		select {
+		case <-ctx.Done():
+			return
+		case usersetsChan <- usersetsChannelType{
+			objectRelation: k,
+			objectIDs:      v,
+		}:
+			delete(usersetsMap, k)
+		}
+	}
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
@@ -995,7 +1155,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				resolver = c.checkUsersetFastPath
 			}
 
-			return resolver(ctx, filteredIter, req)
+			return resolver(ctx, req, filteredIter)
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -1110,70 +1270,23 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
 
-func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, _ *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
-
+	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	terminalRelations := typesys.GetTerminalRelations(
+	terminalRelations, err := typesys.HasOneTerminalRelation(
 		tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()),
 	)
-	if len(terminalRelations) != 1 {
-		return nil, fmt.Errorf("expected exactly one terminal relation for fast path, received %d", len(terminalRelations))
-	}
-
-	computedRelation := terminalRelations[0]
-	// usersetsMap is a map of all ObjectRelations and its Ids. For example,
-	// [group:1#member, group:2#member, group:1#owner, group:3#owner] will be stored as
-	// [group#member][1, 2]
-	// [group#owner][1, 3]
-	usersetsMap := make(usersetsMapType)
-
-	for {
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
-
-		object, _ := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		objectRel := tuple.ToObjectRelationString(objectType, computedRelation)
-		if _, ok := usersetsMap[objectRel]; !ok {
-			usersetsMap[objectRel] = storage.NewSortedSet()
-		}
-		usersetsMap[objectRel].Add(objectID)
-	}
-
-	// Next, for each of the type in tuplesetRelationUserMap, look up what object is in computedRelation for the specified user.
-	// We will then try to see if there are any intersection.
-	// Return true if user is in any of the computedRelation.  For example,
-	// type group
-	//   define member: [user]
-	// type doc
-	//   define parent: [group]
-	//   define viewer: member from parent
-	// we want to find out which group user:bob is a member of.
-	// After that, we will find the intersection.
-	handlers := make([]CheckHandlerFunc, 0, len(usersetsMap))
-	for objectRel, objectIDs := range usersetsMap {
-		handler := c.buildCheckAssociatedObjects(req, objectRel, objectIDs)
-		handlers = append(handlers, handler)
-	}
-
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
 	if err != nil {
-		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount++
+	computedRelation := terminalRelations[0]
+	usersetDetails := buildUsersetDetails(typesys, computedRelation, tuple.GetType(req.GetTupleKey().GetUser()))
 
-	return resp, nil
+	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one

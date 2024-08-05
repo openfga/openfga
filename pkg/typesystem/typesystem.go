@@ -401,6 +401,14 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 	return len(terminalRelations) > 0
 }
 
+func (t *TypeSystem) HasOneTerminalRelation(objectType, relation, userType string) ([]string, error) {
+	terminalRelations := t.GetTerminalRelations(objectType, relation, userType)
+	if len(terminalRelations) != 1 {
+		return nil, fmt.Errorf("expected exactly one terminal relation for (%s,%s,%s), received %d", objectType, relation, userType, len(terminalRelations))
+	}
+	return terminalRelations, nil
+}
+
 // GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.
 func (t *TypeSystem) GetTerminalRelations(objectType, relation, userType string) []string {
 	return t.connectedTypes[objectType][relation][userType]
