@@ -338,7 +338,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
 	for _, rr := range relationReferences {
 		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
-		if len(terminalRelations) == 0 {
+		if len(terminalRelations) != 1 {
 			return false
 		}
 	}
