@@ -11,10 +11,14 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 
 	"github.com/openfga/openfga/internal/concurrency"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -36,12 +40,12 @@ var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
 type listUsersQuery struct {
 	logger                  logger.Logger
 	ds                      storage.RelationshipTupleReader
-	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
 	maxResults              uint32
 	maxConcurrentReads      uint32
 	deadline                time.Duration
+	dispatchThrottlerConfig threshold.Config
 }
 
 type expandResponse struct {
@@ -119,19 +123,36 @@ func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	}
 }
 
+func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
+	span := trace.SpanFromContext(ctx)
+
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		l.dispatchThrottlerConfig.Threshold,
+		l.dispatchThrottlerConfig.MaxThreshold,
+	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
+		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.dispatchThrottlerConfig = config
+	}
+}
+
 // NewListUsersQuery is not meant to be shared.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		logger: logger.NewNoopLogger(),
-		ds:     ds,
-		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			typesys, exists := typesystem.TypesystemFromContext(ctx)
-			if !exists {
-				return nil, fmt.Errorf("typesystem not provided in context")
-			}
-
-			return typesys, nil
-		},
+		logger:                  logger.NewNoopLogger(),
+		ds:                      ds,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		deadline:                serverconfig.DefaultListUsersDeadline,
@@ -167,7 +188,7 @@ func (l *listUsersQuery) ListUsers(
 	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	userFilter := req.GetUserFilters()[0]
@@ -290,7 +311,11 @@ func (l *listUsersQuery) dispatch(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-	req.dispatchCount.Add(1)
+	newcount := req.dispatchCount.Add(1)
+	if l.dispatchThrottlerConfig.Enabled {
+		l.throttle(ctx, newcount)
+	}
+
 	return l.expand(ctx, req, foundUsersChan)
 }
 
@@ -336,12 +361,7 @@ func (l *listUsersQuery) expand(
 		}
 	}
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	targetObjectType := req.GetObject().GetType()
 	targetRelation := req.GetRelation()
@@ -407,12 +427,7 @@ func (l *listUsersQuery) expandDirect(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
@@ -839,12 +854,7 @@ func (l *listUsersQuery) expandTTU(
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{

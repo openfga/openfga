@@ -14,10 +14,12 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -3834,5 +3836,114 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 				relationshipStatus: NoRelationship,
 			},
 		}, actualResults)
+	})
+}
+
+func TestListUsersThrottle(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	ctx := context.Background()
+
+	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+
+		q.throttle(ctx, uint32(190))
+	})
+
+	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 200,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+
+		q.throttle(ctx, uint32(201))
+	})
+
+	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 0,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
+
+		q.throttle(ctx, uint32(190))
+	})
+
+	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    0,
+				MaxThreshold: 210,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(201)
+		ctx := context.Background()
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
+
+		q.throttle(ctx, dispatchCountValue)
+	})
+
+	t.Run("should_respect_max_threshold", func(t *testing.T) {
+		mockThrottler := mocks.NewMockThrottler(mockController)
+		q := NewListUsersQuery(
+			mockDatastore,
+			WithDispatchThrottlerConfig(threshold.Config{
+				Throttler:    mockThrottler,
+				Threshold:    200,
+				MaxThreshold: 300,
+			}),
+		)
+		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
+		dispatchCountValue := uint32(301)
+		ctx := context.Background()
+		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
+
+		q.throttle(ctx, dispatchCountValue)
+	})
+}
+
+func TestListUsers_CorrectContext(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
+		l := NewListUsersQuery(ds)
+		_, err := l.ListUsers(context.Background(), &openfgav1.ListUsersRequest{})
+
+		require.ErrorContains(t, err, "typesystem missing in context")
 	})
 }

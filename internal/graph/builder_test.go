@@ -19,29 +19,29 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 	tests := []Test{
 		{
 			name:                  "when_nothing_is_enabled",
-			expectedResolverOrder: []CheckResolver{&CycleDetectionCheckResolver{}, &LocalChecker{}},
+			expectedResolverOrder: []CheckResolver{&LocalChecker{}},
 		},
 		{
 			name:                       "when_cache_alone_is_enabled",
 			CachedCheckResolverEnabled: true,
-			expectedResolverOrder:      []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &LocalChecker{}},
+			expectedResolverOrder:      []CheckResolver{&CachedCheckResolver{}, &LocalChecker{}},
 		},
 		{
 			name:                                   "when_dispatch_throttling_alone_is_enabled",
 			DispatchThrottlingCheckResolverEnabled: true,
-			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
+			expectedResolverOrder:                  []CheckResolver{&DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
 		{
 			name:                        "when_track_check_is_enabled",
 			TrackerCheckResolverEnabled: true,
-			expectedResolverOrder:       []CheckResolver{&CycleDetectionCheckResolver{}, &TrackerCheckResolver{}, &LocalChecker{}},
+			expectedResolverOrder:       []CheckResolver{&TrackerCheckResolver{}, &LocalChecker{}},
 		},
 		{
 			name:                                   "when_all_are_enabled",
 			CachedCheckResolverEnabled:             true,
 			DispatchThrottlingCheckResolverEnabled: true,
 			TrackerCheckResolverEnabled:            true,
-			expectedResolverOrder:                  []CheckResolver{&CycleDetectionCheckResolver{}, &CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &TrackerCheckResolver{}, &LocalChecker{}},
+			expectedResolverOrder:                  []CheckResolver{&CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &TrackerCheckResolver{}, &LocalChecker{}},
 		},
 	}
 

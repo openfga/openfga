@@ -23,6 +23,7 @@ const (
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
+	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
@@ -49,6 +50,11 @@ const (
 	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
 	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
 	DefaultListObjectsDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
+
+	DefaultListUsersDispatchThrottlingEnabled          = false
+	DefaultListUsersDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultListUsersDispatchThrottlingDefaultThreshold = 100
+	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
@@ -285,6 +291,7 @@ type Config struct {
 	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -402,6 +409,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.ListUsersDispatchThrottling.Enabled {
+		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
+		}
+	}
+
 	if cfg.RequestTimeout < 0 {
 		return errors.New("requestTimeout must be a non-negative time duration")
 	}
@@ -412,6 +431,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.ListObjectsDeadline < 0 {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if cfg.ListUsersDeadline < 0 {
+		return errors.New("listUsersDeadline must be non-negative time duration")
 	}
 
 	if cfg.MaxConditionEvaluationCost < 100 {
@@ -593,6 +616,12 @@ func DefaultConfig() *Config {
 			Frequency:    DefaultListObjectsDispatchThrottlingFrequency,
 			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
+		},
+		ListUsersDispatchThrottling: DispatchThrottlingConfig{
+			Enabled:      DefaultListUsersDispatchThrottlingEnabled,
+			Frequency:    DefaultListUsersDispatchThrottlingFrequency,
+			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
 		RequestTimeout:      DefaultRequestTimeout,
 		CheckTrackerEnabled: DefaultCheckTrackerEnabled,

@@ -13,8 +13,11 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -63,6 +66,40 @@ var (
 	}
 )
 
+func TestCheck_CorrectContext(t *testing.T) {
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
+		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.ErrorContains(t, err, "typesystem missing in context")
+	})
+
+	t.Run("datastore_missing_returns_error", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]`)
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+
+		_, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		})
+		require.ErrorContains(t, err, "relationship tuple reader datastore missing in context")
+	})
+}
+
 func TestExclusionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -73,21 +110,17 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 	concurrencyLimit := uint32(10)
 
 	t.Run("requires_exactly_two_handlers", func(t *testing.T) {
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit)
-		})
+		_, err := exclusion(ctx, concurrencyLimit)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.Panics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler, falseHandler)
+		require.ErrorIs(t, err, openfgaErrors.ErrUnknown)
 
-		require.NotPanics(t, func() {
-			_, _ = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
-		})
+		_, err = exclusion(ctx, concurrencyLimit, falseHandler, falseHandler)
+		require.NoError(t, err)
 	})
 
 	t.Run("true_butnot_true_return_false", func(t *testing.T) {
@@ -1940,6 +1973,116 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 	})
 }
 
+func TestCheckWithFastPathOptimization(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	usersetBatchSize := uint32(10)
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	storeID := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type directory
+				relations
+					define viewer: [user]
+			type folder
+				relations
+					define viewer: [user]
+			type doc
+				relations
+					define viewer: viewer from parent
+					define parent: [folder, directory]`)
+
+	// add some folders as parents of the document
+	maxFolderID := int(usersetBatchSize * 5)
+	maxDirectoryID := int(usersetBatchSize * 5)
+	for i := 0; i <= maxFolderID; i++ {
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("folder:%d", i)),
+		})
+		require.NoError(t, err)
+	}
+	// having 2 types will force a flush when there is a change in types "seen"
+	for i := 0; i <= maxDirectoryID; i++ {
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "parent", fmt.Sprintf("directory:%d", i)),
+		})
+		require.NoError(t, err)
+	}
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("folder:1", "viewer", "user:a"),
+		tuple.NewTupleKey(fmt.Sprintf("folder:%d", maxFolderID), "viewer", "user:b"),
+	})
+	require.NoError(t, err)
+
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(storage.ContextWithRelationshipTupleReader(context.Background(), ds), ts)
+
+	newL, _ := logger.NewLogger(logger.WithFormat("text"), logger.WithLevel("debug"))
+	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL))
+	t.Cleanup(checker.Close)
+
+	var testCases = map[string]struct {
+		request       *openfgav1.TupleKey
+		expectAllowed bool
+	}{
+		// first folder so the producer is forced to abort iteration early
+		`first_folder`: {
+			request:       tuple.NewTupleKey("doc:1", "viewer", "user:a"),
+			expectAllowed: true,
+		},
+		// last folder so the producer has to read the entire iterator
+		`last_folder`: {
+			request:       tuple.NewTupleKey("doc:1", "viewer", "user:b"),
+			expectAllowed: true,
+		},
+	}
+
+	for testname, test := range testCases {
+		t.Run(testname, func(t *testing.T) {
+			t.Run("without_context_timeout", func(t *testing.T) {
+				resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+					StoreID:              storeID,
+					AuthorizationModelID: model.GetId(),
+					TupleKey:             test.request,
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				})
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.Equal(t, test.expectAllowed, resp.Allowed)
+			})
+
+			t.Run("with_context_timeout", func(t *testing.T) {
+				for i := 0; i < 100; i++ {
+					// run in a for loop to hopefully trigger context cancellations at different points in execution
+					t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
+						newCtx, cancel := context.WithTimeout(ctx, 10*time.Microsecond)
+						defer cancel()
+						resp, err := checker.ResolveCheck(newCtx, &ResolveCheckRequest{
+							StoreID:              storeID,
+							AuthorizationModelID: model.GetId(),
+							TupleKey:             test.request,
+							RequestMetadata:      NewCheckRequestMetadata(20),
+						})
+						if err != nil {
+							require.ErrorIs(t, err, context.DeadlineExceeded)
+						} else {
+							require.NotNil(t, resp)
+							require.Equal(t, test.expectAllowed, resp.Allowed)
+						}
+					})
+				}
+			})
+		})
+	}
+}
+
 func TestCloneResolveCheckResponse(t *testing.T) {
 	resp1 := &ResolveCheckResponse{
 		Allowed: true,
@@ -1974,12 +2117,44 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 }
 
-func TestComputedUsersetDetectsCycle(t *testing.T) {
+func TestCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	storeID := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockDelegate := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockDelegate)
+
+	// assert that we never call dispatch
+	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+
+	t.Run("returns_true_if_path_visited", func(t *testing.T) {
+		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
+
+		resp, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+			StoreID:         ulid.Make().String(),
+			TupleKey:        cyclicalTuple, // here
+			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			VisitedPaths: map[string]struct{}{
+				tuple.TupleKeyToString(cyclicalTuple): {}, // and here
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+		require.NotNil(t, resp.ResolutionMetadata)
+	})
+
+	t.Run("returns_true_if_computed_userset", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
 			type user
@@ -1988,35 +2163,37 @@ func TestComputedUsersetDetectsCycle(t *testing.T) {
 					define x: y
 					define y: x`)
 
-	ctx := typesystem.ContextWithTypesystem(
-		context.Background(),
-		typesystem.New(model),
-	)
+		ctx := typesystem.ContextWithTypesystem(
+			context.Background(),
+			typesystem.New(model),
+		)
 
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
-	checker := NewLocalChecker()
-	t.Cleanup(checker.Close)
+		t.Run("disconnected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
+		t.Run("connected_types_in_query", func(t *testing.T) {
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: model.GetId(),
+				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.False(t, resp.GetAllowed())
+			require.True(t, resp.GetCycleDetected())
+		})
 	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
-
-	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: model.GetId(),
-		TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.GetAllowed())
-	require.True(t, resp.GetCycleDetected())
 }
