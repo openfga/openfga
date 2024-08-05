@@ -33,6 +33,15 @@ func TestNewListObjectsQuery(t *testing.T) {
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
+
+	t.Run("empty_typesystem_in_context", func(t *testing.T) {
+		checkResolver := graph.NewLocalChecker()
+		q, err := NewListObjectsQuery(memory.New(), checkResolver)
+		require.NoError(t, err)
+
+		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
+		require.ErrorContains(t, err, "typesystem missing in context")
+	})
 }
 
 func TestListObjectsDispatchCount(t *testing.T) {

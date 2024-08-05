@@ -231,12 +231,24 @@ func TestToObjectRelationString(t *testing.T) {
 }
 
 func TestTupleKeyToString(t *testing.T) {
+	require.Equal(t, "document:1#viewer@group:fga#member", TupleKeyToString(NewTupleKey("document:1", "viewer", "group:fga#member")))
 	require.Equal(t, "document:1#viewer@jon", TupleKeyToString(NewTupleKey("document:1", "viewer", "jon")))
 	require.Equal(t, "document:1#viewer@user:bob", TupleKeyToString(NewTupleKey("document:1", "viewer", "user:bob")))
 	require.Equal(t, "document:1#viewer@", TupleKeyToString(NewTupleKey("document:1", "viewer", "")))
 	require.Equal(t, "document:1#@jon", TupleKeyToString(NewTupleKey("document:1", "", "jon")))
 	require.Equal(t, "#viewer@jon", TupleKeyToString(NewTupleKey("", "viewer", "jon")))
 	require.Equal(t, "#@", TupleKeyToString(NewTupleKey("", "", "")))
+}
+
+func TestTupleKeyWithConditionToString(t *testing.T) {
+	require.Equal(t, "document:1#viewer@group:fga#member (condition condX)",
+		TupleKeyWithConditionToString(NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "condX", nil)))
+	require.Equal(t, "document:1#viewer@user:maria (condition condX)",
+		TupleKeyWithConditionToString(NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condX", nil)))
+	require.Equal(t, "document:1#viewer@user:* (condition condX)",
+		TupleKeyWithConditionToString(NewTupleKeyWithCondition("document:1", "viewer", "user:*", "condX", nil)))
+	require.Equal(t, "document:1#viewer@user:*",
+		TupleKeyWithConditionToString(NewTupleKey("document:1", "viewer", "user:*")))
 }
 
 func TestIsWildcard(t *testing.T) {
