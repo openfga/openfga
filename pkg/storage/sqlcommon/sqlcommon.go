@@ -190,8 +190,11 @@ func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 		rows:     rows,
 		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
-		firstRow: nil, // GUARDED_BY(mu)
-		mu:       sync.Mutex{},
+		firstRow: nil, // GUARDED_BY(mu). The firstRow is used as a temporary storage place if head is called.
+		// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
+		// the iterator. Thus, we will need to store this first item so that future Head() and Next()
+		// will use this item instead. Otherwise, the first item will be lost.
+		mu: sync.Mutex{},
 	}
 }
 
@@ -200,7 +203,14 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 
 	if t.firstRow != nil {
 		// If head was called previously, we don't need to scan / next
-		// again as the data is already there
+		// again as the data is already there and the internal iterator would be advanced via `t.rows.Next()`.
+		// Calling t.rows.Next() in this case would lose the first row data.
+		//
+		// For example, let's say there are 3 items [1,2,3]
+		// If we called Head() and t.firstRow is empty, the rows will only be left with [2,3].
+		// Thus, we will need to save item [1] in firstRow.  This allows future next() and head() to consume
+		// [1] first.
+		// If head() was not called, t.firstRow would be nil and we can follow the t.rows.Next() logic below.
 		firstRow := t.firstRow
 		t.firstRow = nil
 		t.mu.Unlock()
@@ -253,8 +263,16 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 	defer t.mu.Unlock()
 
 	if t.firstRow != nil {
-		// we had called head previously, there is no need to
-		// scan / next again as we don't want to increment the pointer
+		// If head was called previously, we don't need to scan / next
+		// again as the data is already there and the internal iterator would be advanced via `t.rows.Next()`.
+		// Calling t.rows.Next() in this case would lose the first row data.
+		//
+		// For example, let's say there are 3 items [1,2,3]
+		// If we called Head() and t.firstRow is empty, the rows will only be left with [2,3].
+		// Thus, we will need to save item [1] in firstRow.  This allows future next() and head() to return
+		// [1] first. Note that for head(), we will not unset t.firstRow.  Therefore, calling head() multiple times
+		// will yield the same result.
+		// If head() was not called, t.firstRow would be nil, and we can follow the t.rows.Next() logic below.
 		return t.firstRow, nil
 	}
 
