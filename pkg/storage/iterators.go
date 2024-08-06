@@ -256,7 +256,7 @@ func (f *filteredTupleKeyIterator) Stop() {
 
 // Head returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
-// Note: the underlying iterator for unmatched filter may advance until head is satisfied.
+// Note: the underlying iterator for unmatched filter may advance until filter is satisfied.
 func (f *filteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

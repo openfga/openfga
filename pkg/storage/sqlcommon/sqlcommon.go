@@ -190,7 +190,7 @@ func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 		rows:     rows,
 		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
-		firstRow: nil,
+		firstRow: nil, // GUARDED_BY(mu)
 		mu:       sync.Mutex{},
 	}
 }
