@@ -357,19 +357,18 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 		}
 
 		valid, err := f.filter(tuple)
-		if err != nil {
-			f.lastError = err
-			_, err = f.iter.Next(ctx)
+		if err != nil || !valid {
 			if err != nil {
-				// should never happen except if the underlying ds has error
-				return nil, err
+				f.lastError = err
 			}
-			continue
-		}
-		if !valid {
+			// Note that we don't care about the item returned by Next() as this is already via Head(). We call Next() solely
+			// for the purpose of getting rid of the first item.
 			_, err = f.iter.Next(ctx)
 			if err != nil {
-				// should never happen except if the underlying ds has error
+				// This should never happen except if the underlying ds has error. This is because f.iter.Head() had already
+				// checked whether we are at the end of list. For example, in a list of [1] (all invalid),
+				// Head() will return 1. If it is invalid, Next() will return 1 and move the pointer to end of list.
+				// Thus, Head() will return ErrIteratorDone next time being called.
 				return nil, err
 			}
 			continue
