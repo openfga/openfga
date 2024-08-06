@@ -12,6 +12,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/pkg/tuple"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/metrics"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -38,7 +40,7 @@ func EvaluateTupleCondition(
 	}
 
 	ctx, span := tracer.Start(ctx, "EvaluateTupleCondition", trace.WithAttributes(
-		attribute.String("tuple_key", tupleKey.String()),
+		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(tupleKey)),
 		attribute.String("condition_name", conditionName)))
 	defer span.End()
 

@@ -1092,6 +1092,254 @@ tests:
             context:
               "x": 20
             expectation:
+  - name: simple_ttu_with_and_without_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user, user with xcond]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+          - user: user:without-condition
+            relation: viewer
+            object: folder:a
+          - user: user:with-condition
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+        checkAssertions:
+          - tuple:
+              user: user:with-condition
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:with-condition
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:with-condition
+              relation: viewer
+              object: document:1
+            context:
+              "x": 99
+            expectation: false
+          - tuple:
+              user: user:without-condition
+              relation: viewer
+              object: document:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:without-condition
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:with-condition
+              type: document
+              relation: viewer
+            context:
+              "x": 99
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:with-condition
+              - user:without-condition
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
+             - user:without-condition
+  - name: simple_ttu_with_multiple_conditions
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond, user with ycond]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+          
+          condition xcond(x: int) {
+            x == 10
+          }
+
+          condition ycond(y: int) {
+            y == 10
+          }
+        tuples:
+          - user: folder:a
+            relation: parent
+            object: document:1
+          - user: user:with-xcond
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+          - user: user:with-ycond
+            relation: viewer
+            object: folder:a
+            condition:
+              name: ycond
+        checkAssertions:
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 99
+            expectation: false
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 10
+            expectation: true
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 99
+            expectation: false
+          - tuple:
+              user: user:with-xcond
+              relation: viewer
+              object: document:1
+            context:
+              "y": 10
+            errorCode: 2000
+          - tuple:
+              user: user:with-ycond
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:with-xcond
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-xcond
+              type: document
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - document:1
+          - request:
+              user: user:with-ycond
+              type: document
+              relation: viewer
+            errorCode: 2000
+          - request:
+              user: user:with-ycond
+              type: document
+              relation: viewer
+            context:
+              "y": 10
+            expectation:
+              - document:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+              "y": 10
+            expectation:
+              - user:with-xcond
+              - user:with-ycond
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+              "y": 20
+            expectation:
   - name: simple_ttu_with_condition_in_child
     stages:
       - model: |
