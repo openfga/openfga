@@ -22,6 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD` - The number of dispatches allowed before throttling is triggered
   * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD` - The maximum number of dispatches allowed before the request is rejected
   * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY` - The frequency at which the deprioritized throttling queue is processed
+* Support sending contextual tuples in the Write Assertions API. [#1821](https://github.com/openfga/openfga/pull/1821)
 
 ### Fixed
 * address `"expected exactly one terminal relation for fast path, received {num}"` error during `Check` for models with type restrictions with and without a condition or with multiple conditions. [#1814](https://github.com/openfga/openfga/pull/1814)
