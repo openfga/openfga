@@ -1460,7 +1460,6 @@ func TestHTTPHeaders(t *testing.T) {
 			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
 			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
-			t.Log(httpResponse.Header)
 			require.Len(t, httpResponse.Header[logging.QueryDurationMsHeader], 1)
 			require.NotEmpty(t, httpResponse.Header[logging.QueryDurationMsHeader][0])
 

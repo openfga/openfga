@@ -54,19 +54,17 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 type reporter struct {
 	ctx            context.Context
 	grpcCtx        context.Context
-	start          time.Time
 	logger         logger.Logger
 	fields         []zap.Field
 	protomarshaler protojson.MarshalOptions
 }
 
 // PostCall is invoked after all PostMsgSend operations.
-func (r *reporter) PostCall(err error, _ time.Duration) {
-	duration := time.Since(r.start)
-	durationMs := strconv.FormatInt(duration.Milliseconds(), 10)
-	_ = grpc.SetHeader(r.grpcCtx, metadata.Pairs(QueryDurationMsHeader, durationMs))
+func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
+	rpcDurationMs := strconv.FormatInt(rpcDuration.Milliseconds(), 10)
+	_ = grpc.SetHeader(r.ctx, metadata.Pairs(QueryDurationMsHeader, rpcDurationMs))
 
-	r.fields = append(r.fields, zap.Int64(queryDurationKey, duration.Milliseconds()))
+	r.fields = append(r.fields, zap.String(queryDurationKey, rpcDurationMs))
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
@@ -155,7 +153,6 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 		return &reporter{
 			ctx:            ctxzap.ToContext(ctx, zapLogger.Logger),
 			grpcCtx:        ctx,
-			start:          time.Now(),
 			logger:         l,
 			fields:         fields,
 			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
