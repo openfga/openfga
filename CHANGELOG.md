@@ -24,7 +24,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY` - The frequency at which the deprioritized throttling queue is processed
 
 ### Fixed
-* `"expected exactly one terminal relation for fast path, received 2"` error during `Check` for models with multiple conditions or type restrictions with and without a condition. [#1814](https://github.com/openfga/openfga/pull/1814)
+* address `"expected exactly one terminal relation for fast path, received {num}"` error during `Check` for models with type restrictions with and without a condition or with multiple conditions. [#1814](https://github.com/openfga/openfga/pull/1814)
 
 ## [1.5.7] - 2024-07-25
 
