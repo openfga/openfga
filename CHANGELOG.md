@@ -1136,7 +1136,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.7...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.8...HEAD
+[1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
 [1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
 [1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
 [1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5
