@@ -53,7 +53,6 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 type reporter struct {
 	ctx            context.Context
-	grpcCtx        context.Context
 	logger         logger.Logger
 	fields         []zap.Field
 	protomarshaler protojson.MarshalOptions
@@ -152,7 +151,6 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 
 		return &reporter{
 			ctx:            ctxzap.ToContext(ctx, zapLogger.Logger),
-			grpcCtx:        ctx,
 			logger:         l,
 			fields:         fields,
 			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
