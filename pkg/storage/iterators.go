@@ -23,8 +23,10 @@ type Iterator[T any] interface {
 	// the underlying iterator.
 	Stop()
 
-	// Head will return the first item or ErrIteratorDone if the list
+	// Head will return the first item or ErrIteratorDone if the iterator
 	// is empty.
+	// It's possible for this method to advance the iterator internally, but a subsequent call to Next will not miss any results.
+	// Calling Head() continuously without calling Next() will yield the same result (the first one) over and over.
 	Head(ctx context.Context) (T, error)
 }
 
