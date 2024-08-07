@@ -13,7 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 * Performance improvements for userset when it is pointing to a computed relation in Check [#1793](https://github.com/openfga/openfga/pull/1793)
 * Performance improvements by batching the userset results in Check
-* Added new logging for Check requests to log the number of hits that each node in the graph of the authorization model receives. This can be enabled using the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
+* Logging number of cache hits for each subproblem of each authorization model for `Check` API calls. Enabled with the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
 * We now support aliases for issuers and subject validation in OIDC AuthN mode using `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` and `OPENFGA_AUTHN_OIDC_SUBJECTS` respectively [#1784](https://github.com/openfga/openfga/pull/1784) Thanks @Code2Life!
 * We have added Dispatch Throttling for our List Users endpoint. This can be enabled using `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED`  [#1658](https://github.com/openfga/openfga/pull/1658)
   * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD` - The number of dispatches allowed before throttling is triggered
