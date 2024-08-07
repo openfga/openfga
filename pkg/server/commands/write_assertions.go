@@ -66,7 +66,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		for _, ct := range assertion.GetContextualTuples().GetTupleKeys() {
+		for _, ct := range assertion.GetContextualTuples() {
 			// but contextual tuples need to be validated the same as an input to a Write Tuple request
 			if err = validation.ValidateTuple(typesys, ct); err != nil {
 				return nil, serverErrors.ValidationError(err)

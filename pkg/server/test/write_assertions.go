@@ -123,10 +123,8 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
 					},
 				},
 			},
@@ -138,11 +136,9 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condX",
-								testutils.MustNewStruct(t, map[string]interface{}{"x": 0})),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condX",
+							testutils.MustNewStruct(t, map[string]interface{}{"x": 0})),
 					},
 				},
 			},
@@ -154,11 +150,9 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condX",
-								testutils.MustNewStruct(t, map[string]interface{}{"unknownparam": 0})),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condX",
+							testutils.MustNewStruct(t, map[string]interface{}{"unknownparam": 0})),
 					},
 				},
 			},
@@ -171,10 +165,8 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condundefined", nil),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKeyWithCondition("repo:test", "reader", "user:elbuo", "condundefined", nil),
 					},
 				},
 			},
@@ -187,10 +179,8 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
 					},
 				},
 			},
@@ -203,10 +193,8 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
 					},
 				},
 			},
@@ -219,10 +207,8 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				{
 					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
-					ContextualTuples: &openfgav1.ContextualTupleKeys{
-						TupleKeys: []*openfgav1.TupleKey{
-							tuple.NewTupleKey("unknown:test", "reader", "user:elbuo"),
-						},
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("unknown:test", "reader", "user:elbuo"),
 					},
 				},
 			},

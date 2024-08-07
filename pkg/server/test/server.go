@@ -7,7 +7,7 @@ import (
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
-	// RunQueryTests(t, ds)
+	RunQueryTests(t, ds)
 	RunCommandTests(t, ds)
 }
 
