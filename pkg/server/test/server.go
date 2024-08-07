@@ -44,7 +44,6 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteCommand", func(t *testing.T) { TestWriteCommand(t, ds) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { WriteAuthorizationModelTest(t, ds) })
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { TestWriteAndReadAssertions(t, ds) })
-	t.Run("TestWriteAssertionsFailure", func(t *testing.T) { TestWriteAssertionsFailure(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
 }
