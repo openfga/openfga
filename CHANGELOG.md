@@ -10,6 +10,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [1.5.8] - 2024-08-07
 
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.7...v1.5.8)
+
 ### Added
 * Performance improvements for userset when it is pointing to a computed relation in Check [#1793](https://github.com/openfga/openfga/pull/1793)
 * Performance improvements by batching the userset results in Check
