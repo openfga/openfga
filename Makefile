@@ -104,19 +104,6 @@ test-docker: ## Run tests requiring Docker
 	fi
 	@go test -v -count=1 -timeout=5m -tags=docker ./cmd/openfga/...
 
-test-directly:  ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
-	${call print, "Running tests"}
-	@go test -race \
-			-run "$(FILTER)" \
-			-coverpkg=./... \
-			-coverprofile=coverageunit.tmp.out \
-			-covermode=atomic \
-			-count=1 \
-			-timeout=10m \
-			${GO_PACKAGES}
-	@cat coverageunit.tmp.out | grep -v "mock" > coverageunit.out
-	@rm coverageunit.tmp.out
-
 test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
 	@go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
