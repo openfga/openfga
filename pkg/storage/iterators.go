@@ -343,7 +343,8 @@ func (f *ConditionsFilteredTupleKeyIterator) Stop() {
 
 // Head returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
-// The underlying iterator will not advance.
+// The underlying iterator may advance but calling consecutive Head will yield consistent result.
+// Further, calling Head following by Next will also yield consistent result.
 // This function is not thread-safe.
 func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
 	for {

@@ -187,7 +187,7 @@ var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 // NewSQLTupleIterator returns a SQL tuple iterator.
 func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		rows:     rows,
+		rows:     rows, // GUARDED_BY(mu)
 		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
 		firstRow: nil, // GUARDED_BY(mu). The firstRow is used as a temporary storage place if head is called.

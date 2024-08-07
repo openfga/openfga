@@ -318,12 +318,10 @@ func TestCombinedIterator(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		_, err := iter.Head(ctx)
-		require.Error(t, err)
-		require.NotErrorIs(t, err, ErrIteratorDone)
+		require.ErrorIs(t, err, context.Canceled)
 
 		_, err = iter.Next(ctx)
-		require.Error(t, err)
-		require.NotErrorIs(t, err, ErrIteratorDone)
+		require.ErrorIs(t, err, context.Canceled)
 	})
 }
 
