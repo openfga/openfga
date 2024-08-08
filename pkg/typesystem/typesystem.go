@@ -403,7 +403,7 @@ func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType strin
 
 // GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.
 func (t *TypeSystem) GetTerminalRelations(objectType, relation, userType string) []string {
-	return t.connectedTypes[objectType][relation][userType]
+	return t.connectedTypes[objectType][relation].DirectlyAssignable[userType]
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
