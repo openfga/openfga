@@ -37,8 +37,6 @@ const (
 
 	gatewayUserAgentHeader string = "grpcgateway-user-agent"
 	userAgentHeader        string = "user-agent"
-
-	QueryDurationMsHeader string = "Fga-Query-Duration-Ms"
 )
 
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
@@ -61,7 +59,6 @@ type reporter struct {
 // PostCall is invoked after all PostMsgSend operations.
 func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	rpcDurationMs := strconv.FormatInt(rpcDuration.Milliseconds(), 10)
-	_ = grpc.SetHeader(r.ctx, metadata.Pairs(QueryDurationMsHeader, rpcDurationMs))
 
 	r.fields = append(r.fields, zap.String(queryDurationKey, rpcDurationMs))
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
