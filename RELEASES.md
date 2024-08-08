@@ -15,6 +15,7 @@ Changes in the major and minor version components of the triple indicate changes
 Releases which increment only the "patch" component of the version triple may introduce new functionality, performance enhancements, bugfixes, or preview features while remaining backwards compatible with the previous release.  
 
 ## Release History
+Release dates for all releases (not including release candidates)
 
 | Version | Release Date |
 |---------| ------------ |
