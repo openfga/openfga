@@ -6,25 +6,39 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+// RelationDescriptionType describes a relation's connection with terminal relation
+type RelationDescriptionType struct {
+	DirectlyAssignable   map[string][]string // all relations that are directly assignable (without intersection/union/exclusion)
+	UnionRelation        []map[string][]string
+	IntersectionRelation []map[string][]string
+	ExclusionRelation    []map[string][]string // maximum of two items
+}
+
 // map[_objectType_]map[_relation_]map[_subjectType_] terminalRelation.
-type TypesystemConnectedTypes map[string]map[string]map[string][]string
+type TypesystemConnectedTypes map[string]map[string]*RelationDescriptionType
 
 func (f TypesystemConnectedTypes) assign(objectType string, relation string, subjectType string, terminalRelation string) {
 	if f[objectType] == nil {
-		f[objectType] = make(map[string]map[string][]string)
+		f[objectType] = make(map[string]*RelationDescriptionType)
 	}
 
 	if f[objectType][relation] == nil {
-		f[objectType][relation] = make(map[string][]string)
+		relationDescriptionType := RelationDescriptionType{
+			DirectlyAssignable:   make(map[string][]string),
+			UnionRelation:        []map[string][]string{},
+			IntersectionRelation: []map[string][]string{},
+			ExclusionRelation:    []map[string][]string{},
+		}
+		f[objectType][relation] = &relationDescriptionType
 	}
 
-	for _, v := range f[objectType][relation][subjectType] {
+	for _, v := range f[objectType][relation].DirectlyAssignable[subjectType] {
 		if v == terminalRelation {
 			return // terminal relation already recorded
 		}
 	}
 
-	f[objectType][relation][subjectType] = append(f[objectType][relation][subjectType], terminalRelation)
+	f[objectType][relation].DirectlyAssignable[subjectType] = append(f[objectType][relation].DirectlyAssignable[subjectType], terminalRelation)
 }
 
 // AssignTerminalTypes will populate the `connectedTypes` property on the typesystem to indicate for a given
@@ -55,7 +69,7 @@ func (t *TypeSystem) getTerminalUserTypeAndRelationsForConnectedTypes(
 	if ok {
 		terminalTypesAndRelations := []terminalTypesAndRelation{}
 
-		for subjectType, terminalRelations := range cache {
+		for subjectType, terminalRelations := range cache.DirectlyAssignable {
 			for _, terminalRelation := range terminalRelations {
 				terminalTypesAndRelations = append(terminalTypesAndRelations, terminalTypesAndRelation{
 					terminalTypes:    []string{subjectType},
