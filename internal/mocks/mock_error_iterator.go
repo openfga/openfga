@@ -35,6 +35,23 @@ func (s *errorTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error)
 	return next, nil
 }
 
+func (s *errorTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	// we want to simulate returning error after the first read
+	if len(s.items) != s.originalLength {
+		return nil, fmt.Errorf("simulated errors")
+	}
+
+	if len(s.items) == 0 {
+		return nil, nil
+	}
+
+	return s.items[0], nil
+}
+
 func (s *errorTupleIterator) Stop() {}
 
 var _ storage.TupleIterator = (*errorTupleIterator)(nil)
