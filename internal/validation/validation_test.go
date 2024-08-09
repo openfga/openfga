@@ -655,7 +655,7 @@ func TestValidateTuple(t *testing.T) {
 			},
 		},
 		{
-			name:  "typed_wildcard_in_userset_value",
+			name:  "typed_wildcard_in_id_of_userset_value",
 			tuple: tuple.NewTupleKey("document:1", "viewer", "document:*#editor"),
 			model: &openfgav1.AuthorizationModel{
 				SchemaVersion: typesystem.SchemaVersion1_1,
@@ -689,6 +689,43 @@ func TestValidateTuple(t *testing.T) {
 			expectedError: &tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("the 'user' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:*#editor"),
+			},
+		},
+		{
+			name:  "typed_wildcard_in_relation_of_userset_value",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "document:2#*"),
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"editor": typesystem.This(),
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:2#*"),
 			},
 		},
 	}
