@@ -278,11 +278,11 @@ func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) erro
 		return fmt.Errorf("invalid 'object' field format")
 	}
 
-	if tuple.IsTypedWildcard(object) {
+	objectType, id := tuple.SplitObject(object)
+	if id == tuple.Wildcard {
 		return fmt.Errorf("the 'object' field cannot reference a typed wildcard")
 	}
 
-	objectType := tuple.GetType(object)
 	_, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
 		return &tuple.TypeNotFoundError{TypeName: objectType}
@@ -330,29 +330,29 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 		return fmt.Errorf("the 'user' field is malformed")
 	}
 
+	validObject := tuple.IsValidObject(user)
+	validUserset := tuple.IsObjectRelation(user)
+	userObject, userRelation := tuple.SplitObjectRelation(user)
+	userObjectType := tuple.GetType(userObject)
 	schemaVersion := typesys.GetSchemaVersion()
 
 	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
 	if typesystem.IsSchemaVersionSupported(schemaVersion) {
-		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
+		if !validObject && !validUserset {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
 
-		if tuple.IsObjectRelation(user) {
-			userObj, _ := tuple.SplitObjectRelation(user)
-
-			if tuple.IsTypedWildcard(userObj) {
+		if validUserset {
+			_, id := tuple.SplitObject(userObject)
+			if id == tuple.Wildcard {
 				return fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value")
 			}
 		}
 	}
 
-	userObject, userRelation := tuple.SplitObjectRelation(user)
-	userObjectType := tuple.GetType(userObject)
-
 	// for 1.0 and 1.1 models if the 'user' field is a userset then we validate the 'object#relation'
 	// by making sure the user objectType and relation are defined in the model.
-	if tuple.IsObjectRelation(user) {
+	if validUserset {
 		_, err := typesys.GetRelation(userObjectType, userRelation)
 		if err != nil {
 			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {

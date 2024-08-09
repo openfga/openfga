@@ -33,7 +33,7 @@ const (
 var (
 	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
 	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
-	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#\s]+#[^:#\s]+$`)
+	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+#[^:#\s]+$`)
 	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
@@ -300,9 +300,6 @@ func IsValidRelation(s string) bool {
 
 // IsValidUser determines if a string is a valid user. A valid user contains at most one `:`, at most one `#` and no spaces.
 func IsValidUser(user string) bool {
-	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
-		return false
-	}
 	if user == Wildcard || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
 	}
