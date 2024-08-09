@@ -336,17 +336,14 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	userObjectType := tuple.GetType(userObject)
 	schemaVersion := typesys.GetSchemaVersion()
 
-	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
 	if typesystem.IsSchemaVersionSupported(schemaVersion) {
 		if !validObject && !validUserset {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
 
-		if validUserset {
-			_, id := tuple.SplitObject(userObject)
-			if id == tuple.Wildcard {
-				return fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value")
-			}
+		_, ok := typesys.GetTypeDefinition(userObjectType)
+		if !ok {
+			return &tuple.TypeNotFoundError{TypeName: userObjectType}
 		}
 	}
 
@@ -362,15 +359,6 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 			if errors.Is(err, typesystem.ErrRelationUndefined) {
 				return &tuple.RelationNotFoundError{Relation: userRelation, TypeName: userObjectType}
 			}
-		}
-	}
-
-	// if the model is a 1.1 model we make sure that the objectType of the 'user' field is a defined
-	// type in the model.
-	if typesystem.IsSchemaVersionSupported(schemaVersion) {
-		_, ok := typesys.GetTypeDefinition(userObjectType)
-		if !ok {
-			return &tuple.TypeNotFoundError{TypeName: userObjectType}
 		}
 	}
 

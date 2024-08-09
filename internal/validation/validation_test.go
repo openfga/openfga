@@ -687,7 +687,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Cause:    fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value"),
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:*#editor"),
 			},
 		},

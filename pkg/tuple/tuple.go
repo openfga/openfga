@@ -33,7 +33,7 @@ const (
 var (
 	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
 	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
-	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+#[^:#\s]+$`)
+	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#:*\s]+#[^:#*\s]+$`)
 	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
