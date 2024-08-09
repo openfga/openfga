@@ -86,7 +86,7 @@ lint: $(GO_BIN)/golangci-lint ## Lint Go source files
 
 test: generate-mocks ## Run all tests. To run a specific test, pass the FILTER var. Usage `make test FILTER="TestCheckLogs"`
 	${call print, "Running tests"}
-	@go test -race \
+	@go test -race -v \
 			-run "$(FILTER)" \
 			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \

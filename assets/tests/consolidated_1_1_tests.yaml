@@ -10059,3 +10059,100 @@ tests:
               relation: can_read
             expectation:
               - user:1
+
+  - name: ttu_discard_invalid
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user, role#assignee]
+          type job
+            relations
+              define parent: [role]
+              define can_read: assignee from parent
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+
+          - object: role:parent
+            user: role:minion#assignee
+            relation: assignee
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: false
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define parent: [role]
+              define can_read: assignee from parent
+        tuples:
+          - object: job:1
+            user: role:admin
+            relation: parent
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+
+  - name: userset_discard_invalid
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define placeholder: [user]
+              define assignee: [user, role#placeholder]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+
+          - object: role:invalid
+            user: role:awesome#placeholder
+            relation: assignee
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: false
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - object: job:1
+            user: role:admin#assignee
+            relation: can_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true

@@ -834,12 +834,31 @@ type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
 // buildUsersetDetails given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
 // This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType.
-func buildUsersetDetails(typesys *typesystem.TypeSystem, userType string) usersetDetailsFunc {
+func buildUsersetDetails(typesys *typesystem.TypeSystem) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		terminalRelations := typesys.GetTerminalRelations(objectType, relation, userType)
-		return tuple.ToObjectRelationString(objectType, terminalRelations[0]), objectID, nil
+
+		cr := relation
+	Resolve:
+		for {
+			rel, err := typesys.GetRelation(objectType, cr)
+			if err != nil {
+				return "", "", err
+			}
+			rewrite := rel.GetRewrite()
+			switch rewrite.GetUserset().(type) {
+			case *openfgav1.Userset_ComputedUserset:
+				cr = rewrite.GetComputedUserset().GetRelation()
+			case *openfgav1.Userset_This:
+				break Resolve
+			default:
+				return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+			}
+		}
+
+		return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+
 	}
 }
 
@@ -848,7 +867,6 @@ func buildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation str
 		object, _ := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
 		cr := computedRelation
-
 	Resolve:
 		for {
 			rel, err := typesys.GetRelation(objectType, cr)
@@ -890,7 +908,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveChe
 	defer span.End()
 	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	usersetDetails := buildUsersetDetails(typesys, tuple.GetType(req.GetTupleKey().GetUser()))
+	usersetDetails := buildUsersetDetails(typesys)
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
