@@ -3143,7 +3143,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "viewable_member"),
 			},
 			userType:                 "user",
-			expectDirectlyAssignable: true,
+			expectDirectlyAssignable: false, // FIXME: Change it to true once computed userset optimization is ready
 		},
 		{
 			name: "public_assignable",
@@ -3243,6 +3243,29 @@ func TestUsersetCanFastPath(t *testing.T) {
 			userType:                 "notExist",
 			expectDirectlyAssignable: false,
 		},
+		{
+			name: "userset_ttu_mixture",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type role
+				  relations
+					define assignee: [user]
+				type permission
+				  relations
+					define assignee: assignee from role
+					define role: [role]
+				type job
+				  relations
+					define can_read: [permission#assignee]
+				 	define not_block: [user] but not can_read`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("permission", "assignee"),
+			},
+			userType:                 "user",
+			expectDirectlyAssignable: false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -3261,8 +3284,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		name              string
 		model             string
 		objectType        string
+		tuplesetRelation  string
 		computedRelation  string
-		userType          string
 		expectCanFastPath bool
 	}{
 		{
@@ -3280,8 +3303,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3300,8 +3323,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3320,8 +3343,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3342,9 +3365,9 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: can_view from parent`,
 
 			objectType:        "document",
-			computedRelation:  "viewer",
-			userType:          "user",
-			expectCanFastPath: true,
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_view",
+			expectCanFastPath: false, // FIXME when computed userset can be optimized
 		},
 		{
 			name: "tupleset_relation_public",
@@ -3362,8 +3385,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3381,8 +3404,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "parent",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3403,8 +3426,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		                }
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3423,8 +3446,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user1",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3445,8 +3468,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3467,8 +3490,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 						define owner: [group1, group2]
 						define viewer: member from owner`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user1",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3488,8 +3511,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 						define owner: [group1, group2]
 						define viewer: member from owner`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user1",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3508,8 +3531,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 					define parent: [document, folder]
 					define viewer: [user, user:*]`,
 			objectType:        "document",
-			computedRelation:  "can_read",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "viewer",
 			expectCanFastPath: false,
 		},
 		{
@@ -3532,8 +3555,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			// notice that group_without_member does not have member.  However, we should
 			// still allow because group_with_member has member
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3552,8 +3575,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3574,8 +3597,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		                }
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3596,8 +3619,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 				}
 			`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3622,8 +3645,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 				}
 			`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3643,8 +3666,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3666,8 +3689,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		                }
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3685,8 +3708,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "undefined_type",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3704,8 +3727,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "group",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3723,8 +3746,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "group",
-			computedRelation:  "parent",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 	}
@@ -3733,7 +3756,7 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			actual := typesys.TTUCanFastPath(test.objectType, test.computedRelation, test.userType)
+			actual := typesys.TTUCanFastPath(test.objectType, test.tuplesetRelation, test.computedRelation)
 			require.Equal(t, test.expectCanFastPath, actual)
 		})
 	}
