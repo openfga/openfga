@@ -845,12 +845,28 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, userType string) userse
 
 func buildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation string) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
-		//documet1#parent@folder:x # reader
-		// computedRelation
-		// folder:x#writer@user:poop
-		objectType, objectID := tuple.SplitObject(t.GetUser())
-		types, _, _ := typesys.ResolvesTypeRelationToDirectlyAssignable(objectType, computedRelation)
-		return tuple.ToObjectRelationString(types[0], computedRelation), objectID, nil
+		object, _ := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		cr := computedRelation
+
+	Resolve:
+		for {
+			rel, err := typesys.GetRelation(objectType, cr)
+			if err != nil {
+				return "", "", err
+			}
+			rewrite := rel.GetRewrite()
+			switch rewrite.GetUserset().(type) {
+			case *openfgav1.Userset_ComputedUserset:
+				cr = rewrite.GetComputedUserset().GetRelation()
+			case *openfgav1.Userset_This:
+				break Resolve
+			default:
+				return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+			}
+		}
+
+		return tuple.ToObjectRelationString(objectType, cr), objectID, nil
 	}
 }
 
@@ -1003,6 +1019,9 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		objectRel, objectID, err := usersetDetails(t)
 		if err != nil {
+			if errors.Is(err, typesystem.ErrRelationUndefined) {
+				continue
+			}
 			trySendUsersetsError(ctx, err, usersetsChan)
 			break
 		}
