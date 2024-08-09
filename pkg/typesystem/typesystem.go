@@ -334,9 +334,56 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
+func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return nil, false, err
+	}
+	rewrite := relation.GetRewrite().GetUserset()
+
+	if rw, ok := rewrite.(*openfgav1.Userset_ComputedUserset); ok {
+		return t.resolvesTypeRelationToDirectlyAssignable(objectType, rw.ComputedUserset.GetRelation())
+	}
+
+	_, ok := rewrite.(*openfgav1.Userset_This)
+	if !ok {
+		return nil, false, nil
+	}
+
+	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+
+	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
+	// need to check whether these are simple types as well
+	for _, ref := range directlyRelatedTypes {
+		if ref.GetRelationOrWildcard() != nil {
+			if _, ok := ref.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				// For now, we don't allow if these types are another userset
+				// because local check with these relations cannot be evaluated via simple datastore query.
+				return nil, false, nil
+			}
+		}
+		assignableTypes = append(assignableTypes, ref.GetType())
+	}
+	return assignableTypes, true, nil
+}
+
 // UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
 func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
 	for _, rr := range relationReferences {
+		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
+		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
+		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
+			return false
+		}
+		_, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation())
+		if err != nil {
+			return false
+		}
+		if !directlyAssignable {
+			return false
+		}
+
+		// Finally, ensure that terminal relation can be found
 		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
 		if len(terminalRelations) != 1 {
 			return false
