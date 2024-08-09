@@ -276,6 +276,42 @@ func TestTypesystemConnectedTypesAssignment(t *testing.T) {
 				},
 			},
 		},
+		{
+			model: `
+				model
+          schema 1.1
+      
+        type user
+      
+        type role
+          relations
+            define assignee: [user]
+      
+        type permission
+          relations
+            define assignee: assignee from role
+            define role: [role]
+      
+        type job
+          relations
+            define can_read: [permission#assignee]
+			`,
+			expectedConnectedTypes: TypesystemConnectedTypes{
+				"permission": map[string]map[string][]string{
+					"assignee": {
+						"user": {"assignee"},
+					},
+					"role": {
+						"role": {"role"},
+					},
+				},
+				"role": map[string]map[string][]string{
+					"assignee": {
+						"user": {"assignee"},
+					},
+				},
+			},
+		},
 	}
 
 	for i, test := range tests {
