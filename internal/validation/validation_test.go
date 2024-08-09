@@ -159,6 +159,14 @@ func TestValidateTuple(t *testing.T) {
 			},
 		},
 		{
+			name:  "malformed_user_6",
+			tuple: tuple.NewTupleKey("document:1", "relation", "user:eng#member#member"),
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
+				TupleKey: tuple.NewTupleKey("document:1", "relation", "user:eng#member#member"),
+			},
+		},
+		{
 			name:  "malformed_user_4_(invalid_user_for_1.1_model)",
 			tuple: tuple.NewTupleKey("document:1", "viewer", "anne"), // user must be 'object' or 'object#relation' in 1.1 models
 			model: &openfgav1.AuthorizationModel{
