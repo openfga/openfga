@@ -330,14 +330,14 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 		return fmt.Errorf("the 'user' field is malformed")
 	}
 
-	validObject := tuple.IsValidObject(user)
-	validUserset := tuple.IsObjectRelation(user)
+	isValidObject := tuple.IsValidObject(user)
+	isValidUserset := tuple.IsObjectRelation(user)
 	userObject, userRelation := tuple.SplitObjectRelation(user)
 	userObjectType := tuple.GetType(userObject)
 	schemaVersion := typesys.GetSchemaVersion()
 
 	if typesystem.IsSchemaVersionSupported(schemaVersion) {
-		if !validObject && !validUserset {
+		if !isValidObject && !isValidUserset {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
 
@@ -349,7 +349,7 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 
 	// for 1.0 and 1.1 models if the 'user' field is a userset then we validate the 'object#relation'
 	// by making sure the user objectType and relation are defined in the model.
-	if validUserset {
+	if isValidUserset {
 		_, err := typesys.GetRelation(userObjectType, userRelation)
 		if err != nil {
 			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
