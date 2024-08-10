@@ -134,7 +134,7 @@ func WithTimestampFormat(timestampFormat string) OptionLogger {
 // the special paths "stdout" and "stderr" are interpreted as os.Stdout and os.Stderr.
 // When specified without a scheme, relative file paths also work.
 //
-// Defaults to "stdout"
+// Defaults to "stdout".
 func WithOutputPaths(paths ...string) OptionLogger {
 	return func(ol *OptionsLogger) {
 		ol.outputPaths = paths
