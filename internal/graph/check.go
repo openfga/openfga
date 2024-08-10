@@ -832,59 +832,47 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 
 type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
-// buildUsersetDetails given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
-// This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType.
-func buildUsersetDetails(typesys *typesystem.TypeSystem) usersetDetailsFunc {
-	return func(t *openfgav1.TupleKey) (string, string, error) {
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-
-		cr := relation
-	Resolve:
-		for {
-			rel, err := typesys.GetRelation(objectType, cr)
-			if err != nil {
-				return "", "", err
-			}
-			rewrite := rel.GetRewrite()
-			switch rewrite.GetUserset().(type) {
-			case *openfgav1.Userset_ComputedUserset:
-				cr = rewrite.GetComputedUserset().GetRelation()
-			case *openfgav1.Userset_This:
-				break Resolve
-			default:
-				return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
-			}
+func buildUsersetDetails(typesys *typesystem.TypeSystem, t *openfgav1.TupleKey, computedRelation string) (string, string, error) {
+	object, relation := tuple.SplitObjectRelation(t.GetUser())
+	objectType, objectID := tuple.SplitObject(object)
+	cr := relation
+	if computedRelation != "" {
+		cr = computedRelation
+	}
+Resolve:
+	for {
+		rel, err := typesys.GetRelation(objectType, cr)
+		if err != nil {
+			return "", "", err
 		}
+		rewrite := rel.GetRewrite()
+		switch rewrite.GetUserset().(type) {
+		case *openfgav1.Userset_ComputedUserset:
+			cr = rewrite.GetComputedUserset().GetRelation()
+		case *openfgav1.Userset_This:
+			break Resolve
+		default:
+			return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+		}
+	}
+	return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+}
 
-		return tuple.ToObjectRelationString(objectType, cr), objectID, nil
-
+// buildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
+// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
+func buildUsersetDetailsUserset(typesys *typesystem.TypeSystem) usersetDetailsFunc {
+	return func(t *openfgav1.TupleKey) (string, string, error) {
+		// the relation is from the tuple
+		_, relation := tuple.SplitObjectRelation(t.GetUser())
+		return buildUsersetDetails(typesys, t, relation)
 	}
 }
 
+// buildUsersetDetailsTTU given (tuple doc:1#viewer@group:2, member) will return group#member, 2, nil.
+// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
 func buildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation string) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
-		object, _ := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		cr := computedRelation
-	Resolve:
-		for {
-			rel, err := typesys.GetRelation(objectType, cr)
-			if err != nil {
-				return "", "", err
-			}
-			rewrite := rel.GetRewrite()
-			switch rewrite.GetUserset().(type) {
-			case *openfgav1.Userset_ComputedUserset:
-				cr = rewrite.GetComputedUserset().GetRelation()
-			case *openfgav1.Userset_This:
-				break Resolve
-			default:
-				return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
-			}
-		}
-
-		return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+		return buildUsersetDetails(typesys, t, computedRelation)
 	}
 }
 
@@ -908,7 +896,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveChe
 	defer span.End()
 	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	usersetDetails := buildUsersetDetails(typesys)
+	usersetDetails := buildUsersetDetailsUserset(typesys)
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
@@ -966,6 +954,10 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
+	}
+	// need to account for getting the iter in the first place
+	if resp != nil {
+		resp.ResolutionMetadata.DatastoreQueryCount++
 	}
 
 	return resp, err
@@ -1189,11 +1181,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			defer filteredIter.Stop()
 
 			resolver := c.checkUsersetSlowPath
-
-			if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
-				resolver = c.checkUsersetFastPath
+			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
+					resolver = c.checkUsersetFastPath
+				}
 			}
-
 			return resolver(ctx, req, filteredIter)
 		}
 
@@ -1317,7 +1309,6 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
 	usersetDetails := buildUsersetDetailsTTU(typesys, computedRelation)
-
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 

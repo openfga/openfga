@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"go.opentelemetry.io/otel"
 	"maps"
 	"reflect"
 	"sort"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"
@@ -164,8 +165,6 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
-	connectedTypes TypesystemConnectedTypes
-
 	modelID       string
 	schemaVersion string
 }
@@ -217,7 +216,6 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		relations:       relations,
 		conditions:      uncompiledConditions,
 		ttuRelations:    ttuRelations,
-		connectedTypes:  make(TypesystemConnectedTypes),
 	}
 }
 
@@ -381,12 +379,6 @@ func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.Relation
 		if !directlyAssignable {
 			return false
 		}
-
-		// Finally, ensure that terminal relation can be found
-		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
-		if len(terminalRelations) != 1 {
-			return false
-		}
 	}
 	return true
 }
@@ -447,11 +439,6 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 		}
 	}
 	return true
-}
-
-// GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified computedRelation.
-func (t *TypeSystem) GetTerminalRelations(objectType, relation, userType string) []string {
-	return t.connectedTypes[objectType][relation][userType]
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
@@ -865,7 +852,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 			if err != nil {
 				return nil, err
 			}
-			t.AssignTerminalTypes(typeName, relationName)
 		}
 	}
 

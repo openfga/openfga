@@ -3143,7 +3143,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "viewable_member"),
 			},
 			userType:                 "user",
-			expectDirectlyAssignable: false, // FIXME: Change it to true once computed userset optimization is ready
+			expectDirectlyAssignable: true,
 		},
 		{
 			name: "public_assignable",
@@ -3241,7 +3241,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "member"),
 			},
 			userType:                 "notExist",
-			expectDirectlyAssignable: false,
+			expectDirectlyAssignable: true, // it doesn't matter as the fastpath code will "eat" it
 		},
 		{
 			name: "userset_ttu_mixture",
@@ -3367,7 +3367,7 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			objectType:        "document",
 			tuplesetRelation:  "parent",
 			computedRelation:  "can_view",
-			expectCanFastPath: false, // FIXME when computed userset can be optimized
+			expectCanFastPath: true,
 		},
 		{
 			name: "tupleset_relation_public",
