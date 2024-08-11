@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"html/template"
 	"net"
 	"net/http"
@@ -385,6 +386,11 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		}
 		datastore = memory.New(opts...)
+	case "sqlite":
+		datastore, err = sqlite.New("", nil)
+		if err != nil {
+			return nil, fmt.Errorf("initialize sqlite datastore: %w", err)
+		}
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {

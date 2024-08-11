@@ -46,6 +46,8 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 		return NewMySQLTestContainer().RunMySQLTestContainer(t)
 	case "postgres":
 		return NewPostgresTestContainer().RunPostgresTestContainer(t)
+	case "sqlite":
+		return NewSqliteTestContainer().RunSqliteTestDatabase(t)
 	case "memory":
 		return memoryTestContainer{}
 	default:
