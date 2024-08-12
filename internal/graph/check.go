@@ -837,6 +837,10 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, t *openfgav1.TupleKey, 
 	objectType, objectID := tuple.SplitObject(object)
 	cr := relation
 	if computedRelation != "" {
+		// In the case computedRelation is provided (which is the case for TTU),
+		// the computedRelation will be used. Otherwise (which is the case for
+		// userset), the computed relation will be derived from the tuple key's
+		// userset's relation.
 		cr = computedRelation
 	}
 Resolve:
@@ -955,7 +959,9 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	if err != nil {
 		telemetry.TraceError(span, err)
 	}
-	// need to account for getting the iter in the first place
+
+	// Ideally, the caller would have accounted for getting the iter in the first place.
+	// TODO: add in logic for incrementing datastore query counter in caller.
 	if resp != nil {
 		resp.ResolutionMetadata.DatastoreQueryCount++
 	}

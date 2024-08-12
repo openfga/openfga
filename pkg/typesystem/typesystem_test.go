@@ -3241,7 +3241,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "member"),
 			},
 			userType:                 "notExist",
-			expectDirectlyAssignable: true, // it doesn't matter as the fastpath code will "eat" it
+			expectDirectlyAssignable: true, // it doesn't matter as the fastpath code will "discard" it
 		},
 		{
 			name: "userset_ttu_mixture",
