@@ -3171,7 +3171,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 			expectDirectlyAssignable: true,
 		},
 		{
-			name: "public_assignable",
+			name: "parent_public_assignable",
 			model: `
 						model
 							schema 1.1
@@ -3189,7 +3189,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
 		},
 		{
-			name: "conditional_relation",
+			name: "conditional_relation_parent",
 			model: `
 						model
 							schema 1.1
@@ -3209,7 +3209,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 			expectDirectlyAssignable: true,
 		},
 		{
-			name: "conditional_relation_in_member",
+			name: "conditional_relation_in_child",
 			model: `
 						model
 							schema 1.1
@@ -3302,6 +3302,35 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "assignee"),
 			},
 			expectDirectlyAssignable: false,
+		},
+		{
+			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
+			model: `
+				model
+				  schema 1.1
+                type user
+				type group
+				  relations
+					define member: [user, user with x_bigger_than]
+					define user_in_context: [user]
+					define reader: member
+					define assignee: reader
+				type tier
+				  relations
+				   define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
+
+				condition x_bigger_than(x: int) {
+					x > 100
+                }
+				condition user_in_context(x: int) {
+					x > 100
+                }`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "assignee"),
+				DirectRelationReference("group", "user_in_context"),
+				ConditionedRelationReference(DirectRelationReference("group", "user_in_context"), "x_bigger_than"),
+			},
+			expectDirectlyAssignable: true,
 		},
 	}
 	for _, test := range tests {
@@ -3807,6 +3836,31 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			tuplesetRelation:  "parent",
 			computedRelation:  "member",
 			expectCanFastPath: false,
+		},
+		{
+			name: "multiple_parent_types_with_conditions_multiple_child_types_with_conditions_or_wildcard",
+			model: `
+						model
+							schema 1.1
+						type user
+						type employee
+						type company
+						  relations
+							define member: [user, employee, user:*]
+						type group
+						  relations
+							define member: [user, user with x_greater_than]
+						type license
+						  relations
+							define holder_member: member from owner
+							define owner: [company, group, group with x_condition]
+						condition x_greater_than(x: int) {x > 1}
+						condition x_condition(x: int) {x > 1}
+					`,
+			objectType:        "license",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
+			expectCanFastPath: true,
 		},
 	}
 	for _, test := range tests {
