@@ -704,7 +704,7 @@ tests:
               object: document:1
               relation: viewer
             context:
-               "x": 99
+              "x": 99
             expectation:
               - user:aardvark
           - request:
@@ -721,7 +721,7 @@ tests:
               object: document:1
               relation: viewer
             context:
-               "x": 99
+              "x": 99
             expectation:
               - folder:x#viewer
   - name: direct_relations_with_condition_through_intersection
@@ -1023,6 +1023,97 @@ tests:
             context:
               "x": 20
             expectation:
+  - name: simple_userset_with_and_without_condition_in_child
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond, user]
+          type document
+            relations
+              define viewer: [folder#viewer]
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a#viewer
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+          - user: folder:withoutcond#viewer
+            relation: viewer
+            object: document:2
+          - user: user:bob
+            relation: viewer
+            object: folder:withoutcond
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:2
+            context:
+              "x": 10
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
   - name: simple_ttu_with_condition
     stages:
       - model: |
@@ -1197,7 +1288,7 @@ tests:
             context:
               "x": 20
             expectation:
-             - user:without-condition
+              - user:without-condition
   - name: simple_ttu_with_multiple_conditions
     stages:
       - model: |
@@ -1646,23 +1737,23 @@ tests:
               "x": 101
               "y": 51
             expectation:
-# TODO inconsistent with Check, which throws error. See https://github.com/openfga/openfga/issues/1567
-#          - request:
-#              user: user:jon
-#              type: document
-#              relation: viewer
-#            context:
-#              "x": 10
-#            expectation:
-#              - document:1
-#          - request:
-#              user: user:jon
-#              type: document
-#              relation: viewer
-#            context:
-#              "y": 10
-#            expectation:
-#              - document:1
+        # TODO inconsistent with Check, which throws error. See https://github.com/openfga/openfga/issues/1567
+        #          - request:
+        #              user: user:jon
+        #              type: document
+        #              relation: viewer
+        #            context:
+        #              "x": 10
+        #            expectation:
+        #              - document:1
+        #          - request:
+        #              user: user:jon
+        #              type: document
+        #              relation: viewer
+        #            context:
+        #              "y": 10
+        #            expectation:
+        #              - document:1
         listUsersAssertions:
           - request:
               filters:
@@ -1964,7 +2055,7 @@ tests:
             context:
               "x": 1.797693134862315708145274237317
             expectation:
-             - document:1
+              - document:1
           - request:
               user: user:jon
               type: document

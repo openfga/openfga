@@ -858,7 +858,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-             - folder:X#editor
+              - folder:X#editor
           - request:
               filters:
                 - folder#writer
@@ -1064,7 +1064,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-             - folder:X#writer
+              - folder:X#writer
           - request:
               filters:
                 - folder#viewer
@@ -1419,7 +1419,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-             - document:1#editor
+              - document:1#editor
           - request:
               filters:
                 - user
@@ -2057,7 +2057,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-             - folder:X#viewer
+              - folder:X#viewer
           - request:
               filters:
                 - document#writer
@@ -2251,7 +2251,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-             - document:1#writer
+              - document:1#writer
           - request:
               filters:
                 - document#editor
@@ -2794,7 +2794,7 @@ tests:
               type: group
               relation: blocked
             expectation:
-             - group:1
+              - group:1
         listUsersAssertions:
           - request:
               filters:
@@ -6523,7 +6523,7 @@ tests:
               object: document:a
               relation: can_see
             expectation:
-             - document:a#viewer
+              - document:a#viewer
   - name: evaluate_userset_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -8447,16 +8447,16 @@ tests:
             relations
               define viewer: [user]
         checkAssertions:
-        - tuple:
-            user: document:1#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
-        - tuple:
-            user: document:2#viewer
-            relation: viewer
-            object: document:1
-          expectation: false
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:2#viewer
+              relation: viewer
+              object: document:1
+            expectation: false
         listObjectsAssertions:
           - request:
               user: document:1#viewer
@@ -8483,21 +8483,21 @@ tests:
               define editor: [user]
               define writer: [user]
         checkAssertions:
-        - tuple:
-            user: document:1#writer
-            relation: viewer
-            object: document:1
-          expectation: true
-        - tuple:
-            user: document:1#editor
-            relation: viewer
-            object: document:1
-          expectation: true
-        - tuple:
-            user: document:1#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
+          - tuple:
+              user: document:1#writer
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:1#editor
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: document:1#writer
@@ -8547,21 +8547,21 @@ tests:
               define writer: [user]
               define viewer: writer
         checkAssertions:
-        - tuple:
-            user: document:1#writer
-            relation: viewer
-            object: document:1
-          expectation: true
-        - tuple:
-            user: document:1#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
-        - tuple:
-            user: document:1#viewer
-            relation: writer
-            object: document:1
-          expectation: false
+          - tuple:
+              user: document:1#writer
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:1#viewer
+              relation: writer
+              object: document:1
+            expectation: false
         listObjectsAssertions:
           - request:
               user: document:1#writer
@@ -8617,16 +8617,16 @@ tests:
             relation: parent
             object: document:1
         checkAssertions:
-        - tuple:
-            user: folder:x#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
-        - tuple:
-            user: document:1#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
+          - tuple:
+              user: folder:x#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: document:1#viewer
@@ -8664,21 +8664,21 @@ tests:
               define allowed: [user]
               define viewer: [user] and allowed
         checkAssertions:
-        - tuple:
-            user: document:1#viewer
-            relation: allowed
-            object: document:1
-          expectation: false
-        - tuple:
-            user: document:1#allowed
-            relation: viewer
-            object: document:1
-          expectation: false
-        - tuple:
-            user: document:1#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
+          - tuple:
+              user: document:1#viewer
+              relation: allowed
+              object: document:1
+            expectation: false
+          - tuple:
+              user: document:1#allowed
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: document:1#allowed
@@ -8714,21 +8714,21 @@ tests:
               define restricted: [user]
               define viewer: [user] but not restricted
         checkAssertions:
-        - tuple:
-            user: document:1#viewer
-            relation: restricted
-            object: document:1
-          expectation: false
-        - tuple:
-            user: document:1#restricted
-            relation: viewer
-            object: document:1
-          expectation: false
-        - tuple:
-            user: document:1#viewer
-            relation: viewer
-            object: document:1
-          expectation: true
+          - tuple:
+              user: document:1#viewer
+              relation: restricted
+              object: document:1
+            expectation: false
+          - tuple:
+              user: document:1#restricted
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: document:1#viewer
@@ -8752,7 +8752,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            - document:1#viewer
+              - document:1#viewer
           - request:
               filters:
                 - document#viewer
@@ -8783,11 +8783,11 @@ tests:
             relation: member
             object: group:1
         checkAssertions:
-        - tuple:
-            user: group:1#member
-            relation: member
-            object: group:1
-          expectation: true
+          - tuple:
+              user: group:1#member
+              relation: member
+              object: group:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: group:1#member
@@ -8801,7 +8801,7 @@ tests:
               object: group:1
               relation: member
             expectation:
-            - group:1#member
+              - group:1#member
   - name: userset_defines_itself_8
     stages:
       - model: |
@@ -8813,11 +8813,11 @@ tests:
               define writer: [user]
               define viewer: [user] or writer
         checkAssertions:
-        - tuple:
-            user: document:1#writer
-            relation: viewer
-            object: document:1
-          expectation: true
+          - tuple:
+              user: document:1#writer
+              relation: viewer
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: document:1#writer
@@ -8831,7 +8831,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            - document:1#writer
+              - document:1#writer
   - name: userset_defines_itself_9
     stages:
       - model: |
@@ -8871,7 +8871,7 @@ tests:
               object: document:1
               relation: viewer
             expectation:
-            - group:fga#member
+              - group:fga#member
   - name: userset_defines_itself_10
     stages:
       - model: |
@@ -8948,35 +8948,35 @@ tests:
               object: doc:1
               relation: b
             expectation:
-            - doc:1#d
+              - doc:1#d
           - request:
               filters:
                 - doc#c
               object: doc:1
               relation: b
             expectation:
-            - doc:1#c
+              - doc:1#c
           - request:
               filters:
                 - doc#c
               object: doc:1
               relation: a
             expectation:
-            - doc:1#c
+              - doc:1#c
           - request:
               filters:
                 - doc#d
               object: doc:1
               relation: a
             expectation:
-            - doc:1#d
+              - doc:1#d
           - request:
               filters:
                 - doc#b
               object: doc:1
               relation: a
             expectation:
-            - doc:1#b
+              - doc:1#b
   - name: ttu_mix_with_userset
     stages:
       - model: |
@@ -9843,3 +9843,345 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+  - name: ttu_to_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: assignee from role
+              define role: [role]
+          type job
+            relations
+              define can_read: [permission#assignee]
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin
+            relation: role
+          - object: job:1
+            user: permission:readJobs#assignee
+            relation: can_read
+          - object: job:1
+            user: user:1
+            relation: cannot_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+  - name: ttu_to_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: assignee from role
+              define role: [role]
+          type job
+            relations
+              define permission: [permission]
+              define can_read: assignee from permission
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin
+            relation: role
+          - object: job:1
+            user: permission:readJobs
+            relation: permission
+          - object: job:1
+            user: user:1
+            relation: cannot_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+  - name: userset_to_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: [role#assignee]
+          type job
+            relations
+              define can_read: assignee from permission
+              define permission: [permission]
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin#assignee
+            relation: assignee
+          - object: job:1
+            user: permission:readJobs
+            relation: permission
+          - user: user:1
+            relation: cannot_read
+            object: job:1
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: assignee
+              object: permission:readJobs
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+          - request:
+              user: user:1
+              type: job
+              relation: cannot_read
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: cannot_read
+            expectation:
+  - name: userset_to_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: [role#assignee]
+          type job
+            relations
+              define can_read: [permission#assignee]
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin#assignee
+            relation: assignee
+          - object: job:1
+            user: permission:readJobs#assignee
+            relation: can_read
+          - user: user:1
+            relation: cannot_read
+            object: job:1
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: assignee
+              object: permission:readJobs
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+
+  - name: ttu_discard_invalid
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user, role#assignee]
+          type job
+            relations
+              define parent: [role]
+              define can_read: assignee from parent
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+
+          - object: role:parent
+            user: role:minion#assignee
+            relation: assignee
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: false
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define parent: [role]
+              define can_read: assignee from parent
+        tuples:
+          - object: job:1
+            user: role:admin
+            relation: parent
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+
+  - name: userset_discard_invalid
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define placeholder: [user]
+              define assignee: [user, role#placeholder]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+
+          - object: role:invalid
+            user: role:awesome#placeholder
+            relation: assignee
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: false
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - object: job:1
+            user: role:admin#assignee
+            relation: can_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
