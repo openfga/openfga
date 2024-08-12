@@ -10185,3 +10185,59 @@ tests:
               relation: can_read
               object: job:1
             expectation: true
+
+  - name: userset_discard_invalid_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee, user:*]
+        tuples:
+          - user: user:*
+            relation: can_read
+            object: job:1
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:2
+              relation: can_read
+              object: job:1
+            expectation: true
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - object: job:1
+            user: role:admin#assignee
+            relation: can_read
+          - user: user:1
+            relation: assignee
+            object: role:admin
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:2
+              relation: can_read
+              object: job:1
+            expectation: false

@@ -2971,6 +2971,25 @@ func TestUsersetCanFastPath(t *testing.T) {
 			expectDirectlyAssignable: true,
 		},
 		{
+			name: "multiple_userset_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+                        define member: [user]
+						define allowed: [group#member, folder#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+				DirectRelationReference("folder", "member"),
+			},
+			expectDirectlyAssignable: true,
+		},
+		{
 			name: "userset_reference_itself",
 			model: `
 				model
@@ -3106,10 +3125,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 								define member: [user]
 								define owner: [user]
 								define disallowed: [user]
-								define disallowed_member: member but not disallowed
-						type folder
-							relations
-								define allowed: [group#member, group#owner]`,
+								define disallowed_member: member but not disallowed`,
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 				DirectRelationReference("group", "disallowed_member"),
@@ -3126,6 +3142,25 @@ func TestUsersetCanFastPath(t *testing.T) {
 						type group
 							relations
 								define member: [user]
+								define viewable_member: member
+						type folder
+							relations
+								define allowed: [group#viewable_member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "viewable_member"),
+			},
+			expectDirectlyAssignable: true,
+		},
+		{
+			name: "nested_computed_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define owner: [user]
+								define member: owner
 								define viewable_member: member
 						type folder
 							relations
@@ -3342,8 +3377,7 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 						type folder
 							relations
 								define parent: [group]
-								define viewer: member from parent
-					`,
+								define viewer: member from parent`,
 			objectType:        "folder",
 			tuplesetRelation:  "parent",
 			computedRelation:  "member",
@@ -3360,6 +3394,28 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 							relations
 								define can_view: editor
 								define editor: [user]
+
+						type document
+							relations
+								define parent: [folder]
+								define viewer: can_view from parent`,
+
+			objectType:        "document",
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_view",
+			expectCanFastPath: true,
+		},
+		{
+			name: "nested_computed_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type folder
+							relations
+								define owner: [user]
+								define can_view: editor
+								define editor: owner
 
 						type document
 							relations
