@@ -2951,7 +2951,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 		name                     string
 		model                    string
 		relationReferences       []*openfgav1.RelationReference
-		userType                 string
 		expectDirectlyAssignable bool
 	}{
 		{
@@ -2969,7 +2968,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3001,7 +2999,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3021,7 +3018,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3041,7 +3037,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3061,7 +3056,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3080,7 +3074,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "user1",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3100,7 +3093,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "member"),
 				DirectRelationReference("group", "owner"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3123,7 +3115,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "disallowed_member"),
 				DirectRelationReference("group", "owner"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3142,7 +3133,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "viewable_member"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3161,7 +3151,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				WildcardRelationReference("user"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
 		},
 		{
@@ -3182,7 +3171,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3203,7 +3191,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3222,7 +3209,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "bad_relation"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3240,7 +3226,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "notExist",
 			expectDirectlyAssignable: true, // it doesn't matter as the fastpath code will "discard" it
 		},
 		{
@@ -3258,12 +3243,29 @@ func TestUsersetCanFastPath(t *testing.T) {
 					define role: [role]
 				type job
 				  relations
-					define can_read: [permission#assignee]
-				 	define not_block: [user] but not can_read`,
+					define can_read: [permission#assignee]`,
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("permission", "assignee"),
 			},
-			userType:                 "user",
+			expectDirectlyAssignable: false,
+		},
+		{
+			name: "nested_userset",
+			model: `
+				model
+				  schema 1.1
+				type user
+                type employee
+				type group
+				  relations
+                    define testers: [employee]
+					define assignee: [user, group#testers]
+			    type folder
+				  relations
+				    define allowed: [group#assignee]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "assignee"),
+			},
 			expectDirectlyAssignable: false,
 		},
 	}
@@ -3272,7 +3274,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typeSystem, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			result := typeSystem.UsersetCanFastPath(test.relationReferences, test.userType)
+			result := typeSystem.UsersetCanFastPath(test.relationReferences)
 			require.NoError(t, err)
 			require.Equal(t, test.expectDirectlyAssignable, result)
 		})

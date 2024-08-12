@@ -338,12 +338,13 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 	}
 	rewrite := relation.GetRewrite().GetUserset()
 
-	if rw, ok := rewrite.(*openfgav1.Userset_ComputedUserset); ok {
+	switch rw := rewrite.(type) {
+	case *openfgav1.Userset_ComputedUserset:
 		return t.resolvesTypeRelationToDirectlyAssignable(objectType, rw.ComputedUserset.GetRelation())
-	}
-
-	_, ok := rewrite.(*openfgav1.Userset_This)
-	if !ok {
+	case *openfgav1.Userset_This:
+		break
+	default:
+		// NOTE: Currently, only computed usersets or directly related types are supported (and not usersets)
 		return nil, false, nil
 	}
 
@@ -365,18 +366,14 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 }
 
 // UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
-func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
+func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference) bool {
 	for _, rr := range relationReferences {
 		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
 		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
 		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
 			return false
 		}
-		_, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation())
-		if err != nil {
-			return false
-		}
-		if !directlyAssignable {
+		if _, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation()); err != nil || !directlyAssignable {
 			return false
 		}
 	}
@@ -415,19 +412,15 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 // TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
 func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelation string) bool {
 	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
-	if err != nil {
+	if err != nil || !directlyAssignable {
 		return false
 	}
-	if !directlyAssignable {
-		return false
-	}
-	var relationUndefinedError *RelationUndefinedError
 	for _, tuplesetRelationType := range tuplesetRelationTypes {
 		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
 		if err != nil {
 			// in the case of errors due to relation undefined, we can ignore the error because it is possible
 			// that some parents do not have the relation defined.
-			if errors.As(err, &relationUndefinedError) {
+			if errors.Is(err, ErrRelationUndefined) {
 				continue
 			}
 
