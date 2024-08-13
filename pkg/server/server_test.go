@@ -505,6 +505,71 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 	require.False(t, resp.GetAllowed())
 }
 
+func TestRequestContextPropagation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	for _, tc := range []struct {
+		name                   string
+		shouldPropagateContext bool
+	}{
+		{name: "disabled", shouldPropagateContext: false},
+		{name: "enabled", shouldPropagateContext: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storeID := ulid.Make().String()
+			modelID := ulid.Make().String()
+
+			mockController := gomock.NewController(t)
+			t.Cleanup(mockController.Finish)
+
+			parentCtx, cancelParentCtx := context.WithCancel(context.Background())
+			t.Cleanup(cancelParentCtx)
+
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+			mockDatastore.EXPECT().
+				ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+				AnyTimes().
+				Return(&openfgav1.AuthorizationModel{}, nil)
+
+			mockDatastore.EXPECT().
+				ReadAuthorizationModel(gomock.Any(), gomock.Eq(storeID), gomock.Eq(modelID)).
+				AnyTimes().
+				DoAndReturn(func(ctx context.Context, _, _ string) (*openfgav1.AuthorizationModel, error) {
+					cancelParentCtx()
+					if tc.shouldPropagateContext {
+						require.ErrorIs(t, ctx.Err(), context.Canceled, "storage context must get cancelled if the request context is")
+					} else {
+						e := ctx.Err()
+						require.NoError(t, e, "storage context must not get canceled if request context is")
+					}
+					// Return dummy error, we don't care about the check result for this testcase
+					return nil, storage.ErrNotFound
+				})
+
+			s := MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithRequestContextPropagation(tc.shouldPropagateContext),
+			)
+			t.Cleanup(func() {
+				mockDatastore.EXPECT().Close().Times(1)
+				s.Close()
+			})
+
+			_, _ = s.Check(parentCtx, &openfgav1.CheckRequest{
+				StoreId:              storeID,
+				TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike"),
+				AuthorizationModelId: modelID,
+			})
+		})
+	}
+}
+
 func TestThreeProngThroughVariousLayers(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
