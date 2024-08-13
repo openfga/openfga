@@ -1064,7 +1064,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		usersetsMap[objectRel].Add(objectID)
 
-		if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
+		if usersetsMap[objectRel].Size() >= int(c.usersetBatchSize) {
 			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 		}
 	}
