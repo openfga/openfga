@@ -175,11 +175,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate           CheckResolver
-	concurrencyLimit   uint32
-	maxConcurrentReads uint32
-	usersetBatchSize   uint32
-	logger             logger.Logger
+	delegate             CheckResolver
+	concurrencyLimit     uint32
+	maxConcurrentReads   uint32
+	usersetBatchSize     uint32
+	optimizationsEnabled bool
+	logger               logger.Logger
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -188,6 +189,14 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
+	}
+}
+
+func WithOptimizations(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		if enabled {
+			d.optimizationsEnabled = true
+		}
 	}
 }
 
@@ -1147,8 +1156,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			resolver := c.checkUsersetSlowPath
 
-			if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
-				resolver = c.checkUsersetFastPath
+			if c.optimizationsEnabled {
+				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
+					resolver = c.checkUsersetFastPath
+				}
 			}
 
 			return resolver(ctx, req, filteredIter)
@@ -1339,13 +1350,15 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.checkTTUSlowPath
 
-		// TODO: optimize the case where user is an userset.
-		// If the user is a userset, we will not be able to use the shortcut because the algo
-		// will look up the objects associated with user.
-		if !tuple.IsObjectRelation(tk.GetUser()) {
-			if canFastPath := typesys.TTUCanFastPath(
-				tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
-				resolver = c.checkTTUFastPath
+		if c.optimizationsEnabled {
+			// TODO: optimize the case where user is an userset.
+			// If the user is a userset, we will not be able to use the shortcut because the algo
+			// will look up the objects associated with user.
+			if !tuple.IsObjectRelation(tk.GetUser()) {
+				if canFastPath := typesys.TTUCanFastPath(
+					tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
+					resolver = c.checkTTUFastPath
+				}
 			}
 		}
 
