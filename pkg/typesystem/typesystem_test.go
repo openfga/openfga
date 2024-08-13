@@ -17,6 +17,166 @@ type relationDetails struct {
 	hasLoop        bool
 }
 
+func TestRelationEquals(t *testing.T) {
+	tests := map[string]struct {
+		a *openfgav1.RelationReference
+		b *openfgav1.RelationReference
+		o bool
+	}{
+		"nil_and_nil": {
+			a: nil,
+			b: nil,
+			o: true,
+		},
+		"existing_and_nil": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			b: nil,
+			o: false,
+		},
+		"nil_and_existing": {
+			a: nil,
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			o: false,
+		},
+		"different_types": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "document",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			o: false,
+		},
+		"same_types_two_wildcards": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			o: true,
+		},
+		"same_types_one_wildcard_one_relation": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "viewer",
+				},
+			},
+			o: false,
+		},
+		"same_types_same_relations": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "viewer",
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "viewer",
+				},
+			},
+			o: true,
+		},
+		"same_types_different_relations": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "viewer",
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "writer",
+				},
+			},
+			o: false,
+		},
+		"same_types_empty_relations": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "",
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "",
+				},
+			},
+			o: false,
+		},
+		"same_types_first_relation_empty": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "",
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "writer",
+				},
+			},
+			o: false,
+		},
+		"same_types_second_relation_empty": {
+			a: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "viewer",
+				},
+			},
+			b: &openfgav1.RelationReference{
+				Type: "user",
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "",
+				},
+			},
+			o: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.True(t, RelationEquals(tc.a, tc.b) == tc.o)
+		})
+	}
+}
+
 func TestHasEntrypoints(t *testing.T) {
 	tests := map[string]struct {
 		model         string
