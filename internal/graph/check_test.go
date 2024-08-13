@@ -2239,6 +2239,25 @@ func TestGetComputeRelation(t *testing.T) {
 			expectedError:    false,
 		},
 		{
+			name: "deep_computed_relation",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: viewable_member1
+					define viewable_member3: viewable_member2
+					define viewable_member4: viewable_member3`,
+
+			objectType:       "group",
+			relation:         "viewable_member4",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
 			name: "unexpected_rel",
 			model: `
 			model
