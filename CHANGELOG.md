@@ -8,7 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.5.8] - 2024-08-07
+## [1.5.9] - 2024-08-13
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
+
+## Fixed
+
+- Incorrect results returned by Check API when performance optimizations are applied.
+
+## [1.5.8] - 2024-08-07 (Recalled)
+
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.7...v1.5.8)
 
@@ -27,7 +36,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 * address `"expected exactly one terminal relation for fast path, received {num}"` error during `Check` for models with type restrictions with and without a condition or with multiple conditions. [#1814](https://github.com/openfga/openfga/pull/1814)
 
-## [1.5.7] - 2024-07-25
+## [1.5.7] - 2024-07-25 (Recalled)
 
 ### Added
 
@@ -1137,7 +1146,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.8...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.9...HEAD
+[1.5.9]: https://github.com/openfga/openfga/releases/tag/v1.5.9
 [1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
 [1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
 [1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
