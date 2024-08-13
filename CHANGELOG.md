@@ -12,12 +12,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
 
-## Fixed
+## Security
 
-- Incorrect results returned by Check API when performance optimizations are applied.
+* Address [CVE-2024-42473](https://github.com/openfga/openfga/security/advisories/GHSA-3f6g-m4hr-59h8) - a critical issue where Check API can return incorrect responses. Please see the CVE report for more details.
 
-## [1.5.8] - 2024-08-07 (Recalled)
-
+## [1.5.8] - 2024-08-07
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.7...v1.5.8)
 
@@ -36,7 +35,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 * address `"expected exactly one terminal relation for fast path, received {num}"` error during `Check` for models with type restrictions with and without a condition or with multiple conditions. [#1814](https://github.com/openfga/openfga/pull/1814)
 
-## [1.5.7] - 2024-07-25 (Recalled)
+## [1.5.7] - 2024-07-25
 
 ### Added
 
