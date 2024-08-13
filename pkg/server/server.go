@@ -154,8 +154,9 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
-	ctx                 context.Context
-	checkTrackerEnabled bool
+	ctx                         context.Context
+	checkTrackerEnabled         bool
+	datastoreContextPropagation bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -426,6 +427,17 @@ func WithDispatchThrottlingCheckResolverMaxThreshold(maxThreshold uint32) OpenFG
 	}
 }
 
+// WithRequestContextPropagation determines whether the request context is propagated to the datastore.
+// When enabled, the datastore receives cancellation signals when an API request is cancelled.
+// When disabled, datastore operations continue even if the original request context is cancelled.
+// Disabling context propagation is normally desirable to avoid unnecessary database connection churn.
+// If not specified, the default value is false (separate storage and request contexts).
+func WithRequestContextPropagation(enable bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastoreContextPropagation = enable
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -635,7 +647,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
-	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
+	if !s.datastoreContextPropagation {
+		s.datastore = storagewrappers.NewContextWrapper(s.datastore)
+	}
+	s.datastore = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
