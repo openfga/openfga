@@ -2197,3 +2197,220 @@ func TestCycleDetection(t *testing.T) {
 		})
 	})
 }
+
+func TestBuildUsersetDetailsUserset(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		tuple            *openfgav1.TupleKey
+		expectedHasError bool
+		expectedRelation string
+		expectedObjectID string
+	}{
+		{
+			name: "userset_direct_assignment",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type folder
+				relations
+					define viewer: [group#member]
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#member"),
+			expectedHasError: false,
+			expectedRelation: "group#member",
+			expectedObjectID: "2",
+		},
+		{
+			name: "userset_computed_userset",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define computed_member: member
+			type folder
+				relations
+					define viewer: [group#computed_member]
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#computed_member"),
+			expectedHasError: false,
+			expectedRelation: "group#member",
+			expectedObjectID: "2",
+		},
+		{
+			name: "relation_not_found",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type folder
+				relations
+					define viewer: [group#computed_member]
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#computed_member"),
+			expectedHasError: true,
+			expectedRelation: "",
+			expectedObjectID: "",
+		},
+		{
+			name: "nonuserset_model",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define owner: [user]
+					define viewer: member or owner
+			type folder
+				relations
+					define viewer: [group#viewer]
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#viewer"),
+			expectedHasError: true,
+			expectedRelation: "",
+			expectedObjectID: "",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			usersetFunc := buildUsersetDetailsUserset(ts)
+			rel, obj, err := usersetFunc(tt.tuple)
+			if tt.expectedHasError {
+				// details of the error doesn't really matter
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectedRelation, rel)
+			require.Equal(t, tt.expectedObjectID, obj)
+		})
+	}
+}
+
+func TestBuildUsersetDetailsTTU(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		tuple            *openfgav1.TupleKey
+		computedRelation string
+		expectedHasError bool
+		expectedRelation string
+		expectedObjectID string
+	}{
+		{
+			name: "ttu_direct_assignment",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type folder
+				relations
+					define owner: [group]
+					define viewer: member from owner
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
+			computedRelation: "member",
+			expectedHasError: false,
+			expectedRelation: "group#member",
+			expectedObjectID: "2",
+		},
+		{
+			name: "ttu_computed_userset",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member: member
+			type folder
+				relations
+					define owner: [group]
+					define viewer: viewable_member from owner
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
+			computedRelation: "viewable_member",
+			expectedHasError: false,
+			expectedRelation: "group#member",
+			expectedObjectID: "2",
+		},
+		{
+			name: "ttu_not_found",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member: member
+			type folder
+				relations
+					define owner: [group]
+					define viewer: viewable_member from owner
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
+			computedRelation: "not_found",
+			expectedHasError: true,
+			expectedRelation: "",
+			expectedObjectID: "",
+		},
+		{
+			name: "ttu_not_assignable",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member: [user] or member
+			type folder
+				relations
+					define owner: [group]
+					define viewer: viewable_member from owner
+`,
+			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
+			computedRelation: "viewable_member",
+			expectedHasError: true,
+			expectedRelation: "",
+			expectedObjectID: "",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			usersetFunc := buildUsersetDetailsTTU(ts, tt.computedRelation)
+			rel, obj, err := usersetFunc(tt.tuple)
+			if tt.expectedHasError {
+				// details of the error doesn't really matter
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectedRelation, rel)
+			require.Equal(t, tt.expectedObjectID, obj)
+		})
+	}
+}
