@@ -175,11 +175,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate           CheckResolver
-	concurrencyLimit   uint32
-	maxConcurrentReads uint32
-	usersetBatchSize   uint32
-	logger             logger.Logger
+	delegate             CheckResolver
+	concurrencyLimit     uint32
+	maxConcurrentReads   uint32
+	usersetBatchSize     uint32
+	optimizationsEnabled bool
+	logger               logger.Logger
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -188,6 +189,12 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
+	}
+}
+
+func WithOptimizations(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -664,10 +671,8 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // For example, given [group:1#member, group:2#member, group:1#owner, group:3#owner] it will be stored as:
 // [group#member][1, 2]
 // [group#owner][1, 3].
-// nolint:unused
 type usersetsMapType map[string]storage.SortedSet
 
-// nolint:unused
 func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
@@ -832,12 +837,10 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 	}
 }
 
-// nolint:unused
 type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
 // buildUsersetDetails given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
 // This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType.
-// nolint:unused
 func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userType string) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
 		cr := computedRelation
@@ -867,7 +870,6 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userT
 // Finally, find the intersection between the two.
 // To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
-// nolint:unused
 func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
@@ -877,7 +879,6 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveChe
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
-// nolint:unused
 type usersetsChannelType struct {
 	err            error
 	objectRelation string            // e.g. group#member
@@ -908,7 +909,6 @@ type usersetsChannelType struct {
 // 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
 // 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
 // 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
-// nolint:unused
 func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
@@ -938,7 +938,6 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	return resp, err
 }
 
-// nolint:unused
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
 	var finalErr error
 	dbReads := req.GetRequestMetadata().DatastoreQueryCount
@@ -990,7 +989,6 @@ ConsumerLoop:
 	}, nil
 }
 
-// nolint:unused
 func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails usersetDetailsFunc) {
 	usersetsMap := make(usersetsMapType)
 	defer close(usersetsChan)
@@ -1029,7 +1027,6 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 }
 
-// nolint:unused
 func trySendUsersetsError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
 	select {
 	case <-ctx.Done():
@@ -1037,7 +1034,6 @@ func trySendUsersetsError(ctx context.Context, err error, errorChan chan userset
 	}
 }
 
-// nolint:unused
 func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
 	for k, v := range usersetsMap {
 		select {
@@ -1156,7 +1152,15 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
-			return c.checkUsersetSlowPath(ctx, req, filteredIter)
+			resolver := c.checkUsersetSlowPath
+
+			if c.optimizationsEnabled {
+				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
+					resolver = c.checkUsersetFastPath
+				}
+			}
+
+			return resolver(ctx, req, filteredIter)
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -1270,7 +1274,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 //
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
-// nolint:unused
+
 func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, _ *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
@@ -1342,7 +1346,21 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		return c.checkTTUSlowPath(ctx, req, rewrite, filteredIter)
+		resolver := c.checkTTUSlowPath
+
+		if c.optimizationsEnabled {
+			// TODO: optimize the case where user is an userset.
+			// If the user is a userset, we will not be able to use the shortcut because the algo
+			// will look up the objects associated with user.
+			if !tuple.IsObjectRelation(tk.GetUser()) {
+				if canFastPath := typesys.TTUCanFastPath(
+					tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
+					resolver = c.checkTTUFastPath
+				}
+			}
+		}
+
+		return resolver(ctx, req, rewrite, filteredIter)
 	}
 }
 
