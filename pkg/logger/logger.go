@@ -100,6 +100,7 @@ type OptionsLogger struct {
 	format          string
 	level           string
 	timestampFormat string
+	outputPaths     []string
 }
 
 type OptionLogger func(ol *OptionsLogger)
@@ -122,11 +123,30 @@ func WithTimestampFormat(timestampFormat string) OptionLogger {
 	}
 }
 
+// WithOutputPaths sets a list of URLs or file paths to write logging output to.
+//
+// URLs with the "file" scheme must use absolute paths on the local filesystem.
+// No user, password, port, fragments, or query parameters are allowed, and the
+// hostname must be empty or "localhost".
+//
+// Since it's common to write logs to the local filesystem, URLs without a scheme
+// (e.g., "/var/log/foo.log") are treated as local file paths. Without a scheme,
+// the special paths "stdout" and "stderr" are interpreted as os.Stdout and os.Stderr.
+// When specified without a scheme, relative file paths also work.
+//
+// Defaults to "stdout".
+func WithOutputPaths(paths ...string) OptionLogger {
+	return func(ol *OptionsLogger) {
+		ol.outputPaths = paths
+	}
+}
+
 func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 	logOptions := &OptionsLogger{
 		level:           "info",
 		format:          "text",
 		timestampFormat: "ISO8601",
+		outputPaths:     []string{"stdout"},
 	}
 
 	for _, opt := range options {
@@ -144,6 +164,7 @@ func NewLogger(options ...OptionLogger) (*ZapLogger, error) {
 
 	cfg := zap.NewProductionConfig()
 	cfg.Level = level
+	cfg.OutputPaths = logOptions.outputPaths
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
