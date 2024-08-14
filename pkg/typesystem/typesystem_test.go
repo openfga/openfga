@@ -172,7 +172,7 @@ func TestRelationEquals(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			require.True(t, RelationEquals(tc.a, tc.b) == tc.o)
+			require.Equal(t, tc.o, RelationEquals(tc.a, tc.b))
 		})
 	}
 }
