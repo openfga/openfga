@@ -19,9 +19,8 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/pkg/logger"
-
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
