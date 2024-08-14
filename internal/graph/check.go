@@ -673,6 +673,23 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // [group#owner][1, 3].
 type usersetsMapType map[string]storage.SortedSet
 
+// return whether any of the iterator ID is in sorted set.
+func tupleIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
+	for {
+		t, err := filteredIter.Next(ctx)
+		if errors.Is(err, storage.ErrIteratorDone) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		_, objectID := tuple.SplitObject(t.GetObject())
+		if objectIDs.Exists(objectID) {
+			return true, nil
+		}
+	}
+}
+
 func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
@@ -686,12 +703,6 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		reqTupleKey := req.GetTupleKey()
 		reqContext := req.GetContext()
 
-		response := &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
-		}
 		objectType, relation := tuple.SplitObjectRelation(objectRel)
 
 		user := reqTupleKey.GetUser()
@@ -736,24 +747,21 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		)
 		defer filteredIter.Stop()
 
-		for {
-			t, err := filteredIter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				telemetry.TraceError(span, err)
-				return nil, err
-			}
-
-			_, objectID := tuple.SplitObject(t.GetObject())
-			if objectIDs.Exists(objectID) {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				response.Allowed = true
-				return response, nil
-			}
+		allowed, err := tupleIDInSortedSet(ctx, filteredIter, objectIDs)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
 		}
-		return response, nil
+		if allowed {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
+		return &ResolveCheckResponse{
+			Allowed: allowed,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: reqCount,
+			},
+		}, nil
 	}
 }
 
@@ -839,51 +847,56 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 
 type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
-func buildUsersetDetails(typesys *typesystem.TypeSystem, t *openfgav1.TupleKey, computedRelation string) (string, string, error) {
-	object, relation := tuple.SplitObjectRelation(t.GetUser())
-	objectType, objectID := tuple.SplitObject(object)
-	cr := relation
-	if computedRelation != "" {
-		// In the case computedRelation is provided (which is the case for TTU),
-		// the computedRelation will be used. Otherwise (which is the case for
-		// userset), the computed relation will be derived from the tuple key's
-		// userset's relation.
-		cr = computedRelation
+func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
+	rel, err := typesys.GetRelation(objectType, relation)
+	if err != nil {
+		return "", err
 	}
-Resolve:
-	for {
-		rel, err := typesys.GetRelation(objectType, cr)
-		if err != nil {
-			return "", "", err
-		}
-		rewrite := rel.GetRewrite()
-		switch rewrite.GetUserset().(type) {
-		case *openfgav1.Userset_ComputedUserset:
-			cr = rewrite.GetComputedUserset().GetRelation()
-		case *openfgav1.Userset_This:
-			break Resolve
-		default:
-			return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
-		}
+	rewrite := rel.GetRewrite()
+	switch rewrite.GetUserset().(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return getComputedRelation(typesys, objectType, rewrite.GetComputedUserset().GetRelation())
+	case *openfgav1.Userset_This:
+		return relation, nil
+	default:
+		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
 	}
-	return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+}
+
+func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
+	cr, err := getComputedRelation(typesys, objectType, relation)
+	if err != nil {
+		return "", err
+	}
+	return tuple.ToObjectRelationString(objectType, cr), nil
 }
 
 // buildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
-// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
 func buildUsersetDetailsUserset(typesys *typesystem.TypeSystem) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
 		// the relation is from the tuple
-		_, relation := tuple.SplitObjectRelation(t.GetUser())
-		return buildUsersetDetails(typesys, t, relation)
+		object, relation := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		rel, err := buildUsersetDetails(typesys, objectType, relation)
+		if err != nil {
+			return "", "", err
+		}
+		return rel, objectID, nil
 	}
 }
 
 // buildUsersetDetailsTTU given (tuple doc:1#viewer@group:2, member) will return group#member, 2, nil.
 // This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
+// nolint:unused
 func buildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation string) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
-		return buildUsersetDetails(typesys, t, computedRelation)
+		object, _ := tuple.SplitObjectRelation(t.GetUser())
+		objectType, objectID := tuple.SplitObject(object)
+		rel, err := buildUsersetDetails(typesys, objectType, computedRelation)
+		if err != nil {
+			return "", "", err
+		}
+		return rel, objectID, nil
 	}
 }
 
@@ -1201,7 +1214,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					}
 				}
 			}
-
 			return resolver(ctx, req, filteredIter)
 		}
 
