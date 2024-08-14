@@ -46,7 +46,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		require.Len(t, gotStores, 1)
-		require.NotEmpty(t, len(ct))
+		require.NotEmpty(t, ct)
 
 		opts = storage.ListStoresOptions{
 			Pagination: storage.NewPaginationOptions(100, string(ct)),
@@ -55,7 +55,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		// This will fail if there are actually over 101 stores in the DB at the time of running.
-		require.Zero(t, len(ct))
+		require.Empty(t, ct)
 	})
 
 	t.Run("get_store_succeeds", func(t *testing.T) {

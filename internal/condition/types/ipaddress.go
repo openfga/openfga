@@ -157,7 +157,7 @@ func stringToIPAddress(arg ref.Val) ref.Val {
 
 	ipaddr, err := ParseIPAddress(ipStr)
 	if err != nil {
-		return types.NewErr(err.Error())
+		return types.NewErr("%s", err.Error())
 	}
 
 	return ipaddr
