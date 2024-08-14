@@ -9843,3 +9843,401 @@ tests:
               relation: viewer
             expectation:
               - user:anne
+  - name: ttu_to_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: assignee from role
+              define role: [role]
+          type job
+            relations
+              define can_read: [permission#assignee]
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin
+            relation: role
+          - object: job:1
+            user: permission:readJobs#assignee
+            relation: can_read
+          - object: job:1
+            user: user:1
+            relation: cannot_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+  - name: ttu_to_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: assignee from role
+              define role: [role]
+          type job
+            relations
+              define permission: [permission]
+              define can_read: assignee from permission
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin
+            relation: role
+          - object: job:1
+            user: permission:readJobs
+            relation: permission
+          - object: job:1
+            user: user:1
+            relation: cannot_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+  - name: userset_to_ttu
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: [role#assignee]
+          type job
+            relations
+              define can_read: assignee from permission
+              define permission: [permission]
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin#assignee
+            relation: assignee
+          - object: job:1
+            user: permission:readJobs
+            relation: permission
+          - user: user:1
+            relation: cannot_read
+            object: job:1
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: assignee
+              object: permission:readJobs
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+          - request:
+              user: user:1
+              type: job
+              relation: cannot_read
+            expectation:
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: cannot_read
+            expectation:
+  - name: userset_to_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type permission
+            relations
+              define assignee: [role#assignee]
+          type job
+            relations
+              define can_read: [permission#assignee]
+              define cannot_read: [user] but not can_read
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+          - object: permission:readJobs
+            user: role:admin#assignee
+            relation: assignee
+          - object: job:1
+            user: permission:readJobs#assignee
+            relation: can_read
+          - user: user:1
+            relation: cannot_read
+            object: job:1
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: assignee
+              object: permission:readJobs
+            expectation: true
+          - tuple:
+              user: user:1
+              relation: cannot_read
+              object: job:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:1
+              type: job
+              relation: can_read
+            expectation:
+              - job:1
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: job:1
+              relation: can_read
+            expectation:
+              - user:1
+
+  - name: ttu_discard_invalid
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user, role#assignee]
+          type job
+            relations
+              define parent: [role]
+              define can_read: assignee from parent
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+
+          - object: role:parent
+            user: role:minion#assignee
+            relation: assignee
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: false
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define parent: [role]
+              define can_read: assignee from parent
+        tuples:
+          - object: job:1
+            user: role:admin
+            relation: parent
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+
+  - name: userset_discard_invalid
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define placeholder: [user]
+              define assignee: [user, role#placeholder]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - user: user:1
+            relation: assignee
+            object: role:admin
+
+          - object: role:invalid
+            user: role:awesome#placeholder
+            relation: assignee
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: false
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - object: job:1
+            user: role:admin#assignee
+            relation: can_read
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+
+  - name: userset_discard_invalid_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee, user:*]
+        tuples:
+          - user: user:*
+            relation: can_read
+            object: job:1
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:2
+              relation: can_read
+              object: job:1
+            expectation: true
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type job
+            relations
+              define can_read: [role#assignee]
+        tuples:
+          - object: job:1
+            user: role:admin#assignee
+            relation: can_read
+          - user: user:1
+            relation: assignee
+            object: role:admin
+        checkAssertions:
+          - tuple:
+              user: user:1
+              relation: can_read
+              object: job:1
+            expectation: true
+          - tuple:
+              user: user:2
+              relation: can_read
+              object: job:1
+            expectation: false

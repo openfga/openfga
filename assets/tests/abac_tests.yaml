@@ -1023,6 +1023,97 @@ tests:
             context:
               "x": 20
             expectation:
+  - name: simple_userset_with_and_without_condition_in_child
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user with xcond, user]
+          type document
+            relations
+              define viewer: [folder#viewer]
+          condition xcond(x: int) {
+            x == 10
+          }
+        tuples:
+          - user: folder:a#viewer
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: viewer
+            object: folder:a
+            condition:
+              name: xcond
+          - user: folder:withoutcond#viewer
+            relation: viewer
+            object: document:2
+          - user: user:bob
+            relation: viewer
+            object: folder:withoutcond
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            errorCode: 2000
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 10
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:2
+            context:
+              "x": 10
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              "x": 20
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listUsersAssertions:
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            errorCode: 2000
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 10
+            expectation:
+              - user:jon
+          - request:
+              filters:
+                - user
+              object: document:1
+              relation: viewer
+            context:
+              "x": 20
+            expectation:
   - name: simple_ttu_with_condition
     stages:
       - model: |

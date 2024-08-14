@@ -3111,7 +3111,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 		name                     string
 		model                    string
 		relationReferences       []*openfgav1.RelationReference
-		userType                 string
 		expectDirectlyAssignable bool
 	}{
 		{
@@ -3129,7 +3128,25 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "user",
+			expectDirectlyAssignable: true,
+		},
+		{
+			name: "multiple_userset_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+                        define member: [user]
+						define allowed: [group#member, folder#member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+				DirectRelationReference("folder", "member"),
+			},
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3161,7 +3178,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3181,7 +3197,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3201,7 +3216,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3221,7 +3235,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "complexMember"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3240,7 +3253,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "user1",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3260,7 +3272,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 				DirectRelationReference("group", "member"),
 				DirectRelationReference("group", "owner"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3274,16 +3285,12 @@ func TestUsersetCanFastPath(t *testing.T) {
 								define member: [user]
 								define owner: [user]
 								define disallowed: [user]
-								define disallowed_member: member but not disallowed
-						type folder
-							relations
-								define allowed: [group#member, group#owner]`,
+								define disallowed_member: member but not disallowed`,
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 				DirectRelationReference("group", "disallowed_member"),
 				DirectRelationReference("group", "owner"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3302,11 +3309,29 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "viewable_member"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
-			name: "public_assignable",
+			name: "nested_computed_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define owner: [user]
+								define member: owner
+								define viewable_member: member
+						type folder
+							relations
+								define allowed: [group#viewable_member]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "viewable_member"),
+			},
+			expectDirectlyAssignable: true,
+		},
+		{
+			name: "parent_public_assignable",
 			model: `
 						model
 							schema 1.1
@@ -3321,11 +3346,10 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				WildcardRelationReference("user"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false, // these will be handled by the normal resolution path
 		},
 		{
-			name: "conditional_relation",
+			name: "conditional_relation_parent",
 			model: `
 						model
 							schema 1.1
@@ -3342,11 +3366,10 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
-			name: "conditional_relation_in_member",
+			name: "conditional_relation_in_child",
 			model: `
 						model
 							schema 1.1
@@ -3363,7 +3386,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				ConditionedRelationReference(DirectRelationReference("group", "member"), "x_less_than"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: true,
 		},
 		{
@@ -3382,7 +3404,6 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "bad_relation"),
 			},
-			userType:                 "user",
 			expectDirectlyAssignable: false,
 		},
 		{
@@ -3400,8 +3421,76 @@ func TestUsersetCanFastPath(t *testing.T) {
 			relationReferences: []*openfgav1.RelationReference{
 				DirectRelationReference("group", "member"),
 			},
-			userType:                 "notExist",
+			expectDirectlyAssignable: true, // it doesn't matter as the fastpath code will "discard" it
+		},
+		{
+			name: "userset_ttu_mixture",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type role
+				  relations
+					define assignee: [user]
+				type permission
+				  relations
+					define assignee: assignee from role
+					define role: [role]
+				type job
+				  relations
+					define can_read: [permission#assignee]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("permission", "assignee"),
+			},
 			expectDirectlyAssignable: false,
+		},
+		{
+			name: "nested_userset",
+			model: `
+				model
+				  schema 1.1
+				type user
+                type employee
+				type group
+				  relations
+                    define testers: [employee]
+					define assignee: [user, group#testers]
+			    type folder
+				  relations
+				    define allowed: [group#assignee]`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "assignee"),
+			},
+			expectDirectlyAssignable: false,
+		},
+		{
+			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
+			model: `
+				model
+				  schema 1.1
+                type user
+				type group
+				  relations
+					define member: [user, user with x_bigger_than]
+					define user_in_context: [user]
+					define reader: member
+					define assignee: reader
+				type tier
+				  relations
+				   define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
+
+				condition x_bigger_than(x: int) {
+					x > 100
+                }
+				condition user_in_context(x: int) {
+					x > 100
+                }`,
+			relationReferences: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "assignee"),
+				DirectRelationReference("group", "user_in_context"),
+				ConditionedRelationReference(DirectRelationReference("group", "user_in_context"), "x_bigger_than"),
+			},
+			expectDirectlyAssignable: true,
 		},
 	}
 	for _, test := range tests {
@@ -3409,7 +3498,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typeSystem, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			result := typeSystem.UsersetCanFastPath(test.relationReferences, test.userType)
+			result := typeSystem.UsersetCanFastPath(test.relationReferences)
 			require.NoError(t, err)
 			require.Equal(t, test.expectDirectlyAssignable, result)
 		})
@@ -3421,8 +3510,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		name              string
 		model             string
 		objectType        string
+		tuplesetRelation  string
 		computedRelation  string
-		userType          string
 		expectCanFastPath bool
 	}{
 		{
@@ -3440,8 +3529,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3460,8 +3549,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3477,11 +3566,10 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 						type folder
 							relations
 								define parent: [group]
-								define viewer: member from parent
-					`,
+								define viewer: member from parent`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3502,8 +3590,30 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: can_view from parent`,
 
 			objectType:        "document",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_view",
+			expectCanFastPath: true,
+		},
+		{
+			name: "nested_computed_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type folder
+							relations
+								define owner: [user]
+								define can_view: editor
+								define editor: owner
+
+						type document
+							relations
+								define parent: [folder]
+								define viewer: can_view from parent`,
+
+			objectType:        "document",
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_view",
 			expectCanFastPath: true,
 		},
 		{
@@ -3522,8 +3632,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3541,8 +3651,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "parent",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3563,8 +3673,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		                }
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3583,8 +3693,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user1",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3605,8 +3715,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3627,8 +3737,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 						define owner: [group1, group2]
 						define viewer: member from owner`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user1",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3648,8 +3758,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 						define owner: [group1, group2]
 						define viewer: member from owner`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user1",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3668,8 +3778,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 					define parent: [document, folder]
 					define viewer: [user, user:*]`,
 			objectType:        "document",
-			computedRelation:  "can_read",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "viewer",
 			expectCanFastPath: false,
 		},
 		{
@@ -3692,8 +3802,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			// notice that group_without_member does not have member.  However, we should
 			// still allow because group_with_member has member
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3712,8 +3822,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3734,8 +3844,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		                }
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3756,8 +3866,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 				}
 			`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3782,8 +3892,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 				}
 			`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: true,
 		},
 		{
@@ -3803,8 +3913,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3826,8 +3936,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 		                }
 					`,
 			objectType:        "folder",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3845,8 +3955,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "undefined_type",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3864,8 +3974,8 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "group",
-			computedRelation:  "viewer",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
 		},
 		{
@@ -3883,9 +3993,34 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "group",
-			computedRelation:  "parent",
-			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
 			expectCanFastPath: false,
+		},
+		{
+			name: "multiple_parent_types_with_conditions_multiple_child_types_with_conditions_or_wildcard",
+			model: `
+						model
+							schema 1.1
+						type user
+						type employee
+						type company
+						  relations
+							define member: [user, employee, user:*]
+						type group
+						  relations
+							define member: [user, user with x_greater_than]
+						type license
+						  relations
+							define holder_member: member from owner
+							define owner: [company, group, group with x_condition]
+						condition x_greater_than(x: int) {x > 1}
+						condition x_condition(x: int) {x > 1}
+					`,
+			objectType:        "license",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
+			expectCanFastPath: true,
 		},
 	}
 	for _, test := range tests {
@@ -3893,7 +4028,7 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			actual := typesys.TTUCanFastPath(test.objectType, test.computedRelation, test.userType)
+			actual := typesys.TTUCanFastPath(test.objectType, test.tuplesetRelation, test.computedRelation)
 			require.Equal(t, test.expectCanFastPath, actual)
 		})
 	}

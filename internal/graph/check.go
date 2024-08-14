@@ -839,19 +839,51 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 
 type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
-// buildUsersetDetails given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
-// This util takes into account pre-computed relationships, otherwise it will resolve it from the target UserType.
-func buildUsersetDetails(typesys *typesystem.TypeSystem, computedRelation, userType string) usersetDetailsFunc {
-	return func(t *openfgav1.TupleKey) (string, string, error) {
-		cr := computedRelation
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		if cr == "" {
-			terminalRelations := typesys.GetTerminalRelations(objectType, relation, userType)
-			cr = terminalRelations[0]
+func buildUsersetDetails(typesys *typesystem.TypeSystem, t *openfgav1.TupleKey, computedRelation string) (string, string, error) {
+	object, relation := tuple.SplitObjectRelation(t.GetUser())
+	objectType, objectID := tuple.SplitObject(object)
+	cr := relation
+	if computedRelation != "" {
+		// In the case computedRelation is provided (which is the case for TTU),
+		// the computedRelation will be used. Otherwise (which is the case for
+		// userset), the computed relation will be derived from the tuple key's
+		// userset's relation.
+		cr = computedRelation
+	}
+Resolve:
+	for {
+		rel, err := typesys.GetRelation(objectType, cr)
+		if err != nil {
+			return "", "", err
 		}
+		rewrite := rel.GetRewrite()
+		switch rewrite.GetUserset().(type) {
+		case *openfgav1.Userset_ComputedUserset:
+			cr = rewrite.GetComputedUserset().GetRelation()
+		case *openfgav1.Userset_This:
+			break Resolve
+		default:
+			return "", "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+		}
+	}
+	return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+}
 
-		return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+// buildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
+// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
+func buildUsersetDetailsUserset(typesys *typesystem.TypeSystem) usersetDetailsFunc {
+	return func(t *openfgav1.TupleKey) (string, string, error) {
+		// the relation is from the tuple
+		_, relation := tuple.SplitObjectRelation(t.GetUser())
+		return buildUsersetDetails(typesys, t, relation)
+	}
+}
+
+// buildUsersetDetailsTTU given (tuple doc:1#viewer@group:2, member) will return group#member, 2, nil.
+// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
+func buildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation string) usersetDetailsFunc {
+	return func(t *openfgav1.TupleKey) (string, string, error) {
+		return buildUsersetDetails(typesys, t, computedRelation)
 	}
 }
 
@@ -875,7 +907,7 @@ func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveChe
 	defer span.End()
 	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	usersetDetails := buildUsersetDetails(typesys, "", tuple.GetType(req.GetTupleKey().GetUser()))
+	usersetDetails := buildUsersetDetailsUserset(typesys)
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
@@ -933,6 +965,12 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
+	}
+
+	// Ideally, the caller would have accounted for getting the iter in the first place.
+	// TODO: add in logic for incrementing datastore query counter in caller.
+	if resp != nil {
+		resp.ResolutionMetadata.DatastoreQueryCount++
 	}
 
 	return resp, err
@@ -1004,6 +1042,9 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		objectRel, objectID, err := usersetDetails(t)
 		if err != nil {
+			if errors.Is(err, typesystem.ErrRelationUndefined) {
+				continue
+			}
 			trySendUsersetsError(ctx, err, usersetsChan)
 			break
 		}
@@ -1155,8 +1196,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			resolver := c.checkUsersetSlowPath
 
 			if c.optimizationsEnabled {
-				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes, tuple.GetType(reqTupleKey.GetUser())) {
-					resolver = c.checkUsersetFastPath
+				if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+					if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
+						resolver = c.checkUsersetFastPath
+					}
 				}
 			}
 
@@ -1274,18 +1317,15 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 //
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
-
-func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, _ *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
 	// Caller already verified typesys
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	terminalRelations := typesys.GetTerminalRelations(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser()))
+	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
-	computedRelation := terminalRelations[0]
-	usersetDetails := buildUsersetDetails(typesys, computedRelation, tuple.GetType(req.GetTupleKey().GetUser()))
-
+	usersetDetails := buildUsersetDetailsTTU(typesys, computedRelation)
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
@@ -1354,12 +1394,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			// will look up the objects associated with user.
 			if !tuple.IsObjectRelation(tk.GetUser()) {
 				if canFastPath := typesys.TTUCanFastPath(
-					tuple.GetType(object), req.GetTupleKey().GetRelation(), tuple.GetType(req.GetTupleKey().GetUser())); canFastPath {
+					tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
 					resolver = c.checkTTUFastPath
 				}
 			}
 		}
-
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
 }

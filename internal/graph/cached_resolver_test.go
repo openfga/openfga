@@ -675,6 +675,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	localCheckResolver := NewLocalChecker(
 		WithMaxConcurrentReads(1),
+		WithOptimizations(true),
 	)
 	defer localCheckResolver.Close()
 
@@ -705,8 +706,9 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(0), res.GetResolutionMetadata().DatastoreQueryCount)
 
-	// The third check will use partial result from the cache and partial result from the local checker
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
+	// For TTU fastpath, we no longer call ResolveCheck to get the parent / child.
+	// As such, it should not have called the cache.
+	mockCache.EXPECT().Get(reqKey).Times(0).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
 	res, err = localCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:          storeID,
 		TupleKey:         tuple.NewTupleKey("document:x", "ttu", "user:maria"),
@@ -715,7 +717,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
+	require.Equal(t, uint32(2), res.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {

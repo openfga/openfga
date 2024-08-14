@@ -165,8 +165,6 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
-	connectedTypes TypesystemConnectedTypes
-
 	modelID       string
 	schemaVersion string
 }
@@ -218,7 +216,6 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		relations:       relations,
 		conditions:      uncompiledConditions,
 		ttuRelations:    ttuRelations,
-		connectedTypes:  make(TypesystemConnectedTypes),
 	}
 }
 
@@ -334,11 +331,49 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
+func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return nil, false, err
+	}
+	rewrite := relation.GetRewrite().GetUserset()
+
+	switch rw := rewrite.(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return t.resolvesTypeRelationToDirectlyAssignable(objectType, rw.ComputedUserset.GetRelation())
+	case *openfgav1.Userset_This:
+		break
+	default:
+		// NOTE: Currently, only computed usersets or directly related types are supported (and not usersets)
+		return nil, false, nil
+	}
+
+	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+
+	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
+	// need to check whether these are simple types as well
+	for _, ref := range directlyRelatedTypes {
+		if ref.GetRelationOrWildcard() != nil {
+			if _, ok := ref.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				// For now, we don't allow if these types are another userset
+				// because local check with these relations cannot be evaluated via simple datastore query.
+				return nil, false, nil
+			}
+		}
+		assignableTypes = append(assignableTypes, ref.GetType())
+	}
+	return assignableTypes, true, nil
+}
+
 // UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
-func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference, userType string) bool {
+func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference) bool {
 	for _, rr := range relationReferences {
-		terminalRelations := t.GetTerminalRelations(rr.GetType(), rr.GetRelation(), userType)
-		if len(terminalRelations) != 1 {
+		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
+		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
+		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
+			return false
+		}
+		if _, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation()); err != nil || !directlyAssignable {
 			return false
 		}
 	}
@@ -379,35 +414,28 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 }
 
 // TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
-func (t *TypeSystem) TTUCanFastPath(objectType, computedRelation, userType string) bool {
-	tuplesetRelation := t.relations[objectType][computedRelation].GetRewrite().GetTupleToUserset().GetTupleset().GetRelation()
-
-	computedUsersetRelation := t.relations[objectType][computedRelation].GetRewrite().GetTupleToUserset().GetComputedUserset().GetRelation()
-	ttuParentTypes := t.relations[objectType][tuplesetRelation].GetTypeInfo().GetDirectlyRelatedUserTypes()
-
-	if len(ttuParentTypes) > 1 {
-		// For TTU with multiple assignable types, need to verify that each type has the computed relation and is eligible for fast-path
-		for _, parentType := range ttuParentTypes {
-			_, relationExists := t.relations[parentType.GetType()][computedUsersetRelation]
-			if !relationExists {
+func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelation string) bool {
+	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
+	if err != nil || !directlyAssignable {
+		return false
+	}
+	for _, tuplesetRelationType := range tuplesetRelationTypes {
+		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
+		if err != nil {
+			// in the case of errors due to relation undefined, we can ignore the error because it is possible
+			// that some parents do not have the relation defined.
+			if errors.Is(err, ErrRelationUndefined) {
 				continue
 			}
 
-			terminalRelations := t.GetTerminalRelations(parentType.GetType(), computedUsersetRelation, userType)
-			if len(terminalRelations) == 0 {
-				return false
-			}
+			// otherwise, we do not know what the error is.  It is better to return error at this point.
+			return false
+		}
+		if !childDirectlyAssignable {
+			return false
 		}
 	}
-
-	terminalRelations := t.GetTerminalRelations(objectType, computedRelation, userType)
-
-	return len(terminalRelations) == 1
-}
-
-// GetTerminalRelations returns the terminal relations for the specified object type's relation with the specified userType.
-func (t *TypeSystem) GetTerminalRelations(objectType, relation, userType string) []string {
-	return t.connectedTypes[objectType][relation][userType]
+	return true
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
@@ -821,7 +849,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 			if err != nil {
 				return nil, err
 			}
-			t.AssignTerminalTypes(typeName, relationName)
 		}
 	}
 
