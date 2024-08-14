@@ -673,6 +673,23 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // [group#owner][1, 3].
 type usersetsMapType map[string]storage.SortedSet
 
+// return whether any of the iterator ID is in sorted set.
+func tupleIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
+	for {
+		t, err := filteredIter.Next(ctx)
+		if errors.Is(err, storage.ErrIteratorDone) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		_, objectID := tuple.SplitObject(t.GetObject())
+		if objectIDs.Exists(objectID) {
+			return true, nil
+		}
+	}
+}
+
 func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
@@ -686,12 +703,6 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		reqTupleKey := req.GetTupleKey()
 		reqContext := req.GetContext()
 
-		response := &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
-		}
 		objectType, relation := tuple.SplitObjectRelation(objectRel)
 
 		user := reqTupleKey.GetUser()
@@ -736,24 +747,21 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		)
 		defer filteredIter.Stop()
 
-		for {
-			t, err := filteredIter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				telemetry.TraceError(span, err)
-				return nil, err
-			}
-
-			_, objectID := tuple.SplitObject(t.GetObject())
-			if objectIDs.Exists(objectID) {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				response.Allowed = true
-				return response, nil
-			}
+		allowed, err := tupleIDInSortedSet(ctx, filteredIter, objectIDs)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
 		}
-		return response, nil
+		if allowed {
+			span.SetAttributes(attribute.Bool("allowed", true))
+		}
+		reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
+		return &ResolveCheckResponse{
+			Allowed: allowed,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: reqCount,
+			},
+		}, nil
 	}
 }
 
@@ -870,7 +878,6 @@ Resolve:
 }
 
 // buildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
-// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
 func buildUsersetDetailsUserset(typesys *typesystem.TypeSystem) usersetDetailsFunc {
 	return func(t *openfgav1.TupleKey) (string, string, error) {
 		// the relation is from the tuple
@@ -1202,7 +1209,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					}
 				}
 			}
-
 			return resolver(ctx, req, filteredIter)
 		}
 
