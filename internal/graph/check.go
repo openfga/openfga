@@ -690,6 +690,43 @@ func tupleIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFil
 	}
 }
 
+func userFilter(typesys *typesystem.TypeSystem,
+	user,
+	userType,
+	objectType,
+	relation string) []*openfgav1.ObjectRelation {
+	relationReference := typesystem.DirectRelationReference(objectType, relation)
+	hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
+
+	if !hasPubliclyAssignedType || user == tuple.TypedPublicWildcard(userType) {
+		return []*openfgav1.ObjectRelation{{
+			Object: user,
+		}}
+	}
+
+	return []*openfgav1.ObjectRelation{
+		{Object: user},
+		{Object: tuple.TypedPublicWildcard(userType)},
+	}
+}
+
+func readStartingWithUserFilter(
+	typesys *typesystem.TypeSystem,
+	reqTupleKey *openfgav1.TupleKey,
+	objectRel string,
+	objectIDs storage.SortedSet) storage.ReadStartingWithUserFilter {
+	objectType, relation := tuple.SplitObjectRelation(objectRel)
+	user := reqTupleKey.GetUser()
+	userType := tuple.GetType(user)
+
+	return storage.ReadStartingWithUserFilter{
+		ObjectType: objectType,
+		Relation:   relation,
+		UserFilter: userFilter(typesys, user, userType, objectType, relation),
+		ObjectIDs:  objectIDs,
+	}
+}
+
 func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
@@ -703,35 +740,15 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 		reqTupleKey := req.GetTupleKey()
 		reqContext := req.GetContext()
 
-		objectType, relation := tuple.SplitObjectRelation(objectRel)
-
-		user := reqTupleKey.GetUser()
-		userType := tuple.GetType(user)
-
-		relationReference := typesystem.DirectRelationReference(objectType, relation)
-		hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
-
-		userFilter := []*openfgav1.ObjectRelation{{
-			Object: user,
-		}}
-		if hasPubliclyAssignedType {
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: tuple.TypedPublicWildcard(userType),
-			})
-		}
-
 		opts := storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: req.GetConsistency(),
 			},
 		}
 
-		i, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-			ObjectType: objectType,
-			Relation:   relation,
-			UserFilter: userFilter,
-			ObjectIDs:  objectIDs,
-		}, opts)
+		// TODO: add in optimization to filter out user not matching the type
+		i, err := ds.ReadStartingWithUser(ctx, storeID,
+			readStartingWithUserFilter(typesys, reqTupleKey, objectRel, objectIDs), opts)
 
 		if err != nil {
 			telemetry.TraceError(span, err)
