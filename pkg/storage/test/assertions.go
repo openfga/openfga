@@ -2,7 +2,8 @@ package test
 
 import (
 	"context"
-	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -48,21 +49,29 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 		maxAssertionsPerRequest := 100
 		maxContextualTuplesPerAssertion := 20
+		maxBytesPerUser := 512
+		maxBytesPerRelation := 50
+		maxBytesPerObject := 256
+		// 1636000 bytes total = 1636 kb
 
 		contextualTuples := make([]*openfgav1.TupleKey, 0, maxContextualTuplesPerAssertion)
 		assertions := make([]*openfgav1.Assertion, 0, maxAssertionsPerRequest)
 
 		for i := 0; i < maxContextualTuplesPerAssertion; i++ {
 			contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-				Object:   "doc:readme",
-				Relation: "owner",
-				User:     fmt.Sprintf("user:%d", i),
+				Object:   strings.Repeat(strconv.Itoa(i), maxBytesPerObject),
+				Relation: strings.Repeat(strconv.Itoa(i), maxBytesPerRelation),
+				User:     strings.Repeat(strconv.Itoa(i), maxBytesPerUser),
 			})
 		}
 
 		for i := 0; i < maxAssertionsPerRequest; i++ {
 			assertions = append(assertions, &openfgav1.Assertion{
-				TupleKey:         tupleUtils.NewAssertionTupleKey("doc:readme", "owner", fmt.Sprintf("user:%d", i)),
+				TupleKey: &openfgav1.AssertionTupleKey{
+					Object:   strings.Repeat(strconv.Itoa(i), maxBytesPerObject),
+					Relation: strings.Repeat(strconv.Itoa(i), maxBytesPerRelation),
+					User:     strings.Repeat(strconv.Itoa(i), maxBytesPerUser),
+				},
 				Expectation:      true,
 				ContextualTuples: contextualTuples,
 			})
