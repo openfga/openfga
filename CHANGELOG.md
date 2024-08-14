@@ -8,6 +8,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.9] - 2024-08-13
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
+
+## Security
+
+* Address [CVE-2024-42473](https://github.com/openfga/openfga/security/advisories/GHSA-3f6g-m4hr-59h8) - a critical issue where Check API can return incorrect responses. Please see the CVE report for more details.
+
 ## [1.5.8] - 2024-08-07
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.7...v1.5.8)
@@ -1137,7 +1145,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.8...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.9...HEAD
+[1.5.9]: https://github.com/openfga/openfga/releases/tag/v1.5.9
 [1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
 [1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
 [1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
