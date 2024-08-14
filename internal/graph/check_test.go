@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/concurrency"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -2581,6 +2584,271 @@ func TestBuildUsersetDetailsTTU(t *testing.T) {
 			}
 			require.Equal(t, tt.expectedRelation, rel)
 			require.Equal(t, tt.expectedObjectID, obj)
+		})
+	}
+}
+
+func TestProduceUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	type usersetsChannelStruct struct {
+		err            error
+		objectRelation string
+		objectIDs      []string
+	}
+
+	tests := []struct {
+		name                  string
+		tuples                []*openfgav1.TupleKey
+		usersetDetails        usersetDetailsFunc
+		usersetBatchSize      uint32
+		usersetsChannelResult []usersetsChannelStruct
+	}{
+		{
+			name:   "no_tuple_match",
+			tuples: []*openfgav1.TupleKey{},
+			usersetDetails: func(*openfgav1.TupleKey) (string, string, error) {
+				return "", "", fmt.Errorf("do not expect any tuples")
+			},
+			usersetBatchSize:      serverconfig.DefaultUsersetBatchSize,
+			usersetsChannelResult: []usersetsChannelStruct{},
+		},
+		{
+			name: "single_tuple_match",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
+			},
+			usersetDetails: func(t *openfgav1.TupleKey) (string, string, error) {
+				if t.GetObject() != "document:doc1" || t.GetRelation() != "viewer" || t.GetUser() != "group:2#member" {
+					return "", "", fmt.Errorf("do not expect  tuples %v", t.String())
+				}
+				return "group#member", "2", nil
+			},
+			usersetBatchSize: serverconfig.DefaultUsersetBatchSize,
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"2"},
+				},
+			},
+		},
+		{
+			name: "error_in_iterator",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "error_iterator", nil),
+			},
+			usersetDetails: func(t *openfgav1.TupleKey) (string, string, error) {
+				if t.GetObject() != "document:doc1" || t.GetRelation() != "viewer" || t.GetUser() != "group:2#member" {
+					return "", "", fmt.Errorf("do not expect  tuples %v", t.String())
+				}
+				return "group#member", "2", nil
+			},
+			usersetBatchSize: serverconfig.DefaultUsersetBatchSize,
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            fmt.Errorf("condition not found"),
+					objectRelation: "",
+					objectIDs:      []string{""},
+				},
+			},
+		},
+		{
+			name: "multi_items",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:1#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:3#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:4#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:5#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:6#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:7#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:8#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:9#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:10#member", "condition1", nil),
+			},
+			usersetDetails: func(t *openfgav1.TupleKey) (string, string, error) {
+				if t.GetObject() != "document:doc1" || t.GetRelation() != "viewer" {
+					return "", "", fmt.Errorf("do not expect  tuples %v", t.String())
+				}
+				objectIDWithType, _ := tuple.SplitObjectRelation(t.GetUser())
+				_, objectID := tuple.SplitObject(objectIDWithType)
+				return "group#member", objectID, nil
+			},
+			usersetBatchSize: serverconfig.DefaultUsersetBatchSize,
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"},
+				},
+			},
+		},
+		{
+			name: "multi_items_greater_than_batch_size",
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:1#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:3#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:4#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:5#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:6#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:7#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:8#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:9#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:10#member", "condition1", nil),
+			},
+			usersetDetails: func(t *openfgav1.TupleKey) (string, string, error) {
+				if t.GetObject() != "document:doc1" || t.GetRelation() != "viewer" {
+					return "", "", fmt.Errorf("do not expect  tuples %v", t.String())
+				}
+				objectIDWithType, _ := tuple.SplitObjectRelation(t.GetUser())
+				_, objectID := tuple.SplitObject(objectIDWithType)
+				return "group#member", objectID, nil
+			},
+			usersetBatchSize: 3,
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1", "2", "3"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"4", "5", "6"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"7", "8", "9"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"10"},
+				},
+			},
+		},
+		{
+			name: "mixture_type",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:1#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:3#owner", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:4#owner", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:5#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:6#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:7#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:8#owner", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:9#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:10#member", "condition1", nil),
+			},
+			usersetDetails: func(t *openfgav1.TupleKey) (string, string, error) {
+				if t.GetObject() != "document:doc1" || t.GetRelation() != "viewer" {
+					return "", "", fmt.Errorf("do not expect  tuples %v", t.String())
+				}
+				objectIDWithType, rel := tuple.SplitObjectRelation(t.GetUser())
+				objectType, objectID := tuple.SplitObject(objectIDWithType)
+				return objectType + "#" + rel, objectID, nil
+			},
+			usersetBatchSize: serverconfig.DefaultUsersetBatchSize,
+			usersetsChannelResult: []usersetsChannelStruct{
+
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1", "2"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#owner",
+					objectIDs:      []string{"3", "4"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"5", "6", "7"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#owner",
+					objectIDs:      []string{"8"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"9", "10"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			expectedUsersetsChannelResult := make([]usersetsChannelType, len(tt.usersetsChannelResult))
+			for i, result := range tt.usersetsChannelResult {
+				expectedUsersetsChannelResult[i] = usersetsChannelType{
+					err:            result.err,
+					objectRelation: result.objectRelation,
+					objectIDs:      storage.NewSortedSet(),
+				}
+				for _, objectID := range result.objectIDs {
+					expectedUsersetsChannelResult[i].objectIDs.Add(objectID)
+				}
+			}
+
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+
+			localChecker := NewLocalChecker(WithUsersetBatchSize(tt.usersetBatchSize))
+			usersetsChan := make(chan usersetsChannelType)
+
+			// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+			pool := concurrency.NewPool(context.Background(), 2)
+
+			pool.Go(func(ctx context.Context) error {
+				localChecker.produceUsersets(ctx, usersetsChan, iter, tt.usersetDetails)
+				return nil
+			})
+			var results []usersetsChannelType
+			pool.Go(func(ctx context.Context) error {
+				for {
+					select {
+					case <-ctx.Done():
+						return nil
+					case newBatch, channelOpen := <-usersetsChan:
+						if !channelOpen {
+							return nil
+						}
+						results = append(results, usersetsChannelType{
+							err:            newBatch.err,
+							objectRelation: newBatch.objectRelation,
+							objectIDs:      newBatch.objectIDs,
+						})
+					}
+				}
+			})
+			err := pool.Wait()
+			require.NoError(t, err)
+			require.Len(t, results, len(expectedUsersetsChannelResult))
+			for idx, result := range results {
+				require.Equal(t, expectedUsersetsChannelResult[idx].err, result.err)
+				if expectedUsersetsChannelResult[idx].err == nil {
+					require.Equal(t, expectedUsersetsChannelResult[idx].objectRelation, result.objectRelation)
+					require.EqualValues(t, expectedUsersetsChannelResult[idx].objectIDs.Values(), result.objectIDs.Values())
+				}
+			}
 		})
 	}
 }

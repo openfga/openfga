@@ -1073,7 +1073,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		usersetsMap[objectRel].Add(objectID)
 
-		if usersetsMap[objectRel].Size() > int(c.usersetBatchSize) {
+		if usersetsMap[objectRel].Size() >= int(c.usersetBatchSize) {
 			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 		}
 	}
@@ -1205,7 +1205,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				buildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 			)
 			defer filteredIter.Stop()
-
 			resolver := c.checkUsersetSlowPath
 
 			if c.optimizationsEnabled {
