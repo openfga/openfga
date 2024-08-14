@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -16,7 +17,7 @@ import (
 func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("writing_and_reading_assertions_succeeds", func(t *testing.T) {
+	t.Run("small_request_succeeds", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
 		assertions := []*openfgav1.Assertion{
@@ -39,6 +40,40 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		if diff := cmp.Diff(assertions, gotAssertions, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
+	})
+
+	t.Run("big_request_succeeds", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		modelID := ulid.Make().String()
+
+		maxAssertionsPerRequest := 100
+		maxContextualTuplesPerAssertion := 20
+
+		contextualTuples := make([]*openfgav1.TupleKey, 0, maxContextualTuplesPerAssertion)
+		assertions := make([]*openfgav1.Assertion, 0, maxAssertionsPerRequest)
+
+		for i := 0; i < maxContextualTuplesPerAssertion; i++ {
+			contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
+				Object:   "doc:readme",
+				Relation: "owner",
+				User:     fmt.Sprintf("user:%d", i),
+			})
+		}
+
+		for i := 0; i < maxAssertionsPerRequest; i++ {
+			assertions = append(assertions, &openfgav1.Assertion{
+				TupleKey:         tupleUtils.NewAssertionTupleKey("doc:readme", "owner", fmt.Sprintf("user:%d", i)),
+				Expectation:      true,
+				ContextualTuples: contextualTuples,
+			})
+		}
+
+		err := datastore.WriteAssertions(ctx, storeID, modelID, assertions)
+		require.NoError(t, err)
+
+		gotAssertions, err := datastore.ReadAssertions(ctx, storeID, modelID)
+		require.NoError(t, err)
+		require.Len(t, gotAssertions, len(assertions))
 	})
 
 	t.Run("writing_twice_overwrites_assertions", func(t *testing.T) {
