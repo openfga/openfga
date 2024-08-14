@@ -194,9 +194,7 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 
 func WithOptimizations(enabled bool) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		if enabled {
-			d.optimizationsEnabled = true
-		}
+		d.optimizationsEnabled = enabled
 	}
 }
 
