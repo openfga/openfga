@@ -835,7 +835,7 @@ func buildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 // nolint:unused
 type usersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
-func getComputeRelation(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
+func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
 	rel, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
 		return "", err
@@ -843,7 +843,7 @@ func getComputeRelation(typesys *typesystem.TypeSystem, objectType, relation str
 	rewrite := rel.GetRewrite()
 	switch rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_ComputedUserset:
-		return getComputeRelation(typesys, objectType, rewrite.GetComputedUserset().GetRelation())
+		return getComputedRelation(typesys, objectType, rewrite.GetComputedUserset().GetRelation())
 	case *openfgav1.Userset_This:
 		return relation, nil
 	default:
@@ -852,7 +852,7 @@ func getComputeRelation(typesys *typesystem.TypeSystem, objectType, relation str
 }
 
 func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, objectID, relation string) (string, string, error) {
-	cr, err := getComputeRelation(typesys, objectType, relation)
+	cr, err := getComputedRelation(typesys, objectType, relation)
 	if err != nil {
 		return "", "", err
 	}

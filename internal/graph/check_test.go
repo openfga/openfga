@@ -2199,7 +2199,7 @@ func TestCycleDetection(t *testing.T) {
 	})
 }
 
-func TestGetComputeRelation(t *testing.T) {
+func TestGetComputedRelation(t *testing.T) {
 	tests := []struct {
 		name             string
 		model            string
@@ -2279,7 +2279,7 @@ func TestGetComputeRelation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			output, err := getComputeRelation(ts, tt.objectType, tt.relation)
+			output, err := getComputedRelation(ts, tt.objectType, tt.relation)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {
