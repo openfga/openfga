@@ -1073,7 +1073,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	end := time.Since(start)
 
 	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
-	require.Lessf(t, end, 200*time.Millisecond, fmt.Sprintf("end was %s", end))
+	require.Lessf(t, end, 200*time.Millisecond, "end was "+end.String())
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
 }
