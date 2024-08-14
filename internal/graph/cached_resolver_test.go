@@ -675,6 +675,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	localCheckResolver := NewLocalChecker(
 		WithMaxConcurrentReads(1),
+		WithOptimizations(true),
 	)
 	defer localCheckResolver.Close()
 
@@ -707,6 +708,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	// For TTU fastpath, we no longer call ResolveCheck to get the parent / child.
 	// As such, it should not have called the cache.
+	mockCache.EXPECT().Get(reqKey).Times(0).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
 	res, err = localCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:          storeID,
 		TupleKey:         tuple.NewTupleKey("document:x", "ttu", "user:maria"),
