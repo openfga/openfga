@@ -380,6 +380,24 @@ func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.Relation
 	return true
 }
 
+func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReference) bool {
+	if a.GetType() != b.GetType() {
+		return false
+	}
+
+	// Type with no relation or wildcard (e.g. 'user').
+	if a.GetRelationOrWildcard() == nil && b.GetRelationOrWildcard() == nil {
+		return true
+	}
+
+	// Typed wildcard (e.g. 'user:*').
+	if a.GetWildcard() != nil && b.GetWildcard() != nil {
+		return true
+	}
+
+	return a.GetRelation() != "" && b.GetRelation() != "" && a.GetRelation() == b.GetRelation()
+}
+
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, source *openfgav1.RelationReference) (bool, error) {
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
@@ -388,24 +406,10 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	}
 
 	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == typeRestriction.GetType() {
-			// Type with no relation or wildcard (e.g. 'user').
-			if typeRestriction.GetRelationOrWildcard() == nil && source.GetRelationOrWildcard() == nil {
-				return true, nil
-			}
-
-			// Typed wildcard (e.g. 'user:*').
-			if typeRestriction.GetWildcard() != nil && source.GetWildcard() != nil {
-				return true, nil
-			}
-
-			if typeRestriction.GetRelation() != "" && source.GetRelation() != "" &&
-				typeRestriction.GetRelation() == source.GetRelation() {
-				return true, nil
-			}
+		if RelationEquals(source, typeRestriction) {
+			return true, nil
 		}
 	}
-
 	return false, nil
 }
 
