@@ -2273,6 +2273,20 @@ func TestGetComputedRelation(t *testing.T) {
 			expectedRelation: "",
 			expectedError:    true,
 		},
+		{
+			name: "rel_not_found",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`,
+			objectType:       "group",
+			relation:         "not_found",
+			expectedRelation: "",
+			expectedError:    true,
+		},
 	}
 	for _, tt := range tests {
 		tt := tt

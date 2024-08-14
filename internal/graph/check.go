@@ -851,12 +851,12 @@ func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation st
 	}
 }
 
-func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, objectID, relation string) (string, string, error) {
+func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
 	cr, err := getComputedRelation(typesys, objectType, relation)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	return tuple.ToObjectRelationString(objectType, cr), objectID, nil
+	return tuple.ToObjectRelationString(objectType, cr), nil
 }
 
 // buildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
@@ -867,7 +867,11 @@ func buildUsersetDetailsUserset(typesys *typesystem.TypeSystem) usersetDetailsFu
 		// the relation is from the tuple
 		object, relation := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		return buildUsersetDetails(typesys, objectType, objectID, relation)
+		rel, err := buildUsersetDetails(typesys, objectType, relation)
+		if err != nil {
+			return "", "", err
+		}
+		return rel, objectID, nil
 	}
 }
 
@@ -878,7 +882,11 @@ func buildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation str
 	return func(t *openfgav1.TupleKey) (string, string, error) {
 		object, _ := tuple.SplitObjectRelation(t.GetUser())
 		objectType, objectID := tuple.SplitObject(object)
-		return buildUsersetDetails(typesys, objectType, objectID, computedRelation)
+		rel, err := buildUsersetDetails(typesys, objectType, computedRelation)
+		if err != nil {
+			return "", "", err
+		}
+		return rel, objectID, nil
 	}
 }
 
