@@ -667,23 +667,21 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // nolint:unused
 type usersetsMapType map[string]storage.SortedSet
 
-// return whether any of the iterator ID is in sorted set
+// return whether any of the iterator ID is in sorted set.
 func tupleIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
 	for {
 		t, err := filteredIter.Next(ctx)
+		if errors.Is(err, storage.ErrIteratorDone) {
+			return false, nil
+		}
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
 			return false, err
 		}
-
 		_, objectID := tuple.SplitObject(t.GetObject())
 		if objectIDs.Exists(objectID) {
 			return true, nil
 		}
 	}
-	return false, nil
 }
 
 // nolint:unused
@@ -749,10 +747,10 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			telemetry.TraceError(span, err)
 			return nil, err
 		}
-		reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
 		if allowed {
 			span.SetAttributes(attribute.Bool("allowed", true))
 		}
+		reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
 		return &ResolveCheckResponse{
 			Allowed: allowed,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
