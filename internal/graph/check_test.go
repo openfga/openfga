@@ -2852,3 +2852,50 @@ func TestProduceUsersets(t *testing.T) {
 		})
 	}
 }
+
+func TestUserFilter(t *testing.T) {
+	tests := []struct {
+		name                    string
+		hasPubliclyAssignedType bool
+		user                    string
+		userType                string
+		expected                []*openfgav1.ObjectRelation
+	}{
+		{
+			name:                    "non_public",
+			hasPubliclyAssignedType: false,
+			user:                    "user:1",
+			userType:                "user",
+			expected: []*openfgav1.ObjectRelation{{
+				Object: "user:1",
+			}},
+		},
+		{
+			name:                    "public",
+			hasPubliclyAssignedType: true,
+			user:                    "user:1",
+			userType:                "user",
+			expected: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: "user:*"},
+			},
+		},
+		{
+			name:                    "user_wildcard",
+			hasPubliclyAssignedType: true,
+			user:                    "user:*",
+			userType:                "user",
+			expected: []*openfgav1.ObjectRelation{
+				{Object: "user:*"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := userFilter(tt.hasPubliclyAssignedType, tt.user, tt.userType)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
