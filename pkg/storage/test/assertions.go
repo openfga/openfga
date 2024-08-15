@@ -10,6 +10,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -18,7 +19,7 @@ import (
 func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("small_request_succeeds", func(t *testing.T) {
+	t.Run("writing_and_reading_assertions_succeeds", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
 		assertions := []*openfgav1.Assertion{
@@ -43,39 +44,35 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("big_request_succeeds", func(t *testing.T) {
+	t.Run("64kb_request_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		modelID := ulid.Make().String()
 
-		maxAssertionsPerRequest := 100
-		maxContextualTuplesPerAssertion := 20
 		maxBytesPerUser := 512
 		maxBytesPerRelation := 50
 		maxBytesPerObject := 256
-		// 1636000 bytes total = 1636 kb
+		numAssertions := 45
 
-		contextualTuples := make([]*openfgav1.TupleKey, 0, maxContextualTuplesPerAssertion)
-		assertions := make([]*openfgav1.Assertion, 0, maxAssertionsPerRequest)
+		longRelationName := strings.Repeat("a", maxBytesPerRelation)
 
-		for i := 0; i < maxContextualTuplesPerAssertion; i++ {
-			contextualTuples = append(contextualTuples, &openfgav1.TupleKey{
-				Object:   strings.Repeat(strconv.Itoa(i), maxBytesPerObject),
-				Relation: strings.Repeat(strconv.Itoa(i), maxBytesPerRelation),
-				User:     strings.Repeat(strconv.Itoa(i), maxBytesPerUser),
-			})
-		}
+		assertions := make([]*openfgav1.Assertion, 0, numAssertions)
 
-		for i := 0; i < maxAssertionsPerRequest; i++ {
-			assertions = append(assertions, &openfgav1.Assertion{
+		protoSize := 0
+		for a := 0; a < numAssertions; a++ {
+			newAssertion := &openfgav1.Assertion{
 				TupleKey: &openfgav1.AssertionTupleKey{
-					Object:   strings.Repeat(strconv.Itoa(i), maxBytesPerObject),
-					Relation: strings.Repeat(strconv.Itoa(i), maxBytesPerRelation),
-					User:     strings.Repeat(strconv.Itoa(i), maxBytesPerUser),
+					Object:   "document:" + strings.Repeat(strconv.Itoa(a), maxBytesPerObject-len("document:")),
+					Relation: longRelationName,
+					User:     "user:" + strings.Repeat(strconv.Itoa(a), maxBytesPerUser-len("user:")),
 				},
 				Expectation:      true,
-				ContextualTuples: contextualTuples,
-			})
+				ContextualTuples: nil,
+			}
+			assertions = append(assertions, newAssertion)
+			protoSize += proto.Size(newAssertion)
 		}
+
+		require.LessOrEqual(t, protoSize, 64*1024) // 64 kb
 
 		err := datastore.WriteAssertions(ctx, storeID, modelID, assertions)
 		require.NoError(t, err)
