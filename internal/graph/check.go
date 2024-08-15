@@ -705,45 +705,56 @@ func userFilter(hasPubliclyAssignedType bool,
 	}
 }
 
+// iteratorReadStartingFromUser returns storage iterator for
+// user with request's type and relation with specified objectIDs as
+// filter.
+func iteratorReadStartingFromUser(ctx context.Context,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader,
+	req *ResolveCheckRequest,
+	objectRel string,
+	objectIDs storage.SortedSet) (storage.TupleIterator, error) {
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
+
+	opts := storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	user := reqTupleKey.GetUser()
+	userType := tuple.GetType(user)
+	objectType, relation := tuple.SplitObjectRelation(objectRel)
+	// TODO: add in optimization to filter out user not matching the type
+
+	relationReference := typesystem.DirectRelationReference(objectType, relation)
+	hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
+
+	return ds.ReadStartingWithUser(ctx, storeID,
+		storage.ReadStartingWithUserFilter{
+			ObjectType: objectType,
+			Relation:   relation,
+			UserFilter: userFilter(hasPubliclyAssignedType, user, userType),
+			ObjectIDs:  objectIDs,
+		}, opts)
+}
+
 func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 		defer span.End()
 
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
-
 		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-		storeID := req.GetStoreID()
-		reqTupleKey := req.GetTupleKey()
-		reqContext := req.GetContext()
-
-		opts := storage.ReadStartingWithUserOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.GetConsistency(),
-			},
-		}
-
-		user := reqTupleKey.GetUser()
-		userType := tuple.GetType(user)
-		objectType, relation := tuple.SplitObjectRelation(objectRel)
-		// TODO: add in optimization to filter out user not matching the type
-
-		relationReference := typesystem.DirectRelationReference(objectType, relation)
-		hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
-
-		i, err := ds.ReadStartingWithUser(ctx, storeID,
-			storage.ReadStartingWithUserFilter{
-				ObjectType: objectType,
-				Relation:   relation,
-				UserFilter: userFilter(hasPubliclyAssignedType, user, userType),
-				ObjectIDs:  objectIDs,
-			}, opts)
-
+		i, err := iteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err
 		}
+
+		reqContext := req.GetContext()
 		// filter out invalid tuples yielded by the database iterator
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
