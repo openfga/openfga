@@ -328,6 +328,13 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	}
 	output := make([]*openfgav1.RelationReference, len(refs))
 	count := utils.Filter(output, refs, IsRelationUserset)
+
+	// this condition exists only to satisfy currently held assumptions
+	// that this function will return nil when there are no directly
+	// related usersets.
+	if count < 1 {
+		output = nil
+	}
 	return output[:count], nil
 }
 
