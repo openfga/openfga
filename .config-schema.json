@@ -115,7 +115,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-consistency-params"]
+                "enum": ["enable-consistency-params", "enable-check-optimizations"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -130,7 +130,7 @@
                     "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
                 }
             }
-        },  
+        },
         "playground": {
             "type": "object",
             "properties": {
