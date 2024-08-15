@@ -2855,92 +2855,36 @@ func TestProduceUsersets(t *testing.T) {
 
 func TestUserFilter(t *testing.T) {
 	tests := []struct {
-		name       string
-		model      string
-		user       string
-		userType   string
-		objectType string
-		relation   string
-		expected   []*openfgav1.ObjectRelation
+		name                    string
+		hasPubliclyAssignedType bool
+		user                    string
+		userType                string
+		expected                []*openfgav1.ObjectRelation
 	}{
 		{
-			name: "non_public",
-			model: `model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner`,
-			user:       "user:1",
-			userType:   "user",
-			objectType: "group",
-			relation:   "member",
+			name:                    "non_public",
+			hasPubliclyAssignedType: false,
+			user:                    "user:1",
+			userType:                "user",
 			expected: []*openfgav1.ObjectRelation{{
 				Object: "user:1",
 			}},
 		},
 		{
-			name: "mixed_public",
-			model: `model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user, user:*]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner`,
-			user:       "user:1",
-			userType:   "user",
-			objectType: "group",
-			relation:   "member",
+			name:                    "public",
+			hasPubliclyAssignedType: true,
+			user:                    "user:1",
+			userType:                "user",
 			expected: []*openfgav1.ObjectRelation{
 				{Object: "user:1"},
 				{Object: "user:*"},
 			},
 		},
 		{
-			name: "mixed_public",
-			model: `model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user, user:*]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner`,
-			user:       "user:1",
-			userType:   "user",
-			objectType: "group",
-			relation:   "member",
-			expected: []*openfgav1.ObjectRelation{
-				{Object: "user:1"},
-				{Object: "user:*"},
-			},
-		},
-		{
-			name: "user_wildcard",
-			model: `model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user, user:*]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner`,
-			user:       "user:*",
-			userType:   "user",
-			objectType: "group",
-			relation:   "member",
+			name:                    "user_wildcard",
+			hasPubliclyAssignedType: true,
+			user:                    "user:*",
+			userType:                "user",
 			expected: []*openfgav1.ObjectRelation{
 				{Object: "user:*"},
 			},
@@ -2950,76 +2894,7 @@ func TestUserFilter(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			result := userFilter(ts, tt.user, tt.userType, tt.objectType, tt.relation)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestReadStartingWithUserFilter(t *testing.T) {
-	objectIDs := storage.NewSortedSet()
-	tests := []struct {
-		name        string
-		model       string
-		reqTupleKey *openfgav1.TupleKey
-		objectRel   string
-		expected    storage.ReadStartingWithUserFilter
-	}{
-		{
-			name: "non_public",
-			model: `model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner`,
-			reqTupleKey: tuple.NewTupleKey("folder:1", "viewer", "user:1"),
-			objectRel:   "group#member",
-			expected: storage.ReadStartingWithUserFilter{
-				ObjectType: "group",
-				Relation:   "member",
-				UserFilter: []*openfgav1.ObjectRelation{
-					{Object: "user:1"},
-				},
-				ObjectIDs: objectIDs,
-			},
-		},
-		{
-			name: "public",
-			model: `model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user, user:*]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner`,
-			reqTupleKey: tuple.NewTupleKey("folder:1", "viewer", "user:1"),
-			objectRel:   "group#member",
-			expected: storage.ReadStartingWithUserFilter{
-				ObjectType: "group",
-				Relation:   "member",
-				UserFilter: []*openfgav1.ObjectRelation{
-					{Object: "user:1"},
-					{Object: "user:*"},
-				},
-				ObjectIDs: objectIDs,
-			},
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			result := readStartingWithUserFilter(ts, tt.reqTupleKey, tt.objectRel, objectIDs)
+			result := userFilter(tt.hasPubliclyAssignedType, tt.user, tt.userType)
 			require.Equal(t, tt.expected, result)
 		})
 	}

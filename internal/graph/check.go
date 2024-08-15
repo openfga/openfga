@@ -690,14 +690,9 @@ func tupleIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFil
 	}
 }
 
-func userFilter(typesys *typesystem.TypeSystem,
+func userFilter(hasPubliclyAssignedType bool,
 	user,
-	userType,
-	objectType,
-	relation string) []*openfgav1.ObjectRelation {
-	relationReference := typesystem.DirectRelationReference(objectType, relation)
-	hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
-
+	userType string) []*openfgav1.ObjectRelation {
 	if !hasPubliclyAssignedType || user == tuple.TypedPublicWildcard(userType) {
 		return []*openfgav1.ObjectRelation{{
 			Object: user,
@@ -707,23 +702,6 @@ func userFilter(typesys *typesystem.TypeSystem,
 	return []*openfgav1.ObjectRelation{
 		{Object: user},
 		{Object: tuple.TypedPublicWildcard(userType)},
-	}
-}
-
-func readStartingWithUserFilter(
-	typesys *typesystem.TypeSystem,
-	reqTupleKey *openfgav1.TupleKey,
-	objectRel string,
-	objectIDs storage.SortedSet) storage.ReadStartingWithUserFilter {
-	objectType, relation := tuple.SplitObjectRelation(objectRel)
-	user := reqTupleKey.GetUser()
-	userType := tuple.GetType(user)
-
-	return storage.ReadStartingWithUserFilter{
-		ObjectType: objectType,
-		Relation:   relation,
-		UserFilter: userFilter(typesys, user, userType, objectType, relation),
-		ObjectIDs:  objectIDs,
 	}
 }
 
@@ -746,9 +724,21 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 			},
 		}
 
+		user := reqTupleKey.GetUser()
+		userType := tuple.GetType(user)
+		objectType, relation := tuple.SplitObjectRelation(objectRel)
 		// TODO: add in optimization to filter out user not matching the type
+
+		relationReference := typesystem.DirectRelationReference(objectType, relation)
+		hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
+
 		i, err := ds.ReadStartingWithUser(ctx, storeID,
-			readStartingWithUserFilter(typesys, reqTupleKey, objectRel, objectIDs), opts)
+			storage.ReadStartingWithUserFilter{
+				ObjectType: objectType,
+				Relation:   relation,
+				UserFilter: userFilter(hasPubliclyAssignedType, user, userType),
+				ObjectIDs:  objectIDs,
+			}, opts)
 
 		if err != nil {
 			telemetry.TraceError(span, err)
