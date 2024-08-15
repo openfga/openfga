@@ -177,6 +177,175 @@ func TestRelationEquals(t *testing.T) {
 	}
 }
 
+func TestIsRelationUserset(t *testing.T) {
+	tests := map[string]struct {
+		r *openfgav1.RelationReference
+		o bool
+	}{
+		"nil": {
+			r: nil,
+			o: false,
+		},
+		"has_relation": {
+			r: &openfgav1.RelationReference{
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{
+					Relation: "viewer",
+				},
+			},
+			o: true,
+		},
+		"has_wildcard": {
+			r: &openfgav1.RelationReference{
+				RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+					Wildcard: &openfgav1.Wildcard{},
+				},
+			},
+			o: true,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.o, IsRelationUserset(tc.r))
+		})
+	}
+}
+
+func TestTypeSystem_DirectlyRelatedUsersets(t *testing.T) {
+	tests := map[string]struct {
+		model       string
+		objectType  string
+		relation    string
+		expectError bool
+		output      []*openfgav1.RelationReference
+	}{
+		"missing_relation": {
+			model: `
+				model
+					schema 1.1
+				type user
+			`,
+			objectType:  "user",
+			relation:    "viewer",
+			expectError: true,
+			output:      nil,
+		},
+		"one_direct_no_userset": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+			`,
+			objectType:  "group",
+			relation:    "member",
+			expectError: false,
+			output:      []*openfgav1.RelationReference{},
+		},
+		"one_direct_userset": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define parent: [group#member]
+			`,
+			objectType:  "folder",
+			relation:    "parent",
+			expectError: false,
+			output: []*openfgav1.RelationReference{
+				{
+					Type: "group",
+					RelationOrWildcard: &openfgav1.RelationReference_Relation{
+						Relation: "member",
+					},
+				},
+			},
+		},
+		"two_direct_usersets": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define admin: [user]
+				type folder
+					relations
+						define parent: [group#member, group#admin]
+			`,
+			objectType:  "folder",
+			relation:    "parent",
+			expectError: false,
+			output: []*openfgav1.RelationReference{
+				{
+					Type: "group",
+					RelationOrWildcard: &openfgav1.RelationReference_Relation{
+						Relation: "member",
+					},
+				},
+				{
+					Type: "group",
+					RelationOrWildcard: &openfgav1.RelationReference_Relation{
+						Relation: "admin",
+					},
+				},
+			},
+		},
+		"two_direct_usersets_with_two_others": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+				type group
+					relations
+						define member: [user]
+						define admin: [user]
+				type folder
+					relations
+						define parent: [document, group#member, user, group#admin]
+			`,
+			objectType:  "folder",
+			relation:    "parent",
+			expectError: false,
+			output: []*openfgav1.RelationReference{
+				{
+					Type: "group",
+					RelationOrWildcard: &openfgav1.RelationReference_Relation{
+						Relation: "member",
+					},
+				},
+				{
+					Type: "group",
+					RelationOrWildcard: &openfgav1.RelationReference_Relation{
+						Relation: "admin",
+					},
+				},
+			},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(tc.model)
+			ts := New(model)
+			r, err := ts.DirectlyRelatedUsersets(tc.objectType, tc.relation)
+			if !tc.expectError {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+			require.Equal(t, tc.output, r)
+		})
+	}
+}
+
 func TestHasEntrypoints(t *testing.T) {
 	tests := map[string]struct {
 		model         string

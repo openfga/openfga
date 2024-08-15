@@ -13,6 +13,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -315,20 +316,19 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([
 	return r.GetTypeInfo().GetDirectlyRelatedUserTypes(), nil
 }
 
+func IsRelationUserset(r *openfgav1.RelationReference) bool {
+	return r.GetRelation() != "" || r.GetWildcard() != nil
+}
+
 // DirectlyRelatedUsersets returns a list of the directly user related types that are usersets.
 func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*openfgav1.RelationReference, error) {
 	refs, err := t.GetDirectlyRelatedUserTypes(objectType, relation)
-	var usersetRelationReferences []*openfgav1.RelationReference
 	if err != nil {
-		return usersetRelationReferences, err
+		return nil, err
 	}
-
-	for _, ref := range refs {
-		if ref.GetRelation() != "" || ref.GetWildcard() != nil {
-			usersetRelationReferences = append(usersetRelationReferences, ref)
-		}
-	}
-	return usersetRelationReferences, nil
+	output := make([]*openfgav1.RelationReference, len(refs))
+	count := utils.Filter(output, refs, IsRelationUserset)
+	return output[:count], nil
 }
 
 func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
