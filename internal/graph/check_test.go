@@ -3301,9 +3301,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				objectIDs.Add(objectID)
 			}
 
-			checker := NewLocalChecker()
-			t.Cleanup(checker.Close)
-			associatedFunc := checker.buildCheckAssociatedObjects(&ResolveCheckRequest{
+			associatedFunc := buildCheckAssociatedObjects(&ResolveCheckRequest{
 				StoreID:              ulid.Make().String(),
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
