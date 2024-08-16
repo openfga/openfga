@@ -3044,22 +3044,6 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 		},
 		{
 			name:     "condition_missing_parameter",
-			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:maria", "correct_ip", nil),
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define can_view: [user]`),
-			context:      map[string]interface{}{},
-			conditionMet: false,
-			expectedErr:  condition.NewEvaluationError("correct_ip", fmt.Errorf("condition was not found")),
-		},
-		{
-			name:     "condition_missing_parameter",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:maria", "x_y", nil),
 			model: parser.MustTransformDSLToProto(`
 				model
@@ -3110,7 +3094,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 		model                        *openfgav1.AuthorizationModel
 		tuples                       []*openfgav1.TupleKey
 		context                      map[string]interface{}
-		dsError                      bool
+		dsError                      error
 		objectIDs                    []string
 		expectedError                bool
 		expectedResolveCheckResponse *ResolveCheckResponse
@@ -3129,7 +3113,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					relations
 						define viewer: [group#member]`),
 			tuples:  []*openfgav1.TupleKey{},
-			dsError: false,
+			dsError: nil,
 			objectIDs: []string{
 				"2", "3",
 			},
@@ -3140,6 +3124,29 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					DatastoreQueryCount: 1,
 				},
 			},
+			expectedError: false,
+		},
+		{
+			name: "bad_ds_call",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples:  []*openfgav1.TupleKey{},
+			dsError: fmt.Errorf("bad_ds_call"),
+			objectIDs: []string{
+				"2", "3",
+			},
+			context:                      map[string]interface{}{},
+			expectedResolveCheckResponse: nil,
+			expectedError:                true,
 		},
 		{
 			name: "non_empty_iterator_match_objectIDs",
@@ -3160,7 +3167,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				tuple.NewTupleKey("group:3", "member", "user:maria"),
 				tuple.NewTupleKey("group:4", "member", "user:maria"),
 			},
-			dsError: false,
+			dsError: nil,
 			objectIDs: []string{
 				"2", "3",
 			},
@@ -3171,6 +3178,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					DatastoreQueryCount: 1,
 				},
 			},
+			expectedError: false,
 		},
 		{
 			name: "non_empty_iterator_not_match_objectIDs",
@@ -3191,7 +3199,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				tuple.NewTupleKey("group:3", "member", "user:maria"),
 				tuple.NewTupleKey("group:4", "member", "user:maria"),
 			},
-			dsError: false,
+			dsError: nil,
 			objectIDs: []string{
 				"8", "9",
 			},
@@ -3202,6 +3210,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					DatastoreQueryCount: 1,
 				},
 			},
+			expectedError: false,
 		},
 		{
 			name: "non_empty_iterator_match_cond_not_match",
@@ -3227,7 +3236,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("group:3", "viewer", "user:maria", "condX", nil),
 				tuple.NewTupleKeyWithCondition("group:4", "viewer", "user:maria", "condX", nil),
 			},
-			dsError: false,
+			dsError: nil,
 			objectIDs: []string{
 				"2", "3",
 			},
@@ -3240,6 +3249,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					DatastoreQueryCount: 1,
 				},
 			},
+			expectedError: false,
 		},
 		{
 			name: "non_empty_iterator_match_cond_match",
@@ -3265,7 +3275,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("group:3", "viewer", "user:maria", "condX", nil),
 				tuple.NewTupleKeyWithCondition("group:4", "viewer", "user:maria", "condX", nil),
 			},
-			dsError: false,
+			dsError: nil,
 			objectIDs: []string{
 				"2", "3",
 			},
@@ -3278,6 +3288,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					DatastoreQueryCount: 1,
 				},
 			},
+			expectedError: false,
 		},
 	}
 	for _, tt := range tests {
@@ -3309,7 +3320,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				}
 			}
 			dsIter := storage.NewStaticTupleIterator(tuples)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(dsIter, nil)
+			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(dsIter, tt.dsError)
 
 			ts := typesystem.New(tt.model)
 			ctx := context.Background()
