@@ -38,20 +38,9 @@ func (e InternalError) Error() string {
 	return e.public.Error()
 }
 
-func (e InternalError) Is(target error) bool {
-	return target.Error() == e.Error()
-}
-
-func (e InternalError) InternalError() string {
-	return e.internal.Error()
-}
-
-func (e InternalError) Internal() error {
+// Unwrap is called by errors.Is.
+func (e InternalError) Unwrap() error {
 	return e.internal
-}
-
-func (e InternalError) GRPCStatus() *status.Status {
-	return status.New(codes.Code(openfgav1.InternalErrorCode_internal_error), e.public.Error())
 }
 
 // NewInternalError returns an error that is decorated with a public-facing error message.
