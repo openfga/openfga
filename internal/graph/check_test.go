@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/mocks"
+
 	"github.com/openfga/openfga/internal/concurrency"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 
@@ -2896,6 +2898,103 @@ func TestUserFilter(t *testing.T) {
 			t.Parallel()
 			result := userFilter(tt.hasPubliclyAssignedType, tt.user, tt.userType)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIteratorReadStartingFromUser(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		reqConsistency   openfgav1.ConsistencyPreference
+		expectedIsPublic bool
+	}{
+		{
+			name: "non_public",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type folder
+				relations
+					define owner: [group]
+					define viewer: member from owner
+`,
+			reqConsistency:   openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+			expectedIsPublic: false,
+		},
+		{
+			name: "public",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user, user:*]
+			type folder
+				relations
+					define owner: [group]
+					define viewer: member from owner
+`,
+			reqConsistency:   openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+			expectedIsPublic: true,
+		},
+		{
+			name: "higher_consistency",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type folder
+				relations
+					define owner: [group]
+					define viewer: member from owner
+`,
+			reqConsistency:   openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			expectedIsPublic: false,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			storeID := ulid.Make().String()
+
+			req := ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Consistency:          tt.reqConsistency,
+			}
+			objectIDs := storage.NewSortedSet()
+
+			expectedFilter := storage.ReadStartingWithUserFilter{
+				ObjectType: "group",
+				Relation:   "member",
+				UserFilter: userFilter(tt.expectedIsPublic, "user:maria", "user"),
+				ObjectIDs:  objectIDs,
+			}
+			expectedOpts := storage.ReadStartingWithUserOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
+			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			_, _ = iteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs)
 		})
 	}
 }
