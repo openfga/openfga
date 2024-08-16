@@ -81,7 +81,7 @@ func (c *CheckCommand) Execute(ctx context.Context, req *openfgav1.CheckRequest)
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: c.typesys.GetAuthorizationModelID(),
+		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 		Context:              req.GetContext(),

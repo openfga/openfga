@@ -8,6 +8,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -27,10 +28,8 @@ func TestCheckQuery(t *testing.T) {
 	defer mockController.Finish()
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	// TODO this should be NewMockCheckResolver, but i can't import it here
-	checkResolver := graph.NewLocalChecker()
-	t.Cleanup(checkResolver.Close)
-	model := parser.MustTransformDSLToProto(`
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	model := testutils.MustTransformDSLToProtoWithID(`
 model
 	schema 1.1
 type user
@@ -43,7 +42,7 @@ type doc
 	require.NoError(t, err)
 
 	t.Run("validates_store_id", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, nil)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, nil)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId: "invalid",
 		})
@@ -51,7 +50,7 @@ type doc
 	})
 
 	t.Run("validates_model_id", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, nil)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, nil)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
@@ -65,7 +64,7 @@ type doc
 	})
 
 	t.Run("validates_input_user", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              ulid.Make().String(),
 			AuthorizationModelId: ulid.Make().String(),
@@ -79,7 +78,7 @@ type doc
 	})
 
 	t.Run("validates_input_relation", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              ulid.Make().String(),
 			AuthorizationModelId: ulid.Make().String(),
@@ -93,7 +92,7 @@ type doc
 	})
 
 	t.Run("validates_input_object", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              ulid.Make().String(),
 			AuthorizationModelId: ulid.Make().String(),
@@ -107,7 +106,7 @@ type doc
 	})
 
 	t.Run("validates_input_contextual_tuple", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              ulid.Make().String(),
 			AuthorizationModelId: ulid.Make().String(),
@@ -122,7 +121,7 @@ type doc
 	})
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              ulid.Make().String(),
 			AuthorizationModelId: ulid.Make().String(),
@@ -138,11 +137,10 @@ type doc
 	})
 
 	t.Run("no_validation_error_and_call_to_resolver_goes_through", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
-		// TODO we should be mocking the CheckResolver, not the datastore
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
-			Return(nil, storage.ErrNotFound)
+			Return(nil, nil)
 		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
 			StoreId:              ulid.Make().String(),
 			AuthorizationModelId: ulid.Make().String(),
@@ -151,17 +149,17 @@ type doc
 		require.NoError(t, err)
 	})
 
-	// TODO un-comment when using the MockCheckResolver
-	// t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
-	//	cmd := NewCheckCommand(mockDatastore, checkResolver, ts)
-	//	checkResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
-	//	_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-	//		StoreId:              ulid.Make().String(),
-	//		AuthorizationModelId: ulid.Make().String(),
-	//		TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
-	//	})
-	//	require.Error(t, err, errors.ErrUnknown)
-	// })
+	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
+		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              ulid.Make().String(),
+			AuthorizationModelId: ulid.Make().String(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.Error(t, err, errors.ErrUnknown)
+	})
+
 }
 
 func TestBuildCheckContext(t *testing.T) {
