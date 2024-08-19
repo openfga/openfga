@@ -11,7 +11,7 @@ Releases of OpenFGA will be versioned using dotted triples. For the purposes of 
 ### Major and Minor Releases
 Changes in the major and minor version components of the triple indicate changes in the functionality or performance of OpenFGA which may include breaking changes requiring those integrating OpenFGA in their project to make changes in their use of OpenFGA when adopting the new version.  It is recommended to fully review the published release notes accompanying a new release before upgrading.
 
-### Path Releases
+### Patch Releases
 Releases which increment only the "patch" component of the version triple may introduce new functionality, performance enhancements, bugfixes, or preview features while remaining backwards compatible with the previous release.  
 
 ## Release History
