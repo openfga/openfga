@@ -71,6 +71,28 @@ var (
 	}
 )
 
+// helper data struct to test input for usersetsChannelType.
+type usersetsChannelStruct struct {
+	err            error
+	objectRelation string
+	objectIDs      []string
+}
+
+func usersetsChannelFromUsersetsChannelStruct(orig []usersetsChannelStruct) []usersetsChannelType {
+	output := make([]usersetsChannelType, len(orig))
+	for i, result := range orig {
+		output[i] = usersetsChannelType{
+			err:            result.err,
+			objectRelation: result.objectRelation,
+			objectIDs:      storage.NewSortedSet(),
+		}
+		for _, objectID := range result.objectIDs {
+			output[i].objectIDs.Add(objectID)
+		}
+	}
+	return output
+}
+
 func TestCheck_CorrectContext(t *testing.T) {
 	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)
@@ -2602,12 +2624,6 @@ func TestProduceUsersets(t *testing.T) {
 		return false, fmt.Errorf("condition not found")
 	}
 
-	type usersetsChannelStruct struct {
-		err            error
-		objectRelation string
-		objectIDs      []string
-	}
-
 	tests := []struct {
 		name                  string
 		tuples                []*openfgav1.TupleKey
@@ -2799,17 +2815,8 @@ func TestProduceUsersets(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			expectedUsersetsChannelResult := make([]usersetsChannelType, len(tt.usersetsChannelResult))
-			for i, result := range tt.usersetsChannelResult {
-				expectedUsersetsChannelResult[i] = usersetsChannelType{
-					err:            result.err,
-					objectRelation: result.objectRelation,
-					objectIDs:      storage.NewSortedSet(),
-				}
-				for _, objectID := range result.objectIDs {
-					expectedUsersetsChannelResult[i].objectIDs.Add(objectID)
-				}
-			}
+
+			expectedUsersetsChannelResult := usersetsChannelFromUsersetsChannelStruct(tt.usersetsChannelResult)
 
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
 
@@ -2995,6 +3002,494 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
 			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
 			_, _ = iteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs)
+		})
+	}
+}
+
+func TestConsumeUsersets(t *testing.T) {
+	type dsResults struct {
+		tuples []*openfgav1.TupleKey
+		err    error
+	}
+	tests := []struct {
+		name                         string
+		model                        *openfgav1.AuthorizationModel
+		tuples                       []dsResults
+		usersetsChannelResult        []usersetsChannelStruct
+		ctxCancelled                 bool
+		expectedResolveCheckResponse *ResolveCheckResponse
+		errorExpected                error
+	}{
+		{
+			name: "userset_tuple_found",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:1", "member", "user:maria"),
+						tuple.NewTupleKey("group:2", "member", "user:maria"),
+						tuple.NewTupleKey("group:3", "member", "user:maria"),
+						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"0", "2", "8"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "userset_tuple_found_multi_batches",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:11", "member", "user:maria"),
+						tuple.NewTupleKey("group:12", "member", "user:maria"),
+						tuple.NewTupleKey("group:13", "member", "user:maria"),
+						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					},
+					err: nil,
+				},
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:11", "member", "user:maria"),
+						tuple.NewTupleKey("group:12", "member", "user:maria"),
+						tuple.NewTupleKey("group:13", "member", "user:maria"),
+						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					},
+					err: nil,
+				},
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:11", "member", "user:maria"),
+						tuple.NewTupleKey("group:12", "member", "user:maria"),
+						tuple.NewTupleKey("group:13", "member", "user:maria"),
+						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1", "2", "3", "4", "5"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"6", "7", "8", "9", "10"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"11", "15"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "userset_tuple_not_found",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:1", "member", "user:maria"),
+						tuple.NewTupleKey("group:2", "member", "user:maria"),
+						tuple.NewTupleKey("group:3", "member", "user:maria"),
+						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"5", "6", "7"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "userset_tuple_not_found_multiset",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:1", "member", "user:maria"),
+						tuple.NewTupleKey("group:2", "member", "user:maria"),
+						tuple.NewTupleKey("group:3", "member", "user:maria"),
+						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+					err: nil,
+				},
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:1", "member", "user:maria"),
+						tuple.NewTupleKey("group:2", "member", "user:maria"),
+						tuple.NewTupleKey("group:3", "member", "user:maria"),
+						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+					err: nil,
+				},
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:1", "member", "user:maria"),
+						tuple.NewTupleKey("group:2", "member", "user:maria"),
+						tuple.NewTupleKey("group:3", "member", "user:maria"),
+						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"5"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"6"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"7"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "ctx_cancelled",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples:                       []dsResults{},
+			usersetsChannelResult:        []usersetsChannelStruct{},
+			ctxCancelled:                 true,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                context.Canceled,
+		},
+		{
+			name: "iterator_error_first_batch",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{},
+					err:    fmt.Errorf("mock_error"),
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"10", "11", "12"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "iterator_error_first_batch_and_second_batch",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{},
+					err:    fmt.Errorf("mock_error"),
+				},
+				{
+					tuples: []*openfgav1.TupleKey{},
+					err:    fmt.Errorf("mock_error"),
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"10", "11", "12"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"13", "14", "15"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "iterator_error_first_batch_but_success_second",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{},
+					err:    fmt.Errorf("mock_error"),
+				},
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:11", "member", "user:maria"),
+						tuple.NewTupleKey("group:12", "member", "user:maria"),
+						tuple.NewTupleKey("group:13", "member", "user:maria"),
+						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1", "2", "3"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"10", "11", "12"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "iterator_error_first_batch_but_not_found_second",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{},
+					err:    fmt.Errorf("mock_error"),
+				},
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:11", "member", "user:maria"),
+						tuple.NewTupleKey("group:12", "member", "user:maria"),
+						tuple.NewTupleKey("group:13", "member", "user:maria"),
+						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1", "2", "3"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"4", "4", "6"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "userset_chan_error",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []dsResults{},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            fmt.Errorf("mock_error"),
+					objectRelation: "group#member",
+					objectIDs:      []string{"0", "2", "8"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			checker := NewLocalChecker()
+			t.Cleanup(checker.Close)
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+
+			for _, curTuples := range tt.tuples {
+				// Note that we need to return a new iterator for each DS call
+				tuples := make([]*openfgav1.Tuple, len(curTuples.tuples))
+				for i, tuple := range curTuples.tuples {
+					tuples[i] = &openfgav1.Tuple{
+						Key: tuple,
+					}
+				}
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(
+					storage.NewStaticTupleIterator(tuples), curTuples.err)
+			}
+
+			ts := typesystem.New(tt.model)
+			var ctx context.Context
+			var cancel context.CancelFunc
+			ctx = context.Background()
+			if tt.ctxCancelled {
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			usersetsChannelItems := usersetsChannelFromUsersetsChannelStruct(tt.usersetsChannelResult)
+
+			usersetChan := make(chan usersetsChannelType)
+			pool := concurrency.NewPool(context.Background(), 1)
+			pool.Go(func(ctx context.Context) error {
+				for _, item := range usersetsChannelItems {
+					usersetChan <- item
+				}
+				close(usersetChan)
+				return nil
+			})
+
+			result, err := checker.consumeUsersets(ctx, &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}, usersetChan)
+			require.Equal(t, tt.errorExpected, err)
+			require.Equal(t, tt.expectedResolveCheckResponse, result)
+
+			require.NoError(t, pool.Wait())
 		})
 	}
 }
