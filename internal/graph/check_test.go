@@ -3432,6 +3432,46 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: nil,
 			errorExpected:                fmt.Errorf("mock_error"),
 		},
+		{
+			name: "ttu_tuple_found",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define owner: [group]
+						define viewer: member from group`),
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:1", "member", "user:maria"),
+						tuple.NewTupleKey("group:2", "member", "user:maria"),
+						tuple.NewTupleKey("group:3", "member", "user:maria"),
+						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"0", "2", "8"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			errorExpected: nil,
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
