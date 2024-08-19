@@ -33,12 +33,14 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -47,9 +49,9 @@ type document
 	var tuples []*openfgav1.Tuple
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 			iterator := storage.NewStaticTupleIterator(tuples)
 			return iterator, nil
 		})
@@ -99,12 +101,14 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -117,9 +121,9 @@ type document
 	}
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 			// simulate many goroutines trying to write to the results channel
 			iterator := storage.NewStaticTupleIterator(tuples)
 			t.Logf("returning tuple iterator")
@@ -181,20 +185,22 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define allowed: [user]
-	define viewer: [user] and allowed`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define allowed: [user]
+				define viewer: [user] and allowed`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		MaxTimes(2) // we expect it to be 0 most of the time
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
@@ -238,12 +244,14 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-	define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	typeSystem := typesystem.New(model)
 	mockController := gomock.NewController(t)
@@ -256,8 +264,8 @@ type document
 	}
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 			iterator := mocks.NewErrorTupleIterator(tuples)
 			return iterator, nil
 		})
@@ -311,12 +319,14 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 
 	store := ulid.Make().String()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
- schema 1.1
-type user
-type document
- relations
-   define viewer: [user]`)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define viewer: [user]`)
 
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 
@@ -373,6 +383,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
+
 		type user
 		type group
 			relations
@@ -389,9 +400,9 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:anne"}},
-		}).
+		}, gomock.Any()).
 			Times(1).
-			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("group:fga", "member", "user:anne")},
 				}), nil
@@ -401,9 +412,9 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "group:fga", Relation: "member"}},
-		}).
+		}, gomock.Any()).
 			Times(1).
-			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					// NOTE this tuple is invalid
 					{Key: tuple.NewTupleKey("group:eng#member", "member", "group:fga#member")},
@@ -456,14 +467,15 @@ func TestReverseExpandThrottle(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-	type user
+		type user
 
-	type document
-	  relations
-		define viewer: [user]`)
+		type document
+			relations
+				define viewer: [user]`)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -593,15 +605,16 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 	}{
 		{
 			name: "should_throttle",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define viewer: [user] or editor 
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor 
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -618,15 +631,16 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		},
 		{
 			name: "should_not_throttle",
-			model: `model
-			schema 1.1
-		
-			type user
-		
-			type folder
-				 relations
-					  define editor: [user]
-					  define viewer: [user] or editor
+			model: `
+				model
+					schema 1.1
+			
+				type user
+			
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -643,15 +657,16 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		},
 		{
 			name: "should_not_throttle_if_there_are_not_enough_dispatches",
-			model: `model
-			schema 1.1
-		
-			type user
-		
-			type document
-			  relations
-				define editor: [user]
-				define viewer: editor
+			model: `
+				model
+					schema 1.1
+			
+				type user
+			
+				type document
+					relations
+						define editor: [user]
+						define viewer: editor
 			`,
 			tuples: []string{
 				"document:1#editor@user:jon",

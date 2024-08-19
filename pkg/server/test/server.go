@@ -36,14 +36,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 		func(t *testing.T) { TestReadAuthorizationModelsInvalidContinuationToken(t, ds) },
 	)
 
-	t.Run("TestReadChanges", func(t *testing.T) { TestReadChanges(t, ds) })
-	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
-		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
-	)
-	t.Run("TestReadChangesAfterConcurrentWritesReturnsUniqueResults",
-		func(t *testing.T) { TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t, ds) },
-	)
-
 	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
@@ -52,7 +44,6 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteCommand", func(t *testing.T) { TestWriteCommand(t, ds) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { WriteAuthorizationModelTest(t, ds) })
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { TestWriteAndReadAssertions(t, ds) })
-	t.Run("TestWriteAssertionsFailure", func(t *testing.T) { TestWriteAssertionsFailure(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
 }

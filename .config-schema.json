@@ -115,10 +115,21 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-list-users"]
+                "enum": ["enable-consistency-params", "enable-check-optimizations"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "checkTrackerEnabled": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
+                }
+            }
         },
         "playground": {
             "type": "object",
@@ -437,7 +448,7 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses",
+                    "description": "enable caching of Check requests. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs.",
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
@@ -544,6 +555,35 @@
                 }
             }
         },
+        "listUsersDispatchThrottling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable throttling when list users request's number of dispatches is high",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED"
+                },
+                "frequency": {
+                    "description": "the frequency period that the deprioritized throttling queue is evaluated for a list users request. A higher value will result in more aggressive throttling",
+                    "type": "duration",
+                    "default": "10µs",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY"
+                },
+                "threshold": {
+                    "description": "define the number of recursive operations to occur before getting throttled for a list users request",
+                    "type": "integer",
+                    "default": "100",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD"
+                },
+                "maxThreshold": {
+                    "description": "define the maximum dispatch threshold beyond above which requests will be throttled for a list users request. 0 will use the 'dispatchThrottling.threshold' value as maximum",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD"
+                }
+            }
+        },
         "requestTimeout": {
             "description": "The timeout duration for a request.",
             "type": "duration",
@@ -564,6 +604,22 @@
                     "description": "The OIDC audience of the tokens being signed by the authorization server.",
                     "type": "string",
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_AUDIENCE"
+                },
+                "issuerAliases": {
+                    "description": "the OIDC issuer DNS aliases that will be accepted as valid when verifying the `iss` field of the JWTs.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_ISSUER_ALIASES"
+                },
+                "subjects": {
+                    "description": "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_SUBJECTS"
                 }
             },
             "required": ["issuer", "audience"]

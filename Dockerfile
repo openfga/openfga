@@ -1,5 +1,5 @@
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.29@sha256:33e4617185dbc89d14ddafbe44f3e0cfb59a227e733c51d6513a024062c77377 as grpc_health_probe
-FROM cgr.dev/chainguard/go:1.21@sha256:40fb38b3f61d1ecdecd2bfe3d14fa621ab5e9ecb4c9ebba590276c2992f3e282 AS builder
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.29@sha256:33e4617185dbc89d14ddafbe44f3e0cfb59a227e733c51d6513a024062c77377 AS grpc_health_probe
+FROM cgr.dev/chainguard/go:1.22@sha256:d1dd86fbdfd50c231dc0f8fd9768fbbc31df25baed17e25aab76d24a503a7d44 AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=bind,target=. \
     CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
 
-FROM cgr.dev/chainguard/static@sha256:68b8855b2ce85b1c649c0e6c69f93c214f4db75359e4fd07b1df951a4e2b0140
+FROM cgr.dev/chainguard/static@sha256:5e9c88174a28c259c349f308dd661a6ec61ed5f8c72ecfaefb46cceb811b55a1
 
 EXPOSE 8081
 EXPOSE 8080

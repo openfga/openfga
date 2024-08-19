@@ -39,17 +39,23 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 
 	t.Run("list_stores_succeeds", func(t *testing.T) {
-		gotStores, ct, err := datastore.ListStores(ctx, storage.NewPaginationOptions(1, ""))
+		opts := storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(1, ""),
+		}
+		gotStores, ct, err := datastore.ListStores(ctx, opts)
 		require.NoError(t, err)
 
 		require.Len(t, gotStores, 1)
-		require.NotEmpty(t, len(ct))
+		require.NotEmpty(t, ct)
 
-		_, ct, err = datastore.ListStores(ctx, storage.NewPaginationOptions(100, string(ct)))
+		opts = storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(100, string(ct)),
+		}
+		_, ct, err = datastore.ListStores(ctx, opts)
 		require.NoError(t, err)
 
 		// This will fail if there are actually over 101 stores in the DB at the time of running.
-		require.Zero(t, len(ct))
+		require.Empty(t, ct)
 	})
 
 	t.Run("get_store_succeeds", func(t *testing.T) {
@@ -81,7 +87,10 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		// Store id should not appear in the list of store ids.
-		gotStores, _, err := datastore.ListStores(ctx, storage.NewPaginationOptions(storage.DefaultPageSize, ""))
+		opts := storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		gotStores, _, err := datastore.ListStores(ctx, opts)
 		require.NoError(t, err)
 
 		for _, s := range gotStores {

@@ -48,13 +48,14 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define reader: [user]`).GetTypeDefinitions(),
+					type document
+						relations
+							define reader: [user]`).GetTypeDefinitions(),
 			},
 		},
 	}

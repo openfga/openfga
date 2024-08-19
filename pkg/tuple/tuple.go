@@ -25,11 +25,10 @@ type TupleWithoutCondition interface {
 type UserType string
 
 const (
-	User    UserType = "user"
-	UserSet UserType = "userset"
+	User     UserType = "user"
+	UserSet  UserType = "userset"
+	Wildcard          = "*"
 )
-
-const Wildcard = "*"
 
 var (
 	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
@@ -157,7 +156,7 @@ func ObjectKey(obj *openfgav1.Object) string {
 type UserString = string
 
 // UserProtoToString returns a string from a User proto. Ex: 'user:maria' or 'group:fga#member'. It is
-// the opposite from StringToUserProto function.
+// the opposite of StringToUserProto function.
 func UserProtoToString(obj *openfgav1.User) UserString {
 	switch obj.GetUser().(type) {
 	case *openfgav1.User_Wildcard:
@@ -173,49 +172,8 @@ func UserProtoToString(obj *openfgav1.User) UserString {
 	}
 }
 
-// FromObjectOrUsersetProto returns a string from a ObjectOrUserset proto. Ex: 'user:maria' or 'group:fga#member'. It is
-// the opposite from StringToObjectOrUserset function.
-func FromObjectOrUsersetProto(obj *openfgav1.ObjectOrUserset) UserString {
-	switch user := obj.GetUser().(type) {
-	case *openfgav1.ObjectOrUserset_Object:
-		return fmt.Sprintf("%s:%s", user.Object.GetType(), user.Object.GetId())
-	case *openfgav1.ObjectOrUserset_Userset:
-		return fmt.Sprintf("%s:%s#%s", user.Userset.GetType(), user.Userset.GetId(), user.Userset.GetRelation())
-	default:
-		panic("unsupported type")
-	}
-}
-
-// StringToObjectOrUserset returns a ObjectOrUserset proto from a string. Ex: 'group:fga#member'.
-// It is the opposite from FromObjectOrUsersetProto function.
-func StringToObjectOrUserset(userKey UserString) *openfgav1.ObjectOrUserset {
-	userObj, userRel := SplitObjectRelation(userKey)
-	userObjType, userObjID := SplitObject(userObj)
-
-	if userRel == "" {
-		return &openfgav1.ObjectOrUserset{
-			User: &openfgav1.ObjectOrUserset_Object{
-				Object: &openfgav1.Object{
-					Type: userObjType,
-					Id:   userObjID,
-				},
-			},
-		}
-	}
-
-	return &openfgav1.ObjectOrUserset{
-		User: &openfgav1.ObjectOrUserset_Userset{
-			Userset: &openfgav1.UsersetUser{
-				Type:     userObjType,
-				Id:       userObjID,
-				Relation: userRel,
-			},
-		},
-	}
-}
-
 // StringToUserProto returns a User proto from a string. Ex: 'user:maria#member'.
-// It is the opposite from FromUserProto function.
+// It is the opposite of UserProtoToString function.
 func StringToUserProto(userKey UserString) *openfgav1.User {
 	userObj, userRel := SplitObjectRelation(userKey)
 	userObjType, userObjID := SplitObject(userObj)
@@ -239,8 +197,11 @@ func StringToUserProto(userKey UserString) *openfgav1.User {
 	}}}
 }
 
-// SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string
-// and the original object.
+// SplitObject splits an object into an objectType, an optional objectRelation, and an objectID.
+// E.g.
+//  1. "group:fga" returns "group" and "fga".
+//  2. "group#member:fga" returns "group#member" and "fga".
+//  3. "anne" returns "" and "anne".
 func SplitObject(object string) (string, string) {
 	switch i := strings.IndexByte(object, ':'); i {
 	case -1:
@@ -319,7 +280,12 @@ func TupleKeyToString(tk TupleWithoutCondition) string {
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyWithConditionToString(tk TupleWithCondition) string {
-	return fmt.Sprintf("%s#%s@%s (condition %s)", tk.GetObject(), tk.GetRelation(), tk.GetUser(), tk.GetCondition())
+	var sb strings.Builder
+	sb.WriteString(TupleKeyToString(tk))
+	if tk.GetCondition() != nil {
+		sb.WriteString(fmt.Sprintf(" (condition %s)", tk.GetCondition().GetName()))
+	}
+	return sb.String()
 }
 
 // IsValidObject determines if a string s is a valid object. A valid object contains exactly one `:` and no `#` or spaces.

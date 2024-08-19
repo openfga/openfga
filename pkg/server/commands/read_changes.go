@@ -35,6 +35,7 @@ func WithReadChangesQueryEncoder(e encoder.Encoder) ReadChangesQueryOption {
 	}
 }
 
+// WithReadChangeQueryHorizonOffset specifies duration in minutes.
 func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption {
 	return func(rq *ReadChangesQuery) {
 		rq.horizonOffset = time.Duration(horizonOffset) * time.Minute
@@ -62,9 +63,10 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
-	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-
-	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), req.GetType(), paginationOptions, q.horizonOffset)
+	opts := storage.ReadChangesOptions{
+		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+	}
+	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), req.GetType(), opts, q.horizonOffset)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1.ReadChangesResponse{

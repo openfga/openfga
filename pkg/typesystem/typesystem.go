@@ -331,6 +331,73 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	return usersetRelationReferences, nil
 }
 
+func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relationName string) ([]string, bool, error) {
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return nil, false, err
+	}
+	rewrite := relation.GetRewrite().GetUserset()
+
+	switch rw := rewrite.(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return t.resolvesTypeRelationToDirectlyAssignable(objectType, rw.ComputedUserset.GetRelation())
+	case *openfgav1.Userset_This:
+		break
+	default:
+		// NOTE: Currently, only computed usersets or directly related types are supported (and not usersets)
+		return nil, false, nil
+	}
+
+	directlyRelatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+
+	assignableTypes := make([]string, 0, len(directlyRelatedTypes))
+	// need to check whether these are simple types as well
+	for _, ref := range directlyRelatedTypes {
+		if ref.GetRelationOrWildcard() != nil {
+			if _, ok := ref.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+				// For now, we don't allow if these types are another userset
+				// because local check with these relations cannot be evaluated via simple datastore query.
+				return nil, false, nil
+			}
+		}
+		assignableTypes = append(assignableTypes, ref.GetType())
+	}
+	return assignableTypes, true, nil
+}
+
+// UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
+func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference) bool {
+	for _, rr := range relationReferences {
+		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
+		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
+		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
+			return false
+		}
+		if _, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation()); err != nil || !directlyAssignable {
+			return false
+		}
+	}
+	return true
+}
+
+func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReference) bool {
+	if a.GetType() != b.GetType() {
+		return false
+	}
+
+	// Type with no relation or wildcard (e.g. 'user').
+	if a.GetRelationOrWildcard() == nil && b.GetRelationOrWildcard() == nil {
+		return true
+	}
+
+	// Typed wildcard (e.g. 'user:*').
+	if a.GetWildcard() != nil && b.GetWildcard() != nil {
+		return true
+	}
+
+	return a.GetRelation() != "" && b.GetRelation() != "" && a.GetRelation() == b.GetRelation()
+}
+
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, source *openfgav1.RelationReference) (bool, error) {
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
@@ -339,25 +406,36 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	}
 
 	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == typeRestriction.GetType() {
-			// Type with no relation or wildcard (e.g. 'user').
-			if typeRestriction.GetRelationOrWildcard() == nil && source.GetRelationOrWildcard() == nil {
-				return true, nil
-			}
-
-			// Typed wildcard (e.g. 'user:*').
-			if typeRestriction.GetWildcard() != nil && source.GetWildcard() != nil {
-				return true, nil
-			}
-
-			if typeRestriction.GetRelation() != "" && source.GetRelation() != "" &&
-				typeRestriction.GetRelation() == source.GetRelation() {
-				return true, nil
-			}
+		if RelationEquals(source, typeRestriction) {
+			return true, nil
 		}
 	}
-
 	return false, nil
+}
+
+// TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
+func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelation string) bool {
+	tuplesetRelationTypes, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(objectType, tuplesetRelation)
+	if err != nil || !directlyAssignable {
+		return false
+	}
+	for _, tuplesetRelationType := range tuplesetRelationTypes {
+		_, childDirectlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(tuplesetRelationType, computedRelation)
+		if err != nil {
+			// in the case of errors due to relation undefined, we can ignore the error because it is possible
+			// that some parents do not have the relation defined.
+			if errors.Is(err, ErrRelationUndefined) {
+				continue
+			}
+
+			// otherwise, we do not know what the error is.  It is better to return error at this point.
+			return false
+		}
+		if !childDirectlyAssignable {
+			return false
+		}
+	}
+	return true
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
@@ -372,6 +450,7 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 //	    define viewer: [user:*]
 //
 // In the example above, the 'user' objectType is publicly assignable to the 'document#viewer' relation.
+// If the input target is not a defined relation, it returns false and RelationUndefinedError.
 func (t *TypeSystem) IsPubliclyAssignable(target *openfgav1.RelationReference, objectType string) (bool, error) {
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
 	if err != nil {

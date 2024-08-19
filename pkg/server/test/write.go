@@ -45,9 +45,10 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type repo`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type repo`).GetTypeDefinitions(),
 			},
 			request: &openfgav1.WriteRequest{},
 			// output
@@ -59,13 +60,14 @@ type repo`).GetTypeDefinitions(),
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-    define admin: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -83,15 +85,16 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define writer: [user]
-	define owner: [user]
-	define viewer: writer or owner`).GetTypeDefinitions(),
+					type repo
+						relations
+							define writer: [user]
+							define owner: [user]
+							define viewer: writer or owner`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -117,15 +120,16 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define writer: [user]
-	define owner: [user]
-	define viewer: writer and owner`).GetTypeDefinitions(),
+					type repo
+						relations
+							define writer: [user]
+							define owner: [user]
+							define viewer: writer and owner`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -213,15 +217,16 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define writer: [user]
-	define owner: [user]
-	define viewer: writer`).GetTypeDefinitions(),
+					type repo
+						relations
+							define writer: [user]
+							define owner: [user]
+							define viewer: writer`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -247,18 +252,19 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type org
-  relations
-	define viewer: [user]
+					type org
+						relations
+							define viewer: [user]
 
-type repo
-  relations
-	define owner: [org]
-	define viewer: viewer from owner`).GetTypeDefinitions(),
+					type repo
+						relations
+							define owner: [org]
+							define viewer: viewer from owner`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -284,13 +290,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -307,13 +314,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -333,13 +341,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define admin: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -356,10 +365,11 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
-type repository`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
+					type repository`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -381,13 +391,14 @@ type repository`).GetTypeDefinitions(),
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define owner: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -411,13 +422,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define owner: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -439,13 +451,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define owner: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -469,13 +482,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define owner: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define owner: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -523,10 +537,11 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type repo`).GetTypeDefinitions(),
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
+					type repo`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -551,14 +566,15 @@ type repo`).GetTypeDefinitions(),
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]
-	define writer: [user]`).GetTypeDefinitions(),
+					type repo
+						relations
+							define admin: [user]
+							define writer: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -578,13 +594,14 @@ type repo
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type org
-  relations
-	define manager: [user]`).GetTypeDefinitions(),
+					type org
+						relations
+							define manager: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
@@ -604,22 +621,23 @@ type org
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]
-	define writer: [user, team#member]
+					type repo
+						relations
+							define admin: [user]
+							define writer: [user, team#member]
 
-type org
-  relations
-	define owner: [user]
+					type org
+						relations
+							define owner: [user]
 
-type team
-  relations
-	define member: [user]`).GetTypeDefinitions(),
+					type team
+						relations
+							define member: [user]`).GetTypeDefinitions(),
 			},
 			// input
 			request: &openfgav1.WriteRequest{
@@ -639,22 +657,23 @@ type team
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]
-	define writer: [user, team#member]
+					type repo
+						relations
+							define admin: [user]
+							define writer: [user, team#member]
 
-type org
-  relations
-	define owner: [user]
+					type org
+						relations
+							define owner: [user]
 
-type team
-  relations
-	define member: [user]`).GetTypeDefinitions(),
+					type team
+						relations
+							define member: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
@@ -680,22 +699,23 @@ type team
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type repo
-  relations
-	define admin: [user]
-	define writer: [user, team#member]
+					type repo
+						relations
+							define admin: [user]
+							define writer: [user, team#member]
 
-type org
-  relations
-	define owner: [user]
+					type org
+						relations
+							define owner: [user]
 
-type team
-  relations
-	define member: [user]`).GetTypeDefinitions(),
+					type team
+						relations
+							define member: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|yenkel@openfga"),
@@ -725,13 +745,14 @@ type team
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions(),
+					type document
+						relations
+							define viewer: [user]`).GetTypeDefinitions(),
 			},
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
@@ -753,13 +774,14 @@ type document
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type document
-  relations
-	define viewer: [user]`).GetTypeDefinitions(),
+					type document
+						relations
+							define viewer: [user]`).GetTypeDefinitions(),
 			},
 			request: &openfgav1.WriteRequest{
 				Writes: &openfgav1.WriteRequestWrites{
@@ -785,13 +807,14 @@ type document
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+						schema 1.1
+					type user
 
-type org
-  relations
-	define owner: [user]`).GetTypeDefinitions(),
+					type org
+						relations
+							define owner: [user]`).GetTypeDefinitions(),
 			},
 			tuples: []*openfgav1.TupleKey{
 				{

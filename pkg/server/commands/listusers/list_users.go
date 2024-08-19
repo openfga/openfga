@@ -16,6 +16,7 @@ type listUsersRequest interface {
 	GetUserFilters() []*openfgav1.UserTypeFilter
 	GetContextualTuples() []*openfgav1.TupleKey
 	GetContext() *structpb.Struct
+	GetConsistency() openfgav1.ConsistencyPreference
 }
 
 type internalListUsersRequest struct {
@@ -104,9 +105,8 @@ func (r *internalListUsersRequest) GetContext() *structpb.Struct {
 }
 
 type listUsersResponse struct {
-	Users         []*openfgav1.User
-	ExcludedUsers []*openfgav1.ObjectOrUserset
-	Metadata      listUsersResponseMetadata
+	Users    []*openfgav1.User
+	Metadata listUsersResponseMetadata
 }
 
 type listUsersResponseMetadata struct {
@@ -115,6 +115,9 @@ type listUsersResponseMetadata struct {
 	// The number of times we are recursively expanding to find users.
 	// Atomic is used to be consistent with the Check and ListObjects.
 	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
 }
 
 func (r *listUsersResponse) GetUsers() []*openfgav1.User {
@@ -122,13 +125,6 @@ func (r *listUsersResponse) GetUsers() []*openfgav1.User {
 		return []*openfgav1.User{}
 	}
 	return r.Users
-}
-
-func (r *listUsersResponse) GetExcludedUsers() []*openfgav1.ObjectOrUserset {
-	if r == nil {
-		return []*openfgav1.ObjectOrUserset{}
-	}
-	return r.ExcludedUsers
 }
 
 func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
@@ -154,6 +150,7 @@ func fromListUsersRequest(o listUsersRequest, datastoreQueryCount *atomic.Uint32
 			UserFilters:          o.GetUserFilters(),
 			ContextualTuples:     o.GetContextualTuples(),
 			Context:              o.GetContext(),
+			Consistency:          o.GetConsistency(),
 		},
 		visitedUsersetsMap:  make(map[string]struct{}),
 		depth:               0,

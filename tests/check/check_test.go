@@ -36,6 +36,26 @@ var tuples = []*openfgav1.TupleKey{
 	tuple.NewTupleKey("team:openfga", "member", "user:github|iaco@openfga"),
 }
 
+func TestMatrixMemory(t *testing.T) {
+	testRunTestMatrix(t, "memory")
+}
+
+func testRunTestMatrix(t *testing.T, engine string) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := config.MustDefaultConfig()
+	// cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Log.Level = "error"
+	cfg.Datastore.Engine = engine
+
+	tests.StartServer(t, cfg)
+
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+
+	runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
+}
+
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
 }
@@ -48,12 +68,13 @@ func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
-func TestCheckLogs(t *testing.T) {
+// TODO move elsewhere as this isn't asserting on just Check API logs.
+func TestServerLogs(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
-	// create mock OTLP server
+	// create mock OTLP server so we can assert that field "trace_id" is populated
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
@@ -87,13 +108,14 @@ func TestCheckLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-type document
-  relations
-	define viewer: [user]`)
+		type document
+			relations
+				define viewer: [user]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -120,6 +142,7 @@ type document
 
 	type test struct {
 		_name           string
+		endpoint        string
 		grpcReq         *openfgav1.CheckRequest
 		httpReqBody     io.Reader
 		expectedError   bool
@@ -128,7 +151,8 @@ type document
 
 	tests := []test{
 		{
-			_name: "grpc_check_success",
+			_name:    "grpc_check_success",
+			endpoint: "check",
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
@@ -139,7 +163,7 @@ type document
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -147,7 +171,8 @@ type document
 			},
 		},
 		{
-			_name: "http_check_success",
+			_name:    "http_check_success",
+			endpoint: "check",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -161,7 +186,7 @@ type document
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null, "consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -169,7 +194,8 @@ type document
 			},
 		},
 		{
-			_name: "grpc_check_error",
+			_name:    "grpc_check_error",
+			endpoint: "check",
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
@@ -181,14 +207,15 @@ type document
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid CheckRequestTupleKey.Object: value does not match regex pattern \"^[^\\\\s]{2,256}$\""}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
 			},
 		},
 		{
-			_name: "http_check_error",
+			_name:    "http_check_error",
+			endpoint: "check",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -202,10 +229,32 @@ type document
 				"grpc_method":  "Check",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid CheckRequestTupleKey.Object: value does not match regex pattern \"^[^\\\\s]{2,256}$\""}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",
+			},
+		},
+		{
+			_name:    "streamed_list_objects_success",
+			endpoint: "streamed-list-objects",
+			httpReqBody: bytes.NewBufferString(`{
+  "type": "document",
+  "relation": "viewer",
+  "user": "user:anne",
+  "authorization_model_id": "` + authorizationModelID + `"
+}`),
+			expectedError: false,
+			expectedContext: map[string]interface{}{
+				"grpc_service":           "openfga.v1.OpenFGAService",
+				"grpc_method":            "StreamedListObjects",
+				"grpc_type":              "server_stream",
+				"grpc_code":              int32(0),
+				"raw_request":            fmt.Sprintf(`{"authorization_model_id":"%s","context":null,"contextual_tuples":null,"relation":"viewer","store_id":"%s","type":"document","user":"user:anne","consistency":"UNSPECIFIED"}`, authorizationModelID, storeID),
+				"raw_response":           `{"object":"document:1"}`,
+				"store_id":               storeID,
+				"authorization_model_id": authorizationModelID,
+				"user_agent":             "test-user-agent",
 			},
 		},
 	}
@@ -219,7 +268,7 @@ type document
 				_, err = client.Check(context.Background(), test.grpcReq)
 			} else if test.httpReqBody != nil {
 				var httpReq *http.Request
-				httpReq, err = http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/check", test.httpReqBody)
+				httpReq, err = http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/"+test.endpoint, test.httpReqBody)
 				require.NoError(t, err)
 
 				httpReq.Header.Set("User-Agent", "test-user-agent")
@@ -227,6 +276,7 @@ type document
 				var resp *http.Response
 
 				resp, err = client.Do(httpReq)
+				_, _ = io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
@@ -252,12 +302,13 @@ type document
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
 			require.Equal(t, fields["request_id"], fields["trace_id"])
+			require.Contains(t, fields, "query_duration_ms")
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
-				require.Len(t, fields, 14)
+				require.Len(t, fields, 15)
 			} else {
-				require.Len(t, fields, 12)
+				require.Len(t, fields, 13)
 			}
 		})
 	}
@@ -268,6 +319,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
@@ -307,32 +359,34 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
 }
 
-const githubModel = `model
-  schema 1.1
-type user
-type team
-  relations
-    define member: [user,team#member]
-type repo
-  relations
-    define admin: [user,team#member] or repo_admin from owner
-    define maintainer: [user,team#member] or admin
-    define owner: [organization]
-    define reader: [user,team#member] or triager or repo_reader from owner
-    define triager: [user,team#member] or writer
-    define writer: [user,team#member] or maintainer or repo_writer from owner
-type organization
-  relations
-    define member: [user] or owner
-    define owner: [user]
-    define repo_admin: [user,organization#member]
-    define repo_reader: [user,organization#member]
-    define repo_writer: [user,organization#member]`
+const githubModel = `
+	model
+		schema 1.1
+	type user
+	type team
+		relations
+			define member: [user,team#member]
+	type repo
+		relations
+			define admin: [user,team#member] or repo_admin from owner
+			define maintainer: [user,team#member] or admin
+			define owner: [organization]
+			define reader: [user,team#member] or triager or repo_reader from owner
+			define triager: [user,team#member] or writer
+			define writer: [user,team#member] or maintainer or repo_writer from owner
+	type organization
+		relations
+			define member: [user] or owner
+			define owner: [user]
+			define repo_admin: [user,organization#member]
+			define repo_reader: [user,organization#member]
+			define repo_writer: [user,organization#member]`
 
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
 // and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
@@ -549,15 +603,16 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type group
-  relations
-    define member: [user]
-type document
-  relations
-    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+			type document
+				relations
+					define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -591,16 +646,17 @@ type document
 	writeAuthModelResponse, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type user2
-type group
-  relations
-    define member: [user2]
-type document
-  relations
-    define viewer: [user:*, group#member]`).GetTypeDefinitions(),
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
+			type user2
+			type group
+				relations
+					define member: [user2]
+			type document
+				relations
+					define viewer: [user:*, group#member]`).GetTypeDefinitions(),
 	})
 	require.NoError(b, err)
 
@@ -625,15 +681,16 @@ func benchmarkCheckWithOneCondition(b *testing.B, engine string) {
 	defer cancel()
 
 	storeID := ulid.Make().String()
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type doc
-  relations
-    define viewer: [user with password]
-condition password(p: string) {
-  p == "secret"
-}`)
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type doc
+			relations
+				define viewer: [user with password]
+		condition password(p: string) {
+			p == "secret"
+		}`)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   model.GetSchemaVersion(),
@@ -676,15 +733,16 @@ func benchmarkCheckWithOneConditionWithManyParameters(b *testing.B, engine strin
 	defer cancel()
 
 	storeID := ulid.Make().String()
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-type doc
-  relations
-    define viewer: [user with complex]
-condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
-  b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
-}`)
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type doc
+			relations
+				define viewer: [user with complex]
+		condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
+			b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
+		}`)
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   model.GetSchemaVersion(),

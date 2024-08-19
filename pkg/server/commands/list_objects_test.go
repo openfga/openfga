@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -20,7 +21,9 @@ import (
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		q, err := NewListObjectsQuery(nil, graph.NewLocalCheckerWithCycleDetection())
+		checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+		t.Cleanup(checkResolverCloser)
+		q, err := NewListObjectsQuery(nil, checkResolver)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
@@ -29,6 +32,15 @@ func TestNewListObjectsQuery(t *testing.T) {
 		q, err := NewListObjectsQuery(memory.New(), nil)
 		require.Nil(t, q)
 		require.Error(t, err)
+	})
+
+	t.Run("empty_typesystem_in_context", func(t *testing.T) {
+		checkResolver := graph.NewLocalChecker()
+		q, err := NewListObjectsQuery(memory.New(), checkResolver)
+		require.NoError(t, err)
+
+		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
+		require.ErrorContains(t, err, "typesystem missing in context")
 	})
 }
 
@@ -51,14 +63,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 	}{
 		{
 			name: "test_direct_relation",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type folder
-				relations
-					define viewer: [user] 
+				type folder
+					relations
+						define viewer: [user] 
 			`,
 			tuples: []string{
 				"folder:C#viewer@user:jon",
@@ -73,15 +86,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		},
 		{
 			name: "test_union_relation",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define viewer: [user] or editor 
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor 
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -96,15 +110,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		},
 		{
 			name: "test_intersection_relation",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define can_delete: [user] and editor 
+				type folder
+					relations
+						define editor: [user]
+						define can_delete: [user] and editor 
 			`,
 			tuples: []string{
 				"folder:C#can_delete@user:jon",
@@ -119,15 +134,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		},
 		{
 			name: "no_tuples",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type folder
-				 relations
-					  define editor: [user]
-					  define can_delete: [user] and editor 
+				type folder
+					relations
+						define editor: [user]
+						define can_delete: [user] and editor 
 			`,
 			tuples:                  []string{},
 			objectType:              "folder",
@@ -138,14 +154,15 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		},
 		{
 			name: "direct_userset_dispatch",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type group
-			  relations
-				define member: [user, group#member]
+				type group
+					relations
+						define member: [user, group#member]
 			`,
 			tuples: []string{
 				"group:eng#member@group:fga#member",
@@ -159,15 +176,16 @@ func TestListObjectsDispatchCount(t *testing.T) {
 		},
 		{
 			name: "computed_userset_dispatch",
-			model: `model
-			schema 1.1
+			model: `
+				model
+					schema 1.1
 
-			type user
+				type user
 
-			type document
-			  relations
-				define editor: [user]
-				define viewer: editor
+				type document
+					relations
+						define editor: [user]
+						define viewer: editor
 			`,
 			tuples: []string{
 				"document:1#editor@user:jon",
@@ -189,9 +207,9 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			checker := graph.NewLocalCheckerWithCycleDetection(
-				graph.WithMaxConcurrentReads(1),
-			)
+			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
+				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
+			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
 				ds,
@@ -218,4 +236,120 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.Equal(t, test.expectedThrottlingValue > 0, resp.ResolutionMetadata.WasThrottled.Load())
 		})
 	}
+}
+
+func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	modelDsl := `model
+			schema 1.1
+
+			type user
+
+			type folder
+				relations
+					define viewer: [user] but not blocked
+					define blocked: [user]`
+	tuples := []string{
+		"folder:C#viewer@user:jon",
+		"folder:B#viewer@user:jon",
+		"folder:A#viewer@user:jon",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+	require.NoError(t, err)
+
+	checkCache := storage.NewInMemoryLRUCache[*graph.ResolveCheckResponse]()
+	defer checkCache.Stop()
+
+	// Write an item to the cache that has an Allowed value of false for folder:A
+	req := &graph.ResolveCheckRequest{
+		StoreID: storeID,
+		TupleKey: &openfgav1.TupleKey{
+			User:     "user:jon",
+			Relation: "viewer",
+			Object:   "folder:A",
+		},
+	}
+	cacheKey, err := graph.CheckRequestCacheKey(req)
+	require.NoError(t, err)
+
+	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
+		Allowed: false,
+	}, 10*time.Second)
+
+	require.NoError(t, err)
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithCachedCheckResolverOpts(true, []graph.CachedCheckResolverOpt{
+			graph.WithEnabledConsistencyParams(true),
+			graph.WithExistingCache(checkCache),
+		}...),
+	}...).Build()
+	t.Cleanup(checkResolverCloser)
+
+	q, _ := NewListObjectsQuery(
+		ds,
+		checkResolver,
+	)
+
+	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 2)
+
+	// Now run a check with HIGHER_CONSISTENCY that will evaluate against the known tuples and return 3 tuples
+	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 3)
+
+	// Rerun check with MINIMIZE_LATENCY to ensure the cache was updated with the tuple we retrieved during the previous call
+	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 3)
+
+	// Now set the third item as `allowed: false` in the cache and run with `UNSPECIFIED`, it should use the cache and only return two item
+	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
+		Allowed: false,
+	}, 10*time.Second)
+
+	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:     storeID,
+		Type:        "folder",
+		Relation:    "viewer",
+		User:        "user:jon",
+		Consistency: openfgav1.ConsistencyPreference_UNSPECIFIED,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 2)
 }

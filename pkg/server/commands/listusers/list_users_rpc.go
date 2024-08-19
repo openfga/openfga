@@ -9,11 +9,16 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
+
+	"github.com/openfga/openfga/internal/concurrency"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/telemetry"
 
@@ -35,12 +40,12 @@ var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
 type listUsersQuery struct {
 	logger                  logger.Logger
 	ds                      storage.RelationshipTupleReader
-	typesystemResolver      typesystem.TypesystemResolverFunc
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
 	maxResults              uint32
 	maxConcurrentReads      uint32
 	deadline                time.Duration
+	dispatchThrottlerConfig threshold.Config
 }
 
 type expandResponse struct {
@@ -118,19 +123,36 @@ func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	}
 }
 
+func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
+	span := trace.SpanFromContext(ctx)
+
+	shouldThrottle := threshold.ShouldThrottle(
+		ctx,
+		currentNumDispatch,
+		l.dispatchThrottlerConfig.Threshold,
+		l.dispatchThrottlerConfig.MaxThreshold,
+	)
+
+	span.SetAttributes(
+		attribute.Int("dispatch_count", int(currentNumDispatch)),
+		attribute.Bool("is_throttled", shouldThrottle))
+
+	if shouldThrottle {
+		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
+	}
+}
+
+func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.dispatchThrottlerConfig = config
+	}
+}
+
 // NewListUsersQuery is not meant to be shared.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		logger: logger.NewNoopLogger(),
-		ds:     ds,
-		typesystemResolver: func(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-			typesys, exists := typesystem.TypesystemFromContext(ctx)
-			if !exists {
-				return nil, fmt.Errorf("typesystem not provided in context")
-			}
-
-			return typesys, nil
-		},
+		logger:                  logger.NewNoopLogger(),
+		ds:                      ds,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		deadline:                serverconfig.DefaultListUsersDeadline,
@@ -166,7 +188,7 @@ func (l *listUsersQuery) ListUsers(
 	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	userFilter := req.GetUserFilters()[0]
@@ -196,15 +218,11 @@ func (l *listUsersQuery) ListUsers(
 	expandErrCh := make(chan error, 1)
 
 	foundUsersUnique := make(map[tuple.UserString]foundUser, 1000)
-	excludedUsersUnique := make(map[tuple.UserString]struct{}, 1000)
 
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
 		for foundUser := range foundUsersCh {
 			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
-			for _, exception := range foundUser.excludedUsers {
-				excludedUsersUnique[tuple.UserProtoToString(exception)] = struct{}{}
-			}
 
 			if l.maxResults > 0 {
 				if uint32(len(foundUsersUnique)) >= l.maxResults {
@@ -220,23 +238,33 @@ func (l *listUsersQuery) ListUsers(
 	go func() {
 		internalRequest := fromListUsersRequest(req, &datastoreQueryCount, &dispatchCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
-		// first send error and then close results channel, to ensure that error takes precedence
 		if resp.err != nil {
 			expandErrCh <- resp.err
 		}
 		close(foundUsersCh)
 	}()
 
+	deadlineExceeded := false
+
 	select {
-	// Note: if all cases can proceed, one will be selected at random
-	case err := <-expandErrCh:
-		telemetry.TraceError(span, err)
-		return nil, err
 	case <-doneWithFoundUsersCh:
 		break
 	case <-cancellableCtx.Done():
+		deadlineExceeded = true
 		// to avoid a race on the 'foundUsersUnique' map below, wait for the range over the channel to close
 		<-doneWithFoundUsersCh
+		break
+	}
+
+	select {
+	case err := <-expandErrCh:
+		if deadlineExceeded || errors.Is(err, context.DeadlineExceeded) {
+			// We skip the error because we want to send at least partial results to the user (but we should probably set response headers)
+			break
+		}
+		telemetry.TraceError(span, err)
+		return nil, err
+	default:
 		break
 	}
 
@@ -251,19 +279,10 @@ func (l *listUsersQuery) ListUsers(
 		foundUsers = append(foundUsers, tuple.StringToUserProto(foundUserKey))
 	}
 
-	var excludedUsers []*openfgav1.ObjectOrUserset
-	if len(foundUsers) > 0 {
-		excludedUsers = make([]*openfgav1.ObjectOrUserset, 0, len(excludedUsersUnique))
-		for foundExcludedUser := range excludedUsersUnique {
-			excludedUsers = append(excludedUsers, tuple.StringToObjectOrUserset(foundExcludedUser))
-		}
-	}
-
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
 	return &listUsersResponse{
-		Users:         foundUsers,
-		ExcludedUsers: excludedUsers,
+		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 			DispatchCounter:     &dispatchCount,
@@ -292,7 +311,11 @@ func (l *listUsersQuery) dispatch(
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
-	req.dispatchCount.Add(1)
+	newcount := req.dispatchCount.Add(1)
+	if l.dispatchThrottlerConfig.Enabled {
+		l.throttle(ctx, newcount)
+	}
+
 	return l.expand(ctx, req, foundUsersChan)
 }
 
@@ -338,18 +361,17 @@ func (l *listUsersQuery) expand(
 		}
 	}
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	targetObjectType := req.GetObject().GetType()
 	targetRelation := req.GetRelation()
 
 	relation, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
+		var relationUndefinedError *typesystem.RelationUndefinedError
+		if errors.As(err, &relationUndefinedError) {
+			return expandResponse{}
+		}
 		return expandResponse{
 			err: err,
 		}
@@ -405,17 +427,17 @@ func (l *listUsersQuery) expandDirect(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{
@@ -431,9 +453,7 @@ func (l *listUsersQuery) expandDirect(
 	)
 	defer filteredIter.Stop()
 
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	var errs error
 	var hasCycle atomic.Bool
@@ -514,9 +534,7 @@ func (l *listUsersQuery) expandIntersection(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandIntersection")
 	defer span.End()
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
@@ -620,9 +638,7 @@ func (l *listUsersQuery) expandUnion(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandUnion")
 	defer span.End()
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	childOperands := rewrite.Union.GetChild()
 	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
@@ -838,17 +854,17 @@ func (l *listUsersQuery) expandTTU(
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
-	typesys, err := l.typesystemResolver(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return expandResponse{
-			err: err,
-		}
-	}
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
 	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
-	})
+	}, opts)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return expandResponse{
@@ -864,9 +880,7 @@ func (l *listUsersQuery) expandTTU(
 	)
 	defer filteredIter.Stop()
 
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithMaxGoroutines(int(l.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(l.resolveNodeBreadthLimit))
 
 	var errs error
 

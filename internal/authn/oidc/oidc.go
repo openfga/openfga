@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MicahParks/keyfunc"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/MicahParks/keyfunc/v2"
+	jwt "github.com/golang-jwt/jwt/v5"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
 
@@ -27,6 +27,7 @@ type RemoteOidcAuthenticator struct {
 	MainIssuer    string
 	IssuerAliases []string
 	Audience      string
+	Subjects      []string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -49,13 +50,14 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
 		MainIssuer:    mainIssuer,
 		IssuerAliases: issuerAliases,
 		Audience:      audience,
+		Subjects:      subjects,
 		httpClient:    client.StandardClient(),
 	}
 	err := fetchJWKs(oidc)
@@ -71,16 +73,16 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, authn.ErrMissingBearerToken
 	}
 
-	jwtParser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
+	jwtParser := jwt.NewParser(
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithIssuedAt(),
+		jwt.WithExpirationRequired(),
+	)
 
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
 	})
-	if err != nil {
-		return nil, errInvalidToken
-	}
-
-	if !token.Valid {
+	if err != nil || !token.Valid {
 		return nil, errInvalidToken
 	}
 
@@ -95,15 +97,28 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	validIssuers = append(validIssuers, oidc.IssuerAliases...)
 
 	ok = slices.ContainsFunc(validIssuers, func(issuer string) bool {
-		return claims.VerifyIssuer(issuer, true)
+		v := jwt.NewValidator(jwt.WithIssuer(issuer))
+		err := v.Validate(claims)
+		return err == nil
 	})
 
 	if !ok {
 		return nil, errInvalidIssuer
 	}
 
-	if ok := claims.VerifyAudience(oidc.Audience, true); !ok {
+	if err := jwt.NewValidator(jwt.WithAudience(oidc.Audience)).Validate(claims); err != nil {
 		return nil, errInvalidAudience
+	}
+
+	if len(oidc.Subjects) > 0 {
+		ok = slices.ContainsFunc(oidc.Subjects, func(subject string) bool {
+			v := jwt.NewValidator(jwt.WithSubject(subject))
+			err := v.Validate(claims)
+			return err == nil
+		})
+		if !ok {
+			return nil, errInvalidSubject
+		}
 	}
 
 	// optional subject

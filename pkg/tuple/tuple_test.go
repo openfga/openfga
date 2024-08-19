@@ -9,48 +9,55 @@ import (
 
 func TestSplitObjectId(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		objectID     string
-		expectedType string
-		expectedOID  string
+		name                    string
+		objectID                string
+		expectedTypeAndRelation string
+		expectedOID             string
 	}{
 		{
 			name: "empty",
 		},
 		{
-			name:         "type_only",
-			objectID:     "foo:",
-			expectedType: "foo",
+			name:                    "type_only",
+			objectID:                "foo:",
+			expectedTypeAndRelation: "foo",
 		},
+
 		{
 			name:        "no_separator",
 			objectID:    "foo",
 			expectedOID: "foo",
 		},
 		{
-			name:         "missing_type",
-			objectID:     ":foo",
-			expectedType: "",
-			expectedOID:  "foo",
+			name:                    "missing_type",
+			objectID:                ":foo",
+			expectedTypeAndRelation: "",
+			expectedOID:             "foo",
 		},
 		{
-			name:         "valid_input",
-			objectID:     "foo:bar",
-			expectedType: "foo",
-			expectedOID:  "bar",
+			name:                    "valid_input_with_relation",
+			objectID:                "foo#bar:baz",
+			expectedTypeAndRelation: "foo#bar",
+			expectedOID:             "baz",
 		},
 		{
-			name:         "separator_in_OID",
-			objectID:     "url:https://bar/baz",
-			expectedType: "url",
-			expectedOID:  "https://bar/baz",
+			name:                    "valid_input_without_relation",
+			objectID:                "foo:bar",
+			expectedTypeAndRelation: "foo",
+			expectedOID:             "bar",
+		},
+		{
+			name:                    "separator_in_OID",
+			objectID:                "url:https://bar/baz",
+			expectedTypeAndRelation: "url",
+			expectedOID:             "https://bar/baz",
 		},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			td, oid := SplitObject(tc.objectID)
 
-			require.Equal(t, tc.expectedType, td)
+			require.Equal(t, tc.expectedTypeAndRelation, td)
 			require.Equal(t, tc.expectedOID, oid)
 		})
 	}
@@ -224,12 +231,24 @@ func TestToObjectRelationString(t *testing.T) {
 }
 
 func TestTupleKeyToString(t *testing.T) {
+	require.Equal(t, "document:1#viewer@group:fga#member", TupleKeyToString(NewTupleKey("document:1", "viewer", "group:fga#member")))
 	require.Equal(t, "document:1#viewer@jon", TupleKeyToString(NewTupleKey("document:1", "viewer", "jon")))
 	require.Equal(t, "document:1#viewer@user:bob", TupleKeyToString(NewTupleKey("document:1", "viewer", "user:bob")))
 	require.Equal(t, "document:1#viewer@", TupleKeyToString(NewTupleKey("document:1", "viewer", "")))
 	require.Equal(t, "document:1#@jon", TupleKeyToString(NewTupleKey("document:1", "", "jon")))
 	require.Equal(t, "#viewer@jon", TupleKeyToString(NewTupleKey("", "viewer", "jon")))
 	require.Equal(t, "#@", TupleKeyToString(NewTupleKey("", "", "")))
+}
+
+func TestTupleKeyWithConditionToString(t *testing.T) {
+	require.Equal(t, "document:1#viewer@group:fga#member (condition condX)",
+		TupleKeyWithConditionToString(NewTupleKeyWithCondition("document:1", "viewer", "group:fga#member", "condX", nil)))
+	require.Equal(t, "document:1#viewer@user:maria (condition condX)",
+		TupleKeyWithConditionToString(NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "condX", nil)))
+	require.Equal(t, "document:1#viewer@user:* (condition condX)",
+		TupleKeyWithConditionToString(NewTupleKeyWithCondition("document:1", "viewer", "user:*", "condX", nil)))
+	require.Equal(t, "document:1#viewer@user:*",
+		TupleKeyWithConditionToString(NewTupleKey("document:1", "viewer", "user:*")))
 }
 
 func TestIsWildcard(t *testing.T) {
@@ -542,84 +561,6 @@ func TestParseTupleString(t *testing.T) {
 				require.NotNil(t, tuple)
 				require.Equal(t, test.tuple, tuple)
 			}
-		})
-	}
-}
-
-func TestFromObjectOrUsersetProto(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		input    *openfgav1.ObjectOrUserset
-		expected string
-	}{
-		{
-			name: "user_with_id",
-			input: &openfgav1.ObjectOrUserset{
-				User: &openfgav1.ObjectOrUserset_Object{
-					Object: &openfgav1.Object{
-						Type: "user",
-						Id:   "id-123",
-					},
-				},
-			},
-			expected: "user:id-123",
-		},
-		{
-			name: "user_with_id_and_relation",
-			input: &openfgav1.ObjectOrUserset{
-				User: &openfgav1.ObjectOrUserset_Userset{
-					Userset: &openfgav1.UsersetUser{
-						Type:     "user",
-						Id:       "id-123",
-						Relation: "member",
-					},
-				},
-			},
-			expected: "user:id-123#member",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			actual := FromObjectOrUsersetProto(tc.input)
-			require.Equal(t, tc.expected, actual)
-		})
-	}
-}
-
-func TestToObjectOrUsersetProto(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		input    string
-		expected *openfgav1.ObjectOrUserset
-	}{
-		{
-			name:  "user_with_id",
-			input: "user:id-123",
-			expected: &openfgav1.ObjectOrUserset{
-				User: &openfgav1.ObjectOrUserset_Object{
-					Object: &openfgav1.Object{
-						Type: "user",
-						Id:   "id-123",
-					},
-				},
-			},
-		},
-		{
-			name:  "user_with_id_and_relation",
-			input: "user:id-123#member",
-			expected: &openfgav1.ObjectOrUserset{
-				User: &openfgav1.ObjectOrUserset_Userset{
-					Userset: &openfgav1.UsersetUser{
-						Type:     "user",
-						Id:       "id-123",
-						Relation: "member",
-					},
-				},
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			actual := StringToObjectOrUserset(tc.input)
-			require.Equal(t, tc.expected, actual)
 		})
 	}
 }

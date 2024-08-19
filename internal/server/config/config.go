@@ -23,6 +23,7 @@ const (
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
+	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
@@ -50,9 +51,15 @@ const (
 	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
 	DefaultListObjectsDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
-	DefaultRequestTimeout = 3 * time.Second
+	DefaultListUsersDispatchThrottlingEnabled          = false
+	DefaultListUsersDispatchThrottlingFrequency        = 10 * time.Microsecond
+	DefaultListUsersDispatchThrottlingDefaultThreshold = 100
+	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
+	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
+
+	DefaultCheckTrackerEnabled = false
 )
 
 type DatastoreMetricsConfig struct {
@@ -129,6 +136,7 @@ type AuthnConfig struct {
 type AuthnOIDCConfig struct {
 	Issuer        string
 	IssuerAliases []string
+	Subjects      []string
 	Audience      string
 }
 
@@ -283,9 +291,12 @@ type Config struct {
 	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
+
+	CheckTrackerEnabled bool
 }
 
 func (cfg *Config) Verify() error {
@@ -324,6 +335,10 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf(
 			"config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']",
 		)
+	}
+
+	if cfg.Log.Level == "none" {
+		fmt.Println("WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	}
 
 	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
@@ -394,6 +409,18 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
+	if cfg.ListUsersDispatchThrottling.Enabled {
+		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
+		}
+	}
+
 	if cfg.RequestTimeout < 0 {
 		return errors.New("requestTimeout must be a non-negative time duration")
 	}
@@ -404,6 +431,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.ListObjectsDeadline < 0 {
 		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if cfg.ListUsersDeadline < 0 {
+		return errors.New("listUsersDeadline must be non-negative time duration")
 	}
 
 	if cfg.MaxConditionEvaluationCost < 100 {
@@ -586,7 +617,14 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListObjectsDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
+		ListUsersDispatchThrottling: DispatchThrottlingConfig{
+			Enabled:      DefaultListUsersDispatchThrottlingEnabled,
+			Frequency:    DefaultListUsersDispatchThrottlingFrequency,
+			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
+			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
+		},
+		RequestTimeout:      DefaultRequestTimeout,
+		CheckTrackerEnabled: DefaultCheckTrackerEnabled,
 	}
 }
 

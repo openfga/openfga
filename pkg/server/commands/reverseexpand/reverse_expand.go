@@ -9,11 +9,12 @@ import (
 	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/concurrency"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -39,6 +40,7 @@ type ReverseExpandRequest struct {
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
 	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
 
 	edge *graph.RelationshipEdge
 }
@@ -326,10 +328,7 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithFirstError()
-	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 
@@ -495,6 +494,10 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   relationFilter,
 		UserFilter: userFilter,
+	}, storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.Consistency,
+		},
 	})
 	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
@@ -508,10 +511,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	)
 	defer filteredIter.Stop()
 
-	pool := pool.New().WithContext(ctx)
-	pool.WithCancelOnError()
-	pool.WithFirstError()
-	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 

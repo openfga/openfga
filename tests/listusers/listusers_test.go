@@ -43,9 +43,9 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	cfg.Experimentals = []string{"enable-list-users"}
 
 	tests.StartServer(t, cfg)
 
@@ -67,7 +67,6 @@ func TestListUsersLogs(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
-	cfg.Experimentals = append(cfg.Experimentals, "enable-list-users")
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	serverCtx := &run.ServerContext{
@@ -92,17 +91,18 @@ func TestListUsersLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
 
-type group
-  relations
-    define member: [user]
+		type group
+			relations
+				define member: [user]
 
-type document
-  relations
-	define viewer: [group#member]`)
+		type document
+			relations
+				define viewer: [group#member]`)
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -153,8 +153,8 @@ type document
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
-				"raw_response":           `{"excluded_users":[],"users":[{"object":{"type":"user","id":"anne"}}]}`,
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
+				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
@@ -173,8 +173,8 @@ type document
 				"grpc_method":            "ListUsers",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
-				"raw_response":           `{"excluded_users":[],"users":[{"object":{"type":"user","id":"anne"}}]}`,
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":{"type":"document","id":"1"},"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
+				"raw_response":           `{"users":[{"object":{"type":"user","id":"anne"}}]}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent",
@@ -195,7 +195,7 @@ type document
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid ListUsersRequest.Object: value is required"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
@@ -214,7 +214,7 @@ type document
 				"grpc_method":  "ListUsers",
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2000),
-				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null}`, storeID, authorizationModelID),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","relation":"viewer","object":null,"user_filters":[{"type":"user","relation":""}], "contextual_tuples":[],"authorization_model_id":"%s","context":null,"consistency":"UNSPECIFIED"}`, storeID, authorizationModelID),
 				"raw_response": `{"code":"validation_error", "message":"invalid ListUsersRequest.Object: value is required"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",
@@ -261,12 +261,13 @@ type document
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
+			require.NotEmpty(t, fields["query_duration_ms"])
 			if !test.expectedError {
 				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
-				require.Len(t, fields, 14)
+				require.Len(t, fields, 15)
 			} else {
-				require.Len(t, fields, 12)
+				require.Len(t, fields, 13)
 			}
 		})
 	}

@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -76,6 +77,7 @@ func ExampleNewServerWithOpts() {
 	model := language.MustTransformDSLToProto(`
 	model
 		schema 1.1
+
 	type user
 
 	type document
@@ -241,7 +243,7 @@ func TestServerPanicIfDefaultDispatchThresholdGreaterThanMaxDispatchThreshold(t 
 	})
 }
 
-func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+func TestServerPanicIfDefaultListObjectsThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
 	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListObjects default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListObjects", func() {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -251,6 +253,20 @@ func TestServerPanicIfDefaultListObjectThresholdGreaterThanMaxDispatchThreshold(
 			WithListObjectsDispatchThrottlingEnabled(true),
 			WithListObjectsDispatchThrottlingThreshold(100),
 			WithListObjectsDispatchThrottlingMaxThreshold(80),
+		)
+	})
+}
+
+func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithListUsersDispatchThrottlingEnabled(true),
+			WithListUsersDispatchThrottlingThreshold(100),
+			WithListUsersDispatchThrottlingMaxThreshold(80),
 		)
 	})
 }
@@ -322,24 +338,6 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestCheckResolverOuterLayerDefault(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
-
-	s := MustNewServerWithOpts(
-		WithDatastore(ds),
-	)
-	t.Cleanup(s.Close)
-
-	// the default (outer most layer) of the CheckResolver
-	// composition should always be CycleDetectionCheckResolver.
-	_, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-	require.True(t, ok)
-}
-
 func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -359,15 +357,16 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-	type user
+		type user
 
-	type document
-	  relations
-			define viewer: [user, document#viewer] or editor
-			define editor: [user, document#viewer]`)
+		type document
+			relations
+				define viewer: [user, document#viewer] or editor
+				define editor: [user, document#viewer]`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -462,18 +461,19 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
 			schema 1.1
 
-		  type user
+		type user
 
-		  type document
+		type document
 			relations
-			  define editor1: [user, document#viewer1]
+				define editor1: [user, document#viewer1]
 
-			  define viewer2: [document#viewer1] or editor1
-			  define viewer1: [user] or viewer2
-			  define can_view: viewer1 or editor1`)
+				define viewer2: [document#viewer1] or editor1
+				define viewer1: [user] or viewer2
+				define can_view: viewer1 or editor1`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -526,25 +526,26 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-	schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-  type user
-  type module
-  relations
-	  define owner: [user] or owner from parent
-	  define parent: [document, module]
-	  define viewer: [user] or owner or viewer from parent
-  type folder
-  relations
-	  define owner: [user] or owner from parent
-	  define parent: [module, folder]
-	  define viewer: [user] or owner or viewer from parent
-  type document
-  relations
-	  define owner: [user] or owner from parent
-	  define parent: [folder, document]
-	  define viewer: [user] or owner or viewer from parent`)
+		type user
+		type module
+			relations
+				define owner: [user] or owner from parent
+				define parent: [document, module]
+				define viewer: [user] or owner or viewer from parent
+		type folder
+			relations
+				define owner: [user] or owner from parent
+				define parent: [module, folder]
+				define viewer: [user] or owner or viewer from parent
+		type document
+			relations
+				define owner: [user] or owner from parent
+				define parent: [folder, document]
+				define viewer: [user] or owner or viewer from parent`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -619,15 +620,16 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	model := testutils.MustTransformDSLToProtoWithID(`model
-		schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
 
-  type user
+		type user
 
-  type group
-    relations
-      define member: [user, group#member]
-`)
+		type group
+			relations
+				define member: [user, group#member]
+		`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -714,14 +716,16 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user]
-`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user]
+		`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -741,15 +745,15 @@ type repo
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		Return(returnedTuple, nil)
 
 	mockDatastore.EXPECT().
-		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				time.Sleep(50 * time.Millisecond)
 				return nil, errors.New("some error")
 			})
@@ -788,7 +792,6 @@ func TestReleasesConnections(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(s.Close)
 
@@ -796,13 +799,15 @@ func TestReleasesConnections(t *testing.T) {
 
 	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+		TypeDefinitions: language.MustTransformDSLToProto(`
+			model
+				schema 1.1
 
-type document
-  relations
-	define editor: [user]`).GetTypeDefinitions(),
+			type user
+
+			type document
+				relations
+					define editor: [user]`).GetTypeDefinitions(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
@@ -897,16 +902,18 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	// The model is invalid
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define admin: [user]
-	define r1: [user] and r2 and r3
-	define r2: [user] and r1 and r3
-	define r3: [user] and r1 and r2`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define admin: [user]
+				define r1: [user] and r2 and r3
+				define r2: [user] and r1 and r3
+				define r3: [user] and r1 and r2`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
@@ -927,7 +934,6 @@ type repo
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalEnableListUsers),
 	)
 	t.Cleanup(func() {
 		mockDatastore.EXPECT().Close().Times(1)
@@ -1001,13 +1007,15 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user:*]`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user:*]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -1027,10 +1035,10 @@ type repo
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(ctx context.Context, _ string, _ *openfgav1.TupleKey) (storage.TupleIterator, error) {
+			func(ctx context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (storage.TupleIterator, error) {
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
@@ -1040,10 +1048,10 @@ type repo
 			})
 
 	mockDatastore.EXPECT().
-		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
+			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 				time.Sleep(100 * time.Millisecond)
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{returnedTuple}), nil
 			})
@@ -1065,7 +1073,7 @@ type repo
 	end := time.Since(start)
 
 	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
-	require.Lessf(t, end, 200*time.Millisecond, fmt.Sprintf("end was %s", end))
+	require.Lessf(t, end, 200*time.Millisecond, "end was "+end.String())
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
 }
@@ -1080,13 +1088,15 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user]`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user]`).GetTypeDefinitions()
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -1105,7 +1115,7 @@ type repo
 		}, nil)
 
 	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		Times(1).
 		Return(returnedTuple, nil)
 
@@ -1150,13 +1160,15 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`model
-	schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define reader: [user]`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define reader: [user]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -1379,14 +1391,16 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	typedefs := language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
 
-type repo
-  relations
-	define allowed: [user]
-	define viewer: [user] and allowed`).GetTypeDefinitions()
+		type user
+
+		type repo
+			relations
+				define allowed: [user]
+				define viewer: [user] and allowed`).GetTypeDefinitions()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -1394,7 +1408,7 @@ type repo
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
 	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
@@ -1454,13 +1468,15 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type document
-  relations
-	define viewer: [user, user:*]`).GetTypeDefinitions(),
+				type user
+
+				type document
+					relations
+						define viewer: [user, user:*]`).GetTypeDefinitions(),
 		}, nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
@@ -1469,7 +1485,7 @@ type document
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: "user:*"},
 				{Object: "user:bob"},
-			}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
+			}}, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 		t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
@@ -1507,17 +1523,19 @@ type document
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-  schema 1.1
-type user
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-type group
-  relations
-	define member: [user, group#member]
+				type user
 
-type document
-  relations
-	define viewer: [group#member]`).GetTypeDefinitions(),
+				type group
+					relations
+						define member: [user, group#member]
+
+				type document
+					relations
+						define viewer: [group#member]`).GetTypeDefinitions(),
 		})
 		require.NoError(t, err)
 
@@ -1667,10 +1685,12 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: language.MustTransformDSLToProto(`model
-	schema 1.1
-type repo
-`).GetTypeDefinitions(),
+			TypeDefinitions: language.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type repo
+				`).GetTypeDefinitions(),
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)
@@ -1722,6 +1742,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, cfg.CheckDispatchThrottling.Enabled)
 		require.False(t, cfg.DispatchThrottling.Enabled)
 		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
+		require.False(t, cfg.ListUsersDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
 
 		ds := memory.New()
@@ -1730,23 +1751,54 @@ func TestDelegateCheckResolver(t *testing.T) {
 			WithDatastore(ds),
 		)
 		t.Cleanup(s.Close)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
+
+		localCheckResolver, ok := s.checkResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		localCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localCheckResolver.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 	})
 
+	t.Run("tracker_check_resolver", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		cfg := serverconfig.DefaultConfig()
+		cfg.CheckTrackerEnabled = true
+
+		require.False(t, cfg.CheckDispatchThrottling.Enabled)
+		require.False(t, cfg.DispatchThrottling.Enabled)
+		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
+		require.True(t, cfg.CheckTrackerEnabled)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithCheckTrackerEnabled(true),
+			WithContext(ctx),
+			WithLogger(logger.NewNoopLogger()),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.checkDispatchThrottlingEnabled)
+		require.False(t, s.checkQueryCacheEnabled)
+
+		require.NotNil(t, s.checkResolver)
+
+		trackCheckResolver, ok := s.checkResolver.(*graph.TrackerCheckResolver)
+		require.True(t, ok)
+
+		localCheckResolver, ok := trackCheckResolver.GetDelegate().(*graph.LocalChecker)
+		require.True(t, ok)
+
+		_, ok = localCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
+		require.True(t, ok)
+	})
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -1759,23 +1811,19 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1792,23 +1840,19 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1827,23 +1871,18 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkQueryCacheEnabled)
-		require.Nil(t, s.cachedCheckResolver)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
-
-		dispatchThrottlingResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
+		dispatchThrottlingResolver, ok := s.checkResolver.(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1857,21 +1896,17 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.False(t, s.checkDispatchThrottlingEnabled)
-		require.Nil(t, s.dispatchThrottlingCheckResolver)
 
 		require.True(t, s.checkQueryCacheEnabled)
-		require.NotNil(t, s.cachedCheckResolver)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
 
 		localChecker, ok := cachedCheckResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
 	})
 
@@ -1890,16 +1925,11 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
-		require.NotNil(t, s.dispatchThrottlingCheckResolver)
 		require.NotNil(t, s.checkResolver)
-		cycleDetectionCheckResolver, ok := s.checkResolver.(*graph.CycleDetectionCheckResolver)
-		require.True(t, ok)
 
-		cachedCheckResolver, ok := cycleDetectionCheckResolver.GetDelegate().(*graph.CachedCheckResolver)
+		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
-
 		require.True(t, s.checkQueryCacheEnabled)
-		require.NotNil(t, s.cachedCheckResolver)
 
 		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
@@ -1907,7 +1937,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		localChecker, ok := dispatchThrottlingResolver.GetDelegate().(*graph.LocalChecker)
 		require.True(t, ok)
 
-		_, ok = localChecker.GetDelegate().(*graph.CycleDetectionCheckResolver)
+		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
 	})
 }
@@ -1956,11 +1986,16 @@ func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
 }
 
 func TestIsExperimentallyEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ds := memory.New() // Datastore required for server instantiation
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
+	t.Cleanup(ds.Close)
 
 	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
 		s := MustNewServerWithOpts(WithDatastore(ds))
+		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1969,6 +2004,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(someExperimentalFlag),
 		)
+		t.Cleanup(s.Close)
 		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1977,6 +2013,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
 		)
+		t.Cleanup(s.Close)
 		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
 
@@ -1985,6 +2022,189 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
 		)
+		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+}
+
+func TestErrorThrownIfConsistencyRequestedWithoutFlagEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	openfga := MustNewServerWithOpts(WithDatastore(ds))
+	t.Cleanup(openfga.Close)
+
+	t.Run("check_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              "store-id",
+			AuthorizationModelId: "auth-model-id",
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				User:     "user:anne",
+				Relation: "reader",
+				Object:   "document:budget",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("check_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              "store-id",
+			AuthorizationModelId: "auth-model-id",
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				User:     "user:anne",
+				Relation: "reader",
+				Object:   "document:budget",
+			},
+			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("read_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Read(context.Background(), &openfgav1.ReadRequest{
+			StoreId: "store-id",
+			TupleKey: &openfgav1.ReadRequestTupleKey{
+				User:     "user:anne",
+				Relation: "reader",
+				Object:   "document:budget",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("read_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Read(context.Background(), &openfgav1.ReadRequest{
+			StoreId: "store-id",
+			TupleKey: &openfgav1.ReadRequestTupleKey{
+				User:     "user:anne",
+				Relation: "reader",
+				Object:   "document:budget",
+			},
+			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("list_objects_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			Type:        "folder",
+			Relation:    "can_edit",
+			User:        "user:becky",
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("list_objects_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			Type:        "folder",
+			Relation:    "can_edit",
+			User:        "user:becky",
+			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("streamed_list_objects_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              "store-id",
+			AuthorizationModelId: "model-id",
+			Type:                 "repo",
+			Relation:             "r1",
+			User:                 "user:anne",
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}, NewMockStreamServer())
+
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("streamed_list_objects_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
+		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              "store-id",
+			AuthorizationModelId: "model-id",
+			Type:                 "repo",
+			Relation:             "r1",
+			User:                 "user:anne",
+			Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		}, NewMockStreamServer())
+
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("expand_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{
+			TupleKey: &openfgav1.ExpandRequestTupleKey{
+				Object:   "folder:C",
+				Relation: "can_edit",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
+	t.Run("expand_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
+		_, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{
+			TupleKey: &openfgav1.ExpandRequestTupleKey{
+				Object:   "folder:C",
+				Relation: "can_edit",
+			},
+			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		})
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
 	})
 }

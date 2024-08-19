@@ -69,6 +69,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("authn.oidc.issuerAliases", flags.Lookup("authn-oidc-issuer-aliases"))
 		util.MustBindEnv("authn.oidc.issuerAliases", "OPENFGA_AUTHN_OIDC_ISSUER_ALIASES")
 
+		util.MustBindPFlag("authn.oidc.subjects", flags.Lookup("authn-oidc-subjects"))
+		util.MustBindEnv("authn.oidc.subjects", "OPENFGA_AUTHN_OIDC_SUBJECTS")
+
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
 
@@ -225,6 +228,18 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsDispatchThrottling.maxThreshold", flags.Lookup("listObjects-dispatch-throttling-max-threshold"))
 		util.MustBindEnv("listObjectsDispatchThrottling.maxThreshold", "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD")
 
+		util.MustBindPFlag("listUsersDispatchThrottling.enabled", flags.Lookup("listUsers-dispatch-throttling-enabled"))
+		util.MustBindEnv("listUsersDispatchThrottling.enabled", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED")
+
+		util.MustBindPFlag("listUsersDispatchThrottling.frequency", flags.Lookup("listUsers-dispatch-throttling-frequency"))
+		util.MustBindEnv("listUsersDispatchThrottling.frequency", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY")
+
+		util.MustBindPFlag("listUsersDispatchThrottling.threshold", flags.Lookup("listUsers-dispatch-throttling-threshold"))
+		util.MustBindEnv("listUsersDispatchThrottling.threshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD")
+
+		util.MustBindPFlag("listUsersDispatchThrottling.maxThreshold", flags.Lookup("listUsers-dispatch-throttling-max-threshold"))
+		util.MustBindEnv("listUsersDispatchThrottling.maxThreshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD")
+
 		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED
 		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
 		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
@@ -243,5 +258,8 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
+
+		util.MustBindPFlag("checkTrackerEnabled", flags.Lookup("check-tracker-enabled"))
+		util.MustBindEnv("checkTrackerEnabled", "OPENFGA_CHECK_TRACKER_ENABLED")
 	}
 }
