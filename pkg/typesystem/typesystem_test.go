@@ -30,7 +30,7 @@ func TestFlattenUserset(t *testing.T) {
 			input: &openfgav1.Userset{},
 			o:     []*openfgav1.TupleToUserset{},
 		},
-		"nil_user_to_tupleset": {
+		"nil_tuple_to_userset": {
 			input: &openfgav1.Userset{
 				Userset: &openfgav1.Userset_TupleToUserset{
 					TupleToUserset: nil,
@@ -38,7 +38,7 @@ func TestFlattenUserset(t *testing.T) {
 			},
 			o: []*openfgav1.TupleToUserset{},
 		},
-		"user_to_tupleset": {
+		"single_tuple_to_userset": {
 			input: &openfgav1.Userset{
 				Userset: &openfgav1.Userset_TupleToUserset{
 					TupleToUserset: &openfgav1.TupleToUserset{},
