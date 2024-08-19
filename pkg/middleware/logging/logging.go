@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
@@ -32,6 +33,7 @@ const (
 	internalErrorKey   = "internal_error"
 	grpcReqCompleteKey = "grpc_req_complete"
 	userAgentKey       = "user_agent"
+	queryDurationKey   = "query_duration_ms"
 
 	gatewayUserAgentHeader string = "grpcgateway-user-agent"
 	userAgentHeader        string = "user-agent"
@@ -55,7 +57,10 @@ type reporter struct {
 }
 
 // PostCall is invoked after all PostMsgSend operations.
-func (r *reporter) PostCall(err error, _ time.Duration) {
+func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
+	rpcDurationMs := strconv.FormatInt(rpcDuration.Milliseconds(), 10)
+
+	r.fields = append(r.fields, zap.String(queryDurationKey, rpcDurationMs))
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))

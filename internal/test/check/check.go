@@ -6,6 +6,7 @@ import (
 )
 
 type Assertion struct {
+	Name             string
 	Tuple            *openfgav1.TupleKey
 	ContextualTuples []*openfgav1.TupleKey `json:"contextualTuples"`
 	Context          *structpb.Struct

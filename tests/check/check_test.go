@@ -36,6 +36,26 @@ var tuples = []*openfgav1.TupleKey{
 	tuple.NewTupleKey("team:openfga", "member", "user:github|iaco@openfga"),
 }
 
+func TestMatrixMemory(t *testing.T) {
+	testRunTestMatrix(t, "memory")
+}
+
+func testRunTestMatrix(t *testing.T, engine string) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	cfg := config.MustDefaultConfig()
+	// cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Log.Level = "error"
+	cfg.Datastore.Engine = engine
+
+	tests.StartServer(t, cfg)
+
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+
+	runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
+}
+
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
 }
@@ -282,12 +302,13 @@ func TestServerLogs(t *testing.T) {
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
 			require.Equal(t, fields["request_id"], fields["trace_id"])
+			require.Contains(t, fields, "query_duration_ms")
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
-				require.Len(t, fields, 14)
+				require.Len(t, fields, 15)
 			} else {
-				require.Len(t, fields, 12)
+				require.Len(t, fields, 13)
 			}
 		})
 	}
