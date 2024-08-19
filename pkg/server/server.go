@@ -95,6 +95,12 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count", "consistency"})
+
+	throttleCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "throttled_requests_total_count",
+		Help:      "The total number of requests that have been throttled.",
+	})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -761,6 +767,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
+	if wasRequestThrottled {
+		throttleCounter.Inc()
+	}
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
@@ -859,6 +870,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		utils.Bucketize(uint(resolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
+
+	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
+	if wasRequestThrottled {
+		throttleCounter.Inc()
+	}
 
 	return nil
 }
@@ -1057,6 +1073,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
+
+	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
+	if wasRequestThrottled {
+		throttleCounter.Inc()
+	}
 
 	return res, nil
 }
