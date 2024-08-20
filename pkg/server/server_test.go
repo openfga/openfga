@@ -1245,7 +1245,7 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 
 			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore)
 			_, err := writeAssertionCmd.Execute(ctx, request)
-			require.ErrorIs(t, curTest.expectedError, err)
+			require.EqualError(t, err, curTest.expectedError.Error())
 		})
 	}
 }
@@ -1274,7 +1274,7 @@ func TestReadAssertionModelDSError(t *testing.T) {
 	expectedError := serverErrors.NewInternalError(
 		"", fmt.Errorf("unable to read"),
 	)
-	require.ErrorIs(t, expectedError, err)
+	require.EqualError(t, err, expectedError.Error())
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
@@ -1497,7 +1497,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			})
 
 			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
 
 		t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
@@ -1509,7 +1509,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				User:                 "user:bob",
 			}, NewMockStreamServer())
 
-			require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
 	})
 

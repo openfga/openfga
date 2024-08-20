@@ -27,6 +27,15 @@ func TestInternalError(t *testing.T) {
 		require.Contains(t, err.Error(), "public")
 	})
 
+	t.Run("grpc_status", func(t *testing.T) {
+		err := NewInternalError("", errors2.ErrUnknown)
+
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgav1.InternalErrorCode_internal_error), st.Code())
+		require.Equal(t, "rpc error: code = Code(4000) desc = Internal Server Error", st.String())
+	})
+
 	t.Run("error_is", func(t *testing.T) {
 		err := NewInternalError("", errors2.ErrUnknown)
 		require.ErrorIs(t, err, errors2.ErrUnknown)
@@ -132,7 +141,7 @@ func TestHandleTupleValidateError(t *testing.T) {
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
-			require.ErrorIs(t, HandleTupleValidateError(test.validateError), test.expectedTranslatedError)
+			require.EqualError(t, HandleTupleValidateError(test.validateError), test.expectedTranslatedError.Error())
 		})
 	}
 }

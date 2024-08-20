@@ -43,6 +43,11 @@ func (e InternalError) Unwrap() error {
 	return e.internal
 }
 
+func (e InternalError) GRPCStatus() *status.Status {
+	st, _ := status.FromError(e.public)
+	return st
+}
+
 // NewInternalError returns an error that is decorated with a public-facing error message.
 // It is only meant to be called by HandleError.
 func NewInternalError(public string, internal error) InternalError {
