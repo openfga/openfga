@@ -347,9 +347,9 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 }
 
 // WithFGAOnFGAParams sets enabled, the storeID, and modelID for the FGA on FGA feature.
-func WithFGAOnFGAParams(FGAOnFGA serverconfig.FGAOnFGAConfig) OpenFGAServiceV1Option {
+func WithFGAOnFGAParams(fgaOnFga serverconfig.FGAOnFGAConfig) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.FGAOnFGA = FGAOnFGA
+		s.FGAOnFGA = fgaOnFga
 	}
 }
 
