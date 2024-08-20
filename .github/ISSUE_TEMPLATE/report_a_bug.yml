@@ -25,7 +25,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: Describe how to reproduce your issue, what you are seeing and what you expected to see. Please do not report security vulnerabilities here; use https://github.com/openfga/openfga/security/advisories/new or send us an email at security@openfga.dev instead
+      description: Describe how to reproduce your issue, what you are seeing and what you expected to see. If you are reporting that Check, ListObjects or ListUsers API are returning unexpected responses, please report a security vulnerability instead
     validations:
       required: true
 
