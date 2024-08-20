@@ -209,6 +209,13 @@ type DispatchThrottlingConfig struct {
 	MaxThreshold uint32
 }
 
+// FGAOnFGAConfig is the configuration for the FGAOnFGA feature.
+type FGAOnFGAConfig struct {
+	Enabled bool
+	StoreID string
+	ModelID string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -265,6 +272,9 @@ type Config struct {
 
 	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
 	Experimentals []string
+
+	// FGAOnFGAConfig is the configuration for the FGAOnFGA feature.
+	FGAOnFGA FGAOnFGAConfig
 
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query
 	// errors out.
@@ -536,6 +546,7 @@ func DefaultConfig() *Config {
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
+		FGAOnFGA:                                  FGAOnFGAConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,

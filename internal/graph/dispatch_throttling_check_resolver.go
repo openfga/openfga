@@ -6,7 +6,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/server/config"
+
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 )

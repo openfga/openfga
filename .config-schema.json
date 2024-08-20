@@ -115,10 +115,34 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-consistency-params", "enable-check-optimizations"]
+                "enum": ["enable-consistency-params", "enable-check-optimizations", "enable-fga-on-fga"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "fgaOnFga": {
+            "description": "the configuration needed for the fga on fga store",
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable/disable the FGA on FGA store.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_FGA_ON_FGA_ENABLED"
+                },
+                "storeId": {
+                    "description": "The storeId to be used for the FGA on FGA store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_FGA_ON_FGA_STORE_ID"
+                },
+                "modelId": {
+                    "description": "The modelId to be used for the FGA on FGA store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_FGA_ON_FGA_MODEL_ID"
+                },
+            }
         },
         "checkTrackerEnabled": {
             "type": "object",

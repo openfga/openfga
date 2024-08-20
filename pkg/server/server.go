@@ -30,15 +30,16 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/authz"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -55,6 +56,7 @@ const (
 
 	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 	ExperimentalCheckOptimizations      ExperimentalFeatureFlag = "enable-check-optimizations"
+	ExperimentalFGAOnFGAParams          ExperimentalFeatureFlag = "enable-fga-on-fga"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -120,6 +122,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
+	FGAOnFGA                         serverconfig.FGAOnFGAConfig
 	serviceName                      string
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
@@ -153,6 +156,8 @@ type Server struct {
 
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
+
+	authorizer *authz.Authorizer
 
 	ctx                 context.Context
 	checkTrackerEnabled bool
@@ -338,6 +343,13 @@ func WithMaxConcurrentReadsForListUsers(max uint32) OpenFGAServiceV1Option {
 func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.experimentals = experimentals
+	}
+}
+
+// WithFGAOnFGAParams sets enabled, the storeID, and modelID for the FGA on FGA feature.
+func WithFGAOnFGAParams(FGAOnFGA serverconfig.FGAOnFGAConfig) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.FGAOnFGA = FGAOnFGA
 	}
 }
 
@@ -536,6 +548,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+		FGAOnFGA:                         serverconfig.FGAOnFGAConfig{Enabled: false, StoreID: "", ModelID: ""},
 
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
@@ -638,6 +651,22 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+
+	err := s.validateFGAOnFGAEnabled()
+	if err != nil {
+		return nil, err
+	}
+
+	if s.fgaOnFgaIsEnabled() {
+		var err error
+		s.authorizer, err = authz.NewAuthorizer(&authz.Config{
+			StoreID: s.FGAOnFGA.StoreID,
+			ModelID: s.FGAOnFGA.ModelID,
+		}, s, s.logger)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return s, nil
 }
@@ -1414,4 +1443,17 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 		return status.Error(codes.InvalidArgument, "Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
 	}
 	return nil
+}
+
+// validateFGAOnFGAEnabled validates the FGA on FGA parameters.
+func (s *Server) validateFGAOnFGAEnabled() error {
+	if s.fgaOnFgaIsEnabled() && (s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
+		return status.Error(codes.InvalidArgument, "FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
+	}
+	return nil
+}
+
+// fgaOnFgaIsEnabled returns true if the FGA on FGA feature is enabled.
+func (s *Server) fgaOnFgaIsEnabled() bool {
+	return s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.FGAOnFGA.Enabled
 }
