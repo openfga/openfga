@@ -209,6 +209,7 @@ func (l *listUsersQuery) ListUsers(
 				Metadata: listUsersResponseMetadata{
 					DatastoreQueryCount: 0,
 					DispatchCounter:     new(atomic.Uint32),
+					WasThrottled:        new(atomic.Bool),
 				},
 			}, nil
 		}
