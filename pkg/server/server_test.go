@@ -542,11 +542,11 @@ func TestRequestContextPropagation(t *testing.T) {
 				AnyTimes().
 				DoAndReturn(func(ctx context.Context, _, _ string) (*openfgav1.AuthorizationModel, error) {
 					cancelParentCtx()
+					e := ctx.Err()
 					if tc.shouldPropagateContext {
-						require.ErrorIs(t, ctx.Err(), context.Canceled, "storage context must get cancelled if the request context is")
+						require.ErrorIs(t, e, context.Canceled, "storage context must get cancelled if the request context is propagate context")
 					} else {
-						e := ctx.Err()
-						require.NoError(t, e, "storage context must not get canceled if request context is")
+						require.NoError(t, e, "storage context must not get canceled if request context is is disable propagate context")
 					}
 					// Return dummy error, we don't care about the check result for this testcase
 					return nil, storage.ErrNotFound
@@ -561,6 +561,7 @@ func TestRequestContextPropagation(t *testing.T) {
 				s.Close()
 			})
 
+			// We do not care about the check result as we assert via mockDatastore.
 			_, _ = s.Check(parentCtx, &openfgav1.CheckRequest{
 				StoreId:              storeID,
 				TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike"),
