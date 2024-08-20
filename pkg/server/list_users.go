@@ -122,9 +122,9 @@ func (s *Server) ListUsers(
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := resp.Metadata.WasThrottled.Load()
+	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
 	if wasRequestThrottled {
-		throttleCounter.Inc()
+		throttleSucceededCounter.Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{
