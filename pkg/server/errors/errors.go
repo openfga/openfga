@@ -35,10 +35,11 @@ type InternalError struct {
 }
 
 func (e InternalError) Error() string {
+	// hide the internal error in the message
 	return e.public.Error()
 }
 
-// Unwrap is called by errors.Is.
+// Unwrap is called by errors.Is. It returns the underlying issue.
 func (e InternalError) Unwrap() error {
 	return e.internal
 }
