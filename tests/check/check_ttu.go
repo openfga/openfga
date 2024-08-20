@@ -28,7 +28,7 @@ var ttuCompleteTestingModelTest = []*stage{
 			},
 			{
 				Name:        "invalid_group",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:1", Relation: "direct_pa_direct_ch", User: "user:invalid_group"},
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:1", Relation: "direct_pa_direct_ch", User: "user:ttu_invalid_group"},
 				Expectation: false,
 			},
 			{
@@ -154,6 +154,9 @@ var ttuCompleteTestingModelTest = []*stage{
 			{Object: "directs-user:ttu_5_unconnected", Relation: "direct", User: "user:ttu_5_unconnected_directuser"},
 			{Object: "directs-user:ttu_5_unconnected_userset", Relation: "direct", User: "user:ttu_5_unconnected_userset"},
 			{Object: "usersets-user:ttu_5_unconnected_userset", Relation: "userset", User: "directs-user:ttu_5_unconnected_userset#direct"},
+			{Object: "ttus:5_empty_userset", Relation: "userset_parent", User: "usersets-user:ttu_5_empty_userset"},
+			{Object: "ttus:5_empty_direct", Relation: "userset_parent", User: "usersets-user:ttu_5_empty_direct"},
+			{Object: "usersets-user:ttu_5_empty_direct", Relation: "userset", User: "directs-user:ttu_5_empty_direct#direct"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -174,6 +177,16 @@ var ttuCompleteTestingModelTest = []*stage{
 			{
 				Name:        "userset_ttu_not_connected",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:5", Relation: "userset_pa_userset_ch", User: "user:ttu_5_unconnected_userset"},
+				Expectation: false,
+			},
+			{
+				Name:        "empty_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:5_empty_userset", Relation: "userset_pa_userset_ch", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "empty_direct",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:5_empty_direct", Relation: "userset_pa_userset_ch", User: "user:valid"},
 				Expectation: false,
 			},
 		},
