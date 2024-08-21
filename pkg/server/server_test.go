@@ -180,6 +180,19 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			)
 		})
 	})
+
+	t.Run("invalid_fga_on_fga_setup", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalFGAOnFGAParams),
+				WithFGAOnFGAParams(serverconfig.FGAOnFGAConfig{Enabled: true}),
+			)
+		})
+	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
@@ -2024,6 +2037,44 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+}
+
+func TestIsFgaOnFgaIsEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New() // Datastore required for server instantiation
+	t.Cleanup(ds.Close)
+
+	t.Run("returns_false_if_experimentals_does_not_have_fga_on_fga", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+			WithFGAOnFGAParams(serverconfig.FGAOnFGAConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsFgaOnFgaEnabled())
+	})
+
+	t.Run("returns_false_if_fga_on_fga_is_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag(ExperimentalFGAOnFGAParams)),
+			WithFGAOnFGAParams(serverconfig.FGAOnFGAConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsFgaOnFgaEnabled())
+	})
+
+	t.Run("returns_true_if_fga_on_fga_is_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag(ExperimentalFGAOnFGAParams)),
+			WithFGAOnFGAParams(serverconfig.FGAOnFGAConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}),
+		)
+		t.Cleanup(s.Close)
+		require.True(t, s.IsFgaOnFgaEnabled())
 	})
 }
 

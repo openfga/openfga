@@ -1,8 +1,6 @@
 package authz
 
 import (
-	"fmt"
-
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -18,14 +16,10 @@ type Authorizer struct {
 }
 
 // NewAuthorizer creates a new authorizer.
-func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger) (*Authorizer, error) {
-	if config == nil || config.StoreID == "" || config.ModelID == "" {
-		return nil, fmt.Errorf("'StoreID' and 'ModelID' configs must be set")
-	}
-
+func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger) *Authorizer {
 	return &Authorizer{
 		config: config,
 		server: server,
 		logger: logger,
-	}, nil
+	}
 }

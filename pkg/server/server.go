@@ -452,6 +452,11 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 	return slices.Contains(s.experimentals, flag)
 }
 
+// IsFgaOnFgaEnabled returns true if the FGA on FGA feature is enabled.
+func (s *Server) IsFgaOnFgaEnabled() bool {
+	return s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.FGAOnFGA.Enabled
+}
+
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
 // Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
 // threshold over requests whose dispatch count exceeds the configured threshold.
@@ -602,6 +607,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	err := s.validateFGAOnFGAEnabled()
+	if err != nil {
+		return nil, err
+	}
+
 	// below this point, don't throw errors or we may leak resources in tests
 
 	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
@@ -652,20 +662,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
-	err := s.validateFGAOnFGAEnabled()
-	if err != nil {
-		return nil, err
-	}
-
-	if s.fgaOnFgaIsEnabled() {
-		var err error
-		s.authorizer, err = authz.NewAuthorizer(&authz.Config{
-			StoreID: s.FGAOnFGA.StoreID,
-			ModelID: s.FGAOnFGA.ModelID,
-		}, s, s.logger)
-		if err != nil {
-			return nil, err
-		}
+	if s.IsFgaOnFgaEnabled() {
+		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.FGAOnFGA.StoreID, ModelID: s.FGAOnFGA.ModelID}, s, s.logger)
 	}
 
 	return s, nil
@@ -1447,13 +1445,8 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 
 // validateFGAOnFGAEnabled validates the FGA on FGA parameters.
 func (s *Server) validateFGAOnFGAEnabled() error {
-	if s.fgaOnFgaIsEnabled() && (s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
-		return status.Error(codes.InvalidArgument, "FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
+	if s.IsFgaOnFgaEnabled() && (s.FGAOnFGA == serverconfig.FGAOnFGAConfig{} || s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
+		return fmt.Errorf("FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
 	}
 	return nil
-}
-
-// fgaOnFgaIsEnabled returns true if the FGA on FGA feature is enabled.
-func (s *Server) fgaOnFgaIsEnabled() bool {
-	return s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.FGAOnFGA.Enabled
 }
