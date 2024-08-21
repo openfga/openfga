@@ -120,27 +120,27 @@
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
-        "fgaOnFga": {
-            "description": "the configuration needed for the fga on fga store",
+        "accessControl": {
+            "description": "the configuration needed for the access control store",
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "Enable/disable the FGA on FGA store.",
+                    "description": "Enable/disable the access control store.",
                     "type": "boolean",
                     "default": false,
-                    "x-env-variable": "OPENFGA_FGA_ON_FGA_ENABLED"
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_ENABLED"
                 },
                 "storeId": {
-                    "description": "The storeId to be used for the FGA on FGA store.",
+                    "description": "The storeId to be used for the access control store.",
                     "type": "string",
                     "default": "",
-                    "x-env-variable": "OPENFGA_FGA_ON_FGA_STORE_ID"
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_STORE_ID"
                 },
                 "modelId": {
-                    "description": "The modelId to be used for the FGA on FGA store.",
+                    "description": "The modelId to be used for the access control store.",
                     "type": "string",
                     "default": "",
-                    "x-env-variable": "OPENFGA_FGA_ON_FGA_MODEL_ID"
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_MODEL_ID"
                 },
             }
         },

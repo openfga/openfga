@@ -632,7 +632,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
-		server.WithFGAOnFGAParams(config.FGAOnFGA),
+		server.WithAccessControlParams(config.FGAOnFGA),
 		server.WithContext(ctx),
 		server.WithCheckTrackerEnabled(config.CheckTrackerEnabled),
 	)

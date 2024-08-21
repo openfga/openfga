@@ -1328,9 +1328,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 	t.Setenv("OPENFGA_MAX_CONDITION_EVALUATION_COST", "120")
-	t.Setenv("OPENFGA_FGA_ON_FGA_ENABLED", "true")
-	t.Setenv("OPENFGA_FGA_ON_FGA_STORE_ID", "12345")
-	t.Setenv("OPENFGA_FGA_ON_FGA_MODEL_ID", "67891")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_ENABLED", "true")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_MODEL_ID", "67891")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {

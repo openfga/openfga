@@ -56,7 +56,7 @@ const (
 
 	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 	ExperimentalCheckOptimizations      ExperimentalFeatureFlag = "enable-check-optimizations"
-	ExperimentalFGAOnFGAParams          ExperimentalFeatureFlag = "enable-fga-on-fga"
+	ExperimentalAccessControlParams     ExperimentalFeatureFlag = "enable-access-control"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -122,7 +122,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
-	FGAOnFGA                         serverconfig.FGAOnFGAConfig
+	AccessControl                    serverconfig.AccessControlConfig
 	serviceName                      string
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
@@ -346,10 +346,10 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
-// WithFGAOnFGAParams sets enabled, the storeID, and modelID for the FGA on FGA feature.
-func WithFGAOnFGAParams(fgaOnFga serverconfig.FGAOnFGAConfig) OpenFGAServiceV1Option {
+// WithAccessControlParams sets enabled, the storeID, and modelID for the FGA on FGA feature.
+func WithAccessControlParams(accessControl serverconfig.AccessControlConfig) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.FGAOnFGA = fgaOnFga
+		s.AccessControl = accessControl
 	}
 }
 
@@ -452,9 +452,9 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 	return slices.Contains(s.experimentals, flag)
 }
 
-// IsFgaOnFgaEnabled returns true if the FGA on FGA feature is enabled.
-func (s *Server) IsFgaOnFgaEnabled() bool {
-	return s.IsExperimentallyEnabled(ExperimentalFGAOnFGAParams) && s.FGAOnFGA.Enabled
+// IsAccessControlEnabled returns true if the FGA on FGA feature is enabled.
+func (s *Server) IsAccessControlEnabled() bool {
+	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
 }
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
@@ -553,7 +553,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
-		FGAOnFGA:                         serverconfig.FGAOnFGAConfig{Enabled: false, StoreID: "", ModelID: ""},
+		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
@@ -607,7 +607,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
-	err := s.validateFGAOnFGAEnabled()
+	err := s.validateAccessControlEnabled()
 	if err != nil {
 		return nil, err
 	}
@@ -662,8 +662,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
-	if s.IsFgaOnFgaEnabled() {
-		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.FGAOnFGA.StoreID, ModelID: s.FGAOnFGA.ModelID}, s, s.logger)
+	if s.IsAccessControlEnabled() {
+		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
 	}
 
 	return s, nil
@@ -1443,9 +1443,9 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 	return nil
 }
 
-// validateFGAOnFGAEnabled validates the FGA on FGA parameters.
-func (s *Server) validateFGAOnFGAEnabled() error {
-	if s.IsFgaOnFgaEnabled() && (s.FGAOnFGA == serverconfig.FGAOnFGAConfig{} || s.FGAOnFGA.StoreID == "" || s.FGAOnFGA.ModelID == "") {
+// validateAccessControlEnabled validates the FGA on FGA parameters.
+func (s *Server) validateAccessControlEnabled() error {
+	if s.IsAccessControlEnabled() && (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
 		return fmt.Errorf("FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
 	}
 	return nil
