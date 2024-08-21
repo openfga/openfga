@@ -182,7 +182,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 	})
 
 	t.Run("invalid_access_control_setup", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty", func() {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty", func() {
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)

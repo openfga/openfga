@@ -87,11 +87,11 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-access-control`")
 
-	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the FGA on FGA feature")
+	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
-	flags.String("access-control-store-id", defaultConfig.AccessControl.StoreID, "the store ID of the OpenFGA store that will be used to access the FGA on FGA store")
+	flags.String("access-control-store-id", defaultConfig.AccessControl.StoreID, "the store ID of the OpenFGA store that will be used to access the access control store")
 
-	flags.String("access-control-model-id", defaultConfig.AccessControl.ModelID, "the model ID of the OpenFGA store that will be used to access the FGA on FGA store")
+	flags.String("access-control-model-id", defaultConfig.AccessControl.ModelID, "the model ID of the OpenFGA store that will be used to access the access control store")
 
 	cmd.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
 

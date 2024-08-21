@@ -346,7 +346,7 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
-// WithAccessControlParams sets enabled, the storeID, and modelID for the FGA on FGA feature.
+// WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
 func WithAccessControlParams(accessControl serverconfig.AccessControlConfig) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.AccessControl = accessControl
@@ -452,7 +452,7 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 	return slices.Contains(s.experimentals, flag)
 }
 
-// IsAccessControlEnabled returns true if the FGA on FGA feature is enabled.
+// IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
 	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
 }
@@ -1443,10 +1443,10 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 	return nil
 }
 
-// validateAccessControlEnabled validates the FGA on FGA parameters.
+// validateAccessControlEnabled validates the access control parameters.
 func (s *Server) validateAccessControlEnabled() error {
 	if s.IsAccessControlEnabled() && (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
-		return fmt.Errorf("FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
+		return fmt.Errorf("access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
 	}
 	return nil
 }
