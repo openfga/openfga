@@ -1348,9 +1348,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
 		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
-		require.True(t, viper.GetBool("fga-on-fga-enabled"))
-		require.Equal(t, "12345", viper.GetString("fga-on-fga-store-id"))
-		require.Equal(t, "67891", viper.GetString("fga-on-fga-model-id"))
+		require.True(t, viper.GetBool("access-control-enabled"))
+		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
+		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
 
 		return nil
 	}

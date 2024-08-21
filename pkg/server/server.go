@@ -1446,7 +1446,7 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 // validateAccessControlEnabled validates the FGA on FGA parameters.
 func (s *Server) validateAccessControlEnabled() error {
 	if s.IsAccessControlEnabled() && (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
-		return fmt.Errorf("FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-fga-on-fga` configuration option when running OpenFGA server. Additionally, the `--fga-on-fga-store-id` and `--fga-on-fga-model-id` parameters must not be empty")
+		return fmt.Errorf("FGA on FGA parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
 	}
 	return nil
 }
