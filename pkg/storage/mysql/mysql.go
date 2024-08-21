@@ -65,7 +65,11 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize mysql connection: %w", err)
 	}
+	return NewWithDB(db, cfg)
+}
 
+// NewWithDB creates a new [MySQL] storage with the provided database connection.
+func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*MySQL, error) {
 	if cfg.MaxOpenConns != 0 {
 		db.SetMaxOpenConns(cfg.MaxOpenConns)
 	}
@@ -85,8 +89,8 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
 	attempt := 1
-	err = backoff.Retry(func() error {
-		err = db.PingContext(context.Background())
+	err := backoff.Retry(func() error {
+		err := db.PingContext(context.Background())
 		if err != nil {
 			cfg.Logger.Info("waiting for mysql", zap.Int("attempt", attempt))
 			attempt++
