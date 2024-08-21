@@ -3092,7 +3092,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 	tests := []struct {
 		name                         string
 		model                        *openfgav1.AuthorizationModel
-		tuples                       []*openfgav1.TupleKey
+		tuples                       []*openfgav1.Tuple
 		context                      map[string]interface{}
 		dsError                      error
 		objectIDs                    []string
@@ -3112,12 +3112,41 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				type document
 					relations
 						define viewer: [group#member]`),
-			tuples:  []*openfgav1.TupleKey{},
+			tuples:  []*openfgav1.Tuple{},
 			dsError: nil,
 			objectIDs: []string{
 				"2", "3",
 			},
 			context: map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "empty_object_ids",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+			},
+			dsError:   nil,
+			objectIDs: []string{},
+			context:   map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
@@ -3139,11 +3168,9 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				type document
 					relations
 						define viewer: [group#member]`),
-			tuples:  []*openfgav1.TupleKey{},
-			dsError: fmt.Errorf("bad_ds_call"),
-			objectIDs: []string{
-				"2", "3",
-			},
+			tuples:                       []*openfgav1.Tuple{},
+			dsError:                      fmt.Errorf("bad_ds_call"),
+			objectIDs:                    []string{"1"},
 			context:                      map[string]interface{}{},
 			expectedResolveCheckResponse: nil,
 			expectedError:                true,
@@ -3161,15 +3188,42 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				type document
 					relations
 						define viewer: [group#member]`),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:1", "member", "user:maria"),
-				tuple.NewTupleKey("group:2", "member", "user:maria"),
-				tuple.NewTupleKey("group:3", "member", "user:maria"),
-				tuple.NewTupleKey("group:4", "member", "user:maria"),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
 			},
 			dsError: nil,
 			objectIDs: []string{
-				"2", "3",
+				"1",
+			},
+			context: map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "non_empty_iterator_match_objectIDs_ttu",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define owner: [group]
+						define viewer: member from owner`),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
+			},
+			dsError: nil,
+			objectIDs: []string{
+				"1",
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
@@ -3193,17 +3247,12 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				type document
 					relations
 						define viewer: [group#member]`),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:1", "member", "user:maria"),
-				tuple.NewTupleKey("group:2", "member", "user:maria"),
-				tuple.NewTupleKey("group:3", "member", "user:maria"),
-				tuple.NewTupleKey("group:4", "member", "user:maria"),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
 			},
-			dsError: nil,
-			objectIDs: []string{
-				"8", "9",
-			},
-			context: map[string]interface{}{},
+			dsError:   nil,
+			objectIDs: []string{"8"},
+			context:   map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
@@ -3230,16 +3279,11 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					x < 100
 				}
 `),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("group:1", "viewer", "user:maria", "condX", nil),
-				tuple.NewTupleKeyWithCondition("group:2", "viewer", "user:maria", "condX", nil),
-				tuple.NewTupleKeyWithCondition("group:3", "viewer", "user:maria", "condX", nil),
-				tuple.NewTupleKeyWithCondition("group:4", "viewer", "user:maria", "condX", nil),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condX", nil)},
 			},
-			dsError: nil,
-			objectIDs: []string{
-				"2", "3",
-			},
+			dsError:   nil,
+			objectIDs: []string{"1"},
 			context: map[string]interface{}{
 				"x": 200,
 			},
@@ -3269,21 +3313,16 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 					x < 100
 				}
 `),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("group:1", "viewer", "user:maria", "condX", nil),
-				tuple.NewTupleKeyWithCondition("group:2", "viewer", "user:maria", "condX", nil),
-				tuple.NewTupleKeyWithCondition("group:3", "viewer", "user:maria", "condX", nil),
-				tuple.NewTupleKeyWithCondition("group:4", "viewer", "user:maria", "condX", nil),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condX", nil)},
 			},
-			dsError: nil,
-			objectIDs: []string{
-				"2", "3",
-			},
+			dsError:   nil,
+			objectIDs: []string{"1"},
 			context: map[string]interface{}{
-				"x": 1,
+				"x": 10,
 			},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
+				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: 1,
 				},
@@ -3301,31 +3340,27 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 				objectIDs.Add(objectID)
 			}
 
-			associatedFunc := buildCheckAssociatedObjects(&ResolveCheckRequest{
-				StoreID:              ulid.Make().String(),
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
-			}, "group#member", objectIDs)
-
 			ctrl := gomock.NewController(t)
 			t.Cleanup(ctrl.Finish)
+
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			tuples := make([]*openfgav1.Tuple, len(tt.tuples))
-			for i, tuple := range tt.tuples {
-				tuples[i] = &openfgav1.Tuple{
-					Key: tuple,
-				}
-			}
-			dsIter := storage.NewStaticTupleIterator(tuples)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(dsIter, tt.dsError)
+			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
 
 			ts := typesystem.New(tt.model)
 			ctx := context.Background()
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
-			result, err := associatedFunc(ctx)
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
+
+			result, err := buildCheckAssociatedObjects(ctx, &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Context:              contextStruct,
+			}, "group#member", objectIDs)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {

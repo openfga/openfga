@@ -740,47 +740,45 @@ func iteratorReadStartingFromUser(ctx context.Context,
 		}, opts)
 }
 
-func buildCheckAssociatedObjects(req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
-		defer span.End()
+func buildCheckAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
+	defer span.End()
 
-		typesys, _ := typesystem.TypesystemFromContext(ctx)
-		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-		i, err := iteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
-		if err != nil {
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
-
-		reqContext := req.GetContext()
-		// filter out invalid tuples yielded by the database iterator
-		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(i),
-				validation.FilterInvalidTuples(typesys),
-			),
-			buildTupleKeyConditionFilter(ctx, reqContext, typesys),
-		)
-		defer filteredIter.Stop()
-
-		allowed, err := tupleIDInSortedSet(ctx, filteredIter, objectIDs)
-		if err != nil {
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
-		if allowed {
-			span.SetAttributes(attribute.Bool("allowed", true))
-		}
-		reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
-		return &ResolveCheckResponse{
-			Allowed: allowed,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: reqCount,
-			},
-		}, nil
+	i, err := iteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
 	}
+
+	reqContext := req.GetContext()
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(i),
+			validation.FilterInvalidTuples(typesys),
+		),
+		buildTupleKeyConditionFilter(ctx, reqContext, typesys),
+	)
+	defer filteredIter.Stop()
+
+	allowed, err := tupleIDInSortedSet(ctx, filteredIter, objectIDs)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+	if allowed {
+		span.SetAttributes(attribute.Bool("allowed", true))
+	}
+	reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
+	return &ResolveCheckResponse{
+		Allowed: allowed,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: reqCount,
+		},
+	}, nil
 }
 
 // checkUsersetSlowPath will check userset or public wildcard path.
@@ -1028,7 +1026,7 @@ ConsumerLoop:
 			objectRel := newBatch.objectRelation
 			objectIDs := newBatch.objectIDs
 
-			resp, err := buildCheckAssociatedObjects(req, objectRel, objectIDs)(ctx)
+			resp, err := buildCheckAssociatedObjects(ctx, req, objectRel, objectIDs)
 			dbReads++
 			if err != nil {
 				// We don't exit because we do a best effort to find the objectId that will give `allowed=true`.
