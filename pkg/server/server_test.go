@@ -2060,7 +2060,7 @@ func TestIsFgaOnFgaIsEnabled(t *testing.T) {
 	t.Run("returns_false_if_fga_on_fga_is_disabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag(ExperimentalFGAOnFGAParams)),
+			WithExperimentals(ExperimentalFGAOnFGAParams),
 			WithFGAOnFGAParams(serverconfig.FGAOnFGAConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}),
 		)
 		t.Cleanup(s.Close)
@@ -2070,7 +2070,7 @@ func TestIsFgaOnFgaIsEnabled(t *testing.T) {
 	t.Run("returns_true_if_fga_on_fga_is_enabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag(ExperimentalFGAOnFGAParams)),
+			WithExperimentals(ExperimentalFGAOnFGAParams),
 			WithFGAOnFGAParams(serverconfig.FGAOnFGAConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}),
 		)
 		t.Cleanup(s.Close)
