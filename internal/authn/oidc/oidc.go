@@ -21,13 +21,15 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/authn"
+	authnPkg "github.com/openfga/openfga/pkg/authn"
 )
 
 type RemoteOidcAuthenticator struct {
-	MainIssuer    string
-	IssuerAliases []string
-	Audience      string
-	Subjects      []string
+	MainIssuer     string
+	IssuerAliases  []string
+	Audience       string
+	Subjects       []string
+	ClientIDClaims []string
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
@@ -50,7 +52,7 @@ var (
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
-func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string) (*RemoteOidcAuthenticator, error) {
+func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audience string, subjects []string, clientIDClaims []string) (*RemoteOidcAuthenticator, error) {
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
@@ -67,7 +69,7 @@ func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audie
 	return oidc, nil
 }
 
-func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
+func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authnPkg.AuthClaims, error) {
 	authHeader, err := grpcauth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
 		return nil, authn.ErrMissingBearerToken
@@ -129,9 +131,27 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		}
 	}
 
-	principal := &authn.AuthClaims{
-		Subject: subject,
-		Scopes:  make(map[string]bool),
+	// Client ID is:
+	// 1. If the user has set it in configuration, use that
+	// 2, If the user has not set it in configuration, use the following as default:
+	// 2.a. Use `azp`: the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+	// 3.b. Use `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
+	clientIDClaims := oidc.ClientIDClaims
+	if len(clientIDClaims) == 0 {
+		clientIDClaims = []string{"azp", "client_id"}
+	}
+	clientID := ""
+	for _, claimString := range clientIDClaims {
+		clientID, ok = claims[claimString].(string)
+		if ok {
+			break
+		}
+	}
+
+	principal := &authnPkg.AuthClaims{
+		Subject:  subject,
+		Scopes:   make(map[string]bool),
+		ClientID: clientID,
 	}
 
 	// optional scopes

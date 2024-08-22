@@ -38,6 +38,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -59,6 +60,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -79,6 +81,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -101,6 +104,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
@@ -120,6 +124,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
@@ -138,6 +143,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "wrong_issuer",
 						"exp": time.Now().Add(10 * time.Minute).Unix(),
@@ -157,6 +163,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "wrong_audience",
@@ -177,6 +184,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -198,6 +206,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"valid-sub-1", "valid-sub-2"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss": "right_issuer",
 						"aud": "right_audience",
@@ -239,6 +248,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss":   "right_issuer",
 						"aud":   "right_audience",
@@ -260,6 +270,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					[]string{"issuer_alias"},
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss":   "issuer_alias",
 						"aud":   "right_audience",
@@ -281,6 +292,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					[]string{"issuer_alias"},
 					[]string{"openfga client"},
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss":   "right_issuer",
 						"aud":   "right_audience",
@@ -302,6 +314,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					"right_audience",
 					nil,
 					nil,
+					[]string{"azp"},
 					jwt.MapClaims{
 						"iss":   "right_issuer",
 						"aud":   "right_audience",
@@ -340,7 +353,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 }
 
 // quickConfigSetup sets up a basic configuration for testing purposes.
-func quickConfigSetup(jwkKid, jwtKid, issuerURL, audience string, issuerAliases []string, subjects []string, jwtClaims jwt.MapClaims, privateKeyOverride *rsa.PrivateKey) (*RemoteOidcAuthenticator, context.Context, error) {
+func quickConfigSetup(jwkKid, jwtKid, issuerURL, audience string, issuerAliases []string, subjects []string, clientIDClaims []string, jwtClaims jwt.MapClaims, privateKeyOverride *rsa.PrivateKey) (*RemoteOidcAuthenticator, context.Context, error) {
 	// Generate JWT signature keys
 	privateKey, publicKey := generateJWTSignatureKeys()
 	if privateKeyOverride != nil {
@@ -350,7 +363,7 @@ func quickConfigSetup(jwkKid, jwtKid, issuerURL, audience string, issuerAliases 
 	fetchJWKs = fetchKeysMock(publicKey, jwkKid)
 
 	// Initialize RemoteOidcAuthenticator
-	oidc, err := NewRemoteOidcAuthenticator(issuerURL, issuerAliases, audience, subjects)
+	oidc, err := NewRemoteOidcAuthenticator(issuerURL, issuerAliases, audience, subjects, clientIDClaims)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -405,3 +418,5 @@ func generateJWT(privateKey *rsa.PrivateKey, kid string, claims jwt.MapClaims) s
 	}
 	return signedToken
 }
+
+// TODO: add more test

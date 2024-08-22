@@ -620,6 +620,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 		Issuer:        oidcServerURL1,
 		IssuerAliases: []string{oidcServerURL2},
 	}
+	// TODO: add test for clientID claims
 
 	oidcServerPortReleaser1()
 	oidcServerPortReleaser2()

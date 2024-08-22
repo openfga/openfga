@@ -127,6 +127,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("authn-oidc-subjects", defaultConfig.Authn.Subjects, "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed")
 
+	flags.StringSlice("authn-oidc-client-id-claims", defaultConfig.Authn.ClientIDClaims, "the ClientID claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]")
+
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
@@ -416,7 +418,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects, config.Authn.ClientIDClaims)
 	default:
 		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}

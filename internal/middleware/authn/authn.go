@@ -6,6 +6,7 @@ import (
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 
 	"github.com/openfga/openfga/internal/authn"
+	authnPkg "github.com/openfga/openfga/pkg/authn"
 )
 
 func AuthFunc(authenticator authn.Authenticator) grpcauth.AuthFunc {
@@ -15,6 +16,6 @@ func AuthFunc(authenticator authn.Authenticator) grpcauth.AuthFunc {
 			return nil, err
 		}
 
-		return authn.ContextWithAuthClaims(ctx, claims), nil
+		return authnPkg.ContextWithAuthClaims(ctx, claims), nil
 	}
 }

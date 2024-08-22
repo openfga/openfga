@@ -620,6 +620,11 @@
                         "type": "string"
                     },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_SUBJECTS"
+                },
+                "clientIdClaims": {
+                    "description": "the OIDC client id claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]",
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS"
                 }
             },
             "required": ["issuer", "audience"]
