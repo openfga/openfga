@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/pkg/logger"
@@ -353,6 +354,22 @@ func (cfg *Config) Verify() error {
 
 	if cfg.Log.TimestampFormat != "Unix" && cfg.Log.TimestampFormat != "ISO8601" {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
+	}
+
+	if cfg.Experimentals != nil {
+		for _, experimental := range cfg.Experimentals {
+			if experimental == "enable-access-control" && cfg.AccessControl.Enabled && cfg.AccessControl.StoreID != "" && cfg.AccessControl.ModelID != "" {
+				_, err := ulid.Parse(cfg.AccessControl.StoreID)
+				if err != nil {
+					return fmt.Errorf("config 'access-control-store-id' must be a valid UUID")
+				}
+
+				_, err = ulid.Parse(cfg.AccessControl.ModelID)
+				if err != nil {
+					return fmt.Errorf("config 'access-control-model-id' must be a valid UUID")
+				}
+			}
+		}
 	}
 
 	if cfg.Playground.Enabled {
