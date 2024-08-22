@@ -358,17 +358,7 @@ func (cfg *Config) Verify() error {
 
 	if cfg.Experimentals != nil {
 		for _, experimental := range cfg.Experimentals {
-			if experimental == "enable-access-control" && cfg.AccessControl.Enabled && cfg.AccessControl.StoreID != "" && cfg.AccessControl.ModelID != "" {
-				_, err := ulid.Parse(cfg.AccessControl.StoreID)
-				if err != nil {
-					return fmt.Errorf("config 'access-control-store-id' must be a valid UUID")
-				}
-
-				_, err = ulid.Parse(cfg.AccessControl.ModelID)
-				if err != nil {
-					return fmt.Errorf("config 'access-control-model-id' must be a valid UUID")
-				}
-			}
+			cfg.verifyAccessControl(experimental)
 		}
 	}
 
@@ -468,6 +458,21 @@ func (cfg *Config) Verify() error {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
+	return nil
+}
+
+func (cfg *Config) verifyAccessControl(experimental string) error {
+	if experimental == "enable-access-control" && cfg.AccessControl.Enabled && cfg.AccessControl.StoreID != "" && cfg.AccessControl.ModelID != "" {
+		_, err := ulid.Parse(cfg.AccessControl.StoreID)
+		if err != nil {
+			return fmt.Errorf("config 'access-control-store-id' must be a valid UUID")
+		}
+
+		_, err = ulid.Parse(cfg.AccessControl.ModelID)
+		if err != nil {
+			return fmt.Errorf("config 'access-control-model-id' must be a valid UUID")
+		}
+	}
 	return nil
 }
 
