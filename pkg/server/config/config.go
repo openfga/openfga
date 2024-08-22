@@ -358,7 +358,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.Experimentals != nil {
 		for _, experimental := range cfg.Experimentals {
-			cfg.verifyAccessControl(experimental)
+			err := cfg.verifyAccessControl(experimental)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
