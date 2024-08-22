@@ -212,6 +212,7 @@ func (t *TrackerCheckResolver) ResolveCheck(
 		RequestMetadata:      req.GetRequestMetadata(),
 		VisitedPaths:         req.VisitedPaths,
 		Context:              req.GetContext(),
+		Consistency:          req.GetConsistency(),
 	})
 
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
