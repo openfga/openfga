@@ -115,7 +115,7 @@ func (m *SQLite) Close() {
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (m *SQLite) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (m *SQLite) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.Read")
 	defer span.End()
 
@@ -127,21 +127,21 @@ func (m *SQLite) ReadPage(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
-	opts storage.PaginationOptions,
+	options storage.ReadPageOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, &opts)
+	iter, err := m.read(ctx, store, tupleKey, &options)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(opts)
+	return iter.ToArray(options.Pagination)
 }
 
-func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.read")
 	defer span.End()
 
@@ -152,7 +152,7 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if opts != nil {
+	if options != nil {
 		sb = sb.OrderBy("ulid")
 	}
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
@@ -168,15 +168,15 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 	if tupleKey.GetUser() != "" {
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
-	if opts != nil && opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options != nil && options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
-	if opts != nil && opts.PageSize != 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if options != nil && options.Pagination.PageSize != 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -203,7 +203,7 @@ func (m *SQLite) Write(ctx context.Context, store string, deletes storage.Delete
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadUserTuple")
 	defer span.End()
 
@@ -213,6 +213,7 @@ func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
+
 	err := m.stbl.
 		Select(
 			"object_type", "object_id", "relation", "_user",
@@ -260,6 +261,7 @@ func (m *SQLite) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
+	_ storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadUsersetTuples")
 	defer span.End()
@@ -307,13 +309,14 @@ func (m *SQLite) ReadUsersetTuples(
 func (m *SQLite) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
-	opts storage.ReadStartingWithUserFilter,
+	filter storage.ReadStartingWithUserFilter,
+	_ storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadStartingWithUser")
 	defer span.End()
 
 	var targetUsersArg []string
-	for _, u := range opts.UserFilter {
+	for _, u := range filter.UserFilter {
 		targetUser := u.GetObject()
 		if u.GetRelation() != "" {
 			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
@@ -321,7 +324,7 @@ func (m *SQLite) ReadStartingWithUser(
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	rows, err := m.stbl.
+	builder := m.stbl.
 		Select(
 			"store", "object_type", "object_id", "relation", "_user",
 			"condition_name", "condition_context", "ulid", "inserted_at",
@@ -329,10 +332,16 @@ func (m *SQLite) ReadStartingWithUser(
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
-			"object_type": opts.ObjectType,
-			"relation":    opts.Relation,
+			"object_type": filter.ObjectType,
+			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		}).QueryContext(ctx)
+		})
+
+	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
+		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
+	}
+
+	rows, err := builder.QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -357,26 +366,27 @@ func (m *SQLite) ReadAuthorizationModel(ctx context.Context, store string, model
 func (m *SQLite) ReadAuthorizationModels(
 	ctx context.Context,
 	store string,
-	opts storage.PaginationOptions,
+	options storage.ReadAuthorizationModelsOptions,
 ) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadAuthorizationModels")
 	defer span.End()
 
-	sb := m.stbl.Select("authorization_model_id").
+	sb := m.stbl.
+		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -403,8 +413,8 @@ func (m *SQLite) ReadAuthorizationModels(
 
 	var token []byte
 	numModelIDs := len(modelIDs)
-	if len(modelIDs) > opts.PageSize {
-		numModelIDs = opts.PageSize
+	if len(modelIDs) > options.Pagination.PageSize {
+		numModelIDs = options.Pagination.PageSize
 		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
@@ -537,7 +547,7 @@ func (m *SQLite) GetStore(ctx context.Context, id string) (*openfgav1.Store, err
 }
 
 // ListStores provides a paginated list of all stores present in the SQLite storage.
-func (m *SQLite) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *SQLite) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ListStores")
 	defer span.End()
 
@@ -547,15 +557,15 @@ func (m *SQLite) ListStores(ctx context.Context, opts storage.PaginationOptions)
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
 
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -586,12 +596,12 @@ func (m *SQLite) ListStores(ctx context.Context, opts storage.PaginationOptions)
 		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if len(stores) > opts.PageSize {
+	if len(stores) > options.Pagination.PageSize {
 		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
-		return stores[:opts.PageSize], contToken, nil
+		return stores[:options.Pagination.PageSize], contToken, nil
 	}
 
 	return stores, nil, nil
@@ -674,7 +684,7 @@ func (m *SQLite) ReadAssertions(ctx context.Context, store, modelID string) ([]*
 func (m *SQLite) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
-	opts storage.PaginationOptions,
+	options storage.ReadChangesOptions,
 	horizonOffset time.Duration,
 ) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadChanges")
@@ -693,8 +703,8 @@ func (m *SQLite) ReadChanges(
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
-	if opts.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(opts.From)
+	if options.Pagination.From != "" {
+		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -704,8 +714,8 @@ func (m *SQLite) ReadChanges(
 
 		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
 	}
-	if opts.PageSize > 0 {
-		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+	if options.Pagination.PageSize > 0 {
+		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
 	}
 
 	rows, err := sb.QueryContext(ctx)
