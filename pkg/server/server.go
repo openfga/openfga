@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"net/http"
 	"slices"
 	"sort"
@@ -156,6 +157,8 @@ type Server struct {
 
 	ctx                 context.Context
 	checkTrackerEnabled bool
+
+	redisUrl string
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -179,6 +182,12 @@ func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 func WithCheckTrackerEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkTrackerEnabled = enabled
+	}
+}
+
+func WithRedisUrl(url string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.redisUrl = url
 	}
 }
 
@@ -589,6 +598,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: s.redisUrl,
+	})
+
 	// below this point, don't throw errors or we may leak resources in tests
 
 	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
@@ -622,6 +635,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 			graph.WithEnabledConsistencyParams(s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams)),
+			graph.WithRedisClient(redisClient),
 		}...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),

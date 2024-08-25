@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"strconv"
 	"time"
 
@@ -56,6 +57,7 @@ type CachedCheckResolver struct {
 	// If so, CachedCheckResolver is responsible for cleaning up.
 	allocatedCache           bool
 	enableConsistencyOptions bool
+	redisClient              *redis.Client
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -92,6 +94,12 @@ func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) Cache
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
+	}
+}
+
+func WithRedisClient(client *redis.Client) CachedCheckResolverOpt {
+	return func(ccr *CachedCheckResolver) {
+		ccr.redisClient = client
 	}
 }
 
