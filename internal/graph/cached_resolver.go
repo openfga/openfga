@@ -9,8 +9,6 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -168,19 +166,24 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	tryCache := !c.enableConsistencyOptions || req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+	tryCache := true
 
 	if tryCache {
 		checkCacheTotalCounter.Inc()
 
-		cachedResp := c.cache.Get(cacheKey)
-		isCached := cachedResp != nil && !cachedResp.Expired
+		cachedResp, err := c.redisClient.Get(ctx, cacheKey).Bool()
+		isCached := err != nil
 		span.SetAttributes(attribute.Bool("is_cached", isCached))
 		if isCached {
 			checkCacheHitCounter.Inc()
 
 			// return a copy to avoid races across goroutines
-			return CloneResolveCheckResponse(cachedResp.Value), nil
+			return &ResolveCheckResponse{
+				Allowed: cachedResp,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 0,
+				},
+			}, nil
 		}
 	}
 
@@ -197,7 +200,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	clonedResp := CloneResolveCheckResponse(resp)
 	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
 
-	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)
+	c.redisClient.Set(ctx, cacheKey, resp.GetAllowed(), c.cacheTTL)
 	return resp, nil
 }
 
