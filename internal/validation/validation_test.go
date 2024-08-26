@@ -67,6 +67,20 @@ func TestValidateTuple(t *testing.T) {
 			},
 		},
 		{
+			name:  "malformed_object_7",
+			tuple: tuple.NewTupleKey("unknown:id", "relation", "user:jon"),
+			model: &openfgav1.AuthorizationModel{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{Type: "user"},
+					{Type: "document"},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "unknown"},
+				TupleKey: tuple.NewTupleKey("unknown:id", "relation", "user:jon"),
+			},
+		},
+		{
 			name:  "malformed_relation_1",
 			tuple: tuple.NewTupleKey("document:1", "group#group", "user:jon"),
 			model: &openfgav1.AuthorizationModel{
