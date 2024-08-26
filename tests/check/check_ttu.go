@@ -197,7 +197,11 @@ var ttuCompleteTestingModelTest = []*stage{
 			{Object: "ttus:6", Relation: "userset_parent", User: "usersets-user:ttu_6"},
 			{Object: "usersets-user:ttu_6", Relation: "userset_to_computed", User: "directs-user:ttu_6#computed"},
 			{Object: "directs-user:ttu_6", Relation: "direct", User: "user:valid"},
-			{Object: "directs-user:ttu_6_unconnected", Relation: "direct", User: "user:6unconnected_from_parent"},
+			// user not part of userset
+			{Object: "ttus:6_disconnected_1", Relation: "userset_parent", User: "usersets-user:ttu_6_unconnected"},
+			{Object: "usersets-user:ttu_6_unconnected", Relation: "userset_to_computed", User: "directs-user:ttu_6_unconnected#computed"},
+			// parent not linked to anything
+			{Object: "ttus:6_disconnected_2", Relation: "userset_parent", User: "usersets-user:ttu_6_disconnected_2"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -207,7 +211,17 @@ var ttuCompleteTestingModelTest = []*stage{
 			},
 			{
 				Name:        "no_path_to_user",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:6", Relation: "userset_pa_userset_comp_ch", User: "user:6unconnected_from_parent"},
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:6", Relation: "userset_pa_userset_comp_ch", User: "user:invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_because_not_part_of_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:6_disconnected_1", Relation: "userset_pa_userset_comp_ch", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_because_parent_not_linked_to_anything",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:6_disconnected_2", Relation: "userset_pa_userset_comp_ch", User: "user:valid"},
 				Expectation: false,
 			},
 		},
@@ -248,19 +262,27 @@ var ttuCompleteTestingModelTest = []*stage{
 		},
 	},
 	{
-		Name: "userset_pa_userset_comp_wild_ch",
+		Name: "userset_pa_userset_comp_wild_ch", // condition doesn't impact the outcome
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "ttus:8", Relation: "userset_parent", User: "usersets-user:ttu_8"},
 			{Object: "usersets-user:ttu_8", Relation: "userset_to_computed_wild", User: "directs-user:ttu_8#computed_wild"},
 			{Object: "directs-user:ttu_8", Relation: "direct_wild", User: "user:*"},
-			// unconnected
-			{Object: "ttus:8_unconnected", Relation: "userset_parent", User: "usersets-user:ttu_8_connected"},
-		},
+			// parent not linked to anything
+			{Object: "ttus:8_unconnected_1", Relation: "userset_parent", User: "usersets-user:ttu_8_unconnected_1"},
+			// user not part of userset
+			{Object: "ttus:8_unconnected_2", Relation: "userset_parent", User: "usersets-user:ttu_8_unconnected_2"},
+			{Object: "usersets-user:ttu_8_unconnected_2", Relation: "userset_to_computed_wild", User: "directs-user:ttu_8_unconnected_2#computed_wild"}},
 		CheckAssertions: []*checktest.Assertion{
 			{
 				Name:        "path_to_random_user_and_condition_is_true",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:8", Relation: "userset_pa_userset_comp_wild_ch", User: "user:user1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "path_to_random_user_and_condition_is_false",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:8", Relation: "userset_pa_userset_comp_wild_ch", User: "user:user1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
 				Expectation: true,
 			},
 			{
@@ -270,8 +292,14 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "no_path_to_user_even_if_condition_true",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:8_unconnected", Relation: "userset_pa_userset_comp_cond_ch", User: "user:user1"},
+				Name:        "no_path_to_user_even_if_condition_true_because_parent_not_linked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:8_unconnected_1", Relation: "userset_pa_userset_comp_wild_ch", User: "user:user1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_even_if_condition_true_because_user_not_part_of_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:8_unconnected_2", Relation: "userset_pa_userset_comp_wild_ch", User: "user:user1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: false,
 			},
@@ -283,8 +311,11 @@ var ttuCompleteTestingModelTest = []*stage{
 			{Object: "ttus:9", Relation: "userset_parent", User: "usersets-user:ttu_9"},
 			{Object: "usersets-user:ttu_9", Relation: "userset_to_computed_wild_cond", User: "directs-user:ttu_9#direct_wild_cond"},
 			{Object: "directs-user:ttu_9", Relation: "direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
-			// unconnected
-			{Object: "ttus:9_unconnected", Relation: "userset_parent", User: "usersets-user:ttu_9_connected"},
+			// parent not linked to anything
+			{Object: "ttus:9_unconnected_1", Relation: "userset_parent", User: "usersets-user:9_unconnected_1"},
+			// user not part of userset
+			{Object: "ttus:9_unconnected_2", Relation: "userset_parent", User: "usersets-user:9_unconnected_2"},
+			{Object: "usersets-user:9_unconnected_2", Relation: "userset_to_computed_wild_cond", User: "directs-user:9_unconnected_2#direct_wild_cond"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -312,8 +343,14 @@ var ttuCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:        "no_path_to_user_even_if_condition_true",
-				Tuple:       &openfgav1.TupleKey{Object: "ttus:9_unconnected", Relation: "userset_pa_userset_comp_wild_cond_ch", User: "user:user1"},
+				Name:        "no_path_to_user_even_if_condition_true_because_parent_not_linked",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:9_unconnected_1", Relation: "userset_pa_userset_comp_wild_cond_ch", User: "user:user1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_even_if_condition_true_because_user_not_part_of_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:9_unconnected_2", Relation: "userset_pa_userset_comp_wild_cond_ch", User: "user:user1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: false,
 			},
@@ -329,6 +366,11 @@ var ttuCompleteTestingModelTest = []*stage{
 			// path to employee
 			{Object: "usersets-user:ttu_10", Relation: "userset", User: "directs-employee:ttu_10#direct"},
 			{Object: "directs-employee:ttu_10", Relation: "direct", User: "employee:valid"},
+			// user not member of userset
+			{Object: "ttus:10_disconnected_1", Relation: "userset_cond_parent", User: "usersets-user:10_disconnected_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:10_disconnected_1", Relation: "userset", User: "directs-user:10_disconnected#direct"},
+			// parent not linked to anything
+			{Object: "ttus:10_disconnected_2", Relation: "userset_cond_parent", User: "usersets-user:10_disconnected_2", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -353,6 +395,18 @@ var ttuCompleteTestingModelTest = []*stage{
 				Name:        "no_path_to_employee_because_cond_is_false",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:10", Relation: "userset_cond_userset_ch", User: "employee:valid"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_because_user_not_in_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:10_disconnected_1", Relation: "userset_cond_userset_ch", User: "user:valid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_because_parent_not_linked_to_object",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:10_disconnected_2", Relation: "userset_cond_userset_ch", User: "user:valid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: false,
 			},
 		},
@@ -367,6 +421,11 @@ var ttuCompleteTestingModelTest = []*stage{
 			// path to employee
 			{Object: "usersets-user:ttu_11", Relation: "userset_to_computed", User: "directs-employee:ttu_11#computed"},
 			{Object: "directs-employee:ttu_11", Relation: "direct", User: "employee:valid"},
+			// user not member of userset
+			{Object: "ttus:11_disconnected_1", Relation: "userset_cond_parent", User: "usersets-user:ttu_11_disconnected_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:ttu_11_disconnected_1", Relation: "userset_to_computed", User: "directs-user:11_disconnected#computed"},
+			// parent not linked to anything
+			{Object: "ttus:11_disconnected_2", Relation: "userset_cond_parent", User: "usersets-user:ttu_11_disconnected_2", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -391,6 +450,18 @@ var ttuCompleteTestingModelTest = []*stage{
 				Name:        "no_path_to_employee_because_cond_is_false",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:11", Relation: "userset_cond_userset_comp_ch", User: "employee:valid"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_because_user_not_in_userset",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:11_disconnected_1", Relation: "userset_cond_userset_comp_ch", User: "user:valid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_because_parent_not_linked_to_object",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:11_disconnected_2", Relation: "userset_cond_userset_comp_ch", User: "user:valid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: false,
 			},
 		},
@@ -512,19 +583,24 @@ var ttuCompleteTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:        "valid_1",
+				Name:      "missing_context_for_condition",
+				Tuple:     &openfgav1.TupleKey{Object: "ttus:14", Relation: "userset_cond_userset_comp_wild_cond_ch", User: "user:1"},
+				ErrorCode: 2000,
+			},
+			{
+				Name:        "path_and_cond_true",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:14", Relation: "userset_cond_userset_comp_wild_cond_ch", User: "user:1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: true,
 			},
 			{
-				Name:        "valid_2",
+				Name:        "path_for_diff_user_and_cond_true",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:14", Relation: "userset_cond_userset_comp_wild_cond_ch", User: "user:2"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: true,
 			},
 			{
-				Name:        "valid_1_no_path",
+				Name:        "path_but_cond_false",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:14", Relation: "userset_cond_userset_comp_wild_cond_ch", User: "user:1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
 				Expectation: false,
@@ -645,7 +721,7 @@ var ttuCompleteTestingModelTest = []*stage{
 			// case 2: base is true for user:1
 			{Object: "ttus:17_1", Relation: "direct_parent", User: "directs-user:ttu_17_1"},
 			{Object: "directs-user:ttu_17_1", Relation: "direct", User: "user:1"},
-			// case 2: diff is false for users
+			// case 2: diff is false for everyone
 			{Object: "ttus:17_1", Relation: "userset_parent", User: "usersets-user:ttu_17_1"},
 			{Object: "usersets-user:ttu_17_1", Relation: "userset_to_computed_wild", User: "directs-employee:ttu_17_1#direct_wild"},
 			{Object: "directs-employee:ttu_17_1", Relation: "direct_wild", User: "employee:*"},
