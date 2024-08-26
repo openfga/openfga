@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/spf13/viper"
 
 	"github.com/stretchr/testify/require"
@@ -373,28 +372,6 @@ func TestVerifyConfig(t *testing.T) {
 		io.Copy(&buf, r)
 
 		require.NotContains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
-	})
-
-	t.Run("errors_when_access_control_store_id_is_not_a_valid_ulid", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.Experimentals = append(cfg.Experimentals, "enable-access-control")
-		cfg.AccessControl.Enabled = true
-		cfg.AccessControl.StoreID = "not-a-valid-ulid"
-		cfg.AccessControl.ModelID = ulid.Make().String()
-
-		err := cfg.Verify()
-		require.ErrorContains(t, err, "config 'access-control-store-id' must be a valid UUID")
-	})
-
-	t.Run("errors_when_access_control_model_id_is_not_a_valid_ulid", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.Experimentals = append(cfg.Experimentals, "enable-access-control")
-		cfg.AccessControl.Enabled = true
-		cfg.AccessControl.StoreID = ulid.Make().String()
-		cfg.AccessControl.ModelID = "not-a-valid-ulid"
-
-		err := cfg.Verify()
-		require.ErrorContains(t, err, "config 'access-control-model-id' must be a valid UUID")
 	})
 }
 

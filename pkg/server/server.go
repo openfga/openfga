@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -1445,8 +1446,18 @@ func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) e
 
 // validateAccessControlEnabled validates the access control parameters.
 func (s *Server) validateAccessControlEnabled() error {
-	if s.IsAccessControlEnabled() && (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
-		return fmt.Errorf("access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
+	if s.IsAccessControlEnabled() {
+		if (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
+			return fmt.Errorf("access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
+		}
+		_, err := ulid.Parse(s.AccessControl.StoreID)
+		if err != nil {
+			return fmt.Errorf("config '--access-control-store-id' must be a valid ULID")
+		}
+		_, err = ulid.Parse(s.AccessControl.ModelID)
+		if err != nil {
+			return fmt.Errorf("config '--access-control-model-id' must be a valid ULID")
+		}
 	}
 	return nil
 }

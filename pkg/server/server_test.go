@@ -193,6 +193,32 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			)
 		})
 	})
+
+	t.Run("errors_when_access_control_store_id_is_not_a_valid_ulid", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config '--access-control-store-id' must be a valid ULID", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: "not-a-valid-ulid", ModelID: ulid.Make().String()}),
+			)
+		})
+	})
+
+	t.Run("errors_when_access_control_model_id_is_not_a_valid_ulid", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config '--access-control-model-id' must be a valid ULID", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: "not-a-valid-ulid"}),
+			)
+		})
+	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
@@ -2071,7 +2097,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: ulid.Make().String(), StoreID: ulid.Make().String()}),
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAccessControlEnabled())

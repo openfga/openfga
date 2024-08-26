@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/pkg/logger"
@@ -356,15 +355,6 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf("config 'log.TimestampFormat' must be one of ['Unix', 'ISO8601']")
 	}
 
-	if cfg.Experimentals != nil {
-		for _, experimental := range cfg.Experimentals {
-			err := cfg.verifyAccessControl(experimental)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
 	if cfg.Playground.Enabled {
 		if !cfg.HTTP.Enabled {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
@@ -461,21 +451,6 @@ func (cfg *Config) Verify() error {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
-	return nil
-}
-
-func (cfg *Config) verifyAccessControl(experimental string) error {
-	if experimental == "enable-access-control" && cfg.AccessControl.Enabled && cfg.AccessControl.StoreID != "" && cfg.AccessControl.ModelID != "" {
-		_, err := ulid.Parse(cfg.AccessControl.StoreID)
-		if err != nil {
-			return fmt.Errorf("config 'access-control-store-id' must be a valid UUID")
-		}
-
-		_, err = ulid.Parse(cfg.AccessControl.ModelID)
-		if err != nil {
-			return fmt.Errorf("config 'access-control-model-id' must be a valid UUID")
-		}
-	}
 	return nil
 }
 
