@@ -43,6 +43,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
@@ -260,12 +261,13 @@ func TestListUsersLogs(t *testing.T) {
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
+			require.NotEmpty(t, fields["query_duration_ms"])
 			if !test.expectedError {
 				require.GreaterOrEqual(t, fields["datastore_query_count"], float64(1))
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(1))
-				require.Len(t, fields, 14)
+				require.Len(t, fields, 15)
 			} else {
-				require.Len(t, fields, 12)
+				require.Len(t, fields, 13)
 			}
 		})
 	}
