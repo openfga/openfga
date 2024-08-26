@@ -17,6 +17,205 @@ type relationDetails struct {
 	hasLoop        bool
 }
 
+func TestFlattenUserset(t *testing.T) {
+	tests := map[string]struct {
+		input *openfgav1.Userset
+		o     []*openfgav1.TupleToUserset
+	}{
+		"nil": {
+			input: nil,
+			o:     []*openfgav1.TupleToUserset{},
+		},
+		"nil_userset": {
+			input: &openfgav1.Userset{},
+			o:     []*openfgav1.TupleToUserset{},
+		},
+		"nil_tuple_to_userset": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_TupleToUserset{
+					TupleToUserset: nil,
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"single_tuple_to_userset": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_TupleToUserset{
+					TupleToUserset: &openfgav1.TupleToUserset{},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{{}},
+		},
+		"nil_union": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Union{
+					Union: nil,
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"union_nil_child": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Union{
+					Union: &openfgav1.Usersets{
+						Child: nil,
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"union_two_children": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Union{
+					Union: &openfgav1.Usersets{
+						Child: []*openfgav1.Userset{
+							{
+								Userset: &openfgav1.Userset_TupleToUserset{
+									TupleToUserset: &openfgav1.TupleToUserset{},
+								},
+							}, {
+								Userset: &openfgav1.Userset_TupleToUserset{
+									TupleToUserset: &openfgav1.TupleToUserset{},
+								},
+							},
+						},
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{{}, {}},
+		},
+		"nil_intersection": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Intersection{
+					Intersection: nil,
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"intersection_nil_child": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Intersection{
+					Intersection: &openfgav1.Usersets{
+						Child: nil,
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"intersection_two_children": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Intersection{
+					Intersection: &openfgav1.Usersets{
+						Child: []*openfgav1.Userset{
+							{
+								Userset: &openfgav1.Userset_TupleToUserset{
+									TupleToUserset: &openfgav1.TupleToUserset{},
+								},
+							}, {
+								Userset: &openfgav1.Userset_TupleToUserset{
+									TupleToUserset: &openfgav1.TupleToUserset{},
+								},
+							},
+						},
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{{}, {}},
+		},
+		"nil_difference": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Difference{
+					Difference: nil,
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"difference_nil_base_and_subtract": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Difference{
+					Difference: &openfgav1.Difference{
+						Base:     nil,
+						Subtract: nil,
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{},
+		},
+		"difference_base_and_subtract": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Difference{
+					Difference: &openfgav1.Difference{
+						Base: &openfgav1.Userset{
+							Userset: &openfgav1.Userset_TupleToUserset{
+								TupleToUserset: &openfgav1.TupleToUserset{},
+							},
+						},
+						Subtract: &openfgav1.Userset{
+							Userset: &openfgav1.Userset_TupleToUserset{
+								TupleToUserset: &openfgav1.TupleToUserset{},
+							},
+						},
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{{}, {}},
+		},
+		"recursion": {
+			input: &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Intersection{
+					Intersection: &openfgav1.Usersets{
+						Child: []*openfgav1.Userset{
+							{
+								Userset: &openfgav1.Userset_Difference{
+									Difference: &openfgav1.Difference{
+										Base: &openfgav1.Userset{
+											Userset: &openfgav1.Userset_Union{
+												Union: &openfgav1.Usersets{
+													Child: []*openfgav1.Userset{
+														{
+															Userset: &openfgav1.Userset_Intersection{
+																Intersection: &openfgav1.Usersets{
+																	Child: []*openfgav1.Userset{
+																		{
+																			Userset: &openfgav1.Userset_TupleToUserset{
+																				TupleToUserset: &openfgav1.TupleToUserset{},
+																			},
+																		},
+																		{
+																			Userset: &openfgav1.Userset_TupleToUserset{
+																				TupleToUserset: &openfgav1.TupleToUserset{},
+																			},
+																		},
+																	},
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+										Subtract: &openfgav1.Userset{
+											Userset: &openfgav1.Userset_TupleToUserset{
+												TupleToUserset: &openfgav1.TupleToUserset{},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			o: []*openfgav1.TupleToUserset{{}, {}, {}},
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.o, flattenUserset(test.input))
+		})
+	}
+}
+
 func TestRelationEquals(t *testing.T) {
 	tests := map[string]struct {
 		a *openfgav1.RelationReference
