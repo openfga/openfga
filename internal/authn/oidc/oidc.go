@@ -56,11 +56,12 @@ func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audie
 	client := retryablehttp.NewClient()
 	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
-		MainIssuer:    mainIssuer,
-		IssuerAliases: issuerAliases,
-		Audience:      audience,
-		Subjects:      subjects,
-		httpClient:    client.StandardClient(),
+		MainIssuer:     mainIssuer,
+		IssuerAliases:  issuerAliases,
+		Audience:       audience,
+		Subjects:       subjects,
+		httpClient:     client.StandardClient(),
+		ClientIDClaims: clientIDClaims,
 	}
 	err := fetchJWKs(oidc)
 	if err != nil {
