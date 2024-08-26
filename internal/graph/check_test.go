@@ -3130,7 +3130,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 	}
 }
 
-func TestBuildCheckAssociatedObjects(t *testing.T) {
+func TestCheckAssociatedObjects(t *testing.T) {
 	tests := []struct {
 		name                         string
 		model                        *openfgav1.AuthorizationModel
@@ -3396,7 +3396,7 @@ func TestBuildCheckAssociatedObjects(t *testing.T) {
 			contextStruct, err := structpb.NewStruct(tt.context)
 			require.NoError(t, err)
 
-			result, err := buildCheckAssociatedObjects(ctx, &ResolveCheckRequest{
+			result, err := checkAssociatedObjects(ctx, &ResolveCheckRequest{
 				StoreID:              ulid.Make().String(),
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),

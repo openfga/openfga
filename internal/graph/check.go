@@ -740,7 +740,7 @@ func iteratorReadStartingFromUser(ctx context.Context,
 		}, opts)
 }
 
-func buildCheckAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) (*ResolveCheckResponse, error) {
+func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 	defer span.End()
 
@@ -1026,7 +1026,7 @@ ConsumerLoop:
 			objectRel := newBatch.objectRelation
 			objectIDs := newBatch.objectIDs
 
-			resp, err := buildCheckAssociatedObjects(ctx, req, objectRel, objectIDs)
+			resp, err := checkAssociatedObjects(ctx, req, objectRel, objectIDs)
 			dbReads++
 			if err != nil {
 				// We don't exit because we do a best effort to find the objectId that will give `allowed=true`.
