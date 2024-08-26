@@ -3043,6 +3043,48 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 			expectedErr:  condition.NewEvaluationError("correct_ip", fmt.Errorf("condition was not found")),
 		},
 		{
+			name:     "condition_met",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "x", nil),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user with x]
+
+				condition x(x: int) {
+					x == 1
+				}
+`),
+			context:      map[string]interface{}{"x": 1},
+			conditionMet: true,
+			expectedErr:  nil,
+		},
+		{
+			name:     "condition_false",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "x", nil),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user with x]
+
+				condition x(x: int) {
+					x == 1
+				}
+`),
+			context:      map[string]interface{}{"x": 15},
+			conditionMet: false,
+			expectedErr:  nil,
+		},
+		{
 			name:     "condition_missing_parameter",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:maria", "x_y", nil),
 			model: parser.MustTransformDSLToProto(`
