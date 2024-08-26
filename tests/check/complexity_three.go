@@ -664,16 +664,17 @@ var complexityThreeTestingModelTest = []*stage{
 	{
 		Name: "cycle_nested",
 		Tuples: []*openfgav1.TupleKey{
-			{Object: "complexity3:complexity3_cycle_nested_1", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_1#tuple_cycle3"},
-			{Object: "ttus:complexity3_cycle_nested_1", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_1"},
-			{Object: "usersets-user:complexity3_cycle_nested_1", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_1#compute_tuple_cycle3"},
-			{Object: "directs-user:complexity3_cycle_nested_1", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_1#cycle_nested"},
-			{Object: "directs-user:complexity3_cycle_nested_1", Relation: "tuple_cycle3", User: "user:complexity3_cycle_nested_1"},
-			// missing user
-			{Object: "complexity3:complexity3_cycle_nested_missing_user", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_missing_user#tuple_cycle3"},
-			{Object: "ttus:complexity3_cycle_nested_missing_user", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_missing_user"},
-			{Object: "usersets-user:complexity3_cycle_nested_missing_user", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_missing_user#compute_tuple_cycle3"},
-			{Object: "directs-user:complexity3_cycle_nested_missing_user", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_missing_user#cycle_nested"},
+			// no cycle as user breaks the cycle
+			{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_no_cycle#tuple_cycle3"},
+			{Object: "ttus:complexity3_cycle_nested_no_cycle", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_no_cycle"},
+			{Object: "usersets-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_no_cycle#compute_tuple_cycle3"},
+			{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_no_cycle#cycle_nested"},
+			{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "user:complexity3_cycle_nested_no_cycle"},
+			// missing user - cycle
+			{Object: "complexity3:complexity3_cycle_nested_cycle", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_cycle#tuple_cycle3"},
+			{Object: "ttus:complexity3_cycle_nested_cycle", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_cycle"},
+			{Object: "usersets-user:complexity3_cycle_nested_cycle", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_cycle#compute_tuple_cycle3"},
+			{Object: "directs-user:complexity3_cycle_nested_cycle", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_cycle#cycle_nested"},
 			// unconnected direct user
 			{Object: "complexity3:complexity3_cycle_nested_unconnected_direct_user", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_unconnected_direct_user#tuple_cycle3"},
 			{Object: "ttus:complexity3_cycle_nested_unconnected_direct_user", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_unconnected_direct_user"},
@@ -682,52 +683,52 @@ var complexityThreeTestingModelTest = []*stage{
 		CheckAssertions: []*checktest.Assertion{
 			{
 				Name:        "valid_complexity3_user",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_1", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_1"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
 				Expectation: true,
 			},
 			{
 				Name:        "valid_complexity3_cycle_nested",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_1", Relation: "cycle_nested", User: "complexity3:complexity3_cycle_nested_1#cycle_nested"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "complexity3:complexity3_cycle_nested_no_cycle#cycle_nested"},
 				Expectation: true,
 			},
 			{
 				Name:        "valid_complexity3_ttus",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_1", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_1#tuple_cycle3"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_no_cycle#tuple_cycle3"},
 				Expectation: true,
 			},
 			{
 				Name:        "valid_complexity3_direct_users",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_1", Relation: "cycle_nested", User: "directs-user:complexity3_cycle_nested_1#compute_tuple_cycle3"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "directs-user:complexity3_cycle_nested_no_cycle#compute_tuple_cycle3"},
 				Expectation: true,
 			},
 			{
 				Name:        "valid_directs_user_complexity3",
-				Tuple:       &openfgav1.TupleKey{Object: "directs-user:complexity3_cycle_nested_1", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_1#cycle_nested"},
+				Tuple:       &openfgav1.TupleKey{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_no_cycle#cycle_nested"},
 				Expectation: true,
 			},
 			{
 				Name:        "valid_directs_user_ttus",
-				Tuple:       &openfgav1.TupleKey{Object: "directs-user:complexity3_cycle_nested_1", Relation: "tuple_cycle3", User: "ttus:complexity3_cycle_nested_1#tuple_cycle3"},
+				Tuple:       &openfgav1.TupleKey{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "ttus:complexity3_cycle_nested_no_cycle#tuple_cycle3"},
 				Expectation: true,
 			},
 			{
 				Name:        "invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_1", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_invalid"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_invalid"},
 				Expectation: false,
 			},
 			{
 				Name:        "invalid_object",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_invalid", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_1"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_invalid", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
 				Expectation: false,
 			},
 			{
-				Name:        "missing_user",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_missing_user", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_1"},
+				Name:        "cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_cycle", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
 				Expectation: false,
 			},
 			{
 				Name:        "unconnected_direct_user",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_unconnected_direct_user", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_1"},
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_unconnected_direct_user", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
 				Expectation: false,
 			},
 		},
