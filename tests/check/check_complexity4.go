@@ -291,8 +291,18 @@ var complexityFourTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "no_path",
+				Name:        "no_path_1",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid2"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_2",
 				Tuple:       &openfgav1.TupleKey{Object: "complexity4:ps1", Relation: "or_complex4", User: "user:invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_3",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:pe1x", Relation: "or_complex4", User: "user:invalid"},
 				Expectation: false,
 			},
 		},
