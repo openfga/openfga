@@ -18,6 +18,20 @@ var complexity4Test = []*stage{
 			{Object: "ttus:aaa", Relation: "mult_parent_types", User: "directs-user:bbb"},
 			{Object: "directs-user:bbb", Relation: "direct", User: "user:valid"},
 			{Object: "directs-employee:ccc", Relation: "direct", User: "employee:valid"},
+			// missing tuples, 1 level deep
+			{Object: "complexity4:xxx_1", Relation: "userset_ttu_userset_ttu", User: "complexity3:xxx_1#ttu_userset_ttu"},
+			// missing tuples, 2 levels deep
+			{Object: "complexity4:xxx_2", Relation: "userset_ttu_userset_ttu", User: "complexity3:xxx_2#ttu_userset_ttu"},
+			{Object: "complexity3:xxx_2", Relation: "userset_parent", User: "usersets-user:xxx_2"},
+			// missing tuples, 3 levels deep
+			{Object: "complexity4:xxx_3", Relation: "userset_ttu_userset_ttu", User: "complexity3:xxx_3#ttu_userset_ttu"},
+			{Object: "complexity3:xxx_3", Relation: "userset_parent", User: "usersets-user:xxx_3"},
+			{Object: "usersets-user:xxx_3", Relation: "ttu_direct_userset", User: "ttus:xxx_3#direct_pa_direct_ch"},
+			// missing tuples, 4 levels deep
+			{Object: "complexity4:xxx_4", Relation: "userset_ttu_userset_ttu", User: "complexity3:xxx_4#ttu_userset_ttu"},
+			{Object: "complexity3:xxx_4", Relation: "userset_parent", User: "usersets-user:xxx_4"},
+			{Object: "usersets-user:xxx_4", Relation: "ttu_direct_userset", User: "ttus:xxx_4#direct_pa_direct_ch"},
+			{Object: "ttus:xxx_4", Relation: "mult_parent_types", User: "directs-user:xxx_4"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -52,6 +66,26 @@ var complexity4Test = []*stage{
 				Tuple:       &openfgav1.TupleKey{Object: "complexity4:xxx", Relation: "userset_ttu_userset_ttu", User: "employee:invalid"},
 				Expectation: false,
 			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:xxx_1", Relation: "userset_ttu_userset_ttu", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:xxx_2", Relation: "userset_ttu_userset_ttu", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:xxx_3", Relation: "userset_ttu_userset_ttu", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:xxx_4", Relation: "userset_ttu_userset_ttu", User: "user:valid"},
+				Expectation: false,
+			},
 		},
 	},
 	{
@@ -64,6 +98,20 @@ var complexity4Test = []*stage{
 			{Object: "directs-user:vanusers", Relation: "direct", User: "user:valid"},
 			{Object: "usersets-user:van", Relation: "userset", User: "directs-employee:vanemployees#direct"},
 			{Object: "directs-employee:vanemployees", Relation: "direct", User: "employee:valid"},
+			// missing tuples, 1 level deep
+			{Object: "complexity4:car_1", Relation: "parent", User: "complexity3:carparent1"},
+			// missing tuples, 2 levels deep
+			{Object: "complexity4:car_2", Relation: "parent", User: "complexity3:carparent2"},
+			{Object: "complexity3:carparent2", Relation: "ttu_parent", User: "ttus:truck2"},
+			// missing tuples, 3 levels deep
+			{Object: "complexity4:car_3", Relation: "parent", User: "complexity3:carparent3"},
+			{Object: "complexity3:carparent3", Relation: "ttu_parent", User: "ttus:truck3"},
+			{Object: "ttus:truck3", Relation: "userset_parent", User: "usersets-user:van3"},
+			// missing tuples, 4 levels deep
+			{Object: "complexity4:car_4", Relation: "parent", User: "complexity3:carparent4"},
+			{Object: "complexity3:carparent4", Relation: "ttu_parent", User: "ttus:truck4"},
+			{Object: "ttus:truck4", Relation: "userset_parent", User: "usersets-user:van4"},
+			{Object: "usersets-user:van4", Relation: "userset", User: "directs-user:vanusers4#direct"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -96,6 +144,26 @@ var complexity4Test = []*stage{
 			{
 				Name:        "no_path_to_employee",
 				Tuple:       &openfgav1.TupleKey{Object: "complexity4:car", Relation: "ttu_ttu_ttu_userset", User: "employee:invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:car_1", Relation: "ttu_ttu_ttu_userset", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:car_2", Relation: "ttu_ttu_ttu_userset", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:car_3", Relation: "ttu_ttu_ttu_userset", User: "user:valid"},
+				Expectation: false,
+			},
+			{
+				Name:        "no_path_to_user_missing_tuple_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity4:car_4", Relation: "ttu_ttu_ttu_userset", User: "user:valid"},
 				Expectation: false,
 			},
 		},
