@@ -283,6 +283,7 @@ type ttus
     define direct_cond_pa_direct_ch: direct from mult_parent_types_cond
     define or_comp_from_direct_parent: or_computed from direct_parent
     define and_comp_from_direct_parent: and_computed from direct_cond_parent
+    define butnot_comp_from_direct_parent: butnot_computed from direct_cond_parent
     define userset_pa_userset_ch: userset from userset_parent
     define userset_pa_userset_comp_ch: userset_to_computed from userset_parent
     define userset_pa_userset_comp_cond_ch: userset_to_computed_cond from userset_parent
@@ -549,7 +550,10 @@ func runTestMatrix(t *testing.T, params testParams) {
 
 	var modelID string
 	t.Run(name, func(t *testing.T) {
-		for _, stage := range matrix.Stages {
+		stages := matrix.Stages
+		stages = append(stages, ttuCompleteTestingModelTest...)
+		stages = append(stages, complexityThreeTestingModelTest...)
+		for _, stage := range stages {
 			t.Run(fmt.Sprintf("stage_%s", stage.Name), func(t *testing.T) {
 				if stage.Model != "" {
 					model := testutils.MustTransformDSLToProtoWithID(stage.Model)

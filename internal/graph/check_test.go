@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/condition"
+
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/internal/concurrency"
@@ -71,7 +73,6 @@ var (
 	}
 )
 
-// helper data struct to test input for usersetsChannelType.
 type usersetsChannelStruct struct {
 	err            error
 	objectRelation string
@@ -2815,7 +2816,6 @@ func TestProduceUsersets(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			expectedUsersetsChannelResult := usersetsChannelFromUsersetsChannelStruct(tt.usersetsChannelResult)
 
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
@@ -3002,6 +3002,418 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
 			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
 			_, _ = iteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs)
+		})
+	}
+}
+
+func TestBuildTupleKeyConditionFilter(t *testing.T) {
+	tests := []struct {
+		name         string
+		tupleKey     *openfgav1.TupleKey
+		model        *openfgav1.AuthorizationModel
+		context      map[string]interface{}
+		conditionMet bool
+		expectedErr  error
+	}{
+		{
+			name:     "no_condition",
+			tupleKey: tuple.NewTupleKey("document:1", "can_view", "user:maria"),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user]`),
+			context:      map[string]interface{}{},
+			conditionMet: true,
+			expectedErr:  nil,
+		},
+		{
+			name:     "condition_not_met",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user]`),
+			context:      map[string]interface{}{},
+			conditionMet: false,
+			expectedErr:  condition.NewEvaluationError("correct_ip", fmt.Errorf("condition was not found")),
+		},
+		{
+			name:     "condition_met",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "x", nil),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user with x]
+
+				condition x(x: int) {
+					x == 1
+				}
+`),
+			context:      map[string]interface{}{"x": 1},
+			conditionMet: true,
+			expectedErr:  nil,
+		},
+		{
+			name:     "condition_false",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "x", nil),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user with x]
+
+				condition x(x: int) {
+					x == 1
+				}
+`),
+			context:      map[string]interface{}{"x": 15},
+			conditionMet: false,
+			expectedErr:  nil,
+		},
+		{
+			name:     "condition_missing_parameter",
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:maria", "x_y", nil),
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define can_view: [user with x_y]
+
+				condition x_y(x: int, y: int) {
+					x == 1 && y == 0
+				}
+`),
+			context:      map[string]interface{}{"x": 5},
+			conditionMet: false,
+			expectedErr: condition.NewEvaluationError("x_y",
+				fmt.Errorf("tuple 'document:1#can_view@user:maria' is missing context parameters '[y]'")),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts, err := typesystem.NewAndValidate(context.Background(), tt.model)
+			require.NoError(t, err)
+
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
+
+			iterFunc := buildTupleKeyConditionFilter(context.Background(), contextStruct, ts)
+			result, err := iterFunc(tt.tupleKey)
+			if tt.expectedErr != nil {
+				require.Equal(t, tt.expectedErr.Error(), err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.conditionMet, result)
+		})
+	}
+}
+
+func TestCheckAssociatedObjects(t *testing.T) {
+	tests := []struct {
+		name                         string
+		model                        *openfgav1.AuthorizationModel
+		tuples                       []*openfgav1.Tuple
+		context                      map[string]interface{}
+		dsError                      error
+		objectIDs                    []string
+		expectedError                bool
+		expectedResolveCheckResponse *ResolveCheckResponse
+	}{
+		{
+			name: "empty_iterator",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples:  []*openfgav1.Tuple{},
+			dsError: nil,
+			objectIDs: []string{
+				"2", "3",
+			},
+			context: map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "empty_object_ids",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+			},
+			dsError:   nil,
+			objectIDs: []string{},
+			context:   map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "bad_ds_call",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples:                       []*openfgav1.Tuple{},
+			dsError:                      fmt.Errorf("bad_ds_call"),
+			objectIDs:                    []string{"1"},
+			context:                      map[string]interface{}{},
+			expectedResolveCheckResponse: nil,
+			expectedError:                true,
+		},
+		{
+			name: "non_empty_iterator_match_objectIDs",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
+			},
+			dsError: nil,
+			objectIDs: []string{
+				"1",
+			},
+			context: map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "non_empty_iterator_match_objectIDs_ttu",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define owner: [group]
+						define viewer: member from owner`),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
+			},
+			dsError: nil,
+			objectIDs: []string{
+				"1",
+			},
+			context: map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "non_empty_iterator_not_match_objectIDs",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
+			},
+			dsError:   nil,
+			objectIDs: []string{"8"},
+			context:   map[string]interface{}{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "non_empty_iterator_match_cond_not_match",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX]
+				type document
+					relations
+						define viewer: [group#member]
+
+				condition condX(x: int) {
+					x < 100
+				}
+`),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condX", nil)},
+			},
+			dsError:   nil,
+			objectIDs: []string{"1"},
+			context: map[string]interface{}{
+				"x": 200,
+			},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name: "non_empty_iterator_match_cond_match",
+			model: parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX]
+				type document
+					relations
+						define viewer: [group#member]
+
+				condition condX(x: int) {
+					x < 100
+				}
+`),
+			tuples: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condX", nil)},
+			},
+			dsError:   nil,
+			objectIDs: []string{"1"},
+			context: map[string]interface{}{
+				"x": 10,
+			},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expectedError: false,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			objectIDs := storage.NewSortedSet()
+			for _, objectID := range tt.objectIDs {
+				objectIDs.Add(objectID)
+			}
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
+
+			ts := typesystem.New(tt.model)
+			ctx := context.Background()
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
+
+			result, err := checkAssociatedObjects(ctx, &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+				Context:              contextStruct,
+			}, "group#member", objectIDs)
+			if tt.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectedResolveCheckResponse, result)
 		})
 	}
 }
