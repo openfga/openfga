@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+
 	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
