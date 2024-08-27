@@ -45,8 +45,11 @@ func (e InternalError) Unwrap() error {
 }
 
 func (e InternalError) GRPCStatus() *status.Status {
-	st, _ := status.FromError(e.public)
-	return st
+	st, ok := status.FromError(e.public)
+	if ok {
+		return st
+	}
+	return status.New(codes.Unknown, e.public.Error())
 }
 
 // NewInternalError returns an error that is decorated with a public-facing error message.
