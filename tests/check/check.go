@@ -1,13 +1,16 @@
-// Package check contains integration tests for the Check API.
+// Package check contains integration tests for the Check API. TODO not just check anymore
 package check
 
 import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/pkg/tuple"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -51,6 +54,8 @@ type stage struct {
 type ClientInterface interface {
 	tests.TestClientBootstrapper
 	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
+	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
+	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
 }
 
 // RunAllTests will run all check tests.
@@ -1210,7 +1215,7 @@ func runTestMatrix(t *testing.T, params testParams) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
-					t.Run(fmt.Sprintf("assertion_%s", assertion.Name), func(t *testing.T) {
+					t.Run(fmt.Sprintf("assertion_check_%s", assertion.Name), func(t *testing.T) {
 						detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
 
 						var tupleKey *openfgav1.CheckRequestTupleKey
@@ -1241,6 +1246,79 @@ func runTestMatrix(t *testing.T, params testParams) {
 							e, ok := status.FromError(err)
 							require.True(t, ok, detailedInfo)
 							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+						}
+					})
+					t.Run(fmt.Sprintf("assertion_list_objects_%s", assertion.Name), func(t *testing.T) {
+						objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
+						resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: modelID,
+							Type:                 objectType,
+							User:                 assertion.Tuple.GetUser(),
+							Relation:             assertion.Tuple.GetRelation(),
+							ContextualTuples: &openfgav1.ContextualTupleKeys{
+								// TODO
+								TupleKeys: []*openfgav1.TupleKey{},
+							},
+							Context: assertion.Context,
+						})
+
+						if assertion.ErrorCode != 0 {
+							require.Error(t, err)
+							e, ok := status.FromError(err)
+							require.True(t, ok)
+							require.Equal(t, assertion.ErrorCode, int(e.Code()))
+						} else if assertion.ErrorCode == 0 {
+							require.NoError(t, err)
+							if assertion.Expectation {
+								// >=, not >, because some users have access to more than one object
+								require.GreaterOrEqual(t, len(resp.GetObjects()), 1, "at least one object should be returned")
+								require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be in the list")
+							} else {
+								require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the list")
+							}
+						}
+					})
+					t.Run(fmt.Sprintf("assertion_list_users_%s", assertion.Name), func(t *testing.T) {
+						objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
+						userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
+						userObjectType, _ := tuple.SplitObject(userObject)
+						relation := assertion.Tuple.GetRelation()
+						resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: modelID,
+							Object:               &openfgav1.Object{Type: objectType, Id: objectID},
+							Relation:             relation,
+							UserFilters:          []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
+							ContextualTuples:     []*openfgav1.TupleKey{}, // TODO
+							Context:              assertion.Context,
+						})
+
+						if assertion.ErrorCode != 0 {
+							require.Error(t, err)
+							e, ok := status.FromError(err)
+							require.True(t, ok)
+							require.Equal(t, assertion.ErrorCode, int(e.Code()))
+						} else if assertion.ErrorCode == 0 {
+							require.NoError(t, err)
+							responseUsers := make([]string, len(resp.GetUsers()))
+							wildcardUserPresent := false
+							for i, u := range resp.GetUsers() {
+								responseUsers[i] = tuple.UserProtoToString(u)
+								if strings.HasSuffix(responseUsers[i], ":*") {
+									wildcardUserPresent = true
+								}
+							}
+							if assertion.Expectation {
+								if wildcardUserPresent {
+									return
+								}
+								// >=, not >, because some objects are related to more than one user
+								require.GreaterOrEqual(t, len(resp.GetUsers()), 1, "at least one user should be returned")
+								require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be in the list")
+							} else {
+								require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be in the list")
+							}
 						}
 					})
 				}
