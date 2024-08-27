@@ -1428,7 +1428,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			User:                 "user:bob",
 		})
 
-		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 
 		err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 			StoreId:              store,
@@ -1438,7 +1438,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			User:                 "user:bob",
 		}, NewMockStreamServer())
 
-		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 	}
 }
 
