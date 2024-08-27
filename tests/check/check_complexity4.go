@@ -7,7 +7,7 @@ import (
 	checktest "github.com/openfga/openfga/internal/test/check"
 )
 
-var complexity4Test = []*stage{
+var complexityFourTestingModelTest = []*stage{
 	{
 		Name: "complexity4_userset_ttu_userset_ttu",
 		Tuples: []*openfgav1.TupleKey{
