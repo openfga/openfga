@@ -8,6 +8,33 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.5.9] - 2024-08-13
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
+
+## Security
+
+* Address [CVE-2024-42473](https://github.com/openfga/openfga/security/advisories/GHSA-3f6g-m4hr-59h8) - a critical issue where Check API can return incorrect responses. Please see the CVE report for more details.
+
+## [1.5.8] - 2024-08-07
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.7...v1.5.8)
+
+### Added
+* Performance improvements for Check API:
+   - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
+   - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
+* Logging number of cache hits for each subproblem of each authorization model for `Check` API calls. Enabled with the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
+* Aliases for issuers and subject validation in OIDC AuthN mode using `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` and `OPENFGA_AUTHN_OIDC_SUBJECTS` respectively [#1784](https://github.com/openfga/openfga/pull/1784) Thanks @Code2Life!
+* Dispatch Throttling for our `ListUsers` API. This can be enabled using `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED` and the env variables below.  [#1658](https://github.com/openfga/openfga/pull/1658)
+  * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD` - The number of dispatches allowed before throttling is triggered
+  * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD` - The maximum number of dispatches allowed before the request is rejected
+  * `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY` - The frequency at which the deprioritized throttling queue is processed
+* Support sending contextual tuples in the Write Assertions API. [#1821](https://github.com/openfga/openfga/pull/1821)
+
+### Fixed
+* address `"expected exactly one terminal relation for fast path, received {num}"` error during `Check` for models with type restrictions with and without a condition or with multiple conditions. [#1814](https://github.com/openfga/openfga/pull/1814)
+
 ## [1.5.7] - 2024-07-25
 
 ### Added
@@ -1118,7 +1145,9 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.7...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.9...HEAD
+[1.5.9]: https://github.com/openfga/openfga/releases/tag/v1.5.9
+[1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
 [1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
 [1.5.6]: https://github.com/openfga/openfga/releases/tag/v1.5.6
 [1.5.5]: https://github.com/openfga/openfga/releases/tag/v1.5.5

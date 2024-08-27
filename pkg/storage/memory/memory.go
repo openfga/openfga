@@ -75,6 +75,22 @@ func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // Stop does not do anything for staticIterator.
 func (s *staticIterator) Stop() {}
 
+// Head see [storage.Iterator].Next.
+func (s *staticIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.records) == 0 {
+		return nil, storage.ErrIteratorDone
+	}
+
+	rec := s.records[0]
+	return rec.AsTuple(), nil
+}
+
 // ToArray converts the entire sequence of tuples in the staticIterator to an array format.
 func (s *staticIterator) ToArray(ctx context.Context) ([]*openfgav1.Tuple, []byte, error) {
 	var res []*openfgav1.Tuple
