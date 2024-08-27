@@ -778,25 +778,25 @@ var usersetCompleteTestingModelTest = []*stage{
 		CheckAssertions: []*checktest.Assertion{
 			{
 				Name:        "valid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "userset_to_and_computed", User: "user:nau_1"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "nested_and_userset", User: "user:nau_1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: true,
 			},
 			{
 				Name:        "valid_user_invalid_cond",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "userset_to_and_computed", User: "user:nau_1"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "nested_and_userset", User: "user:nau_1"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
 				Expectation: false,
 			},
 			{
 				Name:        "invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "userset_to_and_computed", User: "user:nau_5"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "nested_and_userset", User: "user:nau_5"},
 				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
 				Expectation: false,
 			},
 			{
 				Name:      "no_condition",
-				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "userset_to_and_computed", User: "user:nau_1"},
+				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "nested_and_userset", User: "user:nau_1"},
 				ErrorCode: 2000,
 			},
 		},
