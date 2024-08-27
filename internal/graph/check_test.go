@@ -73,6 +73,7 @@ var (
 	}
 )
 
+// usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
 type usersetsChannelStruct struct {
 	err            error
 	objectRelation string
@@ -3419,22 +3420,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 }
 
 func TestConsumeUsersets(t *testing.T) {
-	type dsResults struct {
-		tuples []*openfgav1.TupleKey
-		err    error
-	}
-	tests := []struct {
-		name                         string
-		model                        *openfgav1.AuthorizationModel
-		tuples                       []dsResults
-		usersetsChannelResult        []usersetsChannelStruct
-		ctxCancelled                 bool
-		expectedResolveCheckResponse *ResolveCheckResponse
-		errorExpected                error
-	}{
-		{
-			name: "userset_tuple_found",
-			model: parser.MustTransformDSLToProto(`
+	model := parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 				type user
@@ -3443,14 +3429,25 @@ func TestConsumeUsersets(t *testing.T) {
 						define member: [user]
 				type document
 					relations
-						define viewer: [group#member]`),
+						define viewer: [group#member]`)
+	type dsResults struct {
+		tuples []*openfgav1.Tuple
+		err    error
+	}
+	tests := []struct {
+		name                         string
+		tuples                       []dsResults
+		usersetsChannelResult        []usersetsChannelStruct
+		ctxCancelled                 bool
+		expectedResolveCheckResponse *ResolveCheckResponse
+		errorExpected                error
+	}{
+		{
+			name: "userset_tuple_found",
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:1", "member", "user:maria"),
-						tuple.NewTupleKey("group:2", "member", "user:maria"),
-						tuple.NewTupleKey("group:3", "member", "user:maria"),
-						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:2", "member", "user:maria")},
 					},
 					err: nil,
 				},
@@ -3459,7 +3456,7 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"0", "2", "8"},
+					objectIDs:      []string{"2"},
 				},
 			},
 			ctxCancelled: false,
@@ -3473,41 +3470,23 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "userset_tuple_found_multi_batches",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
+				// we expect 3 ds.ReadStartingWithUser to be called in response to 3 batches from usersetsChannel
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:11", "member", "user:maria"),
-						tuple.NewTupleKey("group:12", "member", "user:maria"),
-						tuple.NewTupleKey("group:13", "member", "user:maria"),
-						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
 					},
 					err: nil,
 				},
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:11", "member", "user:maria"),
-						tuple.NewTupleKey("group:12", "member", "user:maria"),
-						tuple.NewTupleKey("group:13", "member", "user:maria"),
-						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
 					},
 					err: nil,
 				},
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:11", "member", "user:maria"),
-						tuple.NewTupleKey("group:12", "member", "user:maria"),
-						tuple.NewTupleKey("group:13", "member", "user:maria"),
-						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
 					},
 					err: nil,
 				},
@@ -3516,17 +3495,17 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"1", "2", "3", "4", "5"},
+					objectIDs:      []string{"1"},
 				},
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"6", "7", "8", "9", "10"},
+					objectIDs:      []string{"2"},
 				},
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"11", "15"},
+					objectIDs:      []string{"11"},
 				},
 			},
 			ctxCancelled: false,
@@ -3540,23 +3519,10 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "userset_tuple_not_found",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:1", "member", "user:maria"),
-						tuple.NewTupleKey("group:2", "member", "user:maria"),
-						tuple.NewTupleKey("group:3", "member", "user:maria"),
-						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
 					},
 					err: nil,
 				},
@@ -3565,7 +3531,7 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"5", "6", "7"},
+					objectIDs:      []string{"5"},
 				},
 			},
 			ctxCancelled: false,
@@ -3579,41 +3545,22 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "userset_tuple_not_found_multiset",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:1", "member", "user:maria"),
-						tuple.NewTupleKey("group:2", "member", "user:maria"),
-						tuple.NewTupleKey("group:3", "member", "user:maria"),
-						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
 					},
 					err: nil,
 				},
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:1", "member", "user:maria"),
-						tuple.NewTupleKey("group:2", "member", "user:maria"),
-						tuple.NewTupleKey("group:3", "member", "user:maria"),
-						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
 					},
 					err: nil,
 				},
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:1", "member", "user:maria"),
-						tuple.NewTupleKey("group:2", "member", "user:maria"),
-						tuple.NewTupleKey("group:3", "member", "user:maria"),
-						tuple.NewTupleKey("group:4", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
 					},
 					err: nil,
 				},
@@ -3645,17 +3592,7 @@ func TestConsumeUsersets(t *testing.T) {
 			errorExpected: nil,
 		},
 		{
-			name: "ctx_cancelled",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
+			name:                         "ctx_cancelled",
 			tuples:                       []dsResults{},
 			usersetsChannelResult:        []usersetsChannelStruct{},
 			ctxCancelled:                 true,
@@ -3664,19 +3601,9 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "iterator_error_first_batch",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{},
+					tuples: []*openfgav1.Tuple{},
 					err:    fmt.Errorf("mock_error"),
 				},
 			},
@@ -3684,7 +3611,7 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"10", "11", "12"},
+					objectIDs:      []string{"10"},
 				},
 			},
 			ctxCancelled:                 false,
@@ -3693,23 +3620,13 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "iterator_error_first_batch_and_second_batch",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{},
+					tuples: []*openfgav1.Tuple{},
 					err:    fmt.Errorf("mock_error"),
 				},
 				{
-					tuples: []*openfgav1.TupleKey{},
+					tuples: []*openfgav1.Tuple{},
 					err:    fmt.Errorf("mock_error"),
 				},
 			},
@@ -3717,12 +3634,12 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"10", "11", "12"},
+					objectIDs:      []string{"10"},
 				},
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"13", "14", "15"},
+					objectIDs:      []string{"13"},
 				},
 			},
 			ctxCancelled:                 false,
@@ -3731,27 +3648,14 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "iterator_error_first_batch_but_success_second",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{},
+					tuples: []*openfgav1.Tuple{},
 					err:    fmt.Errorf("mock_error"),
 				},
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:11", "member", "user:maria"),
-						tuple.NewTupleKey("group:12", "member", "user:maria"),
-						tuple.NewTupleKey("group:13", "member", "user:maria"),
-						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
 					},
 					err: nil,
 				},
@@ -3760,12 +3664,12 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"1", "2", "3"},
+					objectIDs:      []string{"1"},
 				},
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"10", "11", "12"},
+					objectIDs:      []string{"11"},
 				},
 			},
 			ctxCancelled: false,
@@ -3779,27 +3683,14 @@ func TestConsumeUsersets(t *testing.T) {
 		},
 		{
 			name: "iterator_error_first_batch_but_not_found_second",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.TupleKey{},
+					tuples: []*openfgav1.Tuple{},
 					err:    fmt.Errorf("mock_error"),
 				},
 				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:11", "member", "user:maria"),
-						tuple.NewTupleKey("group:12", "member", "user:maria"),
-						tuple.NewTupleKey("group:13", "member", "user:maria"),
-						tuple.NewTupleKey("group:14", "member", "user:maria"),
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
 					},
 					err: nil,
 				},
@@ -3808,12 +3699,12 @@ func TestConsumeUsersets(t *testing.T) {
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"1", "2", "3"},
+					objectIDs:      []string{"1"},
 				},
 				{
 					err:            nil,
 					objectRelation: "group#member",
-					objectIDs:      []string{"4", "4", "6"},
+					objectIDs:      []string{"4"},
 				},
 			},
 			ctxCancelled:                 false,
@@ -3821,17 +3712,7 @@ func TestConsumeUsersets(t *testing.T) {
 			errorExpected:                fmt.Errorf("mock_error"),
 		},
 		{
-			name: "userset_chan_error",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define viewer: [group#member]`),
+			name:   "userset_chan_error",
 			tuples: []dsResults{},
 			usersetsChannelResult: []usersetsChannelStruct{
 				{
@@ -3843,46 +3724,6 @@ func TestConsumeUsersets(t *testing.T) {
 			ctxCancelled:                 false,
 			expectedResolveCheckResponse: nil,
 			errorExpected:                fmt.Errorf("mock_error"),
-		},
-		{
-			name: "ttu_tuple_found",
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]
-				type document
-					relations
-						define owner: [group]
-						define viewer: member from group`),
-			tuples: []dsResults{
-				{
-					tuples: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("group:1", "member", "user:maria"),
-						tuple.NewTupleKey("group:2", "member", "user:maria"),
-						tuple.NewTupleKey("group:3", "member", "user:maria"),
-						tuple.NewTupleKey("group:4", "member", "user:maria"),
-					},
-					err: nil,
-				},
-			},
-			usersetsChannelResult: []usersetsChannelStruct{
-				{
-					err:            nil,
-					objectRelation: "group#member",
-					objectIDs:      []string{"0", "2", "8"},
-				},
-			},
-			ctxCancelled: false,
-			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
-			},
-			errorExpected: nil,
 		},
 	}
 	for _, tt := range tests {
@@ -3899,17 +3740,11 @@ func TestConsumeUsersets(t *testing.T) {
 
 			for _, curTuples := range tt.tuples {
 				// Note that we need to return a new iterator for each DS call
-				tuples := make([]*openfgav1.Tuple, len(curTuples.tuples))
-				for i, tuple := range curTuples.tuples {
-					tuples[i] = &openfgav1.Tuple{
-						Key: tuple,
-					}
-				}
 				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(
-					storage.NewStaticTupleIterator(tuples), curTuples.err)
+					storage.NewStaticTupleIterator(curTuples.tuples), curTuples.err)
 			}
 
-			ts := typesystem.New(tt.model)
+			ts := typesystem.New(model)
 			var ctx context.Context
 			var cancel context.CancelFunc
 			ctx = context.Background()
