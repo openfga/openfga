@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/openfga/openfga/cmd/run"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 )
