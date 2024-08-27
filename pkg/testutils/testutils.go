@@ -27,7 +27,7 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 )
 
 const (

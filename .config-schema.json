@@ -115,10 +115,34 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-consistency-params", "enable-check-optimizations"]
+                "enum": ["enable-consistency-params", "enable-check-optimizations", "enable-access-control"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "accessControl": {
+            "description": "the configuration needed for the access control store",
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable/disable the access control store.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_ENABLED"
+                },
+                "storeId": {
+                    "description": "The storeId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_STORE_ID"
+                },
+                "modelId": {
+                    "description": "The modelId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_MODEL_ID"
+                },
+            }
         },
         "checkTrackerEnabled": {
             "type": "object",

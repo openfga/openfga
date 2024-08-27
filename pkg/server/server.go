@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -30,15 +32,16 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/authz"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -55,6 +58,7 @@ const (
 
 	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 	ExperimentalCheckOptimizations      ExperimentalFeatureFlag = "enable-check-optimizations"
+	ExperimentalAccessControlParams     ExperimentalFeatureFlag = "enable-access-control"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -120,6 +124,7 @@ type Server struct {
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
+	AccessControl                    serverconfig.AccessControlConfig
 	serviceName                      string
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
@@ -153,6 +158,8 @@ type Server struct {
 
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
+
+	authorizer *authz.Authorizer
 
 	ctx                 context.Context
 	checkTrackerEnabled bool
@@ -341,6 +348,13 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+// WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
+func WithAccessControlParams(accessControl serverconfig.AccessControlConfig) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.AccessControl = accessControl
+	}
+}
+
 // WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
 // This cache is shared for all requests.
 // See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL.
@@ -440,6 +454,11 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 	return slices.Contains(s.experimentals, flag)
 }
 
+// IsAccessControlEnabled returns true if the access control feature is enabled.
+func (s *Server) IsAccessControlEnabled() bool {
+	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
+}
+
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
 // Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch
 // threshold over requests whose dispatch count exceeds the configured threshold.
@@ -536,6 +555,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
@@ -589,6 +609,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	err := s.validateAccessControlEnabled()
+	if err != nil {
+		return nil, err
+	}
+
 	// below this point, don't throw errors or we may leak resources in tests
 
 	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
@@ -638,6 +663,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+
+	if s.IsAccessControlEnabled() {
+		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
+	}
 
 	return s, nil
 }
@@ -1412,6 +1441,24 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) error {
 	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && openfgav1.ConsistencyPreference_UNSPECIFIED != c {
 		return status.Error(codes.InvalidArgument, "Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
+	}
+	return nil
+}
+
+// validateAccessControlEnabled validates the access control parameters.
+func (s *Server) validateAccessControlEnabled() error {
+	if s.IsAccessControlEnabled() {
+		if (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
+			return fmt.Errorf("access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
+		}
+		_, err := ulid.Parse(s.AccessControl.StoreID)
+		if err != nil {
+			return fmt.Errorf("config '--access-control-store-id' must be a valid ULID")
+		}
+		_, err = ulid.Parse(s.AccessControl.ModelID)
+		if err != nil {
+			return fmt.Errorf("config '--access-control-model-id' must be a valid ULID")
+		}
 	}
 	return nil
 }

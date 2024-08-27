@@ -11,7 +11,6 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -23,6 +22,7 @@ import (
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"

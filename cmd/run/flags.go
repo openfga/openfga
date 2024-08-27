@@ -14,6 +14,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("experimentals", flags.Lookup("experimentals"))
 		util.MustBindEnv("experimentals", "OPENFGA_EXPERIMENTALS")
 
+		util.MustBindPFlag("accessControl.enabled", flags.Lookup("access-control-enabled"))
+		util.MustBindEnv("accessControl.enabled", "OPENFGA_ACCESS_CONTROL_ENABLED")
+
+		util.MustBindPFlag("accessControl.storeId", flags.Lookup("access-control-store-id"))
+		util.MustBindEnv("accessControl.storeId", "OPENFGA_ACCESS_CONTROL_STORE_ID")
+
+		util.MustBindPFlag("accessControl.modelId", flags.Lookup("access-control-model-id"))
+		util.MustBindEnv("accessControl.modelId", "OPENFGA_ACCESS_CONTROL_MODEL_ID")
+
+		command.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
+
 		util.MustBindPFlag("grpc.addr", flags.Lookup("grpc-addr"))
 		util.MustBindEnv("grpc.addr", "OPENFGA_GRPC_ADDR")
 
