@@ -1,11 +1,12 @@
 package typesystem
 
 import (
+	"testing"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func usersetsEquals(t *testing.T, a, b *openfgav1.Usersets) {
