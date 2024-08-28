@@ -997,4 +997,73 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "usersets_tuple_cycle2",
+		Tuples: []*openfgav1.TupleKey{
+			// user exists so no cycle
+			{Object: "directs-user:utc2_1", Relation: "tuple_cycle2", User: "user:utc2_1"},
+			{Object: "ttus:utc2_1", Relation: "direct_parent", User: "directs-user:utc2_1"},
+			{Object: "usersets-user:utc2_1", Relation: "tuple_cycle2", User: "ttus:utc2_1#tuple_cycle2"},
+			{Object: "directs-user:utc2_2", Relation: "tuple_cycle2", User: "usersets-user:utc2_1#tuple_cycle2"},
+			{Object: "ttus:utc2_2", Relation: "direct_parent", User: "directs-user:utc2_2"},
+			{Object: "usersets-user:utc2_2", Relation: "tuple_cycle2", User: "ttus:utc2_1#tuple_cycle2"},
+
+			// missing user leads to a cycle
+			{Object: "directs-user:utc2_4", Relation: "tuple_cycle2", User: "usersets-user:utc2_4#tuple_cycle2"},
+			{Object: "ttus:utc2_4", Relation: "direct_parent", User: "directs-user:utc2_4"},
+			{Object: "usersets-user:utc2_4", Relation: "tuple_cycle2", User: "ttus:utc2_4#tuple_cycle2"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc2_2", Relation: "tuple_cycle2", User: "user:utc2_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc2_4", Relation: "tuple_cycle2", User: "user:utc2_1"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc2_1", Relation: "tuple_cycle2", User: "user:utc2_3"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "usersets_tuple_cycle3",
+		Tuples: []*openfgav1.TupleKey{
+			// user exists so no cycle
+			{Object: "ttus:utc3_1", Relation: "userset_parent", User: "usersets-user:utc3_1"},
+			{Object: "complexity3:utc3_1", Relation: "cycle_nested", User: "ttus:utc3_1#tuple_cycle3"},
+			{Object: "directs-user:utc3_1", Relation: "tuple_cycle3", User: "user:utc3_1"},
+			{Object: "usersets-user:utc3_1", Relation: "tuple_cycle3", User: "directs-user:utc3_1#compute_tuple_cycle3"},
+			{Object: "directs-user:utc3_2", Relation: "tuple_cycle3", User: "complexity3:utc3_1#cycle_nested"},
+			{Object: "usersets-user:utc3_1", Relation: "tuple_cycle3", User: "directs-user:utc3_2#compute_tuple_cycle3"},
+
+			// missing user leads to cycle
+			{Object: "ttus:utc3_4", Relation: "userset_parent", User: "usersets-user:utc3_4"},
+			{Object: "complexity3:utc3_4", Relation: "cycle_nested", User: "ttus:utc3_4#tuple_cycle3"},
+			{Object: "directs-user:utc3_4", Relation: "tuple_cycle3", User: "complexity3:utc3_4#cycle_nested"},
+			{Object: "usersets-user:utc3_4", Relation: "tuple_cycle3", User: "directs-user:utc3_4#compute_tuple_cycle3"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc3_1", Relation: "tuple_cycle3", User: "user:utc3_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc3_4", Relation: "tuple_cycle3", User: "user:utc3_1"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc3_3", Relation: "tuple_cycle3", User: "user:utc3_2"},
+				Expectation: false,
+			},
+		},
+	},
 }
