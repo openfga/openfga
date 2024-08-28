@@ -115,14 +115,16 @@ func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
 		return
 	}
 	require.Equal(t, a.GetCondition(), b.GetCondition())
-	require.Equal(t, a.Type, b.Type)
+	require.Equal(t, a.GetType(), b.GetType())
 
-	if a.RelationOrWildcard == nil || b.RelationOrWildcard == nil {
-		require.Equal(t, a.RelationOrWildcard, b.RelationOrWildcard)
+	rwA := a.GetRelationOrWildcard()
+	rwB := b.GetRelationOrWildcard()
+	if rwA == nil || rwB == nil {
+		require.Equal(t, rwA, rwB)
 		return
 	}
-	wA, okA := a.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard)
-	wB, okB := b.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard)
+	wA, okA := rwA.(*openfgav1.RelationReference_Wildcard)
+	wB, okB := rwB.(*openfgav1.RelationReference_Wildcard)
 	require.Equal(t, okA, okB)
 	if wA == nil || wB == nil {
 		require.Equal(t, wA, wB)
@@ -130,8 +132,8 @@ func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
 	}
 	require.Equal(t, wA.Wildcard, wB.Wildcard)
 
-	rA, okA := a.RelationOrWildcard.(*openfgav1.RelationReference_Relation)
-	rB, okB := b.RelationOrWildcard.(*openfgav1.RelationReference_Relation)
+	rA, okA := rwA.(*openfgav1.RelationReference_Relation)
+	rB, okB := rwB.(*openfgav1.RelationReference_Relation)
 	require.Equal(t, okA, okB)
 	if rA == nil || rB == nil {
 		require.Equal(t, rA, rB)
