@@ -1180,6 +1180,7 @@ func runTestMatrix(t *testing.T, params testParams) {
 		stages = append(stages, ttuCompleteTestingModelTest...)
 		stages = append(stages, complexityThreeTestingModelTest...)
 		stages = append(stages, complexityFourTestingModelTest...)
+		stages = append(stages, usersetCompleteTestingModelTest...)
 		for _, stage := range stages {
 			t.Run(fmt.Sprintf("stage_%s", stage.Name), func(t *testing.T) {
 				if stage.Model != "" {
