@@ -477,7 +477,9 @@ LoopOnIterator:
 		if len(condEvalResult.MissingParameters) > 0 {
 			err := condition.NewEvaluationError(
 				tupleKey.GetCondition().GetName(),
-				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(tupleKey),
+					condEvalResult.MissingParameters),
 			)
 			telemetry.TraceError(span, err)
 			errs = errors.Join(errs, err)
@@ -904,7 +906,9 @@ LoopOnIterator:
 		if len(condEvalResult.MissingParameters) > 0 {
 			err := condition.NewEvaluationError(
 				tupleKey.GetCondition().GetName(),
-				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+					tuple.TupleKeyToString(tupleKey),
+					condEvalResult.MissingParameters),
 			)
 			telemetry.TraceError(span, err)
 			errs = errors.Join(errs, err)
