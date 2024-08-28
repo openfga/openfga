@@ -3473,16 +3473,12 @@ func TestConsumeUsersets(t *testing.T) {
 			tuples: []dsResults{
 				// we expect 3 ds.ReadStartingWithUser to be called in response to 3 batches from usersetsChannel
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 				{
 					tuples: []*openfgav1.Tuple{
@@ -3521,10 +3517,8 @@ func TestConsumeUsersets(t *testing.T) {
 			name: "userset_tuple_not_found",
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 			},
 			usersetsChannelResult: []usersetsChannelStruct{
@@ -3547,22 +3541,16 @@ func TestConsumeUsersets(t *testing.T) {
 			name: "userset_tuple_not_found_multiset",
 			tuples: []dsResults{
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:1", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 			},
 			usersetsChannelResult: []usersetsChannelStruct{
@@ -3689,10 +3677,8 @@ func TestConsumeUsersets(t *testing.T) {
 					err:    fmt.Errorf("mock_error"),
 				},
 				{
-					tuples: []*openfgav1.Tuple{
-						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
-					},
-					err: nil,
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
 				},
 			},
 			usersetsChannelResult: []usersetsChannelStruct{
