@@ -783,14 +783,149 @@ func (c *LocalChecker) buildCheckAssociatedObjects(req *ResolveCheckRequest, obj
 	}
 }
 
+type dispatchMsg struct {
+	err          error
+	shortCircuit bool
+	dispatch     CheckHandlerFunc
+}
+
+func trySendDispatchChan(ctx context.Context, msg dispatchMsg, dispatchChan chan dispatchMsg) {
+	select {
+	case <-ctx.Done():
+	case dispatchChan <- msg:
+	}
+}
+
+func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
+	defer close(dispatches)
+	reqTupleKey := req.GetTupleKey()
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			// cancelled doesn't need to flush nor send errors back to main routine
+			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) {
+				break
+			}
+			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
+		}
+
+		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+
+		// if the user value is a typed wildcard and the type of the wildcard
+		// matches the target user objectType, then we're done searching
+		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+			wildcardType := tuple.GetType(usersetObject)
+
+			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
+				trySendDispatchChan(ctx, dispatchMsg{shortCircuit: true}, dispatches)
+				break
+			}
+		}
+
+		if usersetRelation != "" {
+			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
+			trySendDispatchChan(ctx, dispatchMsg{dispatch: c.dispatch(ctx, req, tupleKey)}, dispatches)
+		}
+	}
+}
+
+func consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
+	outcomes := make(chan checkOutcome, limit)
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	pool := concurrency.NewPool(cancellableCtx, int(limit))
+	go func() {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			_ = pool.Wait()
+			close(outcomes)
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-dispatchChan:
+				if !ok {
+					return
+				}
+				if msg.err != nil {
+					outcomes <- checkOutcome{err: msg.err}
+					break // continue
+				}
+				if msg.shortCircuit {
+					outcomes <- checkOutcome{resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+						},
+					}}
+					return
+				}
+				// There is a max number of goroutines based on concurrency limits
+				// a call to Go() will block until the task can be started.
+				// so if one of the inflight returns, it will be scheduled and the select will run again
+				pool.Go(func(ctx context.Context) error {
+					resp, err := msg.dispatch(ctx)
+					outcomes <- checkOutcome{resp: resp, err: err}
+					return nil
+				})
+			}
+		}
+	}()
+
+	var finalErr error
+	finalResult := &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+		},
+	}
+
+ConsumerLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			break ConsumerLoop
+		case outcome, ok := <-outcomes:
+			if !ok {
+				break ConsumerLoop
+			}
+			if outcome.err != nil {
+				finalErr = outcome.err
+				break // continue
+			}
+
+			if outcome.resp.GetResolutionMetadata().CycleDetected {
+				finalResult.ResolutionMetadata.CycleDetected = true
+			}
+
+			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
+
+			if outcome.resp.Allowed {
+				finalErr = nil
+				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
+				finalResult = outcome.resp
+				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
+				cancel() // prevent further processing of other checks
+				break ConsumerLoop
+			}
+
+		}
+	}
+
+	// context cancellation from upstream (e.g. client)
+	if ctx.Err() != nil {
+		finalErr = ctx.Err()
+	}
+
+	return finalResult, finalErr
+}
+
 // checkUsersetSlowPath will check userset or public wildcard path.
 // This is the slow path as it requires dispatch on all its children.
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
-	var handlers []CheckHandlerFunc
-
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
@@ -799,40 +934,22 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		},
 	}
 
-	for {
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
+	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 
-		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-		reqTupleKey := req.GetTupleKey()
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+	pool.Go(func(ctx context.Context) error {
+		c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+		return nil
+	})
 
-		// if the user value is a typed wildcard and the type of the wildcard
-		// matches the target user objectType, then we're done searching
-		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-			wildcardType := tuple.GetType(usersetObject)
-
-			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				response.Allowed = true
-				return response, nil
-			}
-
-			continue
-		}
-
-		if usersetRelation != "" {
-			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
-		}
-	}
-
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+	resp, err := consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -1279,34 +1396,25 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	}
 }
 
-// checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
-// resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
-	defer span.End()
-
-	var handlers []CheckHandlerFunc
-
+func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
+	defer close(dispatches)
+	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-	tk := req.GetTupleKey()
 
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
+			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) {
 				break
 			}
-			telemetry.TraceError(span, err)
-			return nil, err
+			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
 		tupleKey := &openfgav1.TupleKey{
 			Object:   userObj,
 			Relation: computedRelation,
-			User:     tk.GetUser(),
+			User:     reqTupleKey.GetUser(),
 		}
 
 		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
@@ -1314,12 +1422,34 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 				continue // skip computed relations on tupleset relationships if they are undefined
 			}
 		}
-
-		// Note: we add TTU read below
-		handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+		trySendDispatchChan(ctx, dispatchMsg{dispatch: c.dispatch(ctx, req, tupleKey)}, dispatches)
 	}
+}
 
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+// checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
+// resort to dispatch check on its children.
+func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
+	defer span.End()
+
+	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+
+	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
+
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+	pool.Go(func(ctx context.Context) error {
+		c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+		return nil
+	})
+
+	resp, err := consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
