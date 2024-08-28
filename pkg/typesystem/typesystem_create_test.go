@@ -13,9 +13,11 @@ func usersetsEquals(t *testing.T, a, b *openfgav1.Usersets) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, len(a.Child), len(b.Child))
-	for i := 0; i < len(a.Child); i++ {
-		rewriteEquals(t, a.Child[i], b.Child[i])
+	childA := a.GetChild()
+	childB := b.GetChild()
+	require.Equal(t, len(childA), len(childB))
+	for i := 0; i < len(childA); i++ {
+		rewriteEquals(t, childA[i], childB[i])
 	}
 }
 
@@ -24,12 +26,14 @@ func tupleToUsersetEquals(t *testing.T, a, b *openfgav1.TupleToUserset) {
 		require.Equal(t, a, b)
 		return
 	}
+	cuA := a.GetComputedUserset()
+	cuB := b.GetComputedUserset()
 
-	if a.ComputedUserset == nil || b.ComputedUserset == nil {
-		require.Equal(t, a.ComputedUserset, b.ComputedUserset)
+	if cuA == nil || cuB == nil {
+		require.Equal(t, cuA, cuB)
 		return
 	}
-	objectRelationEquals(t, a.ComputedUserset, b.ComputedUserset)
+	objectRelationEquals(t, cuA, cuB)
 }
 
 func objectRelationEquals(t *testing.T, a, b *openfgav1.ObjectRelation) {
@@ -37,8 +41,8 @@ func objectRelationEquals(t *testing.T, a, b *openfgav1.ObjectRelation) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, a.Relation, b.Relation)
-	require.Equal(t, a.Object, b.Object)
+	require.Equal(t, a.GetRelation(), b.GetRelation())
+	require.Equal(t, a.GetObject(), b.GetObject())
 }
 
 func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
@@ -47,12 +51,15 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 		return
 	}
 
-	_, okA := a.Userset.(*openfgav1.Userset_This)
-	_, okB := b.Userset.(*openfgav1.Userset_This)
+	usersetA := a.GetUserset()
+	usersetB := b.GetUserset()
+
+	_, okA := usersetA.(*openfgav1.Userset_This)
+	_, okB := usersetB.(*openfgav1.Userset_This)
 	require.Equal(t, okA, okB, "one is Userset_This")
 
-	cuA, okA := a.Userset.(*openfgav1.Userset_ComputedUserset)
-	cuB, okB := b.Userset.(*openfgav1.Userset_ComputedUserset)
+	cuA, okA := usersetA.(*openfgav1.Userset_ComputedUserset)
+	cuB, okB := usersetB.(*openfgav1.Userset_ComputedUserset)
 	require.Equal(t, okA, okB, "one is Userset_ComputedUserset")
 	if cuA == nil || cuB == nil {
 		require.Equal(t, cuA, cuB)
@@ -60,8 +67,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	}
 	objectRelationEquals(t, cuA.ComputedUserset, cuB.ComputedUserset)
 
-	ttuA, okA := a.Userset.(*openfgav1.Userset_TupleToUserset)
-	ttuB, okB := b.Userset.(*openfgav1.Userset_TupleToUserset)
+	ttuA, okA := usersetA.(*openfgav1.Userset_TupleToUserset)
+	ttuB, okB := usersetB.(*openfgav1.Userset_TupleToUserset)
 	require.Equal(t, okA, okB, "one is Userset_TupleToUserset")
 	if ttuA == nil || ttuB == nil {
 		require.Equal(t, ttuA, ttuB)
@@ -69,8 +76,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	}
 	tupleToUsersetEquals(t, ttuA.TupleToUserset, ttuB.TupleToUserset)
 
-	uA, okA := a.Userset.(*openfgav1.Userset_Union)
-	uB, okB := b.Userset.(*openfgav1.Userset_Union)
+	uA, okA := usersetA.(*openfgav1.Userset_Union)
+	uB, okB := usersetB.(*openfgav1.Userset_Union)
 	require.Equal(t, okA, okB, "one is Userset_Union")
 	if uA == nil || uB == nil {
 		require.Equal(t, uA, uB)
@@ -78,8 +85,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	}
 	usersetsEquals(t, uA.Union, uB.Union)
 
-	iA, okA := a.Userset.(*openfgav1.Userset_Intersection)
-	iB, okB := b.Userset.(*openfgav1.Userset_Intersection)
+	iA, okA := usersetA.(*openfgav1.Userset_Intersection)
+	iB, okB := usersetB.(*openfgav1.Userset_Intersection)
 	require.Equal(t, okA, okB, "one is Userset_Intersection")
 	if iA == nil || iB == nil {
 		require.Equal(t, iA, iB)
@@ -87,8 +94,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	}
 	usersetsEquals(t, iA.Intersection, iB.Intersection)
 
-	dA, okA := a.Userset.(*openfgav1.Userset_Difference)
-	dB, okB := b.Userset.(*openfgav1.Userset_Difference)
+	dA, okA := usersetA.(*openfgav1.Userset_Difference)
+	dB, okB := usersetB.(*openfgav1.Userset_Difference)
 	require.Equal(t, okA, okB, "one is Userset_Difference")
 	if dA == nil || dB == nil {
 		require.Equal(t, dA, dB)
@@ -98,8 +105,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 		require.Equal(t, dA.Difference, dB.Difference)
 		return
 	}
-	rewriteEquals(t, dA.Difference.Base, dB.Difference.Base)
-	rewriteEquals(t, dA.Difference.Subtract, dB.Difference.Subtract)
+	rewriteEquals(t, dA.Difference.GetBase(), dB.Difference.GetBase())
+	rewriteEquals(t, dA.Difference.GetSubtract(), dB.Difference.GetSubtract())
 }
 
 func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
@@ -107,7 +114,7 @@ func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, a.Condition, b.Condition)
+	require.Equal(t, a.GetCondition(), b.GetCondition())
 	require.Equal(t, a.Type, b.Type)
 
 	if a.RelationOrWildcard == nil || b.RelationOrWildcard == nil {
@@ -138,21 +145,23 @@ func relationTypeInfoEquals(t *testing.T, a, b *openfgav1.RelationTypeInfo) {
 		require.Equal(t, a, b)
 		return
 	}
+	directA := a.GetDirectlyRelatedUserTypes()
+	directB := b.GetDirectlyRelatedUserTypes()
 
-	if a.DirectlyRelatedUserTypes == nil || b.DirectlyRelatedUserTypes == nil {
-		require.Equal(t, a.DirectlyRelatedUserTypes, b.DirectlyRelatedUserTypes)
+	if directA == nil || directB == nil {
+		require.Equal(t, directA, directB)
 		return
 	}
-	require.Equal(t, len(a.DirectlyRelatedUserTypes), len(b.DirectlyRelatedUserTypes))
-	for i := 0; i < len(a.DirectlyRelatedUserTypes); i++ {
-		relationReferenceEquals(t, a.DirectlyRelatedUserTypes[i], b.DirectlyRelatedUserTypes[i])
+	require.Equal(t, len(directA), len(directB))
+	for i := 0; i < len(directA); i++ {
+		relationReferenceEquals(t, directA[i], directB[i])
 	}
 }
 
 func relationEquals(t *testing.T, a, b *openfgav1.Relation) {
-	require.Equal(t, a.Name, b.Name)
-	rewriteEquals(t, a.Rewrite, b.Rewrite)
-	relationTypeInfoEquals(t, a.TypeInfo, b.TypeInfo)
+	require.Equal(t, a.GetName(), b.GetName())
+	rewriteEquals(t, a.GetRewrite(), b.GetRewrite())
+	relationTypeInfoEquals(t, a.GetTypeInfo(), b.GetTypeInfo())
 }
 
 func sourceInfoEquals(t *testing.T, a, b *openfgav1.SourceInfo) {
@@ -160,7 +169,7 @@ func sourceInfoEquals(t *testing.T, a, b *openfgav1.SourceInfo) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, a.File, b.File)
+	require.Equal(t, a.GetFile(), b.GetFile())
 }
 
 func relationMetadataEquals(t *testing.T, a, b *openfgav1.RelationMetadata) {
@@ -168,16 +177,18 @@ func relationMetadataEquals(t *testing.T, a, b *openfgav1.RelationMetadata) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, a.Module, b.Module)
-	sourceInfoEquals(t, a.SourceInfo, b.SourceInfo)
+	require.Equal(t, a.GetModule(), b.GetModule())
+	sourceInfoEquals(t, a.GetSourceInfo(), b.GetSourceInfo())
 
-	if a.DirectlyRelatedUserTypes == nil || b.DirectlyRelatedUserTypes == nil {
-		require.Equal(t, a.DirectlyRelatedUserTypes, b.DirectlyRelatedUserTypes)
+	directA := a.GetDirectlyRelatedUserTypes()
+	directB := b.GetDirectlyRelatedUserTypes()
+	if directA == nil || directB == nil {
+		require.Equal(t, directA, directB)
 		return
 	}
-	require.Equal(t, len(a.DirectlyRelatedUserTypes), len(b.DirectlyRelatedUserTypes))
-	for i := 0; i < len(a.DirectlyRelatedUserTypes); i++ {
-		relationReferenceEquals(t, a.DirectlyRelatedUserTypes[i], b.DirectlyRelatedUserTypes[i])
+	require.Equal(t, len(directA), len(directB))
+	for i := 0; i < len(directA); i++ {
+		relationReferenceEquals(t, directA[i], directB[i])
 	}
 }
 
@@ -186,35 +197,40 @@ func metadataEquals(t *testing.T, a, b *openfgav1.Metadata) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, a.Module, b.Module)
-	sourceInfoEquals(t, a.SourceInfo, b.SourceInfo)
+	require.Equal(t, a.GetModule(), b.GetModule())
+	sourceInfoEquals(t, a.GetSourceInfo(), b.GetSourceInfo())
 
-	if a.Relations == nil || b.Relations == nil {
-		require.Equal(t, a.Relations, b.Relations)
+	relationA := a.GetRelations()
+	relationB := b.GetRelations()
+	if relationA == nil || relationB == nil {
+		require.Equal(t, relationA, relationB)
 		return
 	}
-	require.Equal(t, len(a.Relations), len(b.Relations))
-	for nameA, rA := range a.Relations {
-		rB, ok := b.Relations[nameA]
+	require.Equal(t, len(relationA), len(relationB))
+	for nameA, rA := range relationA {
+		rB, ok := relationB[nameA]
 		require.True(t, ok, nameA)
 		relationMetadataEquals(t, rA, rB)
 	}
 }
 
 func typeDefinitionEquals(t *testing.T, a, b *openfgav1.TypeDefinition) {
-	require.Equal(t, a.Type, b.Type)
-	require.Equal(t, len(a.Relations), len(b.Relations))
+	require.Equal(t, a.GetType(), b.GetType())
 
-	for nameA, rA := range a.Relations {
-		rB, ok := b.Relations[nameA]
+	relationsA := a.GetRelations()
+	relationsB := b.GetRelations()
+	require.Equal(t, len(relationsA), len(relationsB))
+
+	for nameA, rA := range relationsA {
+		rB, ok := relationsB[nameA]
 		require.True(t, ok)
 		rewriteEquals(t, rA, rB)
 	}
-	metadataEquals(t, a.Metadata, b.Metadata)
+	metadataEquals(t, a.GetMetadata(), b.GetMetadata())
 }
 
 func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
-	require.Equal(t, a.schemaVersion, b.schemaVersion)
+	require.Equal(t, a.GetSchemaVersion(), b.GetSchemaVersion())
 	require.Equal(t, len(a.typeDefinitions), len(b.typeDefinitions))
 
 	for nameA, tdA := range a.typeDefinitions {
