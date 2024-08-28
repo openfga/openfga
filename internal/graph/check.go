@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/sourcegraph/conc/pool"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -830,48 +832,51 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 	}
 }
 
+func processDispatches(ctx context.Context, req *ResolveCheckRequest, pool *pool.ContextPool, dispatchChan chan dispatchMsg, outcomes chan checkOutcome) {
+	defer func() {
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+		close(outcomes)
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-dispatchChan:
+			if !ok {
+				return
+			}
+			if msg.err != nil {
+				outcomes <- checkOutcome{err: msg.err}
+				break // continue
+			}
+			if msg.shortCircuit {
+				outcomes <- checkOutcome{resp: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+					},
+				}}
+				return
+			}
+			// There is a max number of goroutines based on concurrency limits
+			// a call to Go() will block until the task can be started.
+			// so if one of the inflight returns, it will be scheduled and the select will run again
+			pool.Go(func(ctx context.Context) error {
+				resp, err := msg.dispatch(ctx)
+				outcomes <- checkOutcome{resp: resp, err: err}
+				return nil
+			})
+		}
+	}
+}
+
 func consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	outcomes := make(chan checkOutcome, limit)
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, int(limit))
-	go func() {
-		defer func() {
-			// We need to wait always to avoid a goroutine leak.
-			_ = pool.Wait()
-			close(outcomes)
-		}()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-dispatchChan:
-				if !ok {
-					return
-				}
-				if msg.err != nil {
-					outcomes <- checkOutcome{err: msg.err}
-					break // continue
-				}
-				if msg.shortCircuit {
-					outcomes <- checkOutcome{resp: &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-						},
-					}}
-					return
-				}
-				// There is a max number of goroutines based on concurrency limits
-				// a call to Go() will block until the task can be started.
-				// so if one of the inflight returns, it will be scheduled and the select will run again
-				pool.Go(func(ctx context.Context) error {
-					resp, err := msg.dispatch(ctx)
-					outcomes <- checkOutcome{resp: resp, err: err}
-					return nil
-				})
-			}
-		}
-	}()
+	dispatchPool := concurrency.NewPool(cancellableCtx, int(limit))
+
+	go processDispatches(ctx, req, dispatchPool, dispatchChan, outcomes)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -906,13 +911,11 @@ ConsumerLoop:
 				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
 				finalResult = outcome.resp
 				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
-				cancel() // prevent further processing of other checks
 				break ConsumerLoop
 			}
-
 		}
 	}
-
+	cancel() // prevent further processing of other checks
 	// context cancellation from upstream (e.g. client)
 	if ctx.Err() != nil {
 		finalErr = ctx.Err()
