@@ -54,8 +54,7 @@ type CachedCheckResolver struct {
 	logger       logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
-	allocatedCache           bool
-	enableConsistencyOptions bool
+	allocatedCache bool
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -92,12 +91,6 @@ func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) Cache
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
-	}
-}
-
-func WithEnabledConsistencyParams(enable bool) CachedCheckResolverOpt {
-	return func(ccr *CachedCheckResolver) {
-		ccr.enableConsistencyOptions = enable
 	}
 }
 
@@ -160,7 +153,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	tryCache := !c.enableConsistencyOptions || req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
 	if tryCache {
 		checkCacheTotalCounter.Inc()
