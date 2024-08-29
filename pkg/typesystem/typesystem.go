@@ -195,8 +195,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			}
 
 			tdRelations[relation] = r
-			ttus := make([]*openfgav1.TupleToUserset, 0)
-			ttuRelations[typeName][relation] = tupleToUsersetsDefinitions(rewrite, &ttus)
+			ttuRelations[typeName][relation] = flattenUserset(rewrite)
 		}
 		relations[typeName] = tdRelations
 	}
@@ -1203,25 +1202,33 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
-func tupleToUsersetsDefinitions(relationDef *openfgav1.Userset, resp *[]*openfgav1.TupleToUserset) []*openfgav1.TupleToUserset {
-	if relationDef.GetTupleToUserset() != nil {
-		*resp = append(*resp, relationDef.GetTupleToUserset())
-	}
-	if relationDef.GetUnion() != nil {
-		for _, child := range relationDef.GetUnion().GetChild() {
-			tupleToUsersetsDefinitions(child, resp)
+func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {
+	output := make([]*openfgav1.TupleToUserset, 0)
+	userset := relationDef.GetUserset()
+	switch x := userset.(type) {
+	case *openfgav1.Userset_TupleToUserset:
+		if x.TupleToUserset != nil {
+			output = append(output, x.TupleToUserset)
+		}
+	case *openfgav1.Userset_Union:
+		if x.Union != nil {
+			for _, child := range x.Union.GetChild() {
+				output = append(output, flattenUserset(child)...)
+			}
+		}
+	case *openfgav1.Userset_Intersection:
+		if x.Intersection != nil {
+			for _, child := range x.Intersection.GetChild() {
+				output = append(output, flattenUserset(child)...)
+			}
+		}
+	case *openfgav1.Userset_Difference:
+		if x.Difference != nil {
+			output = append(output, flattenUserset(x.Difference.GetBase())...)
+			output = append(output, flattenUserset(x.Difference.GetSubtract())...)
 		}
 	}
-	if relationDef.GetIntersection() != nil {
-		for _, child := range relationDef.GetIntersection().GetChild() {
-			tupleToUsersetsDefinitions(child, resp)
-		}
-	}
-	if relationDef.GetDifference() != nil {
-		tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
-		tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
-	}
-	return *resp
+	return output
 }
 
 // WalkUsersetRewriteHandler is a userset rewrite handler that is applied to a node in a userset rewrite
