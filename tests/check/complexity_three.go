@@ -368,9 +368,35 @@ var complexityThreeTestingModelTest = []*stage{
 		},
 	},
 	{
-		Name:   "compute_ttu_userset_ttu",
+		Name: "compute_ttu_userset_ttu",
 		Tuples: []*openfgav1.TupleKey{
-			// see ttu_userset_ttu
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_1", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_1"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_1", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_1#direct_pa_direct_ch"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_1", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_1"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_1", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_1"},
+			// unconnected_directs_user
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_unconnected_directs_user", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_unconnected_directs_user"},
+			// unconnected ttus
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_unconnected_ttus", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_unconnected_ttus"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_unconnected_ttus", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_unconnected_ttus"},
+			// unconnected usersets-user
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_unconnected_usersets_users", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_unconnected_usersets_users"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_unconnected_usersets_users", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_unconnected_usersets_users"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_unconnected_usersets_users", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_unconnected_usersets_users#direct_pa_direct_ch"},
+			// complexity unconnected userset
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_userset", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_userset"},
+			// complexity unconnected ttu
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu#direct_pa_direct_ch"},
+			// complexity unconnected direct users (empty)
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users#direct_pa_direct_ch"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users"},
+			// complexity unconnected direct users (other)
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2#direct_pa_direct_ch"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -431,9 +457,35 @@ var complexityThreeTestingModelTest = []*stage{
 		},
 	},
 	{
-		Name:   "compute_userset_ttu_userset",
+		Name: "compute_userset_ttu_userset",
 		Tuples: []*openfgav1.TupleKey{
-			// see userset_ttu_userset
+			{Object: "complexity3:complexity_3_userset_ttu_userset_1", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_1#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_1", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_1"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_1", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_1#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_1", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_1"},
+			// unconnected direct user
+			{Object: "directs-user:complexity_3_userset_ttu_userset_unconnected_direct_user", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_unconnected_direct_user"},
+			// unconnected userset
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_unconnected_userset", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_unconnected_userset#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_unconnected_userset", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_unconnected_userset"},
+			// unconnected ttu
+			{Object: "ttus:complexity_3_userset_ttu_userset_unconnected_ttu", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_unconnected_ttu"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_unconnected_ttu", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_unconnected_ttu#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_unconnected_ttu", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_unconnected_ttu"},
+			// complexity 3 unconnected ttus
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_ttu", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_ttu#userset_pa_userset_ch"},
+			// complexity 3 unconnected usersets
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_usersets", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_usersets#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_usersets", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_usersets"},
+			// complexity 3 unconnected direct users (empty)
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users#direct"},
+			// complexity 3 unconnected direct users (other user)
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -494,9 +546,48 @@ var complexityThreeTestingModelTest = []*stage{
 		},
 	},
 	{
-		Name:   "or_compute_complex3",
+		Name: "or_compute_complex3",
 		Tuples: []*openfgav1.TupleKey{
-			// see ttu_userset_ttu and userset_ttu_userset
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_1", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_1"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_1", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_1#direct_pa_direct_ch"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_1", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_1"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_1", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_1"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_unconnected_directs_user", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_unconnected_directs_user"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_unconnected_ttus", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_unconnected_ttus"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_unconnected_ttus", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_unconnected_ttus"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_unconnected_usersets_users", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_unconnected_usersets_users"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_unconnected_usersets_users", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_unconnected_usersets_users"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_unconnected_usersets_users", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_unconnected_usersets_users#direct_pa_direct_ch"},
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_userset", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_userset"},
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_ttu#direct_pa_direct_ch"},
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users#direct_pa_direct_ch"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users"},
+			{Object: "complexity3:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "userset_parent", User: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2"},
+			{Object: "usersets-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "ttu_direct_userset", User: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2#direct_pa_direct_ch"},
+			{Object: "ttus:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "mult_parent_types", User: "directs-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2"},
+			{Object: "directs-user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2", Relation: "direct", User: "user:complexity_3_ttu_userset_ttu_complexity_unconnected_direct_users_2"},
+			{Object: "complexity3:complexity_3_userset_ttu_userset_1", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_1#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_1", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_1"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_1", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_1#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_1", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_1"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_unconnected_direct_user", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_unconnected_direct_user"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_unconnected_userset", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_unconnected_userset#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_unconnected_userset", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_unconnected_userset"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_unconnected_ttu", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_unconnected_ttu"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_unconnected_ttu", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_unconnected_ttu#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_unconnected_ttu", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_unconnected_ttu"},
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_ttu", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_ttu#userset_pa_userset_ch"},
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_usersets", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_usersets#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_usersets", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_usersets"},
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users#direct"},
+			{Object: "complexity3:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "userset_ttu_userset", User: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2#userset_pa_userset_ch"},
+			{Object: "ttus:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "userset_parent", User: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2"},
+			{Object: "usersets-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "userset", User: "directs-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2#direct"},
+			{Object: "directs-user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2", Relation: "direct", User: "user:complexity_3_userset_ttu_userset_complexity_unconnected_direct_users_2"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -657,6 +748,78 @@ var complexityThreeTestingModelTest = []*stage{
 			{
 				Name:        "miss_second_part_and",
 				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity_3_and_nested_complex3_miss_second_child", Relation: "and_nested_complex3", User: "user:complexity_3_and_nested_complex3_1"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "cycle_nested",
+		Tuples: []*openfgav1.TupleKey{
+			// no cycle as user breaks the cycle
+			{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_no_cycle#tuple_cycle3"},
+			{Object: "ttus:complexity3_cycle_nested_no_cycle", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_no_cycle"},
+			{Object: "usersets-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_no_cycle#compute_tuple_cycle3"},
+			{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_no_cycle#cycle_nested"},
+			{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "user:complexity3_cycle_nested_no_cycle"},
+			// missing user - cycle
+			{Object: "complexity3:complexity3_cycle_nested_cycle", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_cycle#tuple_cycle3"},
+			{Object: "ttus:complexity3_cycle_nested_cycle", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_cycle"},
+			{Object: "usersets-user:complexity3_cycle_nested_cycle", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_cycle#compute_tuple_cycle3"},
+			{Object: "directs-user:complexity3_cycle_nested_cycle", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_cycle#cycle_nested"},
+			// unconnected direct user
+			{Object: "complexity3:complexity3_cycle_nested_unconnected_direct_user", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_unconnected_direct_user#tuple_cycle3"},
+			{Object: "ttus:complexity3_cycle_nested_unconnected_direct_user", Relation: "userset_parent", User: "usersets-user:complexity3_cycle_nested_unconnected_direct_user"},
+			{Object: "usersets-user:complexity3_cycle_nested_unconnected_direct_user", Relation: "tuple_cycle3", User: "directs-user:complexity3_cycle_nested_unconnected_direct_user#compute_tuple_cycle3"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_complexity3_user",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_complexity3_cycle_nested",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "complexity3:complexity3_cycle_nested_no_cycle#cycle_nested"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_complexity3_ttus",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "ttus:complexity3_cycle_nested_no_cycle#tuple_cycle3"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_complexity3_direct_users",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "directs-user:complexity3_cycle_nested_no_cycle#compute_tuple_cycle3"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_directs_user_complexity3",
+				Tuple:       &openfgav1.TupleKey{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "complexity3:complexity3_cycle_nested_no_cycle#cycle_nested"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_directs_user_ttus",
+				Tuple:       &openfgav1.TupleKey{Object: "directs-user:complexity3_cycle_nested_no_cycle", Relation: "tuple_cycle3", User: "ttus:complexity3_cycle_nested_no_cycle#tuple_cycle3"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_no_cycle", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_object",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_invalid", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
+				Expectation: false,
+			},
+			{
+				Name:        "cycle",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_cycle", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
+				Expectation: false,
+			},
+			{
+				Name:        "unconnected_direct_user",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complexity3_cycle_nested_unconnected_direct_user", Relation: "cycle_nested", User: "user:complexity3_cycle_nested_no_cycle"},
 				Expectation: false,
 			},
 		},
