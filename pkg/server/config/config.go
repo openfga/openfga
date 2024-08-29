@@ -134,10 +134,11 @@ type AuthnConfig struct {
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
 type AuthnOIDCConfig struct {
-	Issuer        string
-	IssuerAliases []string
-	Subjects      []string
-	Audience      string
+	Issuer         string
+	IssuerAliases  []string
+	Subjects       []string
+	Audience       string
+	ClientIDClaims []string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
