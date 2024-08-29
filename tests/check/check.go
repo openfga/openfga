@@ -1343,6 +1343,7 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 		}
 		if assertion.Expectation {
 			if wildcardUserPresent {
+				// if ListUsers response is [user:*, ...], we don't want to do the assertions below because they will fail.
 				return
 			}
 			// >=, not >, because some objects are related to more than one user
