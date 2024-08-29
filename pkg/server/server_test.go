@@ -2057,19 +2057,19 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	storeID, model := storageTest.BootstrapFGAStore(t, ds, modelStr, tuples)
 	t.Cleanup(ds.Close)
 
-	deadline := 30 * time.Millisecond
+	deadline := 50 * time.Millisecond
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 
 		WithDispatchThrottlingCheckResolverEnabled(true),
-		WithDispatchThrottlingCheckResolverFrequency(2*deadline), // Forces time-out when throttling occurs
+		WithDispatchThrottlingCheckResolverFrequency(3*deadline), // Forces time-out when throttling occurs
 		WithDispatchThrottlingCheckResolverThreshold(1),          // Applies throttling after first dispatch
 
 		WithListObjectsDeadline(deadline),
 		WithListObjectsDispatchThrottlingEnabled(true),
 		WithListObjectsDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
-		WithListObjectsDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
+		WithListObjectsDispatchThrottlingFrequency(3*deadline), // Forces time-out when throttling occurs
 
 		WithListUsersDeadline(deadline),
 		WithListUsersDispatchThrottlingEnabled(true),
