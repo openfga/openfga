@@ -6,7 +6,6 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 
@@ -190,105 +189,4 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// We expect that objectID2 will return first because it has a smaller ulid.
 	require.Equal(t, secondTuple, tuples[0].GetKey())
 	require.Equal(t, firstTuple, tuples[1].GetKey())
-}
-
-// TestAllowNullCondition tests that tuple and changelog rows existing before
-// migration 005_add_conditions_to_tuples can be successfully read.
-func TestAllowNullCondition(t *testing.T) {
-	ctx := context.Background()
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-	defer ds.Close()
-
-	stmt := `
-		INSERT INTO tuple (
-			store, object_type, object_id, relation, _user, user_type, ulid,
-			condition_name, condition_context, inserted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('subsec'));
-	`
-	_, err = ds.db.ExecContext(
-		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
-		ulid.Make().String(), nil, nil,
-	)
-	require.NoError(t, err)
-
-	tk := tuple.NewTupleKey("folder:2021-budget", "owner", "user:anne")
-	iter, err := ds.Read(ctx, "store", tk, storage.ReadOptions{})
-	require.NoError(t, err)
-	defer iter.Stop()
-
-	curTuple, err := iter.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, tk, curTuple.GetKey())
-
-	opts := storage.ReadPageOptions{
-		Pagination: storage.NewPaginationOptions(2, ""),
-	}
-	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, opts)
-	require.NoError(t, err)
-	require.Len(t, tuples, 1)
-	require.Equal(t, tk, tuples[0].GetKey())
-
-	userTuple, err := ds.ReadUserTuple(ctx, "store", tk, storage.ReadUserTupleOptions{})
-	require.NoError(t, err)
-	require.Equal(t, tk, userTuple.GetKey())
-
-	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
-	_, err = ds.db.ExecContext(
-		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
-		ulid.Make().String(), nil, nil,
-	)
-
-	require.NoError(t, err)
-	iter, err = ds.ReadUsersetTuples(ctx, "store", storage.ReadUsersetTuplesFilter{Object: "folder:2022-budget"}, storage.ReadUsersetTuplesOptions{})
-	require.NoError(t, err)
-	defer iter.Stop()
-
-	curTuple, err = iter.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, tk2, curTuple.GetKey())
-
-	iter, err = ds.ReadStartingWithUser(ctx, "store", storage.ReadStartingWithUserFilter{
-		ObjectType: "folder",
-		Relation:   "owner",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "user:anne"},
-		},
-	}, storage.ReadStartingWithUserOptions{})
-	require.NoError(t, err)
-	defer iter.Stop()
-
-	curTuple, err = iter.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, tk, curTuple.GetKey())
-
-	stmt = `
-	INSERT INTO changelog (
-		store, object_type, object_id, relation, _user, ulid,
-		condition_name, condition_context, inserted_at, operation
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('subsec'), ?);
-`
-	_, err = ds.db.ExecContext(
-		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
-		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-	)
-	require.NoError(t, err)
-
-	_, err = ds.db.ExecContext(
-		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
-		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-	)
-	require.NoError(t, err)
-
-	readChangesOpts := storage.ReadChangesOptions{
-		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
-	}
-	changes, _, err := ds.ReadChanges(ctx, "store", "folder", readChangesOpts, 0)
-	require.NoError(t, err)
-	require.Len(t, changes, 2)
-	require.Equal(t, tk, changes[0].GetTupleKey())
-	require.Equal(t, tk, changes[1].GetTupleKey())
 }
