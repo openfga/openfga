@@ -1,0 +1,11 @@
+name: "Enforce changelog entry"
+on:
+  pull_request:
+    # By default labeled/unlabeled are not included in the pull_request even so we need to list out what we want
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: dangoslen/changelog-enforcer@v3
