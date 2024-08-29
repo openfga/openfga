@@ -8,6 +8,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Changed
+
+* Consistency options has been moved out of experimental and is now enabled by default. The associated experimental option has been removed. [#1889](https://github.com/openfga/openfga/pull/1889)
+  - See [#1764](https://github.com/openfga/openfga/pull/1764) for full details on this feature
+
 ## [1.5.9] - 2024-08-13
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
