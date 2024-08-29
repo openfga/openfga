@@ -27,25 +27,14 @@ type ResolveCheckResponse struct {
 }
 
 func (r *ResolveCheckResponse) GetCycleDetected() bool {
-	if r != nil {
-		return r.GetResolutionMetadata().CycleDetected
-	}
-
-	return false
+	return r.GetResolutionMetadata().CycleDetected
 }
 
 func (r *ResolveCheckResponse) GetAllowed() bool {
-	if r != nil {
-		return r.Allowed
-	}
-
-	return false
+	return r.Allowed
 }
 
 func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
-	if r != nil {
-		return r.ResolutionMetadata
-	}
+	return r.ResolutionMetadata
 
-	return nil
 }

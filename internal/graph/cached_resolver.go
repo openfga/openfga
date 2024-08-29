@@ -159,7 +159,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 		checkCacheTotalCounter.Inc()
 
 		cachedResp := c.cache.Get(cacheKey)
-		isCached := cachedResp != nil && !cachedResp.Expired
+		isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
 		span.SetAttributes(attribute.Bool("is_cached", isCached))
 		if isCached {
 			checkCacheHitCounter.Inc()

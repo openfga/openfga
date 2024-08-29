@@ -36,55 +36,29 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
-	if r != nil {
-		return r.StoreID
-	}
-
-	return ""
+	return r.StoreID
 }
 
 func (r *ResolveCheckRequest) GetAuthorizationModelID() string {
-	if r != nil {
-		return r.AuthorizationModelID
-	}
-
-	return ""
+	return r.AuthorizationModelID
 }
 
 func (r *ResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
-	if r != nil {
-		return r.TupleKey
-	}
-
-	return nil
+	return r.TupleKey
 }
 
 func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
-	if r != nil {
-		return r.ContextualTuples
-	}
-
-	return nil
+	return r.ContextualTuples
 }
 
 func (r *ResolveCheckRequest) GetRequestMetadata() *ResolveCheckRequestMetadata {
-	if r != nil {
-		return r.RequestMetadata
-	}
-
-	return nil
+	return r.RequestMetadata
 }
 
 func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
-	if r != nil {
-		return r.Context
-	}
-	return nil
+	return r.Context
 }
 
 func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
-	if r != nil {
-		return r.Consistency
-	}
-	return openfgav1.ConsistencyPreference_UNSPECIFIED
+	return r.Consistency
 }
