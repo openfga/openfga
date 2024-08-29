@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openfga/openfga/pkg/checkutil"
+	"github.com/openfga/openfga/internal/checkutil"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -431,7 +431,7 @@ func (c *LocalChecker) Close() {
 func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckRequest, tk *openfgav1.TupleKey) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
-		childRequest := clone(parentReq)
+		childRequest := parentReq.clone()
 		childRequest.TupleKey = tk
 		childRequest.GetRequestMetadata().Depth--
 
@@ -562,7 +562,7 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	)
 	defer filteredIter.Stop()
 
-	allowed, err := checkutil.TupleIDInSortedSet(ctx, filteredIter, objectIDs)
+	allowed, err := checkutil.ObjectIDInSortedSet(ctx, filteredIter, objectIDs)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -989,7 +989,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 		req.GetTupleKey().GetUser(),
 	)
 
-	childRequest := clone(req)
+	childRequest := req.clone()
 	childRequest.TupleKey = rewrittenTupleKey
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {

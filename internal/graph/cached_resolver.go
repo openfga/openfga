@@ -165,7 +165,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 			checkCacheHitCounter.Inc()
 
 			// return a copy to avoid races across goroutines
-			return CloneResolveCheckResponse(cachedResp.Value), nil
+			return cachedResp.Value.clone(), nil
 		}
 	}
 
@@ -179,7 +179,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	// the cached subproblem's resolution metadata doesn't necessarily reflect
 	// the actual number of database reads for the inflight request, so set it
 	// to 0 so it doesn't bias the resolution metadata negatively
-	clonedResp := CloneResolveCheckResponse(resp)
+	clonedResp := resp.clone()
 	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
 
 	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)

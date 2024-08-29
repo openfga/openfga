@@ -152,7 +152,7 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 	}
 }
 
-func TestTupleIDInSortedSet(t *testing.T) {
+func TestObjectIDInSortedSet(t *testing.T) {
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		if tupleKey.GetCondition().GetName() == "condition1" {
 			return true, nil
@@ -206,7 +206,7 @@ func TestTupleIDInSortedSet(t *testing.T) {
 			for _, item := range tt.objectIDs {
 				objectIDs.Add(item)
 			}
-			result, err := TupleIDInSortedSet(context.Background(), iter, objectIDs)
+			result, err := ObjectIDInSortedSet(context.Background(), iter, objectIDs)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {

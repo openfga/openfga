@@ -50,7 +50,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 	}, orig.VisitedPaths)
 
 	// now, clone the orig and update the orig
-	cloned := clone(orig)
+	cloned := orig.clone()
 	orig.GetRequestMetadata().DatastoreQueryCount++
 	orig.GetRequestMetadata().DispatchCounter.Add(5)
 	orig.VisitedPaths = map[string]struct{}{

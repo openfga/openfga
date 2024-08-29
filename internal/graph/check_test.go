@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/checkutil"
+	"github.com/openfga/openfga/internal/checkutil"
 
 	"github.com/openfga/openfga/internal/mocks"
 

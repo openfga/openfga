@@ -37,8 +37,8 @@ func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 	}
 }
 
-// TupleIDInSortedSet returns whether any of the iterator ID is in sorted set.
-func TupleIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
+// ObjectIDInSortedSet returns whether any of the object IDs in the tuples given by the iterator is in the input set of objectIDs.
+func ObjectIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
 	for {
 		t, err := filteredIter.Next(ctx)
 		if errors.Is(err, storage.ErrIteratorDone) {

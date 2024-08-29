@@ -1,10 +1,10 @@
 package graph
 
-// CloneResolveCheckResponse clones the provided ResolveCheckResponse.
+// clone clones the provided ResolveCheckResponse.
 //
 // If 'r' defines a nil ResolutionMetadata then this function returns
 // an empty value struct for the resolution metadata instead of nil.
-func CloneResolveCheckResponse(r *ResolveCheckResponse) *ResolveCheckResponse {
+func (r *ResolveCheckResponse) clone() *ResolveCheckResponse {
 	resolutionMetadata := &ResolveCheckResponseMetadata{
 		DatastoreQueryCount: 0,
 		CycleDetected:       false,

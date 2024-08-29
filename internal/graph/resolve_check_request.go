@@ -17,7 +17,7 @@ type ResolveCheckRequest struct {
 	Consistency          openfgav1.ConsistencyPreference
 }
 
-func clone(r *ResolveCheckRequest) *ResolveCheckRequest {
+func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	return &ResolveCheckRequest{
 		StoreID:              r.StoreID,
 		AuthorizationModelID: r.AuthorizationModelID,
