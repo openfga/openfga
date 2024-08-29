@@ -8,9 +8,10 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/errors"
@@ -157,9 +158,8 @@ type doc
 			AuthorizationModelId: ulid.Make().String(),
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
-		require.Error(t, err, errors.ErrUnknown)
+		require.ErrorIs(t, err, errors.ErrUnknown)
 	})
-
 }
 
 func TestBuildCheckContext(t *testing.T) {
@@ -223,7 +223,7 @@ func TestTranslateError(t *testing.T) {
 		},
 		`4`: {
 			inputError:    errors.ErrUnknown,
-			expectedError: serverErrors.NewInternalError("Internal Server Error", errors.ErrUnknown),
+			expectedError: errors.ErrUnknown,
 		},
 	}
 
