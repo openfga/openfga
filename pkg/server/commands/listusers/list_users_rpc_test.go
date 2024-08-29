@@ -1060,7 +1060,7 @@ func TestListUsersConditions(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
 			},
-			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - context is missing parameters '[param2]'",
+			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - tuple 'document:1#viewer@user:maria' is missing context parameters '[param2]",
 		},
 		{
 			name: "multiple_conditions_all_params_provided",
@@ -3538,7 +3538,7 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 			},
 			inputConfigDeadline: 0 * time.Millisecond, // infinite
 			inputReadDelay:      50 * time.Millisecond,
-			expectError:         "context is missing parameters '[x]'",
+			expectError:         "failed to evaluate relationship condition: 'condX' - tuple 'repo:target#admin@user:1' is missing context parameters '[x]",
 		},
 		`deadline_very_small_returns_nothing`: {
 			inputModel: `

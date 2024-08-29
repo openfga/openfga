@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 
@@ -468,24 +469,16 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		condMet, err := tupleConditionMet(ctx, req.GetContext(), typesys, tupleKey)
 		if err != nil {
 			errs = errors.Join(errs, err)
-			break LoopOnIterator
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			err := condition.NewEvaluationError(
-				tupleKey.GetCondition().GetName(),
-				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-					tuple.TupleKeyToString(tupleKey),
-					condEvalResult.MissingParameters),
-			)
+			if !errors.Is(err, condition.ErrEvaluationFailed) {
+				break LoopOnIterator
+			}
 			telemetry.TraceError(span, err)
-			errs = errors.Join(errs, err)
 		}
 
-		if !condEvalResult.ConditionMet {
+		if !condMet {
 			continue
 		}
 
@@ -897,24 +890,16 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
+		condMet, err := tupleConditionMet(ctx, req.GetContext(), typesys, tupleKey)
 		if err != nil {
 			errs = errors.Join(errs, err)
-			break LoopOnIterator
-		}
-
-		if len(condEvalResult.MissingParameters) > 0 {
-			err := condition.NewEvaluationError(
-				tupleKey.GetCondition().GetName(),
-				fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-					tuple.TupleKeyToString(tupleKey),
-					condEvalResult.MissingParameters),
-			)
+			if !errors.Is(err, condition.ErrEvaluationFailed) {
+				break LoopOnIterator
+			}
 			telemetry.TraceError(span, err)
-			errs = errors.Join(errs, err)
 		}
 
-		if !condEvalResult.ConditionMet {
+		if !condMet {
 			continue
 		}
 
@@ -965,4 +950,22 @@ func trySendResult(ctx context.Context, user foundUser, foundUsersCh chan<- foun
 	case foundUsersCh <- user:
 		return
 	}
+}
+
+func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem, t *openfgav1.TupleKey) (bool, error) {
+	condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqCtx)
+	if err != nil {
+		return false, err
+	}
+
+	if len(condEvalResult.MissingParameters) > 0 {
+		return false, condition.NewEvaluationError(
+			t.GetCondition().GetName(),
+			fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+				tuple.TupleKeyToString(t),
+				condEvalResult.MissingParameters),
+		)
+	}
+
+	return condEvalResult.ConditionMet, nil
 }
