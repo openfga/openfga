@@ -34,11 +34,6 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
-	err := s.validateConsistencyRequest(req.GetConsistency())
-	if err != nil {
-		return nil, err
-	}
-
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),

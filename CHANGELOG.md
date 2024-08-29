@@ -11,6 +11,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 * Throttling metrics `throttled_requests_count` and `throttled_requests_timed_out_count` for observing effects of throttling configurations [#1863](https://github.com/openfga/openfga/pull/1863)
 
+### Changed
+
+* Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options feature PR](https://github.com/openfga/openfga/pull/1764) for usage details. [#1889](https://github.com/openfga/openfga/pull/1889)
+
 ## [1.5.9] - 2024-08-13
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
