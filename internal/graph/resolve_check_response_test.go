@@ -42,4 +42,22 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 		require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 	})
+
+	t.Run("clone_nil_ResolutionMetadata", func(t *testing.T) {
+		var resp2 *ResolveCheckResponse
+		clonedResp2 := resp2.clone()
+
+		require.NotSame(t, resp2, clonedResp2)
+		require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
+		require.NotNil(t, clonedResp2.ResolutionMetadata)
+		require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
+		require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
+	})
+}
+
+func TestResolveCheckResponseDefaultValue(t *testing.T) {
+	var r *ResolveCheckResponse
+	require.False(t, r.GetCycleDetected())
+	require.False(t, r.GetAllowed())
+	require.Nil(t, r.GetResolutionMetadata())
 }
