@@ -1,4 +1,4 @@
-// Package check contains integration tests for the Check API. TODO not just check anymore
+// Package check contains integration tests for the query APIs (ListObjects, ListUsers and Check)
 package check
 
 import (
