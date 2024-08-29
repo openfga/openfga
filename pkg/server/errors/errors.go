@@ -35,23 +35,21 @@ type InternalError struct {
 }
 
 func (e InternalError) Error() string {
+	// hide the internal error in the message
 	return e.public.Error()
 }
 
-func (e InternalError) Is(target error) bool {
-	return target.Error() == e.Error()
-}
-
-func (e InternalError) InternalError() string {
-	return e.internal.Error()
-}
-
-func (e InternalError) Internal() error {
+// Unwrap is called by errors.Is. It returns the underlying issue.
+func (e InternalError) Unwrap() error {
 	return e.internal
 }
 
 func (e InternalError) GRPCStatus() *status.Status {
-	return status.New(codes.Code(openfgav1.InternalErrorCode_internal_error), e.public.Error())
+	st, ok := status.FromError(e.public)
+	if ok {
+		return st
+	}
+	return status.New(codes.Unknown, e.public.Error())
 }
 
 // NewInternalError returns an error that is decorated with a public-facing error message.
