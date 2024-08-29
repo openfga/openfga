@@ -56,59 +56,38 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	usersetA := a.GetUserset()
 	usersetB := b.GetUserset()
 
-	_, okA := usersetA.(*openfgav1.Userset_This)
-	_, okB := usersetB.(*openfgav1.Userset_This)
-	require.Equal(t, okA, okB, "one is Userset_This")
-
-	cuA, okA := usersetA.(*openfgav1.Userset_ComputedUserset)
-	cuB, okB := usersetB.(*openfgav1.Userset_ComputedUserset)
-	require.Equal(t, okA, okB, "one is Userset_ComputedUserset")
-	if cuA == nil || cuB == nil {
-		require.Equal(t, cuA, cuB)
-		return
+	switch x := usersetA.(type) {
+	case *openfgav1.Userset_This:
+		_, ok := usersetB.(*openfgav1.Userset_This)
+		require.True(t, ok)
+	case *openfgav1.Userset_ComputedUserset:
+		y, ok := usersetB.(*openfgav1.Userset_ComputedUserset)
+		require.True(t, ok)
+		objectRelationEquals(t, x.ComputedUserset, y.ComputedUserset)
+	case *openfgav1.Userset_TupleToUserset:
+		y, ok := usersetB.(*openfgav1.Userset_TupleToUserset)
+		require.True(t, ok)
+		tupleToUsersetEquals(t, x.TupleToUserset, y.TupleToUserset)
+	case *openfgav1.Userset_Union:
+		y, ok := usersetB.(*openfgav1.Userset_Union)
+		require.True(t, ok)
+		usersetsEquals(t, x.Union, y.Union)
+	case *openfgav1.Userset_Intersection:
+		y, ok := usersetB.(*openfgav1.Userset_Intersection)
+		require.True(t, ok)
+		usersetsEquals(t, x.Intersection, y.Intersection)
+	case *openfgav1.Userset_Difference:
+		y, ok := usersetB.(*openfgav1.Userset_Difference)
+		require.True(t, ok)
+		if x.Difference == nil || y.Difference == nil {
+			require.Equal(t, x.Difference, y.Difference)
+			return
+		}
+		rewriteEquals(t, x.Difference.GetBase(), y.Difference.GetBase())
+		rewriteEquals(t, x.Difference.GetSubtract(), y.Difference.GetSubtract())
+	default:
+		require.Equal(t, usersetA, usersetB)
 	}
-	objectRelationEquals(t, cuA.ComputedUserset, cuB.ComputedUserset)
-
-	ttuA, okA := usersetA.(*openfgav1.Userset_TupleToUserset)
-	ttuB, okB := usersetB.(*openfgav1.Userset_TupleToUserset)
-	require.Equal(t, okA, okB, "one is Userset_TupleToUserset")
-	if ttuA == nil || ttuB == nil {
-		require.Equal(t, ttuA, ttuB)
-		return
-	}
-	tupleToUsersetEquals(t, ttuA.TupleToUserset, ttuB.TupleToUserset)
-
-	uA, okA := usersetA.(*openfgav1.Userset_Union)
-	uB, okB := usersetB.(*openfgav1.Userset_Union)
-	require.Equal(t, okA, okB, "one is Userset_Union")
-	if uA == nil || uB == nil {
-		require.Equal(t, uA, uB)
-		return
-	}
-	usersetsEquals(t, uA.Union, uB.Union)
-
-	iA, okA := usersetA.(*openfgav1.Userset_Intersection)
-	iB, okB := usersetB.(*openfgav1.Userset_Intersection)
-	require.Equal(t, okA, okB, "one is Userset_Intersection")
-	if iA == nil || iB == nil {
-		require.Equal(t, iA, iB)
-		return
-	}
-	usersetsEquals(t, iA.Intersection, iB.Intersection)
-
-	dA, okA := usersetA.(*openfgav1.Userset_Difference)
-	dB, okB := usersetB.(*openfgav1.Userset_Difference)
-	require.Equal(t, okA, okB, "one is Userset_Difference")
-	if dA == nil || dB == nil {
-		require.Equal(t, dA, dB)
-		return
-	}
-	if dA.Difference == nil || dB.Difference == nil {
-		require.Equal(t, dA.Difference, dB.Difference)
-		return
-	}
-	rewriteEquals(t, dA.Difference.GetBase(), dB.Difference.GetBase())
-	rewriteEquals(t, dA.Difference.GetSubtract(), dB.Difference.GetSubtract())
 }
 
 func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
@@ -121,27 +100,19 @@ func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
 
 	rwA := a.GetRelationOrWildcard()
 	rwB := b.GetRelationOrWildcard()
-	if rwA == nil || rwB == nil {
-		require.Equal(t, rwA, rwB)
-		return
-	}
-	wA, okA := rwA.(*openfgav1.RelationReference_Wildcard)
-	wB, okB := rwB.(*openfgav1.RelationReference_Wildcard)
-	require.Equal(t, okA, okB)
-	if wA == nil || wB == nil {
-		require.Equal(t, wA, wB)
-		return
-	}
-	require.Equal(t, wA.Wildcard, wB.Wildcard)
 
-	rA, okA := rwA.(*openfgav1.RelationReference_Relation)
-	rB, okB := rwB.(*openfgav1.RelationReference_Relation)
-	require.Equal(t, okA, okB)
-	if rA == nil || rB == nil {
-		require.Equal(t, rA, rB)
-		return
+	switch x := rwA.(type) {
+	case *openfgav1.RelationReference_Wildcard:
+		y, ok := rwB.(*openfgav1.RelationReference_Wildcard)
+		require.True(t, ok)
+		require.Equal(t, x.Wildcard, y.Wildcard)
+	case *openfgav1.RelationReference_Relation:
+		y, ok := rwB.(*openfgav1.RelationReference_Relation)
+		require.True(t, ok)
+		require.Equal(t, x.Relation, y.Relation)
+	default:
+		require.Equal(t, rwA, rwB)
 	}
-	require.Equal(t, rA.Relation, rB.Relation)
 }
 
 func relationTypeInfoEquals(t *testing.T, a, b *openfgav1.RelationTypeInfo) {
