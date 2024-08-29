@@ -96,16 +96,16 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count", "consistency"})
 
-	throttleSucceededCounter = promauto.NewCounter(prometheus.CounterOpts{
+	throttledRequestCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "throttled_requests_success_count",
-		Help:      "The total number of requests that have been throttled and have returned a successful response.",
+		Name:      "throttled_requests_count",
+		Help:      "The total number of requests that have been throttled regardless if it has timed-out or not.",
 	})
 
-	throttleTimeOutCounter = promauto.NewCounter(prometheus.CounterOpts{
+	throttledRequestTimeOutCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_timed_out_count",
-		Help:      "The total number of requests that have been throttled but have timed-out and returned an unsuccessful responses.",
+		Help:      "The total number of requests that have been throttled but have timed-out. In the case of ListUsers and ListObjects, these requests still succeed with partial results.",
 	})
 )
 
@@ -775,7 +775,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttleSucceededCounter.Inc()
+		if result.ResolutionMetadata.DidTimeOut {
+			throttledRequestTimeOutCounter.Inc()
+		} else {
+			throttledRequestCounter.Inc()
+		}
 	}
 
 	return &openfgav1.ListObjectsResponse{
@@ -879,7 +883,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttleSucceededCounter.Inc()
+		throttledRequestCounter.Inc()
 	}
 
 	return nil
@@ -1040,7 +1044,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		// Note for ListObjects:
 		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			throttleTimeOutCounter.Inc()
+			throttledRequestTimeOutCounter.Inc()
 			return nil, serverErrors.ThrottledTimeout
 		}
 
@@ -1083,7 +1087,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttleSucceededCounter.Inc()
+		throttledRequestCounter.Inc()
 	}
 
 	return res, nil

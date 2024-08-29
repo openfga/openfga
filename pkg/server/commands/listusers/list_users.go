@@ -118,6 +118,9 @@ type listUsersResponseMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// DidTimeOut indicates if the request timed-out
+	DidTimeOut bool
 }
 
 func (r *listUsersResponse) GetUsers() []*openfgav1.User {

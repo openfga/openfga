@@ -72,6 +72,9 @@ type ListObjectsResolutionMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// DidTimeOut indicates if the request timed-out
+	DidTimeOut bool
 }
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
@@ -79,6 +82,7 @@ func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 		DatastoreQueryCount: new(uint32),
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
+		DidTimeOut:          false,
 	}
 }
 
@@ -306,6 +310,9 @@ func (q *ListObjectsQuery) evaluate(
 				Consistency:      req.GetConsistency(),
 			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					resolutionMetadata.DidTimeOut = true
+				}
 				errChan <- err
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
@@ -448,6 +455,7 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+				resolutionMetadata.DidTimeOut = true
 				continue
 			}
 

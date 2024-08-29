@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -124,7 +125,13 @@ func (s *Server) ListUsers(
 
 	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
 	if wasRequestThrottled {
-		throttleSucceededCounter.Inc()
+		if resp.GetMetadata().DidTimeOut {
+			fmt.Println("listusers throttle yes timeout")
+			throttledRequestTimeOutCounter.Inc()
+		} else {
+			fmt.Println("listusers throttle no timeout")
+			throttledRequestCounter.Inc()
+		}
 	}
 
 	return &openfgav1.ListUsersResponse{
