@@ -1226,120 +1226,132 @@ condition xcond(x: string) {
 				}
 				for _, assertion := range stage.CheckAssertions {
 					t.Run(fmt.Sprintf("assertion_check_%s", assertion.Name), func(t *testing.T) {
-						detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
-
-						var tupleKey *openfgav1.CheckRequestTupleKey
-						if assertion.Tuple != nil {
-							tupleKey = &openfgav1.CheckRequestTupleKey{
-								User:     assertion.Tuple.GetUser(),
-								Relation: assertion.Tuple.GetRelation(),
-								Object:   assertion.Tuple.GetObject(),
-							}
-						}
-						resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: modelID,
-							TupleKey:             tupleKey,
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								// TODO
-								TupleKeys: []*openfgav1.TupleKey{},
-							},
-							Context: assertion.Context,
-							Trace:   true,
-						})
-
-						if assertion.ErrorCode == 0 {
-							require.NoError(t, err, detailedInfo)
-							require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
-						} else {
-							require.Error(t, err, detailedInfo)
-							e, ok := status.FromError(err)
-							require.True(t, ok, detailedInfo)
-							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
-						}
+						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
 					})
 					t.Run(fmt.Sprintf("assertion_list_objects_%s", assertion.Name), func(t *testing.T) {
-						objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
-						resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: modelID,
-							Type:                 objectType,
-							User:                 assertion.Tuple.GetUser(),
-							Relation:             assertion.Tuple.GetRelation(),
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								// TODO
-								TupleKeys: []*openfgav1.TupleKey{},
-							},
-							Context: assertion.Context,
-						})
-
-						if assertion.ListObjectsErrorCode != 0 {
-							require.Error(t, err)
-							e, ok := status.FromError(err)
-							require.True(t, ok)
-							require.Equal(t, assertion.ListObjectsErrorCode, int(e.Code()))
-							return
-						}
-						if assertion.ErrorCode == 0 {
-							require.NoError(t, err)
-							if assertion.Expectation {
-								// >=, not >, because some users have access to more than one object
-								require.GreaterOrEqual(t, len(resp.GetObjects()), 1, "at least one object should be returned")
-								require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be in the list")
-							} else {
-								require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the list")
-							}
-						}
+						assertListObjects(ctx, t, assertion, client, storeID, modelID)
 					})
 					t.Run(fmt.Sprintf("assertion_list_users_%s", assertion.Name), func(t *testing.T) {
-						objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
-						userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
-						userObjectType, _ := tuple.SplitObject(userObject)
-						relation := assertion.Tuple.GetRelation()
-						resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: modelID,
-							Object:               &openfgav1.Object{Type: objectType, Id: objectID},
-							Relation:             relation,
-							UserFilters:          []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
-							ContextualTuples:     []*openfgav1.TupleKey{}, // TODO
-							Context:              assertion.Context,
-						})
-
-						if assertion.ListUsersErrorCode != 0 {
-							require.Error(t, err)
-							e, ok := status.FromError(err)
-							require.True(t, ok)
-							require.Equal(t, assertion.ListUsersErrorCode, int(e.Code()))
-							return
-						}
-
-						if assertion.ErrorCode == 0 {
-							require.NoError(t, err)
-							responseUsers := make([]string, len(resp.GetUsers()))
-							wildcardUserPresent := false
-							for i, u := range resp.GetUsers() {
-								responseUsers[i] = tuple.UserProtoToString(u)
-								if strings.HasSuffix(responseUsers[i], ":*") {
-									wildcardUserPresent = true
-								}
-							}
-							if assertion.Expectation {
-								if wildcardUserPresent {
-									return
-								}
-								// >=, not >, because some objects are related to more than one user
-								require.GreaterOrEqual(t, len(resp.GetUsers()), 1, "at least one user should be returned")
-								require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be in the list")
-							} else {
-								require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be in the list")
-							}
-						}
+						assertListUsers(ctx, t, assertion, client, storeID, modelID)
 					})
 				}
 			})
 		}
 	})
+}
+
+func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+	detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
+
+	var tupleKey *openfgav1.CheckRequestTupleKey
+	if assertion.Tuple != nil {
+		tupleKey = &openfgav1.CheckRequestTupleKey{
+			User:     assertion.Tuple.GetUser(),
+			Relation: assertion.Tuple.GetRelation(),
+			Object:   assertion.Tuple.GetObject(),
+		}
+	}
+	resp, err := client.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			// TODO
+			TupleKeys: []*openfgav1.TupleKey{},
+		},
+		Context: assertion.Context,
+		Trace:   true,
+	})
+
+	if assertion.ErrorCode == 0 {
+		require.NoError(t, err, detailedInfo)
+		require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
+	} else {
+		require.Error(t, err, detailedInfo)
+		e, ok := status.FromError(err)
+		require.True(t, ok, detailedInfo)
+		require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+	}
+}
+
+func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client ClientInterface, storeID string, modelID string) {
+	objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
+	resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Type:                 objectType,
+		User:                 assertion.Tuple.GetUser(),
+		Relation:             assertion.Tuple.GetRelation(),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			// TODO
+			TupleKeys: []*openfgav1.TupleKey{},
+		},
+		Context: assertion.Context,
+	})
+
+	if assertion.ListObjectsErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ListObjectsErrorCode, int(e.Code()))
+		return
+	}
+	if assertion.ErrorCode == 0 {
+		require.NoError(t, err)
+		if assertion.Expectation {
+			// >=, not >, because some users have access to more than one object
+			require.GreaterOrEqual(t, len(resp.GetObjects()), 1, "at least one object should be returned")
+			require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be returned in the response")
+		} else {
+			require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the response")
+		}
+	}
+}
+
+func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client ClientInterface, storeID string, modelID string) {
+	objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
+	userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
+	userObjectType, _ := tuple.SplitObject(userObject)
+	relation := assertion.Tuple.GetRelation()
+	resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Object:               &openfgav1.Object{Type: objectType, Id: objectID},
+		Relation:             relation,
+		UserFilters:          []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
+		ContextualTuples:     []*openfgav1.TupleKey{}, // TODO
+		Context:              assertion.Context,
+	})
+
+	if assertion.ListUsersErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ListUsersErrorCode, int(e.Code()))
+		return
+	}
+
+	if assertion.ErrorCode == 0 {
+		require.NoError(t, err)
+		responseUsers := make([]string, len(resp.GetUsers()))
+		wildcardUserPresent := false
+		for i, u := range resp.GetUsers() {
+			responseUsers[i] = tuple.UserProtoToString(u)
+			if strings.HasSuffix(responseUsers[i], ":*") {
+				wildcardUserPresent = true
+			}
+		}
+		if assertion.Expectation {
+			if wildcardUserPresent {
+				return
+			}
+			// >=, not >, because some objects are related to more than one user
+			require.GreaterOrEqual(t, len(responseUsers), 1, "at least one user should be returned")
+			require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be returned in response")
+		} else {
+			require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
+		}
+	}
 }
 
 func runTestMatrixSuite(t *testing.T, client ClientInterface) {
