@@ -10,8 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 
-* Consistency options has been moved out of experimental and is now enabled by default. The associated experimental option has been removed. [#1889](https://github.com/openfga/openfga/pull/1889)
-  - See [#1764](https://github.com/openfga/openfga/pull/1764) for full details on this feature
+* Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options feature PR](https://github.com/openfga/openfga/pull/1764) for usage details. [#1889](https://github.com/openfga/openfga/pull/1889)
 
 ## [1.5.9] - 2024-08-13
 
