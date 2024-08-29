@@ -7,6 +7,7 @@ import (
 	"math"
 	"testing"
 
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -204,124 +205,6 @@ var matrix = individualTest{
 	Name: "complete_testing_model",
 	Stages: []*stage{
 		{
-			Name: "save model",
-			Model: `
-model
-  schema 1.1
-type user
-type employee
-# yes, wildcard is a userset instead of a direct, makes it easier and tests the userset path
-type directs-user
-  relations
-    define direct: [user]
-    define direct_cond: [user with xcond]
-    define direct_wild: [user:*]
-    define direct_wild_cond: [user:* with xcond]
-    define direct_and_direct_cond: [user, user with xcond, employee]
-    define direct_and_direct_wild: [user, user:*, employee:*]
-    define direct_and_direct_wild_cond: [user, user:* with xcond]
-    define direct_cond_and_direct_wild: [user with xcond, user:*]
-    define direct_cond_and_direct_wild_cond: [user with xcond, user:* with xcond]
-    define direct_wildcard_and_direct_wildcard_cond: [user:*, user:* with xcond]
-    define computed: direct
-    define computed_cond: direct_cond
-    define computed_wild: direct_wild
-    define computed_wild_cond: direct_wild_cond
-    define computed_computed: computed
-    define computed_computed_computed: computed_computed
-    define or_computed: computed or computed_cond or direct_wild
-    define and_computed: computed_cond and computed_wild
-    define butnot_computed: computed_wild_cond but not computed_computed
-    define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
-    define tuple_cycle3: [user, complexity3#cycle_nested]
-    define compute_tuple_cycle3: tuple_cycle3
-type directs-employee
-  relations
-    define direct: [employee]
-    define computed: direct
-    define direct_cond: [employee with xcond]
-    define direct_wild: [employee:*]
-    define direct_wild_cond: [employee:* with xcond]
-type usersets-user
-  relations
-    define userset: [directs-user#direct, directs-employee#direct]
-    define userset_to_computed: [directs-user#computed, directs-employee#computed]
-    define userset_to_computed_cond: [directs-user#computed_cond, directs-employee#direct_cond]
-    define userset_to_computed_wild: [directs-user#computed_wild, directs-employee#direct_wild]
-    define userset_to_computed_wild_cond: [directs-user#direct_wild_cond, directs-employee#direct_wild_cond]
-    define userset_cond: [directs-user#direct with xcond]
-    define userset_cond_to_computed: [directs-user#computed with xcond]
-    define userset_cond_to_computed_cond: [directs-user#computed_cond with xcond]
-    define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
-    define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
-    define userset_to_or_computed: [directs-user#or_computed]
-    define userset_to_butnot_computed: [directs-user#butnot_computed]
-    define userset_to_and_computed:[directs-user#and_computed]
-    define userset_recursive: [user, usersets-user#userset_recursive]
-    define or_userset: userset or userset_to_computed_cond
-    define and_userset: userset_to_computed_cond and userset_to_computed_wild
-    define butnot_userset: userset_cond_to_computed_wild but not userset_cond
-    define nested_or_userset: userset_to_or_computed or userset_to_butnot_computed
-    define nested_and_userset: userset_to_and_computed and userset_to_or_computed
-    define ttu_direct_userset: [ttus#direct_pa_direct_ch]
-    define ttu_direct_cond_userset: [ttus#direct_cond_pa_direct_ch]
-    define ttu_or_direct_userset: [ttus#or_comp_from_direct_parent]
-    define ttu_and_direct_userset: [ttus#and_comp_from_direct_parent]
-    define tuple_cycle2: [ttus#tuple_cycle2]
-    define tuple_cycle3: [directs-user#compute_tuple_cycle3]
-type ttus
-  relations
-    define direct_parent: [directs-user]
-    define mult_parent_types: [directs-user, directs-employee]
-    define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
-    define direct_cond_parent: [directs-user with xcond]
-    define userset_parent: [usersets-user]
-    define userset_cond_parent: [usersets-user with xcond]
-    define tuple_cycle2: tuple_cycle2 from direct_parent
-    define tuple_cycle3: tuple_cycle3 from userset_parent
-    define direct_pa_direct_ch: direct from mult_parent_types
-    define direct_cond_pa_direct_ch: direct from mult_parent_types_cond
-    define or_comp_from_direct_parent: or_computed from direct_parent
-    define and_comp_from_direct_parent: and_computed from direct_cond_parent
-    define butnot_comp_from_direct_parent: butnot_computed from direct_cond_parent
-    define userset_pa_userset_ch: userset from userset_parent
-    define userset_pa_userset_comp_ch: userset_to_computed from userset_parent
-    define userset_pa_userset_comp_cond_ch: userset_to_computed_cond from userset_parent
-    define userset_pa_userset_comp_wild_ch: userset_to_computed_wild from userset_parent
-    define userset_pa_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_parent
-    define userset_cond_userset_ch: userset from userset_cond_parent
-    define userset_cond_userset_comp_ch: userset_to_computed from userset_cond_parent
-    define userset_cond_userset_comp_cond_ch: userset_to_computed_cond from userset_cond_parent
-    define userset_cond_userset_comp_wild_ch: userset_to_computed_wild from userset_cond_parent
-    define userset_cond_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_cond_parent
-    define or_ttu: direct_pa_direct_ch or direct_cond_pa_direct_ch
-    define and_ttu: or_comp_from_direct_parent and direct_pa_direct_ch
-    define nested_butnot_ttu: or_comp_from_direct_parent but not userset_pa_userset_comp_wild_ch
-type complexity3
-  relations
-    define ttu_parent: [ttus]
-    define userset_parent: [usersets-user]
-    define ttu_userset_ttu: ttu_direct_userset from userset_parent
-    define ttu_ttu_userset: userset_pa_userset_ch from ttu_parent
-    define userset_ttu_userset: [ttus#userset_pa_userset_ch]
-    define userset_userset_ttu: [usersets-user#ttu_direct_userset] 
-    define compute_ttu_userset_ttu: ttu_userset_ttu
-    define compute_userset_ttu_userset: userset_ttu_userset
-    define or_compute_complex3: compute_ttu_userset_ttu or compute_userset_ttu_userset
-    define and_nested_complex3: [ttus#and_ttu] and compute_ttu_userset_ttu 
-    define cycle_nested: [ttus#tuple_cycle3]   
-type complexity4
-  relations
-    define userset_ttu_userset_ttu: [complexity3#ttu_userset_ttu]
-    define ttu_ttu_ttu_userset: ttu_ttu_userset from parent
-    define userset_or_compute_complex3: [complexity3#or_compute_complex3]
-    define ttu_and_nested_complex3: and_nested_complex3 from parent
-    define or_complex4: userset_or_compute_complex3 or ttu_and_nested_complex3
-    define parent: [complexity3]
-condition xcond(x: string) {
-  x == '1'
-}`,
-		}, {
 			Name: "object_directs_user_relation_direct",
 			Tuples: []*openfgav1.TupleKey{
 				{Object: "directs-user:1", Relation: "direct", User: "user:valid"},
@@ -535,37 +418,772 @@ condition xcond(x: string) {
 				},
 			},
 		},
+		{
+			Name: "object_directs_user_relation_direct_and_direct_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
+				{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:        "ignore_valid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "ignore_invalid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+				{
+					Name:        "ignore_valid_cond_invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+				{
+					Name:        "ignore_invalid_cond_invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:      "valid_userwithcond_user",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_cond_valid_validwithcond_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_cond_validwithcond_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "object_directs_user_relation_direct_and_direct_wild",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:1", Relation: "direct_and_direct_wild", User: "user:*"},
+				{Object: "directs-user:2", Relation: "direct_and_direct_wild", User: "user:viewer"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_employee",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild", User: "employee:valid"},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_not_public",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild", User: "user:valid"},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_employee_not_public",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild", User: "employee:valid"},
+					Expectation: false,
+				},
+				{
+					Name:        "viewer_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild", User: "user:viewer"},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "object_directs_user_relation_direct_and_direct_wild_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:*"},
+				{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:      "valid_user_not_public",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:      "valid_user_no_cond",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_user_with_invalid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_with_valid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "ignore_valid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "ignore_invalid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "object_directs_user_relation_direct_cond_and_direct_wild",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:*"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:      "valid_user_no_cond",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_user_invalid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_valid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_user_public_doc",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_user_no_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:        "invalid_user_invalid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "invalid_user_valid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+				{
+					Name:        "invalid_user_public_doc",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_user_ignore_invalid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_user_with_valid_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "ignore_valid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "object_directs_user_relation_direct_cond_and_direct_wild_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:      "valid_user_no_cond",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "invalid_user_no_cond",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_cond_invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+				{
+					Name:        "invalid_cond_invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:      "valid_user_no_cond_public",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_user_with_invalid_cond_public",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_with_valid_cond_public",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+			},
+		},
+
+		{
+			Name: "object_directs_user_relation_direct_wildcard_and_direct_wildcard_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:2", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:*"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:      "valid_user_no_cond",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_cond_valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_no_cond_public",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "computed",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:computed", Relation: "direct", User: "user:valid"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed", Relation: "computed", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed", Relation: "computed", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_cond_ignored_falsy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed", Relation: "computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_cond_ignored_ruthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed", Relation: "computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "computed_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:computed_cond", Relation: "direct_cond", User: "user:valid", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:      "valid_cond_missing",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_cond_falsy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "computed_wild",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:computed_wild", Relation: "direct_wild", User: "user:*"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_1",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild", Relation: "computed_wild", User: "user:random1"},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_2",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild", Relation: "computed_wild", User: "user:random2"},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_1_condition_ignored_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild", Relation: "computed_wild", User: "user:random1"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_1_condition_ignored_falsey",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild", Relation: "computed_wild", User: "user:random1"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "computed_wild_cond",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:computed_wild_cond", Relation: "direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:      "valid_wildcard_cond_missing",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:*"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_wildcard_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:*"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:      "valid_cond_missing",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "valid_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_cond_falsey",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "computed_computed",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:computed_computed", Relation: "direct", User: "user:valid"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed", Relation: "computed_computed", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed", Relation: "computed_computed", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_cond_ignored_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed", Relation: "computed_computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_user_cond_ignored_falsey",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed", Relation: "computed_computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "computed_computed_computed",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:computed_computed_computed", Relation: "direct", User: "user:valid"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "valid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed_computed", Relation: "computed_computed_computed", User: "user:valid"},
+					Expectation: true,
+				},
+				{
+					Name:        "invalid_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed_computed", Relation: "computed_computed_computed", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:        "valid_user_cond_ignored_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed_computed", Relation: "computed_computed_computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "valid_user_cond_ignored_falsey",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:computed_computed_computed", Relation: "computed_computed_computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "or_computed",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:or_computed", Relation: "direct", User: "user:valid1"},
+				{Object: "directs-user:or_computed", Relation: "direct_cond", User: "user:valid2", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:or_computed3", Relation: "direct_wild", User: "user:*"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "path_1",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid1"},
+					Expectation: true,
+				},
+				{
+					Name:        "path_1_no_user",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:invalid"},
+					Expectation: false,
+				},
+				{
+					Name:      "path_2_without_cond",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid2"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "path_2_with_cond_falsey",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid2"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "path_2_with_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid2"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "path_2_invalid_with_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+				{
+					Name:        "path_3",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed3", Relation: "or_computed", User: "user:valid3"},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			Name: "and_computed",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:and_computed", Relation: "direct_cond", User: "user:valid", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:and_computed", Relation: "direct_wild", User: "user:*"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:      "user_valid_missing_cond",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:valid"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "user_valid_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+				{
+					Name:        "user_valid_cond_falsey",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:valid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "user_invalid_cond_truthy",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:invalid"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			Name: "butnot_computed",
+			Tuples: []*openfgav1.TupleKey{
+				{Object: "directs-user:butnot_computed", Relation: "direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+				{Object: "directs-user:butnot_computed", Relation: "direct", User: "user:diff"},
+			},
+			CheckAssertions: []*checktest.Assertion{
+				{
+					Name:        "base_err_diff_true",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+					Expectation: false,
+				},
+				{
+					Name:      "base_err_diff_false",
+					Tuple:     &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
+					ErrorCode: 2000,
+				},
+				{
+					Name:        "base_false_diff_true",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "base_false_diff_false",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+					Expectation: false,
+				},
+				{
+					Name:        "base_true_diff_true",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: false,
+				},
+				{
+					Name:        "base_true_diff_false",
+					Tuple:       &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
+					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+					Expectation: true,
+				},
+			},
+		},
 	},
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
+	model := `model
+  schema 1.1
+type user
+type employee
+# yes, wildcard is a userset instead of a direct, makes it easier and tests the userset path
+type directs-user
+  relations
+    define direct: [user]
+    define direct_cond: [user with xcond]
+    define direct_wild: [user:*]
+    define direct_wild_cond: [user:* with xcond]
+    define direct_and_direct_cond: [user, user with xcond, employee]
+    define direct_and_direct_wild: [user, user:*, employee:*]
+    define direct_and_direct_wild_cond: [user, user:* with xcond]
+    define direct_cond_and_direct_wild: [user with xcond, user:*]
+    define direct_cond_and_direct_wild_cond: [user with xcond, user:* with xcond]
+    define direct_wildcard_and_direct_wildcard_cond: [user:*, user:* with xcond]
+    define computed: direct
+    define computed_cond: direct_cond
+    define computed_wild: direct_wild
+    define computed_wild_cond: direct_wild_cond
+    define computed_computed: computed
+    define computed_computed_computed: computed_computed
+    define or_computed: computed or computed_cond or direct_wild
+    define and_computed: computed_cond and computed_wild
+    define butnot_computed: computed_wild_cond but not computed_computed
+    define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
+    define tuple_cycle3: [user, complexity3#cycle_nested]
+    define compute_tuple_cycle3: tuple_cycle3
+type directs-employee
+  relations
+    define direct: [employee]
+    define computed: direct
+    define direct_cond: [employee with xcond]
+    define direct_wild: [employee:*]
+    define direct_wild_cond: [employee:* with xcond]
+type usersets-user
+  relations
+    define userset: [directs-user#direct, directs-employee#direct]
+    define userset_to_computed: [directs-user#computed, directs-employee#computed]
+    define userset_to_computed_cond: [directs-user#computed_cond, directs-employee#direct_cond]
+    define userset_to_computed_wild: [directs-user#computed_wild, directs-employee#direct_wild]
+    define userset_to_computed_wild_cond: [directs-user#direct_wild_cond, directs-employee#direct_wild_cond]
+    define userset_cond: [directs-user#direct with xcond]
+    define userset_cond_to_computed: [directs-user#computed with xcond]
+    define userset_cond_to_computed_cond: [directs-user#computed_cond with xcond]
+    define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
+    define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
+    define userset_to_or_computed: [directs-user#or_computed]
+    define userset_to_butnot_computed: [directs-user#butnot_computed]
+    define userset_to_and_computed:[directs-user#and_computed]
+    define userset_recursive: [user, usersets-user#userset_recursive]
+    define or_userset: userset or userset_to_computed_cond
+    define and_userset: userset_to_computed_cond and userset_to_computed_wild
+    define butnot_userset: userset_cond_to_computed_wild but not userset_cond
+    define nested_or_userset: userset_to_or_computed or userset_to_butnot_computed
+    define nested_and_userset: userset_to_and_computed and userset_to_or_computed
+    define ttu_direct_userset: [ttus#direct_pa_direct_ch]
+    define ttu_direct_cond_userset: [ttus#direct_cond_pa_direct_ch]
+    define ttu_or_direct_userset: [ttus#or_comp_from_direct_parent]
+    define ttu_and_direct_userset: [ttus#and_comp_from_direct_parent]
+    define tuple_cycle2: [ttus#tuple_cycle2]
+    define tuple_cycle3: [directs-user#compute_tuple_cycle3]
+type ttus
+  relations
+    define direct_parent: [directs-user]
+    define mult_parent_types: [directs-user, directs-employee]
+    define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
+    define direct_cond_parent: [directs-user with xcond]
+    define userset_parent: [usersets-user]
+    define userset_cond_parent: [usersets-user with xcond]
+    define tuple_cycle2: tuple_cycle2 from direct_parent
+    define tuple_cycle3: tuple_cycle3 from userset_parent
+    define direct_pa_direct_ch: direct from mult_parent_types
+    define direct_cond_pa_direct_ch: direct from mult_parent_types_cond
+    define or_comp_from_direct_parent: or_computed from direct_parent
+    define and_comp_from_direct_parent: and_computed from direct_cond_parent
+    define butnot_comp_from_direct_parent: butnot_computed from direct_cond_parent
+    define userset_pa_userset_ch: userset from userset_parent
+    define userset_pa_userset_comp_ch: userset_to_computed from userset_parent
+    define userset_pa_userset_comp_cond_ch: userset_to_computed_cond from userset_parent
+    define userset_pa_userset_comp_wild_ch: userset_to_computed_wild from userset_parent
+    define userset_pa_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_parent
+    define userset_cond_userset_ch: userset from userset_cond_parent
+    define userset_cond_userset_comp_ch: userset_to_computed from userset_cond_parent
+    define userset_cond_userset_comp_cond_ch: userset_to_computed_cond from userset_cond_parent
+    define userset_cond_userset_comp_wild_ch: userset_to_computed_wild from userset_cond_parent
+    define userset_cond_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_cond_parent
+    define or_ttu: direct_pa_direct_ch or direct_cond_pa_direct_ch
+    define and_ttu: or_comp_from_direct_parent and direct_pa_direct_ch
+    define nested_butnot_ttu: or_comp_from_direct_parent but not userset_pa_userset_comp_wild_ch
+type complexity3
+  relations
+    define ttu_parent: [ttus]
+    define userset_parent: [usersets-user]
+    define ttu_userset_ttu: ttu_direct_userset from userset_parent
+    define ttu_ttu_userset: userset_pa_userset_ch from ttu_parent
+    define userset_ttu_userset: [ttus#userset_pa_userset_ch]
+    define userset_userset_ttu: [usersets-user#ttu_direct_userset] 
+    define compute_ttu_userset_ttu: ttu_userset_ttu
+    define compute_userset_ttu_userset: userset_ttu_userset
+    define or_compute_complex3: compute_ttu_userset_ttu or compute_userset_ttu_userset
+    define and_nested_complex3: [ttus#and_ttu] and compute_ttu_userset_ttu 
+    define cycle_nested: [ttus#tuple_cycle3]   
+type complexity4
+  relations
+    define userset_ttu_userset_ttu: [complexity3#ttu_userset_ttu]
+    define ttu_ttu_ttu_userset: ttu_ttu_userset from parent
+    define userset_or_compute_complex3: [complexity3#or_compute_complex3]
+    define ttu_and_nested_complex3: and_nested_complex3 from parent
+    define or_complex4: userset_or_compute_complex3 or ttu_and_nested_complex3
+    define parent: [complexity3]
+condition xcond(x: string) {
+  x == '1'
+}`
 	schemaVersion := params.schemaVersion
 	client := params.client
 	name := matrix.Name
 
 	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
-	require.NoError(t, err)
-	storeID := resp.GetId()
 
-	var modelID string
 	t.Run(name, func(t *testing.T) {
 		stages := matrix.Stages
 		stages = append(stages, ttuCompleteTestingModelTest...)
 		stages = append(stages, complexityThreeTestingModelTest...)
+		stages = append(stages, complexityFourTestingModelTest...)
+		stages = append(stages, usersetCompleteTestingModelTest...)
 		for _, stage := range stages {
 			t.Run(fmt.Sprintf("stage_%s", stage.Name), func(t *testing.T) {
-				if stage.Model != "" {
-					model := testutils.MustTransformDSLToProtoWithID(stage.Model)
-					writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-						StoreId:         storeID,
-						SchemaVersion:   schemaVersion,
-						TypeDefinitions: model.GetTypeDefinitions(),
-						Conditions:      model.GetConditions(),
-					})
-					require.NoError(t, err)
-					modelID = writeModelResponse.GetAuthorizationModelId()
-				}
+				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
+				require.NoError(t, err)
+				storeID := resp.GetId()
+				modelProto := parser.MustTransformDSLToProto(model)
+				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   schemaVersion,
+					TypeDefinitions: modelProto.GetTypeDefinitions(),
+					Conditions:      modelProto.GetConditions(),
+				})
+				require.NoError(t, err)
+				modelID := writeModelResponse.GetAuthorizationModelId()
 
 				tuples := stage.Tuples
 				tuplesLength := len(tuples)
