@@ -1299,8 +1299,7 @@ func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.A
 	if assertion.ErrorCode == 0 {
 		require.NoError(t, err)
 		if assertion.Expectation {
-			// >=, not >, because some users have access to more than one object
-			require.GreaterOrEqual(t, len(resp.GetObjects()), 1, "at least one object should be returned")
+			require.NotEmpty(t, resp.GetObjects(), "at least one object should be returned")
 			require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be returned in the response")
 		} else {
 			require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the response")
@@ -1330,6 +1329,13 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 		require.Equal(t, assertion.ListUsersErrorCode, int(e.Code()))
 		return
 	}
+	if assertion.ErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ErrorCode, int(e.Code()))
+		return
+	}
 
 	if assertion.ErrorCode == 0 {
 		require.NoError(t, err)
@@ -1346,8 +1352,7 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 				// if ListUsers response is [user:*, ...], we don't want to do the assertions below because they will fail.
 				return
 			}
-			// >=, not >, because some objects are related to more than one user
-			require.GreaterOrEqual(t, len(responseUsers), 1, "at least one user should be returned")
+			require.NotEmpty(t, responseUsers, "at least one user should be returned")
 			require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be returned in response")
 		} else {
 			require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
