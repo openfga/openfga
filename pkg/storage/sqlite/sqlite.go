@@ -354,12 +354,59 @@ func (m *SQLite) MaxTuplesPerWrite() int {
 	return m.maxTuplesPerWriteField
 }
 
+func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
+	var modelID string
+	var schemaVersion string
+
+	if rows.Next() {
+		var marshalledModel []byte
+		err := rows.Scan(&modelID, &schemaVersion, &marshalledModel)
+		if err != nil {
+			return nil, sqlcommon.HandleSQLError(err)
+		}
+
+		if len(marshalledModel) > 0 {
+			// Prefer building an authorization model if the row has it available.
+			var model openfgav1.AuthorizationModel
+			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+				return nil, err
+			}
+
+			return &model, nil
+		}
+
+		return &openfgav1.AuthorizationModel{
+			SchemaVersion: schemaVersion,
+			Id:            modelID,
+		}, nil
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	return nil, storage.ErrNotFound
+}
+
 // ReadAuthorizationModel see [storage.AuthorizationModelReadBackend].ReadAuthorizationModel.
 func (m *SQLite) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, m.dbInfo, store, modelID)
+	rows, err := m.stbl.
+		Select("authorization_model_id", "schema_version", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+	defer rows.Close()
+
+	return constructAuthorizationModelFromSQLRows(rows)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -441,7 +488,19 @@ func (m *SQLite) FindLatestAuthorizationModel(ctx context.Context, store string)
 	ctx, span := tracer.Start(ctx, "sqlite.FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.FindLatestAuthorizationModel(ctx, m.dbInfo, store)
+	rows, err := m.stbl.
+		Select("authorization_model_id", "schema_version", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		OrderBy("authorization_model_id desc").
+		Limit(1).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+	defer rows.Close()
+
+	return constructAuthorizationModelFromSQLRows(rows)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -454,15 +513,35 @@ func (m *SQLite) WriteAuthorizationModel(ctx context.Context, store string, mode
 	ctx, span := tracer.Start(ctx, "sqlite.WriteAuthorizationModel")
 	defer span.End()
 
+	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) < 1 {
+		return nil
+	}
 
 	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerModelField)
 	}
 
-	return busyRetry(func() error {
-		return sqlcommon.WriteAuthorizationModel(ctx, m.dbInfo, store, model)
+	pbdata, err := proto.Marshal(model)
+	if err != nil {
+		return err
+	}
+
+	err = busyRetry(func() error {
+		_, err := m.stbl.
+			Insert("authorization_model").
+			Columns("store", "authorization_model_id", "schema_version", "serialized_protobuf").
+			Values(store, model.GetId(), schemaVersion, pbdata).
+			ExecContext(ctx)
+		return err
 	})
+	if err != nil {
+		return sqlcommon.HandleSQLError(err)
+	}
+
+	return nil
 }
 
 // CreateStore adds a new store to the SQLite storage.
