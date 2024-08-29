@@ -36,5 +36,4 @@ func (r *ResolveCheckResponse) GetAllowed() bool {
 
 func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
 	return r.ResolutionMetadata
-
 }
