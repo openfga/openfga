@@ -38,6 +38,10 @@ func TestListUsersMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
+func TestListUsersSQLite(t *testing.T) {
+	testRunAll(t, "sqlite")
+}
+
 func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

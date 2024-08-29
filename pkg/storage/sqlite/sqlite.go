@@ -478,25 +478,30 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 		_ = txn.Rollback()
 	}()
 
-	_, err = m.stbl.
-		Insert("store").
-		Columns("id", "name", "created_at", "updated_at").
-		Values(store.GetId(), store.GetName(), sq.Expr("datetime('subsec')"), sq.Expr("datetime('subsec')")).
-		RunWith(txn).
-		ExecContext(ctx)
+	err = busyRetry(func() error {
+		_, err := m.stbl.
+			Insert("store").
+			Columns("id", "name", "created_at", "updated_at").
+			Values(store.GetId(), store.GetName(), sq.Expr("datetime('subsec')"), sq.Expr("datetime('subsec')")).
+			RunWith(txn).
+			ExecContext(ctx)
+		return err
+	})
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var createdAt time.Time
 	var id, name string
-	err = m.stbl.
-		Select("id", "name", "created_at").
-		From("store").
-		Where(sq.Eq{"id": store.GetId()}).
-		RunWith(txn).
-		QueryRowContext(ctx).
-		Scan(&id, &name, &createdAt)
+	err = busyRetry(func() error {
+		return m.stbl.
+			Select("id", "name", "created_at").
+			From("store").
+			Where(sq.Eq{"id": store.GetId()}).
+			RunWith(txn).
+			QueryRowContext(ctx).
+			Scan(&id, &name, &createdAt)
+	})
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -800,7 +805,8 @@ func busyRetry(fn func() error) error {
 		}
 
 		var sqliteErr *sqlite.Error
-		if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_BUSY {
+		// check for raw errors directly from SQLite or that have gone through sqlcommon.HandleSQLError
+		if (errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_BUSY) || strings.Contains(err.Error(), "SQLITE_BUSY") {
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}

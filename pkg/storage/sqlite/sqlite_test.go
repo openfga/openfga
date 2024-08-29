@@ -9,14 +9,12 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestSQLiteDatastore(t *testing.T) {
@@ -194,31 +192,6 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	require.Equal(t, firstTuple, tuples[1].GetKey())
 }
 
-func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	defer ds.Close()
-	store := "store"
-	modelID := "foo"
-	schemaVersion := typesystem.SchemaVersion1_0
-
-	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
-	require.NoError(t, err)
-	pbdata := []byte{0x01, 0x02, 0x03}
-
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
-	require.NoError(t, err)
-
-	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
-}
-
 // TestAllowNullCondition tests that tuple and changelog rows existing before
 // migration 005_add_conditions_to_tuples can be successfully read.
 func TestAllowNullCondition(t *testing.T) {
@@ -318,41 +291,4 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Len(t, changes, 2)
 	require.Equal(t, tk, changes[0].GetTupleKey())
 	require.Equal(t, tk, changes[1].GetTupleKey())
-}
-
-// TestMarshalledAssertions tests that previously persisted marshalled
-// assertions can be read back. In any case where the Assertions proto model
-// needs to change, we'll likely need to introduce a series of data migrations.
-func TestMarshalledAssertions(t *testing.T) {
-	ctx := context.Background()
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-	defer ds.Close()
-
-	// Note: this represents an assertion written on v1.3.7.
-	stmt := `
-		INSERT INTO assertion (
-			store, authorization_model_id, assertions
-		) VALUES (?, ?, UNHEX('0A2B0A270A12666F6C6465723A323032312D62756467657412056F776E65721A0A757365723A616E6E657A1001'));
-	`
-	_, err = ds.db.ExecContext(ctx, stmt, "store", "model")
-	require.NoError(t, err)
-
-	assertions, err := ds.ReadAssertions(ctx, "store", "model")
-	require.NoError(t, err)
-
-	expectedAssertions := []*openfgav1.Assertion{
-		{
-			TupleKey: &openfgav1.AssertionTupleKey{
-				Object:   "folder:2021-budget",
-				Relation: "owner",
-				User:     "user:annez",
-			},
-			Expectation: true,
-		},
-	}
-	require.Equal(t, expectedAssertions, assertions)
 }

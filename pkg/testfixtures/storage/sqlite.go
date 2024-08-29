@@ -17,8 +17,8 @@ type sqliteTestContainer struct {
 	version int64
 }
 
-// NewMySQLTestContainer returns an implementation of the DatastoreTestContainer interface
-// for MySQL.
+// NewSqliteTestContainer returns an implementation of the DatastoreTestContainer interface
+// for SQLite.
 func NewSqliteTestContainer() *sqliteTestContainer {
 	return &sqliteTestContainer{}
 }
@@ -54,10 +54,13 @@ func (m *sqliteTestContainer) RunSqliteTestDatabase(t testing.TB) DatastoreTestC
 	require.NoError(t, err)
 	m.version = version
 
+	err = db.Close()
+	require.NoError(t, err)
+
 	return m
 }
 
-// GetConnectionURI returns the mysql connection uri for the running mysql test container.
+// GetConnectionURI returns the sqlite connection uri for the running sqlite test container.
 func (m *sqliteTestContainer) GetConnectionURI(includeCredentials bool) string {
 	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(500)", m.path)
 }
