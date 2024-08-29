@@ -53,6 +53,8 @@ func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
 		}
 		cfg.Log.Level = "error"
 		cfg.Datastore.Engine = engine
+		cfg.ListUsersDeadline = 0   // no deadline
+		cfg.ListObjectsDeadline = 0 // no deadline
 
 		tests.StartServer(t, cfg)
 

@@ -386,9 +386,10 @@ var usersetCompleteTestingModelTest = []*stage{
 				ErrorCode: 2000,
 			},
 			{
-				Name:        "invalid_object",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_1"},
-				Expectation: false,
+				Name:               "invalid_object",
+				Tuple:              &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_1"},
+				Expectation:        false,
+				ListUsersErrorCode: 2000,
 			},
 		},
 	},
@@ -572,9 +573,10 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:        "invalid_object",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_or_2", Relation: "or_userset", User: "user:userset_or_userset_invalid"},
-				Expectation: false,
+				Name:               "invalid_object",
+				Tuple:              &openfgav1.TupleKey{Object: "usersets-user:userset_or_2", Relation: "or_userset", User: "user:userset_or_userset_invalid"},
+				Expectation:        false,
+				ListUsersErrorCode: 2000,
 			},
 		},
 	},
@@ -702,9 +704,10 @@ var usersetCompleteTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:        "valid_user_direct",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_1"},
-				Expectation: true,
+				Name:                 "valid_user_direct",
+				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_1"},
+				Expectation:          true,
+				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
 			{
 				Name:        "valid_user_direct_cond",
@@ -719,14 +722,16 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:        "valid_user_direct_wild",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nou_3", Relation: "nested_or_userset", User: "user:nou_3"},
-				Expectation: true,
+				Name:                 "valid_user_direct_wild",
+				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_3", Relation: "nested_or_userset", User: "user:nou_3"},
+				Expectation:          true,
+				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
 			{
-				Name:        "invalid_user_direct",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_2"},
-				Expectation: false,
+				Name:                 "invalid_user_direct",
+				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_2"},
+				Expectation:          false,
+				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
 			{
 				Name:        "invalid_user_direct_cond",
