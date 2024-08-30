@@ -33,9 +33,15 @@ func tupleToUsersetEquals(t *testing.T, a, b *openfgav1.TupleToUserset) {
 
 	if cuA == nil || cuB == nil {
 		require.Equal(t, cuA, cuB)
-		return
 	}
 	objectRelationEquals(t, cuA, cuB)
+
+	tsA := a.GetTupleset()
+	tsB := b.GetTupleset()
+	if tsA == nil || tsB == nil {
+		require.Equal(t, tsA, tsB)
+	}
+	objectRelationEquals(t, tsA, tsB)
 }
 
 func objectRelationEquals(t *testing.T, a, b *openfgav1.ObjectRelation) {
