@@ -62,6 +62,11 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	usersetA := a.GetUserset()
 	usersetB := b.GetUserset()
 
+	if usersetA == nil || usersetB == nil {
+		require.Equal(t, usersetA, usersetB)
+		return
+	}
+
 	switch x := usersetA.(type) {
 	case *openfgav1.Userset_This:
 		_, ok := usersetB.(*openfgav1.Userset_This)
@@ -92,7 +97,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 		rewriteEquals(t, x.Difference.GetBase(), y.Difference.GetBase())
 		rewriteEquals(t, x.Difference.GetSubtract(), y.Difference.GetSubtract())
 	default:
-		require.Equal(t, usersetA, usersetB)
+		// we should never arrive here in valid scenarios.
+		t.Error("unexpected user set type")
 	}
 }
 
@@ -231,7 +237,7 @@ func conditionMetadataEquals(t *testing.T, a, b *openfgav1.ConditionMetadata) {
 		require.Equal(t, a, b)
 		return
 	}
-	require.Equal(t, a.Module, b.Module)
+	require.Equal(t, a.GetModule(), b.GetModule())
 	sourceInfoEquals(t, a.GetSourceInfo(), b.GetSourceInfo())
 }
 
