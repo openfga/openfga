@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 
 * Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options feature PR](https://github.com/openfga/openfga/pull/1764) for usage details. [#1889](https://github.com/openfga/openfga/pull/1889)
+* Check optimizations experimental flag has been removed and is now enabled by default. [#1895](https://github.com/openfga/openfga/pull/1895)
 
 ## [1.5.9] - 2024-08-13
 
