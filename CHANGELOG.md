@@ -26,7 +26,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## Performance
 
-* Check optimizations experimental flag has been removed and is now enabled by default. [#1895](https://github.com/openfga/openfga/pull/1895)
 * Performance improvement in tuple validation on reads [#1825](https://github.com/openfga/openfga/pull/1825)
 * Check API: performance improvement in wildcard scenarios [#1848](https://github.com/openfga/openfga/pull/1848)
 
