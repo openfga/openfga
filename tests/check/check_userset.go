@@ -1004,8 +1004,6 @@ var usersetCompleteTestingModelTest = []*stage{
 			{Object: "directs-user:utc2_1", Relation: "tuple_cycle2", User: "user:utc2_1"},
 			{Object: "ttus:utc2_1", Relation: "direct_parent", User: "directs-user:utc2_1"},
 			{Object: "usersets-user:utc2_1", Relation: "tuple_cycle2", User: "ttus:utc2_1#tuple_cycle2"},
-			{Object: "directs-user:utc2_2", Relation: "tuple_cycle2", User: "usersets-user:utc2_1#tuple_cycle2"},
-			{Object: "ttus:utc2_2", Relation: "direct_parent", User: "directs-user:utc2_2"},
 			{Object: "directs-user:utc2_1", Relation: "tuple_cycle2", User: "usersets-user:utc2_1#tuple_cycle2"},
 
 			// missing user leads to a cycle
@@ -1060,7 +1058,7 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 			{
 				Name:        "invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc3_3", Relation: "tuple_cycle3", User: "user:utc3_2"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utc3_1", Relation: "tuple_cycle3", User: "user:utc3_2"},
 				Expectation: false,
 			},
 		},
