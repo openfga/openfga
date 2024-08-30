@@ -12,10 +12,10 @@ import (
 type ctxKey string
 
 const (
-	// skipAuthz is the key to store whether to skip authz check in the context.
+	// SkipAuthz is the key to store whether to skip authz check in the context.
 	skipAuthz ctxKey = "skip-authz-key"
 
-	// API methods
+	// API methods.
 	ReadAuthorizationModel  = "ReadAuthorizationModel"
 	ReadAuthorizationModels = "ReadAuthorizationModels"
 	Read                    = "Read"
@@ -34,7 +34,7 @@ const (
 	Expand                  = "Expand"
 	ReadChanges             = "ReadChanges"
 
-	// Relations
+	// Relations.
 	CanCallReadAuthorizationModels  = "can_call_read_authorization_models"
 	CanCallRead                     = "can_call_read"
 	CanCallWrite                    = "can_call_write"

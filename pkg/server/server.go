@@ -806,12 +806,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
-	err := s.CheckAuthz(context.Background(), req.GetStoreId(), authz.StreamedListObjects)
-	if err != nil {
-		return err
-	}
-
-	err = s.validateConsistencyRequest(req.GetConsistency())
+	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return err
 	}
@@ -839,6 +834,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Service: s.serviceName,
 		Method:  methodName,
 	})
+
+	err = s.CheckAuthz(context.Background(), req.GetStoreId(), authz.StreamedListObjects)
+	if err != nil {
+		return err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -908,12 +908,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.Read)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.validateConsistencyRequest(req.GetConsistency())
+	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
 	}
@@ -937,6 +932,11 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		Method:  authz.Read,
 	})
 
+	err = s.CheckAuthz(ctx, req.GetStoreId(), authz.Read)
+	if err != nil {
+		return nil, err
+	}
+
 	q := commands.NewReadQuery(s.datastore,
 		commands.WithReadQueryLogger(s.logger),
 		commands.WithReadQueryEncoder(s.encoder),
@@ -951,11 +951,6 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.Write)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.Write)
 	defer span.End()
 
@@ -969,6 +964,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Service: s.serviceName,
 		Method:  authz.Write,
 	})
+
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.Write)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1150,6 +1150,7 @@ func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
 		}
 
 		if !authorized {
+			// TODO: fix error message
 			return status.Error(codes.PermissionDenied, "permission denied")
 		}
 	}
@@ -1169,6 +1170,7 @@ func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) erro
 		}
 
 		if !authorized {
+			// TODO: fix error message
 			return status.Error(codes.PermissionDenied, "permission denied")
 		}
 	}
@@ -1185,12 +1187,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.Expand)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.validateConsistencyRequest(req.GetConsistency())
+	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
 	}
@@ -1214,6 +1211,11 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		Method:  authz.Expand,
 	})
 
+	err = s.CheckAuthz(ctx, req.GetStoreId(), authz.Expand)
+	if err != nil {
+		return nil, err
+	}
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -1231,11 +1233,6 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModel, trace.WithAttributes(
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
@@ -1252,16 +1249,16 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 		Method:  authz.ReadAuthorizationModel,
 	})
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
+	if err != nil {
+		return nil, err
+	}
+
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.WriteAuthorizationModel)
 	defer span.End()
 
@@ -1275,6 +1272,11 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Service: s.serviceName,
 		Method:  authz.WriteAuthorizationModel,
 	})
+
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
+	if err != nil {
+		return nil, err
+	}
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
@@ -1291,11 +1293,6 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModels)
 	defer span.End()
 
@@ -1310,6 +1307,11 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		Method:  authz.ReadAuthorizationModels,
 	})
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
+	if err != nil {
+		return nil, err
+	}
+
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
 		commands.WithReadAuthModelsQueryLogger(s.logger),
 		commands.WithReadAuthModelsQueryEncoder(s.encoder),
@@ -1318,11 +1320,6 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.WriteAssertions)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.WriteAssertions)
 	defer span.End()
 
@@ -1336,6 +1333,11 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 		Service: s.serviceName,
 		Method:  authz.WriteAssertions,
 	})
+
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.WriteAssertions)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1360,11 +1362,6 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAssertions)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.ReadAssertions)
 	defer span.End()
 
@@ -1379,6 +1376,11 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 		Method:  authz.ReadAssertions,
 	})
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAssertions)
+	if err != nil {
+		return nil, err
+	}
+
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -1389,11 +1391,6 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.ReadChanges, trace.WithAttributes(
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
@@ -1410,6 +1407,11 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		Method:  authz.ReadChanges,
 	})
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
+	if err != nil {
+		return nil, err
+	}
+
 	q := commands.NewReadChangesQuery(s.datastore,
 		commands.WithReadChangesQueryLogger(s.logger),
 		commands.WithReadChangesQueryEncoder(s.encoder),
@@ -1419,11 +1421,6 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 }
 
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
-	err := s.CheckCreateStoreAuthz(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.CreateStore)
 	defer span.End()
 
@@ -1438,6 +1435,11 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 		Method:  authz.CreateStore,
 	})
 
+	err := s.CheckCreateStoreAuthz(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	c := commands.NewCreateStoreCommand(s.datastore, commands.WithCreateStoreCmdLogger(s.logger))
 	res, err := c.Execute(ctx, req)
 	if err != nil {
@@ -1450,11 +1452,6 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.DeleteStore)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.DeleteStore)
 	defer span.End()
 
@@ -1469,6 +1466,11 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 		Method:  authz.DeleteStore,
 	})
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.DeleteStore)
+	if err != nil {
+		return nil, err
+	}
+
 	cmd := commands.NewDeleteStoreCommand(s.datastore, commands.WithDeleteStoreCmdLogger(s.logger))
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
@@ -1481,11 +1483,6 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.GetStore)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.GetStore)
 	defer span.End()
 
@@ -1500,16 +1497,16 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 		Method:  authz.GetStore,
 	})
 
+	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.GetStore)
+	if err != nil {
+		return nil, err
+	}
+
 	q := commands.NewGetStoreQuery(s.datastore, commands.WithGetStoreQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
-	stores, err := s.CheckAuthzListStores(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx, span := tracer.Start(ctx, authz.ListStores)
 	defer span.End()
 
@@ -1524,9 +1521,9 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		Method:  authz.ListStores,
 	})
 
-	storesMap := make(map[string]struct{})
-	for _, store := range stores {
-		storesMap[store] = struct{}{}
+	stores, err := s.CheckAuthzListStores(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	q := commands.NewListStoresQuery(s.datastore,
@@ -1534,14 +1531,19 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		commands.WithListStoresQueryEncoder(s.encoder),
 	)
 
-	resp, err := q.Execute(ctx, req)
-	if err != nil {
-		return nil, err
+	if s.authorizer == nil {
+		return q.Execute(ctx, req)
+	}
+
+	storesMap := make(map[string]struct{})
+	for _, store := range stores {
+		storesMap[store] = struct{}{}
 	}
 
 	var accessibleStores []*openfgav1.Store
 	var continuationToken string
 
+	// TODO: This doesn't hit the full page size for users using the access control feature.
 	for {
 		req.ContinuationToken = continuationToken
 		resp, err := q.Execute(ctx, req)
@@ -1564,7 +1566,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 
 	return &openfgav1.ListStoresResponse{
 		Stores:            accessibleStores,
-		ContinuationToken: resp.GetContinuationToken(),
+		ContinuationToken: continuationToken,
 	}, nil
 }
 
