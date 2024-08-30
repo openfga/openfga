@@ -10,6 +10,8 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
+// usersetsEquals tests that the two *openfgav1.Usersets
+// values provided are equal. This is a deep equality check.
 func usersetsEquals(t *testing.T, a, b *openfgav1.Usersets) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -23,6 +25,8 @@ func usersetsEquals(t *testing.T, a, b *openfgav1.Usersets) {
 	}
 }
 
+// tupleToUsersetEquals tests that the two *openfgav1.TupleToUserset
+// values provided are equal. This is a deep equality check.
 func tupleToUsersetEquals(t *testing.T, a, b *openfgav1.TupleToUserset) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -44,6 +48,8 @@ func tupleToUsersetEquals(t *testing.T, a, b *openfgav1.TupleToUserset) {
 	objectRelationEquals(t, tsA, tsB)
 }
 
+// objectRelationEquals tests that the two *openfgav1.ObjectRelation
+// values provided are equal. This is a deep equality check.
 func objectRelationEquals(t *testing.T, a, b *openfgav1.ObjectRelation) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -53,6 +59,8 @@ func objectRelationEquals(t *testing.T, a, b *openfgav1.ObjectRelation) {
 	require.Equal(t, a.GetObject(), b.GetObject())
 }
 
+// rewriteEquals tests that the two *openfgav1.Userset
+// values provided are equal. This is a deep equality check.
 func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -102,6 +110,8 @@ func rewriteEquals(t *testing.T, a, b *openfgav1.Userset) {
 	}
 }
 
+// relationReferenceEquals tests that the two *openfgav1.RelationReference
+// values provided are equal. This is a deep equality check.
 func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -127,6 +137,8 @@ func relationReferenceEquals(t *testing.T, a, b *openfgav1.RelationReference) {
 	}
 }
 
+// relationTypeInfoEquals tests that the two *openfgav1.RelationTypeInfo
+// values provided are equal. This is a deep equality check.
 func relationTypeInfoEquals(t *testing.T, a, b *openfgav1.RelationTypeInfo) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -145,12 +157,16 @@ func relationTypeInfoEquals(t *testing.T, a, b *openfgav1.RelationTypeInfo) {
 	}
 }
 
+// relationEquals tests that the two *openfgav1.Relation
+// values provided are equal. This is a deep equality check.
 func relationEquals(t *testing.T, a, b *openfgav1.Relation) {
 	require.Equal(t, a.GetName(), b.GetName())
 	rewriteEquals(t, a.GetRewrite(), b.GetRewrite())
 	relationTypeInfoEquals(t, a.GetTypeInfo(), b.GetTypeInfo())
 }
 
+// sourceInfoEquals tests that the two *openfgav1.SourceInfo
+// values provided are equal. This is a deep equality check.
 func sourceInfoEquals(t *testing.T, a, b *openfgav1.SourceInfo) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -159,6 +175,8 @@ func sourceInfoEquals(t *testing.T, a, b *openfgav1.SourceInfo) {
 	require.Equal(t, a.GetFile(), b.GetFile())
 }
 
+// relationMetadataEquals tests that the two *openfgav1.RelationMetadata
+// values provided are equal. This is a deep equality check.
 func relationMetadataEquals(t *testing.T, a, b *openfgav1.RelationMetadata) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -179,6 +197,8 @@ func relationMetadataEquals(t *testing.T, a, b *openfgav1.RelationMetadata) {
 	}
 }
 
+// metadataEquals tests that the two *openfgav1.Metadata
+// values provided are equal. This is a deep equality check.
 func metadataEquals(t *testing.T, a, b *openfgav1.Metadata) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -201,6 +221,8 @@ func metadataEquals(t *testing.T, a, b *openfgav1.Metadata) {
 	}
 }
 
+// typeDefinitionEquals tests that the two *openfgav1.TypeDefinition
+// values provided are equal. This is a deep equality check.
 func typeDefinitionEquals(t *testing.T, a, b *openfgav1.TypeDefinition) {
 	require.Equal(t, a.GetType(), b.GetType())
 
@@ -216,6 +238,8 @@ func typeDefinitionEquals(t *testing.T, a, b *openfgav1.TypeDefinition) {
 	metadataEquals(t, a.GetMetadata(), b.GetMetadata())
 }
 
+// conditionParamTypeDefEquals tests that the two *openfgav1.ConditionParamTypeRef
+// values provided are equal. This is a deep equality check.
 func conditionParamTypeDefEquals(t *testing.T, a, b *openfgav1.ConditionParamTypeRef) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -232,6 +256,8 @@ func conditionParamTypeDefEquals(t *testing.T, a, b *openfgav1.ConditionParamTyp
 	}
 }
 
+// conditionMetadataEquals tests that the two *openfgav1.ConditionMetadata
+// values provided are equal. This is a deep equality check.
 func conditionMetadataEquals(t *testing.T, a, b *openfgav1.ConditionMetadata) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -241,6 +267,8 @@ func conditionMetadataEquals(t *testing.T, a, b *openfgav1.ConditionMetadata) {
 	sourceInfoEquals(t, a.GetSourceInfo(), b.GetSourceInfo())
 }
 
+// conditionEquals tests that the two *openfgav1.Condition
+// values provided are equal. This is a deep equality check.
 func conditionEquals(t *testing.T, a, b *openfgav1.Condition) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -260,6 +288,8 @@ func conditionEquals(t *testing.T, a, b *openfgav1.Condition) {
 	}
 }
 
+// evaluableConditionEquals tests that the two *condition.EvaluableCondition
+// values provided are equal. This is a deep equality check.
 func evaluableConditionEquals(t *testing.T, a, b *condition.EvaluableCondition) {
 	if a == nil || b == nil {
 		require.Equal(t, a, b)
@@ -268,6 +298,8 @@ func evaluableConditionEquals(t *testing.T, a, b *condition.EvaluableCondition) 
 	conditionEquals(t, a.Condition, b.Condition)
 }
 
+// typeSystemEquals tests that the two *TypeSystem
+// values provided are equal. This is a deep equality check.
 func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 	require.Equal(t, a.GetSchemaVersion(), b.GetSchemaVersion())
 	require.Equal(t, len(a.typeDefinitions), len(b.typeDefinitions))
