@@ -17,7 +17,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options documentation](https://openfga.dev/docs/interacting/consistency) for details. [#1889](https://github.com/openfga/openfga/pull/1889)
 * Require at least Go 1.22.6 [#1831](https://github.com/openfga/openfga/pull/1831). Thanks @tranngoclam
 * Add a "query_duration_ms" field on each log [#1807](https://github.com/openfga/openfga/pull/1831). Thanks @lalalalatt
-* Allow configuration of logging paths and defaults to stdout [#1830](https://github.com/openfga/openfga/pull/1830)
+* Default logging to stdout instead of stderr [#1830](https://github.com/openfga/openfga/pull/1830)
 
 ## Fixed
 
