@@ -1307,14 +1307,13 @@ func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.A
 		require.Equal(t, assertion.ErrorCode, int(e.Code()))
 		return
 	}
-	if assertion.ErrorCode == 0 {
-		require.NoError(t, err)
-		if assertion.Expectation {
-			require.NotEmpty(t, resp.GetObjects(), "at least one object should be returned")
-			require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be returned in the response")
-		} else {
-			require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the response")
-		}
+
+	require.NoError(t, err)
+	if assertion.Expectation {
+		require.NotEmpty(t, resp.GetObjects(), "at least one object should be returned")
+		require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be returned in the response")
+	} else {
+		require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the response")
 	}
 }
 
@@ -1348,26 +1347,24 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 		return
 	}
 
-	if assertion.ErrorCode == 0 {
-		require.NoError(t, err)
-		responseUsers := make([]string, len(resp.GetUsers()))
-		wildcardUserPresent := false
-		for i, u := range resp.GetUsers() {
-			responseUsers[i] = tuple.UserProtoToString(u)
-			if strings.HasSuffix(responseUsers[i], ":*") {
-				wildcardUserPresent = true
-			}
+	require.NoError(t, err)
+	responseUsers := make([]string, len(resp.GetUsers()))
+	wildcardUserPresent := false
+	for i, u := range resp.GetUsers() {
+		responseUsers[i] = tuple.UserProtoToString(u)
+		if strings.HasSuffix(responseUsers[i], ":*") {
+			wildcardUserPresent = true
 		}
-		if assertion.Expectation {
-			if wildcardUserPresent {
-				// if ListUsers response is [user:*, ...], we don't want to do the assertions below because they will fail.
-				return
-			}
-			require.NotEmpty(t, responseUsers, "at least one user should be returned")
-			require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be returned in response")
-		} else {
-			require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
+	}
+	if assertion.Expectation {
+		if wildcardUserPresent {
+			// if ListUsers response is [user:*, ...], we don't want to do the assertions below because they will fail.
+			return
 		}
+		require.NotEmpty(t, responseUsers, "at least one user should be returned")
+		require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be returned in response")
+	} else {
+		require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
 	}
 }
 
