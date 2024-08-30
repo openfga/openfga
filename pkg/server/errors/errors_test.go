@@ -10,21 +10,44 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	errors2 "github.com/openfga/openfga/internal/errors"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestInternalErrorDontLeakInternals(t *testing.T) {
-	err := NewInternalError("public", errors.New("internal"))
+func TestInternalError(t *testing.T) {
+	t.Run("no_public_message_set", func(t *testing.T) {
+		err := NewInternalError("", errors.New("internal"))
+		require.Contains(t, err.Error(), InternalServerErrorMsg)
+	})
 
-	require.NotContains(t, err.Error(), "internal")
-}
+	t.Run("public_message_set", func(t *testing.T) {
+		err := NewInternalError("public", errors.New("internal"))
+		require.Contains(t, err.Error(), "public")
+	})
 
-func TestInternalErrorsWithNoMessageReturnsInternalServiceError(t *testing.T) {
-	err := NewInternalError("", errors.New("internal"))
+	t.Run("grpc_status", func(t *testing.T) {
+		err := NewInternalError("", errors2.ErrUnknown)
 
-	expected := InternalServerErrorMsg
-	require.Contains(t, err.Error(), expected)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgav1.InternalErrorCode_internal_error), st.Code())
+		require.Equal(t, "rpc error: code = Code(4000) desc = Internal Server Error", st.String())
+	})
+
+	t.Run("error_is", func(t *testing.T) {
+		err := NewInternalError("", errors2.ErrUnknown)
+		require.ErrorIs(t, err, errors2.ErrUnknown)
+		err = NewInternalError("", fmt.Errorf("%w", errors2.ErrUnknown))
+		require.ErrorIs(t, err, errors2.ErrUnknown)
+	})
+
+	t.Run("unwrap", func(t *testing.T) {
+		err := NewInternalError("", errors2.ErrUnknown)
+
+		require.Equal(t, err.Unwrap(), errors2.ErrUnknown)
+	})
 }
 
 func TestHandleStorageErrors(t *testing.T) {
@@ -118,7 +141,7 @@ func TestHandleTupleValidateError(t *testing.T) {
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
-			require.ErrorIs(t, HandleTupleValidateError(test.validateError), test.expectedTranslatedError)
+			require.EqualError(t, HandleTupleValidateError(test.validateError), test.expectedTranslatedError.Error())
 		})
 	}
 }
