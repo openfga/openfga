@@ -7,9 +7,13 @@ import (
 
 type Assertion struct {
 	Name             string
-	Tuple            *openfgav1.TupleKey
 	ContextualTuples []*openfgav1.TupleKey `json:"contextualTuples"`
 	Context          *structpb.Struct
-	Expectation      bool
-	ErrorCode        int `json:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
+	// For Check API
+	Tuple       *openfgav1.TupleKey
+	Expectation bool
+	ErrorCode   int `json:"errorCode"`
+	// For other APIs
+	ListObjectsErrorCode int
+	ListUsersErrorCode   int
 }
