@@ -210,6 +210,58 @@ func typeDefinitionEquals(t *testing.T, a, b *openfgav1.TypeDefinition) {
 	metadataEquals(t, a.GetMetadata(), b.GetMetadata())
 }
 
+func conditionParamTypeDefEquals(t *testing.T, a, b *openfgav1.ConditionParamTypeRef) {
+	if a == nil || b == nil {
+		require.Equal(t, a, b)
+		return
+	}
+	require.Equal(t, a.GetTypeName(), b.GetTypeName())
+
+	paramsA := a.GetGenericTypes()
+	paramsB := b.GetGenericTypes()
+	require.Equal(t, len(paramsA), len(paramsB))
+	for ndx, pA := range paramsA {
+		pB := paramsB[ndx]
+		conditionParamTypeDefEquals(t, pA, pB)
+	}
+}
+
+func conditionMetadataEquals(t *testing.T, a, b *openfgav1.ConditionMetadata) {
+	if a == nil || b == nil {
+		require.Equal(t, a, b)
+		return
+	}
+	require.Equal(t, a.Module, b.Module)
+	sourceInfoEquals(t, a.GetSourceInfo(), b.GetSourceInfo())
+}
+
+func conditionEquals(t *testing.T, a, b *openfgav1.Condition) {
+	if a == nil || b == nil {
+		require.Equal(t, a, b)
+		return
+	}
+	require.Equal(t, a.GetName(), b.GetName())
+	require.Equal(t, a.GetExpression(), b.GetExpression())
+	conditionMetadataEquals(t, a.GetMetadata(), b.GetMetadata())
+
+	paramsA := a.GetParameters()
+	paramsB := b.GetParameters()
+	require.Equal(t, len(paramsA), len(paramsB))
+	for pName, pA := range paramsA {
+		pB, ok := paramsB[pName]
+		require.True(t, ok)
+		conditionParamTypeDefEquals(t, pA, pB)
+	}
+}
+
+func evaluableConditionEquals(t *testing.T, a, b *condition.EvaluableCondition) {
+	if a == nil || b == nil {
+		require.Equal(t, a, b)
+		return
+	}
+	conditionEquals(t, a.Condition, b.Condition)
+}
+
 func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 	require.Equal(t, a.GetSchemaVersion(), b.GetSchemaVersion())
 	require.Equal(t, len(a.typeDefinitions), len(b.typeDefinitions))
@@ -246,6 +298,13 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 				tupleToUsersetEquals(t, relationA[i], relationB[i])
 			}
 		}
+	}
+
+	require.Equal(t, len(a.conditions), len(b.conditions))
+	for conditionNameA, conditionA := range a.conditions {
+		conditionB, ok := b.conditions[conditionNameA]
+		require.True(t, ok)
+		evaluableConditionEquals(t, conditionA, conditionB)
 	}
 }
 
