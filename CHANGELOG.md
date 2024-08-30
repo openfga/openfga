@@ -26,13 +26,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## Performance
 
+* Performance improvements for Check API:
+  - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
+  - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
+  - performance improvement in wildcard scenarios [#1848](https://github.com/openfga/openfga/pull/1848)
 * Performance improvement in tuple validation on reads [#1825](https://github.com/openfga/openfga/pull/1825)
-* Check API: performance improvement in wildcard scenarios [#1848](https://github.com/openfga/openfga/pull/1848)
-
 
 ### Breaking changes
 
-* Set a maximum limit on bytes to the WriteAssertions API [#1847](https://github.com/openfga/openfga/pull/1847)
+* Set a maximum limit on bytes to the WriteAssertions API: 64 KB [#1847](https://github.com/openfga/openfga/pull/1847)
 
 ## [1.5.9] - 2024-08-13
 
