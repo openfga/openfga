@@ -17,8 +17,7 @@ func usersetsEquals(t *testing.T, a, b *openfgav1.Usersets) {
 		require.Equal(t, a, b)
 		return
 	}
-	childA := a.GetChild()
-	childB := b.GetChild()
+	childA, childB := a.GetChild(), b.GetChild()
 	require.Equal(t, len(childA), len(childB))
 	for i := 0; i < len(childA); i++ {
 		rewriteEquals(t, childA[i], childB[i])
