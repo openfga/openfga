@@ -52,8 +52,6 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
-
-	ExperimentalCheckOptimizations ExperimentalFeatureFlag = "enable-check-optimizations"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -614,7 +612,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, []graph.CachedCheckResolverOpt{
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
