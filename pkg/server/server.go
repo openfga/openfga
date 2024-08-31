@@ -835,7 +835,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Method:  methodName,
 	})
 
-	err = s.CheckAuthz(context.Background(), req.GetStoreId(), authz.StreamedListObjects)
+	err = s.CheckAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
 	if err != nil {
 		return err
 	}

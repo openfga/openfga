@@ -154,6 +154,7 @@ func TestListObjects(t *testing.T) {
 			WithDatastore(ds),
 		)
 		t.Cleanup(openfga.Close)
+
 		clientID := "validclientid"
 		rootStoreID, rootModelID, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
 		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
@@ -194,6 +195,7 @@ func TestListObjects(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
+
 			listObjectsResponse, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              testStoreID,
 				AuthorizationModelId: testModelID,
@@ -204,6 +206,93 @@ func TestListObjects(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, listObjectsResponse.GetObjects(), []string([]string{"workspace:1"}))
+		})
+	})
+}
+
+func TestStreamedListObjects(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("streamed_list_objects_no_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		_, _, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
+
+		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+			StoreId:              testStoreID,
+			AuthorizationModelId: testModelID,
+			Type:                 "workspace",
+			Relation:             "guest",
+			User:                 "user:ben",
+		}, NewMockStreamServer(context.Background()))
+		require.NoError(t, err)
+	})
+
+	t.Run("streamed_list_objects_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+		clientID := "validclientid"
+		rootStoreID, rootModelID, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
+		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              testStoreID,
+			AuthorizationModelId: testModelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: rootStoreID, ModelID: rootModelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			server := NewMockStreamServer(ctx)
+			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              testStoreID,
+				AuthorizationModelId: testModelID,
+				Type:                 "workspace",
+				Relation:             "guest",
+				User:                 "user:ben",
+			}, server)
+			require.Error(t, err)
+
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_streamed_list_objects", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              rootStoreID,
+				AuthorizationModelId: rootModelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), authz.CanCallListObjects, fmt.Sprintf("application:%s", clientID)),
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			server := NewMockStreamServer(ctx)
+			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              testStoreID,
+				AuthorizationModelId: testModelID,
+				Type:                 "workspace",
+				Relation:             "guest",
+				User:                 "user:ben",
+			}, server)
+			require.NoError(t, err)
 		})
 	})
 }
