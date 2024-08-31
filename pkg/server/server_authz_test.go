@@ -17,7 +17,19 @@ import (
 	"go.uber.org/goleak"
 )
 
-func setupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) (rootStoreID, rootModelID, testStoreID, testModelID string) {
+type store struct {
+	id      string
+	modelID string
+}
+
+type authzSettings struct {
+	openfga  *Server
+	clientID string
+	root     *store
+	test     *store
+}
+
+func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) *authzSettings {
 	rootStore, err := openfga.CreateStore(context.Background(),
 		&openfgav1.CreateStoreRequest{Name: "root-store"})
 
@@ -109,7 +121,25 @@ func setupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) (r
 
 	testStoreModelID := writeTestStoreAuthzModelResp.GetAuthorizationModelId()
 
-	return rootStore.Id, rootStoreModelID, testStore.Id, testStoreModelID
+	return &authzSettings{
+		openfga:  openfga,
+		clientID: clientID,
+		root:     &store{id: rootStore.Id, modelID: rootStoreModelID},
+		test:     &store{id: testStore.Id, modelID: testStoreModelID},
+	}
+}
+
+func (s *authzSettings) addAuthForRelation(t *testing.T, ctx context.Context, authzRelation string) {
+	_, err := s.openfga.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              s.root.id,
+		AuthorizationModelId: s.root.modelID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey(fmt.Sprintf("store:%s", s.test.id), authzRelation, fmt.Sprintf("application:%s", s.clientID)),
+			},
+		},
+	})
+	require.NoError(t, err)
 }
 
 func TestListObjects(t *testing.T) {
@@ -126,22 +156,22 @@ func TestListObjects(t *testing.T) {
 		t.Cleanup(openfga.Close)
 
 		clientID := "validclientid"
-		rootStoreID, rootModelID, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 
 		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId:              rootStoreID,
-			AuthorizationModelId: rootModelID,
+			StoreId:              settings.root.id,
+			AuthorizationModelId: settings.root.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), authz.CanCallGetStore, fmt.Sprintf("application:%s", clientID)),
+					tuple.NewTupleKey(fmt.Sprintf("store:%s", settings.test.id), authz.CanCallGetStore, fmt.Sprintf("application:%s", clientID)),
 				},
 			},
 		})
 		require.NoError(t, err)
 
 		_, err = openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-			StoreId:              testStoreID,
-			AuthorizationModelId: testModelID,
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
 			Type:                 "workspace",
 			Relation:             "guest",
 			User:                 "user:ben",
@@ -156,10 +186,10 @@ func TestListObjects(t *testing.T) {
 		t.Cleanup(openfga.Close)
 
 		clientID := "validclientid"
-		rootStoreID, rootModelID, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId:              testStoreID,
-			AuthorizationModelId: testModelID,
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
@@ -168,13 +198,13 @@ func TestListObjects(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: rootStoreID, ModelID: rootModelID}, openfga, openfga.logger)
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: testModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				Type:                 "workspace",
 				Relation:             "guest",
 				User:                 "user:ben",
@@ -185,20 +215,11 @@ func TestListObjects(t *testing.T) {
 
 		t.Run("successfully_call_list_objects", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
-				StoreId:              rootStoreID,
-				AuthorizationModelId: rootModelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), authz.CanCallListObjects, fmt.Sprintf("application:%s", clientID)),
-					},
-				},
-			})
-			require.NoError(t, err)
+			settings.addAuthForRelation(t, ctx, authz.CanCallListObjects)
 
 			listObjectsResponse, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: testModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				Type:                 "workspace",
 				Relation:             "guest",
 				User:                 "user:ben",
@@ -224,11 +245,11 @@ func TestStreamedListObjects(t *testing.T) {
 		t.Cleanup(openfga.Close)
 
 		clientID := "validclientid"
-		_, _, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 
 		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              testStoreID,
-			AuthorizationModelId: testModelID,
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
 			Type:                 "workspace",
 			Relation:             "guest",
 			User:                 "user:ben",
@@ -242,10 +263,10 @@ func TestStreamedListObjects(t *testing.T) {
 		)
 		t.Cleanup(openfga.Close)
 		clientID := "validclientid"
-		rootStoreID, rootModelID, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId:              testStoreID,
-			AuthorizationModelId: testModelID,
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
@@ -254,14 +275,14 @@ func TestStreamedListObjects(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: rootStoreID, ModelID: rootModelID}, openfga, openfga.logger)
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			server := NewMockStreamServer(ctx)
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: testModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				Type:                 "workspace",
 				Relation:             "guest",
 				User:                 "user:ben",
@@ -273,21 +294,12 @@ func TestStreamedListObjects(t *testing.T) {
 
 		t.Run("successfully_call_streamed_list_objects", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
-				StoreId:              rootStoreID,
-				AuthorizationModelId: rootModelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), authz.CanCallListObjects, fmt.Sprintf("application:%s", clientID)),
-					},
-				},
-			})
-			require.NoError(t, err)
+			settings.addAuthForRelation(t, ctx, authz.CanCallListObjects)
 
 			server := NewMockStreamServer(ctx)
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: testModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				Type:                 "workspace",
 				Relation:             "guest",
 				User:                 "user:ben",
@@ -295,6 +307,176 @@ func TestStreamedListObjects(t *testing.T) {
 			require.NoError(t, err)
 		})
 	})
+}
+
+func TestRead(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("read_no_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		_, err := openfga.Read(context.Background(), &openfgav1.ReadRequest{
+			StoreId: settings.test.id,
+			TupleKey: &openfgav1.ReadRequestTupleKey{
+				User:     "user:anne",
+				Relation: "guest",
+				Object:   "workspace:1",
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("read_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.Read(ctx, &openfgav1.ReadRequest{
+				StoreId: settings.test.id,
+				TupleKey: &openfgav1.ReadRequestTupleKey{
+					User:     "user:ben",
+					Relation: "guest",
+					Object:   "workspace:1",
+				},
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_read", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallRead)
+
+			readResponse, err := openfga.Read(ctx, &openfgav1.ReadRequest{
+				StoreId: settings.test.id,
+				TupleKey: &openfgav1.ReadRequestTupleKey{
+					User:     "user:ben",
+					Relation: "guest",
+					Object:   "workspace:1",
+				},
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, len(readResponse.GetTuples()), 1)
+			require.Equal(t, readResponse.GetTuples()[0].Key, tuple.NewTupleKey("workspace:1", "guest", "user:ben"))
+		})
+	})
+}
+
+func TestWrite(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("write_no_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		_, err := openfga.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("write_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					},
+				},
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_write", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallWrite)
+
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					},
+				},
+			})
+			require.NoError(t, err)
+		})
+	})
+}
+
+func TestCheckAuthzListStores(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
+
+func TestCheckCreateStoreAuthz(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
 }
 
 func TestCheckAuthz(t *testing.T) {
@@ -323,58 +505,50 @@ func TestCheckAuthz(t *testing.T) {
 		t.Cleanup(openfga.Close)
 
 		clientID := "validclientid"
-		rootStoreID, rootModelID, testStoreID, _ := setupAuthzModelAndTuples(t, openfga, clientID)
-		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: rootStoreID, ModelID: rootModelID}, openfga, openfga.logger)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
 			fmt.Printf("%v", openfga.authorizer)
 			ctx := authz.ContextWithSkipAuthzCheck(context.Background(), true)
 
-			err := openfga.CheckAuthz(ctx, testStoreID, authz.Check)
+			err := openfga.CheckAuthz(ctx, settings.test.id, authz.Check)
 			require.NoError(t, err)
 		})
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
-			err := openfga.CheckAuthz(context.Background(), testStoreID, authz.Check)
+			err := openfga.CheckAuthz(context.Background(), settings.test.id, authz.Check)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
-			err := openfga.CheckAuthz(ctx, testStoreID, authz.Check)
+			err := openfga.CheckAuthz(ctx, settings.test.id, authz.Check)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "ID"})
-			err := openfga.CheckAuthz(ctx, testStoreID, "invalid api method")
+			err := openfga.CheckAuthz(ctx, settings.test.id, "invalid api method")
 			require.Error(t, err)
 			require.Equal(t, "unknown api method: invalid api method", err.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			err := openfga.CheckAuthz(ctx, testStoreID, authz.Check)
+			err := openfga.CheckAuthz(ctx, settings.test.id, authz.Check)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
-				StoreId:              rootStoreID,
-				AuthorizationModelId: rootModelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), authz.CanCallCheck, fmt.Sprintf("application:%s", clientID)),
-					},
-				},
-			})
-			require.NoError(t, err)
+			settings.addAuthForRelation(t, ctx, authz.CanCallCheck)
 
-			err = openfga.CheckAuthz(ctx, testStoreID, authz.Check)
+			err := openfga.CheckAuthz(ctx, settings.test.id, authz.Check)
 			require.NoError(t, err)
 		})
 	})
@@ -395,15 +569,15 @@ func TestCheck(t *testing.T) {
 
 		clientID := "validclientid"
 
-		rootStoreID, rootModelID, _, _ := setupAuthzModelAndTuples(t, openfga, clientID)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 
 		checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              rootStoreID,
-			AuthorizationModelId: rootModelID, // optional, but recommended for speed
+			StoreId:              settings.root.id,
+			AuthorizationModelId: settings.root.modelID,
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     fmt.Sprintf("application:%s", clientID),
 				Relation: "admin",
-				Object:   fmt.Sprintf("store:%s", rootStoreID),
+				Object:   fmt.Sprintf("store:%s", settings.root.id),
 			},
 		})
 		require.NoError(t, err)
@@ -417,18 +591,19 @@ func TestCheck(t *testing.T) {
 		t.Cleanup(openfga.Close)
 
 		clientID := "validclientid"
-		rootStoreID, rootModelID, testStoreID, testModelID := setupAuthzModelAndTuples(t, openfga, clientID)
-		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: rootStoreID, ModelID: rootModelID}, openfga, openfga.logger)
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.Check(ctx, &openfgav1.CheckRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: rootModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					User:     fmt.Sprintf("application:%s", clientID),
 					Relation: "reader",
-					Object:   fmt.Sprintf("store:%s", testStoreID),
+					Object:   fmt.Sprintf("store:%s", settings.test.id),
 				},
 			})
 			require.Error(t, err)
@@ -437,29 +612,11 @@ func TestCheck(t *testing.T) {
 
 		t.Run("successfully_call_check", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, "writer")
+			settings.addAuthForRelation(t, ctx, authz.CanCallCheck)
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
-				StoreId:              rootStoreID,
-				AuthorizationModelId: rootModelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), "writer", fmt.Sprintf("application:%s", clientID)),
-					},
-				},
-			})
-			require.NoError(t, err)
-			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
-				StoreId:              rootStoreID,
-				AuthorizationModelId: rootModelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey(fmt.Sprintf("store:%s", testStoreID), authz.CanCallCheck, fmt.Sprintf("application:%s", clientID)),
-					},
-				},
-			})
-			require.NoError(t, err)
-			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: testModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
 					TupleKeys: []*openfgav1.TupleKey{
 						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
@@ -469,8 +626,8 @@ func TestCheck(t *testing.T) {
 			require.NoError(t, err)
 
 			checkResponse, err := openfga.Check(ctx, &openfgav1.CheckRequest{
-				StoreId:              testStoreID,
-				AuthorizationModelId: testModelID,
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					User:     "user:ben",
 					Relation: "guest",
@@ -484,49 +641,82 @@ func TestCheck(t *testing.T) {
 	})
 }
 
-// t.Run("list_objects_valid_check_authz", func(t *testing.T) {
-// 	storeID := ulid.Make().String()
+func TestExpand(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 	writeAuthzModelResp, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-// 		StoreId: storeID,
-// 		TypeDefinitions: language.MustTransformDSLToProto(`
-// 		model
-// 			schema 1.1
+func TestReadAuthorizationModel(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 		type user
+func TestReadAuthorizationModels(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 		type document
-// 			relations
-// 				define editor: [user]`).GetTypeDefinitions(),
-// 		SchemaVersion: typesystem.SchemaVersion1_1,
-// 	})
-// 	require.NoError(t, err)
+func TestWriteAssertions(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 	modelID := writeAuthzModelResp.GetAuthorizationModelId()
+func TestReadAssertions(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 	numTuples := 10
-// 	tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-// 	for i := 0; i < numTuples; i++ {
-// 		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
+func TestReadChanges(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 		tuples = append(tuples, tk)
-// 	}
+func TestCreateStore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 	_, err = openfga.Write(context.Background(), &openfgav1.WriteRequest{
-// 		StoreId:              storeID,
-// 		AuthorizationModelId: modelID,
-// 		Writes: &openfgav1.WriteRequestWrites{
-// 			TupleKeys: tuples,
-// 		},
-// 	})
-// 	require.NoError(t, err)
+func TestDeleteStore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
 
-// 	_, err = openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-// 		StoreId:              storeID,
-// 		AuthorizationModelId: modelID,
-// 		Type:                 "document",
-// 		Relation:             "editor",
-// 		User:                 "user:jon",
-// 	})
-// 	require.NoError(t, err)
-// })
+func TestGetStore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
+
+func TestListStores(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+}
