@@ -7,7 +7,7 @@ require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/docker/docker v27.1.2+incompatible
+	github.com/docker/docker v27.2.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/go-sql-driver/mysql v1.8.1
@@ -28,7 +28,7 @@ require (
 	github.com/openfga/language/pkg/go v0.2.0-beta.0
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/prometheus/client_golang v1.20.2
-	github.com/rs/cors v1.11.0
+	github.com/rs/cors v1.11.1
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
@@ -48,7 +48,7 @@ require (
 	golang.org/x/exp v0.0.0-20240409090435-93d18d7e34b8
 	golang.org/x/sync v0.8.0
 	golang.org/x/time v0.6.0
-	google.golang.org/grpc v1.65.0
+	google.golang.org/grpc v1.66.0
 	google.golang.org/protobuf v1.34.2
 	sigs.k8s.io/yaml v1.4.0
 )
