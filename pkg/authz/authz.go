@@ -143,7 +143,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 
 	allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
 	if !allowed || err != nil {
-		return nil, status.Error(codes.Code(ErrorResponse.Code), ErrorResponse.Message)
+		return nil, status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
 	}
 
 	req := &openfgav1.ListObjectsRequest{

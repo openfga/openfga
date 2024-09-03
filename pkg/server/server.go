@@ -1151,7 +1151,7 @@ func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
 		}
 
 		if !authorized {
-			return status.Error(codes.Code(authz.ErrorResponse.Code), authz.ErrorResponse.Message)
+			return status.Error(codes.Code(authz.ErrorResponse.GetCode()), authz.ErrorResponse.GetMessage())
 		}
 	}
 	return nil
@@ -1170,7 +1170,7 @@ func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) erro
 		}
 
 		if !authorized {
-			return status.Error(codes.Code(authz.ErrorResponse.Code), authz.ErrorResponse.Message)
+			return status.Error(codes.Code(authz.ErrorResponse.GetCode()), authz.ErrorResponse.GetMessage())
 		}
 	}
 	return nil
