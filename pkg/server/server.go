@@ -1539,16 +1539,13 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	storesMap := make(map[string]struct{})
 	re := regexp.MustCompile(`^.*:(.*)`)
 	for _, store := range stores {
-		// TODO: productionize this
 		id := re.FindStringSubmatch(store)
-		fmt.Printf("id: %s\n", id)
 		storesMap[id[1]] = struct{}{}
 	}
 
 	var accessibleStores []*openfgav1.Store
 	var continuationToken string
 
-	// TODO: This doesn't hit the full page size for users using the access control feature.
 	for {
 		req.ContinuationToken = continuationToken
 		resp, err := q.Execute(ctx, req)

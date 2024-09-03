@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/pkg/logger"
 )
@@ -134,11 +136,17 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 	if err != nil {
 		return nil, err
 	}
+
+	allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
+	if !allowed || err != nil {
+		return nil, status.Error(codes.PermissionDenied, "permission denied")
+	}
+
 	req := &openfgav1.ListObjectsRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
 		User:                 a.getApplication(clientID),
-		Relation:             relation,
+		Relation:             CanCallGetStore,
 		Type:                 StoreType,
 	}
 
