@@ -593,7 +593,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 		t, err := iter.Next(ctx)
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
-			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if storage.IterIsDoneOrCancelled(err) {
 				break
 			}
 			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
@@ -898,7 +898,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 		t, err := iter.Next(ctx)
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
-			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			if !storage.IterIsDoneOrCancelled(err) {
 				trySendUsersetsError(ctx, err, usersetsChan)
 			}
 			break
@@ -1118,7 +1118,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if storage.IterIsDoneOrCancelled(err) {
 				break
 			}
 			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
