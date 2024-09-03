@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime/debug"
 
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 
@@ -23,7 +24,10 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error("HTTPPanicRecoveryHandler has recovered a panic", zap.Error(fmt.Errorf("%v", err)))
+				logger.Error("HTTPPanicRecoveryHandler has recovered a panic",
+					zap.Error(fmt.Errorf("%v", err)),
+					zap.ByteString("stacktrace", debug.Stack()),
+				)
 				w.Header().Set("content-type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 
@@ -50,7 +54,9 @@ func HTTPPanicRecoveryHandler(next http.Handler, logger logger.Logger) http.Hand
 func PanicRecoveryHandler(logger logger.Logger) grpc_recovery.RecoveryHandlerFuncContext {
 	return func(ctx context.Context, p any) error {
 		logger.Error("PanicRecoveryHandler has recovered a panic",
-			zap.Error(fmt.Errorf("%v", p)))
+			zap.Error(fmt.Errorf("%v", p)),
+			zap.ByteString("stacktrace", debug.Stack()),
+		)
 
 		return status.Errorf(codes.Internal, errors.InternalServerErrorMsg)
 	}
