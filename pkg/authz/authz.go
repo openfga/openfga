@@ -59,6 +59,10 @@ const (
 	RootSystemID    = "fga"
 )
 
+var (
+	ErrorResponse = &openfgav1.ForbiddenResponse{Code: 403, Message: "the principal is not authorized to perform the action"}
+)
+
 type Config struct {
 	StoreID string
 	ModelID string
@@ -139,7 +143,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 
 	allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
 	if !allowed || err != nil {
-		return nil, status.Error(codes.PermissionDenied, "permission denied")
+		return nil, status.Error(codes.Code(ErrorResponse.Code), ErrorResponse.Message)
 	}
 
 	req := &openfgav1.ListObjectsRequest{

@@ -1151,8 +1151,7 @@ func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
 		}
 
 		if !authorized {
-			// TODO: fix error message
-			return status.Error(codes.PermissionDenied, "permission denied")
+			return status.Error(codes.Code(authz.ErrorResponse.Code), authz.ErrorResponse.Message)
 		}
 	}
 	return nil
@@ -1171,8 +1170,7 @@ func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) erro
 		}
 
 		if !authorized {
-			// TODO: fix error message
-			return status.Error(codes.PermissionDenied, "permission denied")
+			return status.Error(codes.Code(authz.ErrorResponse.Code), authz.ErrorResponse.Message)
 		}
 	}
 	return nil

@@ -179,7 +179,7 @@ func TestListAuthorizedStores(t *testing.T) {
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
 		require.Equal(t, stores, []string(nil))
 	})
 
@@ -188,7 +188,7 @@ func TestListAuthorizedStores(t *testing.T) {
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
 		require.Equal(t, stores, []string(nil))
 	})
 
