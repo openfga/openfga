@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 func TestGetRelation(t *testing.T) {
@@ -209,7 +210,7 @@ func TestListAuthorizedStores(t *testing.T) {
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.NoError(t, err)
-		require.Equal(t, stores, expectedStores)
+		require.Equal(t, expectedStores, stores)
 	})
 }
 
