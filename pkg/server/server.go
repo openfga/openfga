@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1536,8 +1537,12 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	}
 
 	storesMap := make(map[string]struct{})
+	re := regexp.MustCompile(`^.*:(.*)`)
 	for _, store := range stores {
-		storesMap[store] = struct{}{}
+		// TODO: productionize this
+		id := re.FindStringSubmatch(store)
+		fmt.Printf("id: %s\n", id)
+		storesMap[id[1]] = struct{}{}
 	}
 
 	var accessibleStores []*openfgav1.Store
@@ -1557,11 +1562,11 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 			}
 		}
 
+		continuationToken = resp.GetContinuationToken()
+
 		if len(accessibleStores) > 0 || resp.GetContinuationToken() == "" {
 			break
 		}
-
-		continuationToken = resp.GetContinuationToken()
 	}
 
 	return &openfgav1.ListStoresResponse{
