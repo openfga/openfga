@@ -804,10 +804,11 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 		t, err := iter.Next(ctx)
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
-			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) {
+			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				break
 			}
 			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
+			continue
 		}
 
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
@@ -852,7 +853,7 @@ func processDispatches(ctx context.Context, req *ResolveCheckRequest, pool *pool
 				outcomes <- checkOutcome{resp: &ResolveCheckResponse{
 					Allowed: true,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 					},
 				}}
 				return
@@ -1183,7 +1184,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 		t, err := iter.Next(ctx)
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
-			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) {
+			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 				trySendUsersetsError(ctx, err, usersetsChan)
 			}
 			break
@@ -1405,10 +1406,11 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) {
+			if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				break
 			}
 			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
+			continue
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
