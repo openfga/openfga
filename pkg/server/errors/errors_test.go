@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -50,7 +51,7 @@ func TestInternalError(t *testing.T) {
 	})
 }
 
-func TestHandleStorageErrors(t *testing.T) {
+func TestHandleErrors(t *testing.T) {
 	tests := map[string]struct {
 		storageErr              error
 		expectedTranslatedError error
@@ -67,9 +68,17 @@ func TestHandleStorageErrors(t *testing.T) {
 			storageErr:              storage.ErrCancelled,
 			expectedTranslatedError: RequestCancelled,
 		},
-		`context_deadline_exceeeded`: {
+		`context_cancelled_2`: {
+			storageErr:              context.Canceled,
+			expectedTranslatedError: RequestCancelled,
+		},
+		`context_deadline_exceeded`: {
 			storageErr:              storage.ErrDeadlineExceeded,
-			expectedTranslatedError: RequestDeadlineExceeded,
+			expectedTranslatedError: storage.ErrDeadlineExceeded,
+		},
+		`context_deadline_exceeded_2`: {
+			storageErr:              context.DeadlineExceeded,
+			expectedTranslatedError: context.DeadlineExceeded,
 		},
 		`invalid_write_input`: {
 			storageErr:              storage.ErrInvalidWriteInput,
