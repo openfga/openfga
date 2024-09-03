@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	language "github.com/openfga/language/pkg/go/transformer"
@@ -15,6 +16,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type store struct {
@@ -29,13 +32,8 @@ type authzSettings struct {
 	test     *store
 }
 
-func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) *authzSettings {
-	rootStore, err := openfga.CreateStore(context.Background(),
-		&openfgav1.CreateStoreRequest{Name: "root-store"})
-
-	writeAuthzModelResp, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: rootStore.Id,
-		TypeDefinitions: language.MustTransformDSLToProto(`
+const (
+	rootStoreModel = `
 		  model
 			schema 1.1
 		
@@ -61,6 +59,7 @@ func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string)
 			define can_call_check: [application] or reader
 			define can_call_expand: [application] or reader
 			define can_call_list_objects: [application] or reader
+			define can_call_list_stores: [application] or reader
 			define can_call_list_users: [application] or reader
 			define can_call_read: [application] or reader
 			define can_call_read_assertions: [application] or reader or model_writer
@@ -73,8 +72,36 @@ func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string)
 			define reader: [application] or admin
 			define writer: [application] or admin
 			define admin: [application] or creator or admin from system
-		`).GetTypeDefinitions(),
-		SchemaVersion: typesystem.SchemaVersion1_1,
+		`
+	testStoreModel = `
+			model
+				schema 1.1
+
+			type channel
+			relations
+				define commenter: [user, workspace#member] or writer
+				define parent_workspace: [workspace]
+				define writer: [user, workspace#member]
+
+			type user
+
+			type workspace
+			relations
+				define channels_admin: [user] or legacy_admin
+				define guest: [user]
+				define legacy_admin: [user]
+				define member: [user] or legacy_admin or channels_admin
+		`
+)
+
+func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) *authzSettings {
+	rootStore, err := openfga.CreateStore(context.Background(),
+		&openfgav1.CreateStoreRequest{Name: "root-store"})
+
+	writeAuthzModelResp, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         rootStore.Id,
+		TypeDefinitions: language.MustTransformDSLToProto(rootStoreModel).GetTypeDefinitions(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 
@@ -95,27 +122,9 @@ func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string)
 		&openfgav1.CreateStoreRequest{Name: "test-store"})
 
 	writeTestStoreAuthzModelResp, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: testStore.Id,
-		TypeDefinitions: language.MustTransformDSLToProto(`
-			model
-				schema 1.1
-
-			type channel
-			relations
-				define commenter: [user, workspace#member] or writer
-				define parent_workspace: [workspace]
-				define writer: [user, workspace#member]
-
-			type user
-
-			type workspace
-			relations
-				define channels_admin: [user] or legacy_admin
-				define guest: [user]
-				define legacy_admin: [user]
-				define member: [user] or legacy_admin or channels_admin
-		`).GetTypeDefinitions(),
-		SchemaVersion: typesystem.SchemaVersion1_1,
+		StoreId:         testStore.Id,
+		TypeDefinitions: language.MustTransformDSLToProto(testStoreModel).GetTypeDefinitions(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 
@@ -647,6 +656,133 @@ func TestExpand(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("expand_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		expandResponse, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{
+			StoreId:              settings.root.id,
+			AuthorizationModelId: settings.root.modelID,
+			TupleKey: &openfgav1.ExpandRequestTupleKey{
+				Relation: "admin",
+				Object:   fmt.Sprintf("store:%s", settings.root.id),
+			},
+		})
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.ExpandResponse{
+			Tree: &openfgav1.UsersetTree{
+				Root: &openfgav1.UsersetTree_Node{
+					Name: fmt.Sprintf("store:%s#admin", settings.root.id),
+					Value: &openfgav1.UsersetTree_Node_Union{
+						Union: &openfgav1.UsersetTree_Nodes{
+							Nodes: []*openfgav1.UsersetTree_Node{
+								{
+									Name: fmt.Sprintf("store:%s#admin", settings.root.id),
+									Value: &openfgav1.UsersetTree_Node_Leaf{
+										Leaf: &openfgav1.UsersetTree_Leaf{
+											Value: &openfgav1.UsersetTree_Leaf_Users{
+												Users: &openfgav1.UsersetTree_Users{
+													Users: []string{fmt.Sprintf("application:%s", clientID)},
+												},
+											},
+										},
+									},
+								},
+								{
+									Name: fmt.Sprintf("store:%s#admin", settings.root.id),
+									Value: &openfgav1.UsersetTree_Node_Leaf{
+										Leaf: &openfgav1.UsersetTree_Leaf{
+											Value: &openfgav1.UsersetTree_Leaf_Computed{
+												Computed: &openfgav1.UsersetTree_Computed{
+													Userset: fmt.Sprintf("store:%s#creator", settings.root.id),
+												},
+											},
+										},
+									},
+								},
+								{
+									Name: fmt.Sprintf("store:%s#admin", settings.root.id),
+									Value: &openfgav1.UsersetTree_Node_Leaf{
+										Leaf: &openfgav1.UsersetTree_Leaf{
+											Value: &openfgav1.UsersetTree_Leaf_TupleToUserset{
+												TupleToUserset: &openfgav1.UsersetTree_TupleToUserset{
+													Tupleset: fmt.Sprintf("store:%s#system", settings.root.id),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}, expandResponse)
+	})
+
+	t.Run("expand_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.Expand(ctx, &openfgav1.ExpandRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
+					Relation: "guest",
+					Object:   "workspace:1",
+				},
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_expand", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallExpand)
+
+			expandResponse, err := openfga.Expand(ctx, &openfgav1.ExpandRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
+					Relation: "guest",
+					Object:   "workspace:1",
+				},
+			})
+			require.NoError(t, err)
+			require.Equal(t, &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "workspace:1#guest",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										Users: []string{},
+									},
+								},
+							},
+						},
+					},
+				},
+			}, expandResponse)
+		})
+	})
 }
 
 func TestReadAuthorizationModel(t *testing.T) {
@@ -655,6 +791,69 @@ func TestReadAuthorizationModel(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("readAuthorizationModel_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		readAuthorizationModelResponse, err := openfga.ReadAuthorizationModel(
+			context.Background(),
+			&openfgav1.ReadAuthorizationModelRequest{
+				StoreId: settings.test.id,
+				Id:      settings.test.modelID,
+			},
+		)
+		require.NoError(t, err)
+		require.Equal(t, settings.test.modelID, readAuthorizationModelResponse.GetAuthorizationModel().GetId())
+		require.Equal(t, typesystem.SchemaVersion1_1, readAuthorizationModelResponse.GetAuthorizationModel().GetSchemaVersion())
+	})
+
+	t.Run("readAuthorizationModel_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.ReadAuthorizationModel(
+				ctx,
+				&openfgav1.ReadAuthorizationModelRequest{
+					StoreId: settings.test.id,
+					Id:      settings.test.modelID,
+				},
+			)
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_readAuthorizationModel", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallReadAuthorizationModels)
+
+			readAuthorizationModelResponse, err := openfga.ReadAuthorizationModel(
+				ctx,
+				&openfgav1.ReadAuthorizationModelRequest{
+					StoreId: settings.test.id,
+					Id:      settings.test.modelID,
+				},
+			)
+			require.NoError(t, err)
+			require.Equal(t, settings.test.modelID, readAuthorizationModelResponse.GetAuthorizationModel().GetId())
+			require.Equal(t, typesystem.SchemaVersion1_1, readAuthorizationModelResponse.GetAuthorizationModel().GetSchemaVersion())
+		})
+	})
 }
 
 func TestReadAuthorizationModels(t *testing.T) {
@@ -663,6 +862,67 @@ func TestReadAuthorizationModels(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("readAuthorizationModels_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		readAuthorizationModelResponse, err := openfga.ReadAuthorizationModels(
+			context.Background(),
+			&openfgav1.ReadAuthorizationModelsRequest{
+				StoreId: settings.test.id,
+			},
+		)
+		require.NoError(t, err)
+		require.Len(t, readAuthorizationModelResponse.GetAuthorizationModels(), 1)
+		require.Empty(t, readAuthorizationModelResponse.GetContinuationToken(), "expected an empty continuation token")
+	})
+
+	t.Run("readAuthorizationModels_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.ReadAuthorizationModels(
+				ctx,
+				&openfgav1.ReadAuthorizationModelsRequest{
+					StoreId: settings.test.id,
+				},
+			)
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_readAuthorizationModels", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallReadAuthorizationModels)
+
+			readAuthorizationModelResponse, err := openfga.ReadAuthorizationModels(
+				ctx,
+				&openfgav1.ReadAuthorizationModelsRequest{
+					StoreId: settings.test.id,
+				},
+			)
+
+			require.NoError(t, err)
+			require.Len(t, readAuthorizationModelResponse.GetAuthorizationModels(), 1)
+			require.Empty(t, readAuthorizationModelResponse.GetContinuationToken(), "expected an empty continuation token")
+		})
+	})
 }
 
 func TestWriteAssertions(t *testing.T) {
@@ -671,6 +931,101 @@ func TestWriteAssertions(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("writeAssertions_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		assertions := []*openfgav1.Assertion{
+			{
+				TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+				Expectation: false,
+			},
+		}
+		_, err := openfga.WriteAssertions(context.Background(), &openfgav1.WriteAssertionsRequest{
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
+			Assertions:           assertions,
+		})
+		require.NoError(t, err)
+		readAssertionsResponse, err := openfga.ReadAssertions(context.Background(), &openfgav1.ReadAssertionsRequest{
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
+		})
+		require.NoError(t, err)
+		if diff := cmp.Diff(openfgav1.ReadAssertionsResponse{
+			AuthorizationModelId: settings.test.modelID,
+			Assertions:           assertions,
+		}, readAssertionsResponse, protocmp.Transform()); diff != "" {
+			t.Errorf("response mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("writeAssertions_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			assertions := []*openfgav1.Assertion{
+				{
+					TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+					Expectation: false,
+				},
+			}
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+				Assertions:           assertions,
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_writeAssertions", func(t *testing.T) {
+			assertions := []*openfgav1.Assertion{
+				{
+					TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+					Expectation: false,
+				},
+			}
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallWriteAssertions)
+
+			_, err := openfga.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+				Assertions:           assertions,
+			})
+			require.NoError(t, err)
+
+			settings.addAuthForRelation(t, ctx, authz.CanCallReadAssertions)
+			readAssertionsResponse, err := openfga.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+			})
+			require.NoError(t, err)
+			if diff := cmp.Diff(openfgav1.ReadAssertionsResponse{
+				AuthorizationModelId: settings.test.modelID,
+				Assertions:           assertions,
+			}, readAssertionsResponse, protocmp.Transform()); diff != "" {
+				t.Errorf("response mismatch (-want +got):\n%s", diff)
+			}
+		})
+	})
 }
 
 func TestReadAssertions(t *testing.T) {
@@ -679,6 +1034,69 @@ func TestReadAssertions(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("readAssertions_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		readAssertionsResponse, err := openfga.ReadAssertions(context.Background(), &openfgav1.ReadAssertionsRequest{
+			StoreId:              settings.test.id,
+			AuthorizationModelId: settings.test.modelID,
+		})
+		require.NoError(t, err)
+		if diff := cmp.Diff(openfgav1.ReadAssertionsResponse{
+			AuthorizationModelId: settings.test.modelID,
+			Assertions:           []*openfgav1.Assertion{},
+		}, readAssertionsResponse, protocmp.Transform()); diff != "" {
+			t.Errorf("response mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("readAssertions_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_readAssertions", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallReadAssertions)
+
+			readAssertionsResponse, err := openfga.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
+				StoreId:              settings.test.id,
+				AuthorizationModelId: settings.test.modelID,
+			})
+
+			require.NoError(t, err)
+			if diff := cmp.Diff(openfgav1.ReadAssertionsResponse{
+				AuthorizationModelId: settings.test.modelID,
+				Assertions:           []*openfgav1.Assertion{},
+			}, readAssertionsResponse, protocmp.Transform()); diff != "" {
+				t.Errorf("response mismatch (-want +got):\n%s", diff)
+			}
+		})
+	})
 }
 
 func TestReadChanges(t *testing.T) {
@@ -687,6 +1105,72 @@ func TestReadChanges(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("readChanges_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		readChangesResponse, err := openfga.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
+			StoreId:  settings.test.id,
+			Type:     "user",
+			PageSize: wrapperspb.Int32(50),
+		})
+		require.NoError(t, err)
+		if diff := cmp.Diff(&openfgav1.ReadChangesResponse{
+			Changes:           []*openfgav1.TupleChange{},
+			ContinuationToken: "",
+		}, readChangesResponse, protocmp.Transform()); diff != "" {
+			t.Errorf("response mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("readChanges_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.ReadChanges(ctx, &openfgav1.ReadChangesRequest{
+				StoreId:  settings.test.id,
+				Type:     "user",
+				PageSize: wrapperspb.Int32(50),
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_readChanges", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallReadChanges)
+
+			readChangesResponse, err := openfga.ReadChanges(ctx, &openfgav1.ReadChangesRequest{
+				StoreId:  settings.test.id,
+				Type:     "user",
+				PageSize: wrapperspb.Int32(50),
+			})
+
+			require.NoError(t, err)
+			if diff := cmp.Diff(&openfgav1.ReadChangesResponse{
+				Changes:           []*openfgav1.TupleChange{},
+				ContinuationToken: "",
+			}, readChangesResponse, protocmp.Transform()); diff != "" {
+				t.Errorf("response mismatch (-want +got):\n%s", diff)
+			}
+		})
+	})
 }
 
 func TestCreateStore(t *testing.T) {
@@ -695,6 +1179,68 @@ func TestCreateStore(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("createStore_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		_ = newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		name := "new store"
+		readChangesResponse, err := openfga.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+			Name: name,
+		})
+		require.NoError(t, err)
+		require.Equal(t, name, readChangesResponse.GetName())
+	})
+
+	t.Run("createStore_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			name := "new store"
+			_, err := openfga.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+				Name: name,
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_createStore", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.root.id,
+				AuthorizationModelId: settings.root.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("system:fga", authz.CanCallCreateStore, fmt.Sprintf("application:%s", settings.clientID)),
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			name := "new store"
+			readChangesResponse, err := openfga.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+				Name: name,
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, name, readChangesResponse.GetName())
+		})
+	})
 }
 
 func TestDeleteStore(t *testing.T) {
@@ -703,6 +1249,54 @@ func TestDeleteStore(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("deleteStore_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		_, err := openfga.DeleteStore(context.Background(), &openfgav1.DeleteStoreRequest{
+			StoreId: settings.test.id,
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("deleteStore_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
+				StoreId: settings.test.id,
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_deleteStore", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallDeleteStore)
+
+			_, err := openfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
+				StoreId: settings.test.id,
+			})
+
+			require.NoError(t, err)
+		})
+	})
 }
 
 func TestGetStore(t *testing.T) {
@@ -711,6 +1305,56 @@ func TestGetStore(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("getStore_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		getStoreResponse, err := openfga.GetStore(context.Background(), &openfgav1.GetStoreRequest{
+			StoreId: settings.test.id,
+		})
+		require.NoError(t, err)
+		require.Equal(t, settings.test.id, getStoreResponse.Id)
+	})
+
+	t.Run("getStore_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.GetStore(ctx, &openfgav1.GetStoreRequest{
+				StoreId: settings.test.id,
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = PermissionDenied desc = permission denied", err.Error())
+		})
+
+		t.Run("successfully_call_getStore", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallGetStore)
+
+			getStoreResponse, err := openfga.GetStore(ctx, &openfgav1.GetStoreRequest{
+				StoreId: settings.test.id,
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, settings.test.id, getStoreResponse.Id)
+		})
+	})
 }
 
 func TestListStores(t *testing.T) {
@@ -719,4 +1363,61 @@ func TestListStores(t *testing.T) {
 	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+
+	t.Run("getStore_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		getStoreResponse, err := openfga.ListStores(context.Background(), &openfgav1.ListStoresRequest{
+			PageSize: wrapperspb.Int32(50),
+		})
+		require.NoError(t, err)
+		require.Equal(t, getStoreResponse.GetContinuationToken(), "")
+		require.Len(t, getStoreResponse.GetStores(), 2)
+		require.Equal(t, getStoreResponse.GetStores()[0].Id, settings.root.id)
+		require.Equal(t, getStoreResponse.GetStores()[1].Id, settings.test.id)
+	})
+
+	t.Run("getStore_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		// t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+		// 	ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+		// 	_, err := openfga.ListStores(ctx, &openfgav1.ListStoresRequest{
+		// 		PageSize: wrapperspb.Int32(50),
+		// 	})
+		// 	require.Error(t, err)
+		// 	// TODO: fix error message?
+		// 	require.Equal(t, "rpc error: code = Code(2022) desc = relation 'store#can_call_list_stores' not found", err.Error())
+		// })
+
+		t.Run("successfully_call_getStore", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(t, ctx, authz.CanCallRead)
+
+			getStoreResponse, err := openfga.ListStores(ctx, &openfgav1.ListStoresRequest{
+				PageSize: wrapperspb.Int32(50),
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, "", getStoreResponse.GetContinuationToken())
+			require.Len(t, getStoreResponse.GetStores(), 2)
+			require.Equal(t, getStoreResponse.GetStores()[0].Id, settings.root.id)
+			require.Equal(t, getStoreResponse.GetStores()[1].Id, settings.test.id)
+		})
+	})
 }
