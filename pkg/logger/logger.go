@@ -18,7 +18,7 @@ type Logger interface {
 	Error(string, ...zap.Field)
 	Panic(string, ...zap.Field)
 	Fatal(string, ...zap.Field)
-	With(...zap.Field) *ZapLogger
+	With(...zap.Field) Logger
 
 	// These are the equivalent logger function but with context provided
 	DebugWithContext(context.Context, string, ...zap.Field)
@@ -44,7 +44,7 @@ type ZapLogger struct {
 
 var _ Logger = (*ZapLogger)(nil)
 
-func (l *ZapLogger) With(fields ...zap.Field) *ZapLogger {
+func (l *ZapLogger) With(fields ...zap.Field) Logger {
 	return &ZapLogger{l.Logger.With(fields...)}
 }
 
