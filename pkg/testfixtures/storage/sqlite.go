@@ -62,7 +62,7 @@ func (m *sqliteTestContainer) RunSqliteTestDatabase(t testing.TB) DatastoreTestC
 
 // GetConnectionURI returns the sqlite connection uri for the running sqlite test container.
 func (m *sqliteTestContainer) GetConnectionURI(includeCredentials bool) string {
-	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(500)", m.path)
+	return fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(100)", m.path)
 }
 
 func (m *sqliteTestContainer) GetUsername() string {

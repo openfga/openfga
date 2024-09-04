@@ -74,7 +74,7 @@ func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
 		query.Add("_pragma", "journal_mode(WAL)")
 	}
 	if !foundBusyTimeout {
-		query.Add("_pragma", "busy_timeout(500)")
+		query.Add("_pragma", "busy_timeout(100)")
 	}
 
 	uri += "?" + query.Encode()

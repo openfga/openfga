@@ -19,8 +19,8 @@ CREATE INDEX idx_reverse_lookup_user ON tuple (store, object_type, relation, _us
 CREATE TABLE authorization_model (
     store CHAR(26) NOT NULL,
     authorization_model_id CHAR(26) NOT NULL,
-    schema_version VARCHAR(5) NOT NULL DEFAULT '1.0',
-    serialized_protobuf LONGBLOB,
+    schema_version VARCHAR(5) NOT NULL DEFAULT '1.1',
+    serialized_protobuf LONGBLOB NOT NULL,
     PRIMARY KEY (store, authorization_model_id)
 );
 
