@@ -3929,3 +3929,139 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckTTUSlowPath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+ and computedRelation is defined for type
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX]
+				type team
+					relations
+						define teammate: [user with condX]
+				type document
+					relations
+						define viewer: member from owner
+						define owner: [group, team]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	const initialDSCount = 20
+
+	tests := []struct {
+		name             string
+		rewrite          *openfgav1.Userset
+		tuples           []*openfgav1.TupleKey
+		dispatchResponse *ResolveCheckResponse
+		expected         *ResolveCheckResponse
+		expectedError    error
+	}{
+		{
+			name:    "no_tuple",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples:  []*openfgav1.TupleKey{},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1, // 1 for getting the parent
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:    "error",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "badCondition", nil),
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("condition not found"),
+		},
+		{
+			name:    "dispatcher_found",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			dispatchResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1 + 1, // 1 for getting the parent and 1 for the dispatch
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:    "dispatcher_not_found",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			dispatchResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1 + 1, // 1 for getting the parent and 1 for the dispatch
+				},
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			if tt.dispatchResponse != nil {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(tt.dispatchResponse, nil)
+			}
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+			req.RequestMetadata.DatastoreQueryCount = initialDSCount
+			resp, err := checker.checkTTUSlowPath(ctx, req, tt.rewrite, iter)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
+		})
+	}
+}
