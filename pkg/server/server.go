@@ -96,7 +96,7 @@ var (
 	throttledRequestCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_count",
-		Help:      "The total number of requests that have been throttled regardless if it has timed-out or not.",
+		Help:      "The total number of requests that have been throttled.",
 	})
 )
 
