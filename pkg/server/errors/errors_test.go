@@ -64,13 +64,13 @@ func TestHandleErrors(t *testing.T) {
 			storageErr:              storage.ErrMismatchObjectType,
 			expectedTranslatedError: MismatchObjectType,
 		},
-		`context_cancelled_2`: {
+		`context_cancelled`: {
 			storageErr:              context.Canceled,
 			expectedTranslatedError: RequestCancelled,
 		},
-		`context_deadline_exceeded_2`: {
+		`context_deadline_exceeded`: {
 			storageErr:              context.DeadlineExceeded,
-			expectedTranslatedError: context.DeadlineExceeded,
+			expectedTranslatedError: RequestDeadlineExceeded,
 		},
 		`invalid_write_input`: {
 			storageErr:              storage.ErrInvalidWriteInput,
