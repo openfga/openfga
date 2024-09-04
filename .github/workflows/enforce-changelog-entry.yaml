@@ -4,6 +4,9 @@ on:
     # By default labeled/unlabeled are not included in the pull_request even so we need to list out what we want
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
+permissions:
+  contents: read
+
 jobs:
   changelog:
     runs-on: ubuntu-latest
