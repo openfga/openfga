@@ -12,6 +12,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Stack trace when logging panics [#1904](https://github.com/openfga/openfga/pull/1904)
 
+## Fixed
+
+* When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
+
 ## [1.6.0] - 2024-08-30
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.9...v1.6.0)
