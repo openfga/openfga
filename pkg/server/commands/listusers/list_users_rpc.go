@@ -292,7 +292,6 @@ func (l *listUsersQuery) ListUsers(
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
-			DidTimeOut:          deadlineExceeded,
 		},
 	}, nil
 }

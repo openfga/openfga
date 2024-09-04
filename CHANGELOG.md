@@ -9,7 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ### Added
-* Throttling metrics `throttled_requests_count` and `throttled_requests_timed_out_count` for observing effects of throttling configurations [#1863](https://github.com/openfga/openfga/pull/1863)
+* Throttling metric `throttled_requests_count` for observing the number of throttled requests for a given throttling configuration [#1863](https://github.com/openfga/openfga/pull/1863)
 
 ### Changed
 

@@ -119,11 +119,7 @@ func (s *Server) ListUsers(
 
 	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
 	if wasRequestThrottled {
-		if resp.GetMetadata().DidTimeOut {
-			throttledRequestTimeOutCounter.Inc()
-		} else {
-			throttledRequestCounter.Inc()
-		}
+		throttledRequestCounter.Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{

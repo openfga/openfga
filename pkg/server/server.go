@@ -100,12 +100,6 @@ var (
 		Name:      "throttled_requests_count",
 		Help:      "The total number of requests that have been throttled regardless if it has timed-out or not.",
 	})
-
-	throttledRequestTimeOutCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "throttled_requests_timed_out_count",
-		Help:      "The total number of requests that have been throttled but have timed-out. In the case of ListUsers and ListObjects, these requests still succeed with partial results.",
-	})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -768,11 +762,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		if result.ResolutionMetadata.DidTimeOut.Load() {
-			throttledRequestTimeOutCounter.Inc()
-		} else {
-			throttledRequestCounter.Inc()
-		}
+		throttledRequestCounter.Inc()
 	}
 
 	return &openfgav1.ListObjectsResponse{
@@ -1023,7 +1013,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		// Note for ListObjects:
 		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			throttledRequestTimeOutCounter.Inc()
+			throttledRequestCounter.Inc()
 			return nil, serverErrors.ThrottledTimeout
 		}
 
