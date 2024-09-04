@@ -8,10 +8,41 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## Added
+
+* Stack trace when logging panics [#1904](https://github.com/openfga/openfga/pull/1904)
+
+## Fixed
+
+* When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
+
+## [1.6.0] - 2024-08-30
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.9...v1.6.0)
+
 ### Changed
 
-* Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options feature PR](https://github.com/openfga/openfga/pull/1764) for usage details. [#1889](https://github.com/openfga/openfga/pull/1889)
-* Check optimizations experimental flag has been removed and is now enabled by default. [#1895](https://github.com/openfga/openfga/pull/1895)
+* Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options documentation](https://openfga.dev/docs/interacting/consistency) for details. [#1889](https://github.com/openfga/openfga/pull/1889)
+* Require at least Go 1.22.6 [#1831](https://github.com/openfga/openfga/pull/1831). Thanks @tranngoclam
+* Add a "query_duration_ms" field on each log [#1807](https://github.com/openfga/openfga/pull/1831). Thanks @lalalalatt
+* Default logging to stdout instead of stderr [#1830](https://github.com/openfga/openfga/pull/1830)
+
+## Fixed
+
+* Check API: internal fixes [#1843](https://github.com/openfga/openfga/pull/1843)
+* Correct docker file syntax [#1852](https://github.com/openfga/openfga/pull/1852)
+
+## Performance
+
+* Performance improvements for Check API:
+  - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
+  - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
+  - performance improvement in wildcard scenarios [#1848](https://github.com/openfga/openfga/pull/1848)
+* Performance improvement in tuple validation on reads [#1825](https://github.com/openfga/openfga/pull/1825)
+
+### Breaking changes
+
+* Set a maximum limit on bytes to the WriteAssertions API: 64 KB [#1847](https://github.com/openfga/openfga/pull/1847)
 
 ## [1.5.9] - 2024-08-13
 
@@ -1150,7 +1181,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.9...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/openfga/openfga/releases/tag/v1.6.0
 [1.5.9]: https://github.com/openfga/openfga/releases/tag/v1.5.9
 [1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
 [1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
