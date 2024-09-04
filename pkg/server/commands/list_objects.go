@@ -74,7 +74,7 @@ type ListObjectsResolutionMetadata struct {
 	WasThrottled *atomic.Bool
 
 	// DidTimeOut indicates if the request timed-out
-	DidTimeOut bool
+	DidTimeOut *atomic.Bool
 }
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
@@ -82,7 +82,7 @@ func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 		DatastoreQueryCount: new(uint32),
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
-		DidTimeOut:          false,
+		DidTimeOut:          new(atomic.Bool),
 	}
 }
 
@@ -311,7 +311,7 @@ func (q *ListObjectsQuery) evaluate(
 			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
-					resolutionMetadata.DidTimeOut = true
+					resolutionMetadata.DidTimeOut.Store(true)
 				}
 				errChan <- err
 			}
@@ -455,7 +455,7 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
-				resolutionMetadata.DidTimeOut = true
+				resolutionMetadata.DidTimeOut.Store(true)
 				continue
 			}
 
