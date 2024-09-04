@@ -2,6 +2,7 @@
 package errors
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -24,7 +25,7 @@ var (
 	UnsupportedUserSet                     = status.Error(codes.Code(openfgav1.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")
 	StoreIDNotFound                        = status.Error(codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found), "Store ID not found")
 	MismatchObjectType                     = status.Error(codes.Code(openfgav1.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
-	RequestCancelled                       = status.Error(codes.Code(openfgav1.InternalErrorCode_cancelled), "Request Cancelled")
+	RequestCancelled                       = status.Error(codes.Code(openfgav1.ErrorCode_cancelled), "Request Cancelled")
 	RequestDeadlineExceeded                = status.Error(codes.Code(openfgav1.InternalErrorCode_deadline_exceeded), "Request Deadline Exceeded")
 	ThrottledTimeout                       = status.Error(codes.Code(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error), "timeout due to throttling on complex request")
 )
@@ -126,9 +127,10 @@ func HandleError(public string, err error) error {
 		return InvalidContinuationToken
 	case errors.Is(err, storage.ErrMismatchObjectType):
 		return MismatchObjectType
-	case errors.Is(err, storage.ErrCancelled):
+	case errors.Is(err, context.Canceled):
+		// cancel by a client is not an "internal server error"
 		return RequestCancelled
-	case errors.Is(err, storage.ErrDeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded):
 		return RequestDeadlineExceeded
 	default:
 		return NewInternalError(public, err)
