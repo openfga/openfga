@@ -16,6 +16,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
 
+## Performance
+
+* Improve performance for TTU and userset by streaming intermediate results. [#1888](https://github.com/openfga/openfga/pull/1888)
+
 ## [1.6.0] - 2024-08-30
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.9...v1.6.0)
