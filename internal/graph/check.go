@@ -620,7 +620,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 	}
 }
 
-func processDispatches(ctx context.Context, req *ResolveCheckRequest, pool *pool.ContextPool, dispatchChan chan dispatchMsg, outcomes chan checkOutcome) {
+func processDispatches(ctx context.Context, pool *pool.ContextPool, dispatchChan chan dispatchMsg, outcomes chan checkOutcome) {
 	defer func() {
 		// We need to wait always to avoid a goroutine leak.
 		_ = pool.Wait()
@@ -642,7 +642,7 @@ func processDispatches(ctx context.Context, req *ResolveCheckRequest, pool *pool
 				outcomes <- checkOutcome{resp: &ResolveCheckResponse{
 					Allowed: true,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+						DatastoreQueryCount: 0,
 					},
 				}}
 				return
@@ -664,7 +664,7 @@ func consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	dispatchPool := concurrency.NewPool(cancellableCtx, int(limit))
 
-	go processDispatches(ctx, req, dispatchPool, dispatchChan, outcomes)
+	go processDispatches(ctx, dispatchPool, dispatchChan, outcomes)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -708,8 +708,11 @@ ConsumerLoop:
 	if ctx.Err() != nil {
 		finalErr = ctx.Err()
 	}
+	if finalErr != nil {
+		return nil, finalErr
+	}
 
-	return finalResult, finalErr
+	return finalResult, nil
 }
 
 // checkUsersetSlowPath will check userset or public wildcard path.
@@ -717,13 +720,6 @@ ConsumerLoop:
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
-
-	response := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-		},
-	}
 
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 
@@ -746,7 +742,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		return nil, err
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount += response.GetResolutionMetadata().DatastoreQueryCount
+	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
 }

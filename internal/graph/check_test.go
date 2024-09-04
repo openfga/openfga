@@ -2726,6 +2726,10 @@ func TestCheckAssociatedObjects(t *testing.T) {
 }
 
 func TestConsumeUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	model := parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
@@ -3122,6 +3126,10 @@ type dispatchMsgAssertion struct {
 }
 
 func TestProduceUsersetDispatches(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		if tupleKey.GetCondition().GetName() == "condition1" {
 			return true, nil
@@ -3282,6 +3290,9 @@ func TestProduceUsersetDispatches(t *testing.T) {
 }
 
 func TestProduceTTUDispatches(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		if tupleKey.GetCondition().GetName() == "condition1" {
 			return true, nil
@@ -3456,6 +3467,465 @@ func TestProduceTTUDispatches(t *testing.T) {
 					require.Nil(t, receivedMsgs[idx].dispatch)
 				}
 			}
+		})
+	}
+}
+
+// helperReceivedOutcome is a helper function that listen to chan checkOutcome and return
+// all the checkOutcomes when channel is closed.
+func helperReceivedOutcome(outcomes chan checkOutcome) []checkOutcome {
+	var checkOutcome []checkOutcome
+	for outcome := range outcomes {
+		checkOutcome = append(checkOutcome, outcome)
+	}
+	return checkOutcome
+}
+
+func TestProcessDispatch(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	const datastoreQueryCount = 30
+	tests := []struct {
+		name             string
+		poolSize         int
+		ctxCancelled     bool
+		dispatchMsgs     []dispatchMsg
+		expectedOutcomes []checkOutcome
+	}{
+		{
+			name:             "ctx_cancelled",
+			poolSize:         1,
+			ctxCancelled:     true,
+			dispatchMsgs:     []dispatchMsg{},
+			expectedOutcomes: nil,
+		},
+		{
+			name:         "two_error",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					err: fmt.Errorf("error_1"),
+				},
+				{
+					err: fmt.Errorf("error_2"),
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					err: fmt.Errorf("error_1"),
+				},
+				{
+					err: fmt.Errorf("error_2"),
+				},
+			},
+		},
+		{
+			name:         "shortcut_with_only",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					shortCircuit: true,
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 0,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "shortcut_with_error_at_end",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					shortCircuit: true,
+				},
+				{
+					err: fmt.Errorf("should_not_process_this"),
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 0,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "multiple_dispatches",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: datastoreQueryCount,
+							},
+						}, nil
+					},
+				},
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: datastoreQueryCount,
+							},
+						}, nil
+					},
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: datastoreQueryCount,
+						},
+					},
+				},
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: datastoreQueryCount,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dutPool := concurrency.NewPool(context.Background(), tt.poolSize)
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.ctxCancelled {
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			dispatchMsgChan := make(chan dispatchMsg, 100)
+			for _, dispatchMsg := range tt.dispatchMsgs {
+				dispatchMsgChan <- dispatchMsg
+			}
+			outcomeChan := make(chan checkOutcome, 100)
+
+			go processDispatches(ctx, dutPool, dispatchMsgChan, outcomeChan)
+
+			// now, close the channel to simulate everything is sent
+			close(dispatchMsgChan)
+			outcomes := helperReceivedOutcome(outcomeChan)
+
+			require.Equal(t, tt.expectedOutcomes, outcomes)
+		})
+	}
+}
+
+func TestConsumeDispatch(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	const datastoreQueryCount = 30
+	tests := []struct {
+		name          string
+		limit         uint32
+		ctxCancelled  bool
+		dispatchMsgs  []dispatchMsg
+		expected      *ResolveCheckResponse
+		expectedError error
+	}{
+		{
+			name:          "ctx_cancelled",
+			limit:         1,
+			ctxCancelled:  true,
+			dispatchMsgs:  []dispatchMsg{},
+			expected:      nil,
+			expectedError: context.Canceled,
+		},
+		{
+			name:         "single_error",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					err: fmt.Errorf("error_1"),
+				},
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("error_1"),
+		},
+		{
+			name:         "false_cycle_detected",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 2,
+								CycleDetected:       true,
+							},
+						}, nil
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2,
+					CycleDetected:       true,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:         "two_false_no_cycle",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 2,
+								CycleDetected:       false,
+							},
+						}, nil
+					},
+				},
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 3,
+								CycleDetected:       false,
+							},
+						}, nil
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2 + 3,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:         "false_true",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 2,
+								CycleDetected:       false,
+							},
+						}, nil
+					},
+				},
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 3,
+								CycleDetected:       false,
+							},
+						}, nil
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2 + 3,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:         "two_true", // see that we exit at the first true
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 2,
+								CycleDetected:       false,
+							},
+						}, nil
+					},
+				},
+				{
+					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
+						return &ResolveCheckResponse{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 3,
+								CycleDetected:       false,
+							},
+						}, nil
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2, // important this is two as it indicates we have early exit
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.ctxCancelled {
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			dispatchMsgChan := make(chan dispatchMsg, 100)
+			for _, dispatchMsg := range tt.dispatchMsgs {
+				dispatchMsgChan <- dispatchMsg
+			}
+			close(dispatchMsgChan)
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+			req.RequestMetadata.DatastoreQueryCount = datastoreQueryCount
+			resp, err := consumeDispatches(ctx, req, tt.limit, dispatchMsgChan)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
+		})
+	}
+}
+
+func TestCheckUsersetSlowPath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+.
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX, user:* with condX, group#member]
+				type document
+					relations
+						define viewer: [group#member]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	const initialDSCount = 20
+	tests := []struct {
+		name          string
+		tuples        []*openfgav1.TupleKey
+		expected      *ResolveCheckResponse
+		expectedError error
+	}{
+		{
+			name: "shortcut",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name: "error",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "badCondition", nil),
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("condition not found"),
+		},
+		{
+			name:   "notFound",
+			tuples: []*openfgav1.TupleKey{},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1,
+				},
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+			req.RequestMetadata.DatastoreQueryCount = initialDSCount
+			resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
 		})
 	}
 }
