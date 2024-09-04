@@ -253,9 +253,10 @@ var complexityFourTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:        "path_to_user_1",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "ttu_and_nested_complex3", User: "user:valid"},
-				Expectation: true,
+				Name:               "path_to_user_1",
+				Tuple:              &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "ttu_and_nested_complex3", User: "user:valid"},
+				Expectation:        true,
+				ListUsersErrorCode: 2000,
 			},
 			{
 				Name:        "no_path_to_user_with_cond_truthy",
@@ -272,13 +273,37 @@ var complexityFourTestingModelTest = []*stage{
 	},
 	{
 		Name: "complexity4_or_complex4",
-		// reuse tuples from the previous two tests
-		Tuples: []*openfgav1.TupleKey{},
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "complexity4:pe1", Relation: "parent", User: "complexity3:pe2"},
+			{Object: "complexity3:pe2", Relation: "and_nested_complex3", User: "ttus:pe3#and_ttu"},
+			{Object: "directs-user:pe4", Relation: "direct", User: "user:valid"},
+			{Object: "complexity3:pe2", Relation: "userset_parent", User: "usersets-user:pe3"},
+			{Object: "usersets-user:pe3", Relation: "ttu_direct_userset", User: "ttus:pe3#direct_pa_direct_ch"},
+			{Object: "ttus:pe3", Relation: "mult_parent_types", User: "directs-user:pe4"},
+			{Object: "ttus:pe3", Relation: "direct_parent", User: "directs-user:pe4"},
+			{Object: "directs-user:pe4", Relation: "direct_cond", User: "user:validwithcond", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "ttus:pe3", Relation: "mult_parent_types", User: "directs-employee:pe4"},
+			{Object: "directs-employee:pe4", Relation: "direct", User: "employee:invalid"},
+			{Object: "complexity4:ps1", Relation: "userset_or_compute_complex3", User: "complexity3:ps2#or_compute_complex3"},
+			{Object: "complexity3:ps2", Relation: "userset_parent", User: "usersets-user:ps2"},
+			{Object: "usersets-user:ps2", Relation: "ttu_direct_userset", User: "ttus:ps3#direct_pa_direct_ch"},
+			{Object: "ttus:ps3", Relation: "mult_parent_types", User: "directs-user:ps4"},
+			{Object: "directs-user:ps4", Relation: "direct", User: "user:valid"},
+			{Object: "ttus:ps3", Relation: "mult_parent_types", User: "directs-employee:ps4"},
+			{Object: "directs-employee:ps4", Relation: "direct", User: "employee:valid"},
+			{Object: "complexity3:ps2", Relation: "userset_ttu_userset", User: "ttus:ps3#userset_pa_userset_ch"},
+			{Object: "ttus:ps3", Relation: "userset_parent", User: "usersets-user:ps2"},
+			{Object: "usersets-user:ps2", Relation: "userset", User: "directs-user:ps4#direct"},
+			{Object: "directs-user:ps4", Relation: "direct", User: "user:valid2"},
+			{Object: "usersets-user:ps2", Relation: "userset", User: "directs-employee:ps4#direct"},
+			{Object: "directs-employee:ps4", Relation: "direct", User: "employee:valid2"},
+		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:        "path_to_user_through_ttu_and_nested_complex3",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid"},
-				Expectation: true,
+				Name:               "path_to_user_through_ttu_and_nested_complex3",
+				Tuple:              &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid"},
+				Expectation:        true,
+				ListUsersErrorCode: 2000,
 			},
 			{
 				Name:        "path_to_user_through_userset_or_compute_complex3",
@@ -291,9 +316,10 @@ var complexityFourTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:        "no_path_1",
-				Tuple:       &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid2"},
-				Expectation: false,
+				Name:               "no_path_1",
+				Tuple:              &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid2"},
+				Expectation:        false,
+				ListUsersErrorCode: 2000,
 			},
 			{
 				Name:        "no_path_2",

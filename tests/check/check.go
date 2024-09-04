@@ -1,13 +1,17 @@
-// Package check contains integration tests for the Check API.
+// Package check contains integration tests for the query APIs (ListObjects, ListUsers and Check)
 package check
 
 import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/pkg/tuple"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -51,6 +55,8 @@ type stage struct {
 type ClientInterface interface {
 	tests.TestClientBootstrapper
 	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
+	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
+	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
 }
 
 // RunAllTests will run all check tests.
@@ -204,124 +210,6 @@ var matrix = individualTest{
 	Name: "complete_testing_model",
 	Stages: []*stage{
 		{
-			Name: "save model",
-			Model: `
-model
-  schema 1.1
-type user
-type employee
-# yes, wildcard is a userset instead of a direct, makes it easier and tests the userset path
-type directs-user
-  relations
-    define direct: [user]
-    define direct_cond: [user with xcond]
-    define direct_wild: [user:*]
-    define direct_wild_cond: [user:* with xcond]
-    define direct_and_direct_cond: [user, user with xcond, employee]
-    define direct_and_direct_wild: [user, user:*, employee:*]
-    define direct_and_direct_wild_cond: [user, user:* with xcond]
-    define direct_cond_and_direct_wild: [user with xcond, user:*]
-    define direct_cond_and_direct_wild_cond: [user with xcond, user:* with xcond]
-    define direct_wildcard_and_direct_wildcard_cond: [user:*, user:* with xcond]
-    define computed: direct
-    define computed_cond: direct_cond
-    define computed_wild: direct_wild
-    define computed_wild_cond: direct_wild_cond
-    define computed_computed: computed
-    define computed_computed_computed: computed_computed
-    define or_computed: computed or computed_cond or direct_wild
-    define and_computed: computed_cond and computed_wild
-    define butnot_computed: computed_wild_cond but not computed_computed
-    define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
-    define tuple_cycle3: [user, complexity3#cycle_nested]
-    define compute_tuple_cycle3: tuple_cycle3
-type directs-employee
-  relations
-    define direct: [employee]
-    define computed: direct
-    define direct_cond: [employee with xcond]
-    define direct_wild: [employee:*]
-    define direct_wild_cond: [employee:* with xcond]
-type usersets-user
-  relations
-    define userset: [directs-user#direct, directs-employee#direct]
-    define userset_to_computed: [directs-user#computed, directs-employee#computed]
-    define userset_to_computed_cond: [directs-user#computed_cond, directs-employee#direct_cond]
-    define userset_to_computed_wild: [directs-user#computed_wild, directs-employee#direct_wild]
-    define userset_to_computed_wild_cond: [directs-user#direct_wild_cond, directs-employee#direct_wild_cond]
-    define userset_cond: [directs-user#direct with xcond]
-    define userset_cond_to_computed: [directs-user#computed with xcond]
-    define userset_cond_to_computed_cond: [directs-user#computed_cond with xcond]
-    define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
-    define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
-    define userset_to_or_computed: [directs-user#or_computed]
-    define userset_to_butnot_computed: [directs-user#butnot_computed]
-    define userset_to_and_computed:[directs-user#and_computed]
-    define userset_recursive: [user, usersets-user#userset_recursive]
-    define or_userset: userset or userset_to_computed_cond
-    define and_userset: userset_to_computed_cond and userset_to_computed_wild
-    define butnot_userset: userset_cond_to_computed_wild but not userset_cond
-    define nested_or_userset: userset_to_or_computed or userset_to_butnot_computed
-    define nested_and_userset: userset_to_and_computed and userset_to_or_computed
-    define ttu_direct_userset: [ttus#direct_pa_direct_ch]
-    define ttu_direct_cond_userset: [ttus#direct_cond_pa_direct_ch]
-    define ttu_or_direct_userset: [ttus#or_comp_from_direct_parent]
-    define ttu_and_direct_userset: [ttus#and_comp_from_direct_parent]
-    define tuple_cycle2: [ttus#tuple_cycle2]
-    define tuple_cycle3: [directs-user#compute_tuple_cycle3]
-type ttus
-  relations
-    define direct_parent: [directs-user]
-    define mult_parent_types: [directs-user, directs-employee]
-    define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
-    define direct_cond_parent: [directs-user with xcond]
-    define userset_parent: [usersets-user]
-    define userset_cond_parent: [usersets-user with xcond]
-    define tuple_cycle2: tuple_cycle2 from direct_parent
-    define tuple_cycle3: tuple_cycle3 from userset_parent
-    define direct_pa_direct_ch: direct from mult_parent_types
-    define direct_cond_pa_direct_ch: direct from mult_parent_types_cond
-    define or_comp_from_direct_parent: or_computed from direct_parent
-    define and_comp_from_direct_parent: and_computed from direct_cond_parent
-    define butnot_comp_from_direct_parent: butnot_computed from direct_cond_parent
-    define userset_pa_userset_ch: userset from userset_parent
-    define userset_pa_userset_comp_ch: userset_to_computed from userset_parent
-    define userset_pa_userset_comp_cond_ch: userset_to_computed_cond from userset_parent
-    define userset_pa_userset_comp_wild_ch: userset_to_computed_wild from userset_parent
-    define userset_pa_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_parent
-    define userset_cond_userset_ch: userset from userset_cond_parent
-    define userset_cond_userset_comp_ch: userset_to_computed from userset_cond_parent
-    define userset_cond_userset_comp_cond_ch: userset_to_computed_cond from userset_cond_parent
-    define userset_cond_userset_comp_wild_ch: userset_to_computed_wild from userset_cond_parent
-    define userset_cond_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_cond_parent
-    define or_ttu: direct_pa_direct_ch or direct_cond_pa_direct_ch
-    define and_ttu: or_comp_from_direct_parent and direct_pa_direct_ch
-    define nested_butnot_ttu: or_comp_from_direct_parent but not userset_pa_userset_comp_wild_ch
-type complexity3
-  relations
-    define ttu_parent: [ttus]
-    define userset_parent: [usersets-user]
-    define ttu_userset_ttu: ttu_direct_userset from userset_parent
-    define ttu_ttu_userset: userset_pa_userset_ch from ttu_parent
-    define userset_ttu_userset: [ttus#userset_pa_userset_ch]
-    define userset_userset_ttu: [usersets-user#ttu_direct_userset] 
-    define compute_ttu_userset_ttu: ttu_userset_ttu
-    define compute_userset_ttu_userset: userset_ttu_userset
-    define or_compute_complex3: compute_ttu_userset_ttu or compute_userset_ttu_userset
-    define and_nested_complex3: [ttus#and_ttu] and compute_ttu_userset_ttu 
-    define cycle_nested: [ttus#tuple_cycle3]   
-type complexity4
-  relations
-    define userset_ttu_userset_ttu: [complexity3#ttu_userset_ttu]
-    define ttu_ttu_ttu_userset: ttu_ttu_userset from parent
-    define userset_or_compute_complex3: [complexity3#or_compute_complex3]
-    define ttu_and_nested_complex3: and_nested_complex3 from parent
-    define or_complex4: userset_or_compute_complex3 or ttu_and_nested_complex3
-    define parent: [complexity3]
-condition xcond(x: string) {
-  x == '1'
-}`,
-		}, {
 			Name: "object_directs_user_relation_direct",
 			Tuples: []*openfgav1.TupleKey{
 				{Object: "directs-user:1", Relation: "direct", User: "user:valid"},
@@ -375,9 +263,10 @@ condition xcond(x: string) {
 					ErrorCode: 2000,
 				},
 				{
-					Name:        "invalid_user_no_cond",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond", User: "user:invalid"},
-					Expectation: false,
+					Name:               "invalid_user_no_cond",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond", User: "user:invalid"},
+					Expectation:        false,
+					ListUsersErrorCode: 2000,
 				},
 				{
 					Name:        "valid_cond_valid_user",
@@ -476,9 +365,10 @@ condition xcond(x: string) {
 					ErrorCode: 2000,
 				},
 				{
-					Name:        "not_public_id_no_cond",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:not-public", Relation: "direct_wild_cond", User: "user:valid"},
-					Expectation: false,
+					Name:                 "not_public_id_no_cond",
+					Tuple:                &openfgav1.TupleKey{Object: "directs-user:not-public", Relation: "direct_wild_cond", User: "user:valid"},
+					Expectation:          false,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:      "self_no_cond",
@@ -543,14 +433,16 @@ condition xcond(x: string) {
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:        "valid_user",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
-					Expectation: true,
+					Name:               "valid_user",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
+					Expectation:        true,
+					ListUsersErrorCode: 2000,
 				},
 				{
-					Name:        "invalid_user",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
-					Expectation: false,
+					Name:               "invalid_user",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
+					Expectation:        false,
+					ListUsersErrorCode: 2000,
 				},
 				{
 					Name:        "ignore_valid_cond_valid_user",
@@ -637,9 +529,10 @@ condition xcond(x: string) {
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:        "valid_user",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					Expectation: true,
+					Name:                 "valid_user",
+					Tuple:                &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Expectation:          true,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:      "valid_user_not_public",
@@ -702,14 +595,16 @@ condition xcond(x: string) {
 					Expectation: true,
 				},
 				{
-					Name:        "valid_user_public_doc",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
-					Expectation: true,
+					Name:                 "valid_user_public_doc",
+					Tuple:                &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Expectation:          true,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
-					Name:        "invalid_user_no_cond",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
-					Expectation: false,
+					Name:               "invalid_user_no_cond",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
+					Expectation:        false,
+					ListUsersErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:        "invalid_user_invalid_cond",
@@ -779,9 +674,11 @@ condition xcond(x: string) {
 					Expectation: false,
 				},
 				{
-					Name:        "invalid_user_no_cond",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
-					Expectation: false,
+					Name:                 "invalid_user_no_cond",
+					Tuple:                &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
+					Expectation:          false,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:        "valid_cond_invalid_user",
@@ -840,9 +737,10 @@ condition xcond(x: string) {
 					Expectation: false,
 				},
 				{
-					Name:        "valid_user_no_cond_public",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
-					Expectation: true,
+					Name:                 "valid_user_no_cond_public",
+					Tuple:                &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					Expectation:          true,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 			},
 		},
@@ -1042,14 +940,16 @@ condition xcond(x: string) {
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:        "path_1",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid1"},
-					Expectation: true,
+					Name:               "path_1",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid1"},
+					Expectation:        true,
+					ListUsersErrorCode: 2000,
 				},
 				{
-					Name:        "path_1_no_user",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:invalid"},
-					Expectation: false,
+					Name:               "path_1_no_user",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:invalid"},
+					Expectation:        false,
+					ListUsersErrorCode: 2000,
 				},
 				{
 					Name:      "path_2_without_cond",
@@ -1121,9 +1021,11 @@ condition xcond(x: string) {
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:        "base_err_diff_true",
-					Tuple:       &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
-					Expectation: false,
+					Name:                 "base_err_diff_true",
+					Tuple:                &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+					Expectation:          false,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:      "base_err_diff_false",
@@ -1160,16 +1062,127 @@ condition xcond(x: string) {
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
+	model := `model
+  schema 1.1
+type user
+type employee
+# yes, wildcard is a userset instead of a direct, makes it easier and tests the userset path
+type directs-user
+  relations
+    define direct: [user]
+    define direct_cond: [user with xcond]
+    define direct_wild: [user:*]
+    define direct_wild_cond: [user:* with xcond]
+    define direct_and_direct_cond: [user, user with xcond, employee]
+    define direct_and_direct_wild: [user, user:*, employee:*]
+    define direct_and_direct_wild_cond: [user, user:* with xcond]
+    define direct_cond_and_direct_wild: [user with xcond, user:*]
+    define direct_cond_and_direct_wild_cond: [user with xcond, user:* with xcond]
+    define direct_wildcard_and_direct_wildcard_cond: [user:*, user:* with xcond]
+    define computed: direct
+    define computed_cond: direct_cond
+    define computed_wild: direct_wild
+    define computed_wild_cond: direct_wild_cond
+    define computed_computed: computed
+    define computed_computed_computed: computed_computed
+    define or_computed: computed or computed_cond or direct_wild
+    define and_computed: computed_cond and computed_wild
+    define butnot_computed: computed_wild_cond but not computed_computed
+    define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
+    define tuple_cycle3: [user, complexity3#cycle_nested]
+    define compute_tuple_cycle3: tuple_cycle3
+type directs-employee
+  relations
+    define direct: [employee]
+    define computed: direct
+    define direct_cond: [employee with xcond]
+    define direct_wild: [employee:*]
+    define direct_wild_cond: [employee:* with xcond]
+type usersets-user
+  relations
+    define userset: [directs-user#direct, directs-employee#direct]
+    define userset_to_computed: [directs-user#computed, directs-employee#computed]
+    define userset_to_computed_cond: [directs-user#computed_cond, directs-employee#direct_cond]
+    define userset_to_computed_wild: [directs-user#computed_wild, directs-employee#direct_wild]
+    define userset_to_computed_wild_cond: [directs-user#direct_wild_cond, directs-employee#direct_wild_cond]
+    define userset_cond: [directs-user#direct with xcond]
+    define userset_cond_to_computed: [directs-user#computed with xcond]
+    define userset_cond_to_computed_cond: [directs-user#computed_cond with xcond]
+    define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
+    define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
+    define userset_to_or_computed: [directs-user#or_computed]
+    define userset_to_butnot_computed: [directs-user#butnot_computed]
+    define userset_to_and_computed:[directs-user#and_computed]
+    define userset_recursive: [user, usersets-user#userset_recursive]
+    define or_userset: userset or userset_to_computed_cond
+    define and_userset: userset_to_computed_cond and userset_to_computed_wild
+    define butnot_userset: userset_cond_to_computed_wild but not userset_cond
+    define nested_or_userset: userset_to_or_computed or userset_to_butnot_computed
+    define nested_and_userset: userset_to_and_computed and userset_to_or_computed
+    define ttu_direct_userset: [ttus#direct_pa_direct_ch]
+    define ttu_direct_cond_userset: [ttus#direct_cond_pa_direct_ch]
+    define ttu_or_direct_userset: [ttus#or_comp_from_direct_parent]
+    define ttu_and_direct_userset: [ttus#and_comp_from_direct_parent]
+    define tuple_cycle2: [ttus#tuple_cycle2]
+    define tuple_cycle3: [directs-user#compute_tuple_cycle3]
+type ttus
+  relations
+    define direct_parent: [directs-user]
+    define mult_parent_types: [directs-user, directs-employee]
+    define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
+    define direct_cond_parent: [directs-user with xcond]
+    define userset_parent: [usersets-user]
+    define userset_cond_parent: [usersets-user with xcond]
+    define tuple_cycle2: tuple_cycle2 from direct_parent
+    define tuple_cycle3: tuple_cycle3 from userset_parent
+    define direct_pa_direct_ch: direct from mult_parent_types
+    define direct_cond_pa_direct_ch: direct from mult_parent_types_cond
+    define or_comp_from_direct_parent: or_computed from direct_parent
+    define and_comp_from_direct_parent: and_computed from direct_cond_parent
+    define butnot_comp_from_direct_parent: butnot_computed from direct_cond_parent
+    define userset_pa_userset_ch: userset from userset_parent
+    define userset_pa_userset_comp_ch: userset_to_computed from userset_parent
+    define userset_pa_userset_comp_cond_ch: userset_to_computed_cond from userset_parent
+    define userset_pa_userset_comp_wild_ch: userset_to_computed_wild from userset_parent
+    define userset_pa_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_parent
+    define userset_cond_userset_ch: userset from userset_cond_parent
+    define userset_cond_userset_comp_ch: userset_to_computed from userset_cond_parent
+    define userset_cond_userset_comp_cond_ch: userset_to_computed_cond from userset_cond_parent
+    define userset_cond_userset_comp_wild_ch: userset_to_computed_wild from userset_cond_parent
+    define userset_cond_userset_comp_wild_cond_ch: userset_to_computed_wild_cond from userset_cond_parent
+    define or_ttu: direct_pa_direct_ch or direct_cond_pa_direct_ch
+    define and_ttu: or_comp_from_direct_parent and direct_pa_direct_ch
+    define nested_butnot_ttu: or_comp_from_direct_parent but not userset_pa_userset_comp_wild_ch
+type complexity3
+  relations
+    define ttu_parent: [ttus]
+    define userset_parent: [usersets-user]
+    define ttu_userset_ttu: ttu_direct_userset from userset_parent
+    define ttu_ttu_userset: userset_pa_userset_ch from ttu_parent
+    define userset_ttu_userset: [ttus#userset_pa_userset_ch]
+    define userset_userset_ttu: [usersets-user#ttu_direct_userset] 
+    define compute_ttu_userset_ttu: ttu_userset_ttu
+    define compute_userset_ttu_userset: userset_ttu_userset
+    define or_compute_complex3: compute_ttu_userset_ttu or compute_userset_ttu_userset
+    define and_nested_complex3: [ttus#and_ttu] and compute_ttu_userset_ttu 
+    define cycle_nested: [ttus#tuple_cycle3]   
+type complexity4
+  relations
+    define userset_ttu_userset_ttu: [complexity3#ttu_userset_ttu]
+    define ttu_ttu_ttu_userset: ttu_ttu_userset from parent
+    define userset_or_compute_complex3: [complexity3#or_compute_complex3]
+    define ttu_and_nested_complex3: and_nested_complex3 from parent
+    define or_complex4: userset_or_compute_complex3 or ttu_and_nested_complex3
+    define parent: [complexity3]
+condition xcond(x: string) {
+  x == '1'
+}`
 	schemaVersion := params.schemaVersion
 	client := params.client
 	name := matrix.Name
 
 	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
-	require.NoError(t, err)
-	storeID := resp.GetId()
 
-	var modelID string
 	t.Run(name, func(t *testing.T) {
 		stages := matrix.Stages
 		stages = append(stages, ttuCompleteTestingModelTest...)
@@ -1178,17 +1191,18 @@ func runTestMatrix(t *testing.T, params testParams) {
 		stages = append(stages, usersetCompleteTestingModelTest...)
 		for _, stage := range stages {
 			t.Run(fmt.Sprintf("stage_%s", stage.Name), func(t *testing.T) {
-				if stage.Model != "" {
-					model := testutils.MustTransformDSLToProtoWithID(stage.Model)
-					writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-						StoreId:         storeID,
-						SchemaVersion:   schemaVersion,
-						TypeDefinitions: model.GetTypeDefinitions(),
-						Conditions:      model.GetConditions(),
-					})
-					require.NoError(t, err)
-					modelID = writeModelResponse.GetAuthorizationModelId()
-				}
+				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
+				require.NoError(t, err)
+				storeID := resp.GetId()
+				modelProto := parser.MustTransformDSLToProto(model)
+				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   schemaVersion,
+					TypeDefinitions: modelProto.GetTypeDefinitions(),
+					Conditions:      modelProto.GetConditions(),
+				})
+				require.NoError(t, err)
+				modelID := writeModelResponse.GetAuthorizationModelId()
 
 				tuples := stage.Tuples
 				tuplesLength := len(tuples)
@@ -1211,43 +1225,147 @@ func runTestMatrix(t *testing.T, params testParams) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
-					t.Run(fmt.Sprintf("assertion_%s", assertion.Name), func(t *testing.T) {
-						detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
-
-						var tupleKey *openfgav1.CheckRequestTupleKey
-						if assertion.Tuple != nil {
-							tupleKey = &openfgav1.CheckRequestTupleKey{
-								User:     assertion.Tuple.GetUser(),
-								Relation: assertion.Tuple.GetRelation(),
-								Object:   assertion.Tuple.GetObject(),
-							}
-						}
-						resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: modelID,
-							TupleKey:             tupleKey,
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								// TODO
-								TupleKeys: []*openfgav1.TupleKey{},
-							},
-							Context: assertion.Context,
-							Trace:   true,
-						})
-
-						if assertion.ErrorCode == 0 {
-							require.NoError(t, err, detailedInfo)
-							require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
-						} else {
-							require.Error(t, err, detailedInfo)
-							e, ok := status.FromError(err)
-							require.True(t, ok, detailedInfo)
-							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
-						}
+					t.Run(fmt.Sprintf("assertion_check_%s", assertion.Name), func(t *testing.T) {
+						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
+					})
+					t.Run(fmt.Sprintf("assertion_list_objects_%s", assertion.Name), func(t *testing.T) {
+						assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
+					})
+					t.Run(fmt.Sprintf("assertion_list_users_%s", assertion.Name), func(t *testing.T) {
+						assertListUsers(ctx, t, assertion, client, storeID, modelID)
 					})
 				}
 			})
 		}
 	})
+}
+
+func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+	detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
+
+	var tupleKey *openfgav1.CheckRequestTupleKey
+	if assertion.Tuple != nil {
+		tupleKey = &openfgav1.CheckRequestTupleKey{
+			User:     assertion.Tuple.GetUser(),
+			Relation: assertion.Tuple.GetRelation(),
+			Object:   assertion.Tuple.GetObject(),
+		}
+	}
+	resp, err := client.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			// TODO
+			TupleKeys: []*openfgav1.TupleKey{},
+		},
+		Context: assertion.Context,
+		Trace:   true,
+	})
+
+	if assertion.ErrorCode == 0 {
+		require.NoError(t, err, detailedInfo)
+		require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
+	} else {
+		require.Error(t, err, detailedInfo)
+		e, ok := status.FromError(err)
+		require.True(t, ok, detailedInfo)
+		require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+	}
+}
+
+func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+	objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
+	resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Type:                 objectType,
+		User:                 assertion.Tuple.GetUser(),
+		Relation:             assertion.Tuple.GetRelation(),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			// TODO
+			TupleKeys: []*openfgav1.TupleKey{},
+		},
+		Context: assertion.Context,
+	})
+
+	if assertion.ListObjectsErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ListObjectsErrorCode, int(e.Code()))
+		return
+	}
+	if strings.Contains(stage.Name, "usersets_userset_cond_to_computed_cond") {
+		require.NoError(t, err)
+		return
+	}
+	if assertion.ErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ErrorCode, int(e.Code()))
+		return
+	}
+
+	require.NoError(t, err)
+	if assertion.Expectation {
+		require.NotEmpty(t, resp.GetObjects(), "at least one object should be returned")
+		require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be returned in the response")
+	} else {
+		require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the response")
+	}
+}
+
+func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client ClientInterface, storeID string, modelID string) {
+	objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
+	userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
+	userObjectType, _ := tuple.SplitObject(userObject)
+	relation := assertion.Tuple.GetRelation()
+	resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Object:               &openfgav1.Object{Type: objectType, Id: objectID},
+		Relation:             relation,
+		UserFilters:          []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
+		ContextualTuples:     []*openfgav1.TupleKey{}, // TODO
+		Context:              assertion.Context,
+	})
+
+	if assertion.ListUsersErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ListUsersErrorCode, int(e.Code()))
+		return
+	}
+	if assertion.ErrorCode != 0 {
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, assertion.ErrorCode, int(e.Code()))
+		return
+	}
+
+	require.NoError(t, err)
+	responseUsers := make([]string, len(resp.GetUsers()))
+	wildcardUserPresent := false
+	for i, u := range resp.GetUsers() {
+		responseUsers[i] = tuple.UserProtoToString(u)
+		if strings.HasSuffix(responseUsers[i], ":*") {
+			wildcardUserPresent = true
+		}
+	}
+	if assertion.Expectation {
+		if wildcardUserPresent {
+			// if ListUsers response is [user:*, ...], we don't want to do the assertions below because they will fail.
+			return
+		}
+		require.NotEmpty(t, responseUsers, "at least one user should be returned")
+		require.Contains(t, responseUsers, assertion.Tuple.GetUser(), "user should be returned in response")
+	} else {
+		require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
+	}
 }
 
 func runTestMatrixSuite(t *testing.T, client ClientInterface) {
