@@ -198,10 +198,15 @@ type doc
 }
 
 func TestTranslateError(t *testing.T) {
-	throttledRequest := &graph.ResolveCheckRequestMetadata{
+	throttledRequestMetadata := &graph.ResolveCheckRequestMetadata{
 		WasThrottled: &atomic.Bool{},
 	}
-	throttledRequest.WasThrottled.Store(true)
+	throttledRequestMetadata.WasThrottled.Store(true)
+
+	nonThrottledRequestMedata := &graph.ResolveCheckRequestMetadata{
+		WasThrottled: &atomic.Bool{},
+	}
+	nonThrottledRequestMedata.WasThrottled.Store(false)
 
 	testcases := map[string]struct {
 		inputError    error
@@ -218,10 +223,15 @@ func TestTranslateError(t *testing.T) {
 		},
 		`3`: {
 			inputError:    context.DeadlineExceeded,
-			reqMetadata:   throttledRequest,
+			reqMetadata:   throttledRequestMetadata,
 			expectedError: serverErrors.ThrottledTimeout,
 		},
 		`4`: {
+			inputError:    context.DeadlineExceeded,
+			reqMetadata:   nonThrottledRequestMedata,
+			expectedError: serverErrors.RequestDeadlineExceeded,
+		},
+		`5`: {
 			inputError:    errors.ErrUnknown,
 			expectedError: errors.ErrUnknown,
 		},
