@@ -3072,3 +3072,390 @@ func TestConsumeUsersets(t *testing.T) {
 		})
 	}
 }
+
+func TestDispatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	checker := NewLocalChecker()
+	defer checker.Close()
+	mockResolver := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockResolver)
+
+	parentReq := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+	tk := tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil)
+
+	expectedReq := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(19),
+	}
+
+	var req *ResolveCheckRequest
+	mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).DoAndReturn(
+		func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			require.Equal(t, expectedReq.GetTupleKey(), req.GetTupleKey())
+			require.Equal(t, expectedReq.GetRequestMetadata().Depth, req.GetRequestMetadata().Depth)
+			require.Equal(t, uint32(1), req.GetRequestMetadata().DispatchCounter.Load())
+			return nil, nil
+		})
+	dispatch := checker.dispatch(context.Background(), parentReq, tk)
+	_, _ = dispatch(context.Background())
+}
+
+// helperReceivedMessage is a helper function to listen to dispatchMsg and create
+// a list of dispatchMsg.
+func helperReceivedMessage(dispatchChan chan dispatchMsg) []dispatchMsg {
+	var receivedDispatches []dispatchMsg
+	for msg := range dispatchChan {
+		receivedDispatches = append(receivedDispatches, msg)
+	}
+	return receivedDispatches
+}
+
+// dispatchMsgAssertion is helper structure to allow easy assertion on dispatchMsg.
+type dispatchMsgAssertion struct {
+	err          error
+	shortCircuit bool
+	dispatch     *openfgav1.TupleKey
+}
+
+func TestProduceUsersetDispatches(t *testing.T) {
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+.
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX, group#member]
+				type document
+					relations
+						define viewer: [group#member]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	tests := []struct {
+		name               string
+		tuples             []*openfgav1.TupleKey
+		expectedDispatches []dispatchMsgAssertion
+	}{
+		{
+			name:               "empty_iterator",
+			tuples:             nil,
+			expectedDispatches: nil,
+		},
+		{
+			name: "iterator_error_first_tuple",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "badCondition", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          fmt.Errorf("condition not found"),
+					shortCircuit: false,
+					dispatch:     nil,
+				},
+			},
+		},
+		{
+			name: "good_condition_wildcard",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          nil,
+					shortCircuit: true,
+					dispatch:     nil,
+				},
+			},
+		},
+		{
+			name: "good_condition_non_wildcard",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+		},
+		{
+			name: "multiple_tuples",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:3#member", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:3", "member", "user:maria"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+
+			var expectedMsgDispatches []*openfgav1.TupleKey
+
+			for _, expectedMsg := range tt.expectedDispatches {
+				if expectedMsg.dispatch != nil {
+					expectedMsgDispatches = append(expectedMsgDispatches, expectedMsg.dispatch)
+				}
+			}
+
+			if len(expectedMsgDispatches) > 0 {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).Times(len(expectedMsgDispatches)).DoAndReturn(
+					func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+						require.NotEmpty(t, req)
+						var item *openfgav1.TupleKey
+						item, expectedMsgDispatches = expectedMsgDispatches[0], expectedMsgDispatches[1:]
+						require.Equal(t, item, req.GetTupleKey())
+						return nil, nil
+					})
+			}
+			pool := concurrency.NewPool(ctx, 1)
+
+			dispatchChan := make(chan dispatchMsg, 1)
+
+			pool.Go(func(ctx context.Context) error {
+				checker.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+				return nil
+			})
+
+			receivedMsgs := helperReceivedMessage(dispatchChan)
+			_ = pool.Wait()
+			require.Equal(t, len(tt.expectedDispatches), len(receivedMsgs))
+			for idx, expectedMsg := range tt.expectedDispatches {
+				require.Equal(t, expectedMsg.err, receivedMsgs[idx].err)
+				require.Equal(t, expectedMsg.shortCircuit, receivedMsgs[idx].shortCircuit)
+				if expectedMsg.dispatch != nil {
+					require.NotNil(t, receivedMsgs[idx].dispatch)
+					// Invoke the dispatch so that we can assert request parameter
+					_, _ = receivedMsgs[idx].dispatch(context.Background())
+				} else {
+					require.Nil(t, receivedMsgs[idx].dispatch)
+				}
+			}
+		})
+	}
+}
+
+func TestProduceTTUDispatches(t *testing.T) {
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+ and computedRelation is defined for type
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX]
+				type team
+					relations
+						define teammate: [user with condX]
+				type document
+					relations
+						define viewer: member from owner
+						define owner: [group, team]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	tests := []struct {
+		name               string
+		computedRelation   string
+		tuples             []*openfgav1.TupleKey
+		expectedDispatches []dispatchMsgAssertion
+	}{
+		{
+			name:               "empty_iterator",
+			computedRelation:   "member",
+			tuples:             nil,
+			expectedDispatches: nil,
+		},
+		{
+			name:             "iterator_error_first_tuple",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "badCondition", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          fmt.Errorf("condition not found"),
+					shortCircuit: false,
+					dispatch:     nil,
+				},
+			},
+		},
+		{
+			name:             "relation_not_found",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "team:1", "condition1", nil),
+			},
+			expectedDispatches: nil,
+		},
+		{
+			name:             "single_match",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+			},
+		},
+		{
+			name:             "multiple_matches",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:2", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+		},
+		{
+			name:             "mix_relation_found_not_found",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "team:1", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsgAssertion{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatch:     tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+
+			var expectedMsgDispatches []*openfgav1.TupleKey
+
+			for _, expectedMsg := range tt.expectedDispatches {
+				if expectedMsg.dispatch != nil {
+					expectedMsgDispatches = append(expectedMsgDispatches, expectedMsg.dispatch)
+				}
+			}
+
+			if len(expectedMsgDispatches) > 0 {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).Times(len(expectedMsgDispatches)).DoAndReturn(
+					func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+						require.NotEmpty(t, req)
+						var item *openfgav1.TupleKey
+						item, expectedMsgDispatches = expectedMsgDispatches[0], expectedMsgDispatches[1:]
+						require.Equal(t, item, req.GetTupleKey())
+						return nil, nil
+					})
+			}
+			pool := concurrency.NewPool(ctx, 1)
+
+			dispatchChan := make(chan dispatchMsg, 1)
+
+			pool.Go(func(ctx context.Context) error {
+				checker.produceTTUDispatches(ctx, tt.computedRelation, req, dispatchChan, iter)
+				return nil
+			})
+
+			receivedMsgs := helperReceivedMessage(dispatchChan)
+			_ = pool.Wait()
+			require.Equal(t, len(tt.expectedDispatches), len(receivedMsgs))
+			for idx, expectedMsg := range tt.expectedDispatches {
+				require.Equal(t, expectedMsg.err, receivedMsgs[idx].err)
+				require.Equal(t, expectedMsg.shortCircuit, receivedMsgs[idx].shortCircuit)
+				if expectedMsg.dispatch != nil {
+					require.NotNil(t, receivedMsgs[idx].dispatch)
+					// Invoke the dispatch so that we can assert request parameter
+					_, _ = receivedMsgs[idx].dispatch(context.Background())
+				} else {
+					require.Nil(t, receivedMsgs[idx].dispatch)
+				}
+			}
+		})
+	}
+}

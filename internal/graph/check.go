@@ -1126,17 +1126,18 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
+		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
+			if errors.Is(err, typesystem.ErrRelationUndefined) {
+				continue // skip computed relations on tupleset relationships if they are undefined
+			}
+		}
+
 		tupleKey := &openfgav1.TupleKey{
 			Object:   userObj,
 			Relation: computedRelation,
 			User:     reqTupleKey.GetUser(),
 		}
 
-		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
-			if errors.Is(err, typesystem.ErrRelationUndefined) {
-				continue // skip computed relations on tupleset relationships if they are undefined
-			}
-		}
 		trySendDispatchChan(ctx, dispatchMsg{dispatch: c.dispatch(ctx, req, tupleKey)}, dispatches)
 	}
 }
