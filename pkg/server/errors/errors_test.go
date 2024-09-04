@@ -64,17 +64,9 @@ func TestHandleErrors(t *testing.T) {
 			storageErr:              storage.ErrMismatchObjectType,
 			expectedTranslatedError: MismatchObjectType,
 		},
-		`context_cancelled`: {
-			storageErr:              storage.ErrCancelled,
-			expectedTranslatedError: RequestCancelled,
-		},
 		`context_cancelled_2`: {
 			storageErr:              context.Canceled,
 			expectedTranslatedError: RequestCancelled,
-		},
-		`context_deadline_exceeded`: {
-			storageErr:              storage.ErrDeadlineExceeded,
-			expectedTranslatedError: storage.ErrDeadlineExceeded,
 		},
 		`context_deadline_exceeded_2`: {
 			storageErr:              context.DeadlineExceeded,
