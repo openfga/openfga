@@ -12,12 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
-type ctxKey string
-
 const (
-	// SkipAuthz is the key to store whether to skip authz check in the context.
-	skipAuthz ctxKey = "skip-authz-key"
-
 	// API methods.
 	ReadAuthorizationModel  = "ReadAuthorizationModel"
 	ReadAuthorizationModels = "ReadAuthorizationModels"
@@ -197,7 +192,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 	if err != nil {
 		return nil, err
 	}
-	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, false)
+	authcontext.ContextWithSkipAuthzCheck(ctx, false)
 
 	return resp.GetObjects(), nil
 }
@@ -220,7 +215,7 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	if err != nil {
 		return false, err
 	}
-	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, false)
+	authcontext.ContextWithSkipAuthzCheck(ctx, false)
 
 	if !resp.GetAllowed() {
 		return false, nil

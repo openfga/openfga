@@ -6,7 +6,10 @@ import (
 
 type ctxKey string
 
+// authClaimsContextKey is the key to store the auth claims in the context.
 const authClaimsContextKey = ctxKey("auth-claims")
+
+// skipAuthz is the key to store whether to skip authz check in the context.
 const skipAuthz = ctxKey("skip-authz-key")
 
 // AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
