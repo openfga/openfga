@@ -93,11 +93,11 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count", "consistency"})
 
-	throttledRequestCounter = promauto.NewCounter(prometheus.CounterOpts{
+	throttledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_count",
 		Help:      "The total number of requests that have been throttled.",
-	})
+	}, []string{"api"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -759,7 +759,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.Inc()
+		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
 	}
 
 	return &openfgav1.ListObjectsResponse{
@@ -858,7 +858,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.Inc()
+		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
 	}
 
 	return nil
@@ -996,6 +996,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Consistency:          req.GetConsistency(),
 	}
 
+	const methodName = "check"
+
 	resp, err := s.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -1010,7 +1012,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		// Note for ListObjects:
 		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			throttledRequestCounter.Inc()
+			throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
 			return nil, serverErrors.ThrottledTimeout
 		}
 
@@ -1018,7 +1020,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
-	const methodName = "check"
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
@@ -1053,7 +1054,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.Inc()
+		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
 	}
 
 	return res, nil
