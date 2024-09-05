@@ -620,7 +620,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 	}
 }
 
-func processDispatches(ctx context.Context, pool *pool.ContextPool, dispatchChan chan dispatchMsg, outcomes chan checkOutcome) {
+func (c *LocalChecker) processDispatches(ctx context.Context, pool *pool.ContextPool, dispatchChan chan dispatchMsg, outcomes chan checkOutcome) {
 	defer func() {
 		// We need to wait always to avoid a goroutine leak.
 		_ = pool.Wait()
@@ -659,12 +659,12 @@ func processDispatches(ctx context.Context, pool *pool.ContextPool, dispatchChan
 	}
 }
 
-func consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	outcomes := make(chan checkOutcome, limit)
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	dispatchPool := concurrency.NewPool(cancellableCtx, int(limit))
 
-	go processDispatches(ctx, dispatchPool, dispatchChan, outcomes)
+	go c.processDispatches(ctx, dispatchPool, dispatchChan, outcomes)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -736,7 +736,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		return nil
 	})
 
-	resp, err := consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
+	resp, err := c.consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -1161,7 +1161,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		return nil
 	})
 
-	resp, err := consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
+	resp, err := c.consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err

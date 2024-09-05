@@ -3426,23 +3426,15 @@ func TestProduceTTUDispatches(t *testing.T) {
 				RequestMetadata: NewCheckRequestMetadata(20),
 			}
 
-			var expectedMsgDispatches []*openfgav1.TupleKey
-
 			for _, expectedMsg := range tt.expectedDispatches {
 				if expectedMsg.dispatch != nil {
-					expectedMsgDispatches = append(expectedMsgDispatches, expectedMsg.dispatch)
+					mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(
+						func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+							require.NotEmpty(t, req)
+							require.Equal(t, expectedMsg.dispatch, req.GetTupleKey())
+							return nil, nil
+						})
 				}
-			}
-
-			if len(expectedMsgDispatches) > 0 {
-				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).Times(len(expectedMsgDispatches)).DoAndReturn(
-					func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-						require.NotEmpty(t, req)
-						var item *openfgav1.TupleKey
-						item, expectedMsgDispatches = expectedMsgDispatches[0], expectedMsgDispatches[1:]
-						require.Equal(t, item, req.GetTupleKey())
-						return nil, nil
-					})
 			}
 			pool := concurrency.NewPool(ctx, 1)
 
@@ -3615,6 +3607,9 @@ func TestProcessDispatch(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
 			dutPool := concurrency.NewPool(context.Background(), tt.poolSize)
 			ctx := context.Background()
 			var cancel context.CancelFunc
@@ -3622,13 +3617,19 @@ func TestProcessDispatch(t *testing.T) {
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			}
+
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
 			dispatchMsgChan := make(chan dispatchMsg, 100)
 			for _, dispatchMsg := range tt.dispatchMsgs {
 				dispatchMsgChan <- dispatchMsg
 			}
 			outcomeChan := make(chan checkOutcome, 100)
 
-			go processDispatches(ctx, dutPool, dispatchMsgChan, outcomeChan)
+			go checker.processDispatches(ctx, dutPool, dispatchMsgChan, outcomeChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
@@ -3814,12 +3815,21 @@ func TestConsumeDispatch(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
 			ctx := context.Background()
 			var cancel context.CancelFunc
 			if tt.ctxCancelled {
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			}
+
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
 			dispatchMsgChan := make(chan dispatchMsg, 100)
 			for _, dispatchMsg := range tt.dispatchMsgs {
 				dispatchMsgChan <- dispatchMsg
@@ -3831,7 +3841,7 @@ func TestConsumeDispatch(t *testing.T) {
 				RequestMetadata: NewCheckRequestMetadata(20),
 			}
 			req.RequestMetadata.DatastoreQueryCount = datastoreQueryCount
-			resp, err := consumeDispatches(ctx, req, tt.limit, dispatchMsgChan)
+			resp, err := checker.consumeDispatches(ctx, req, tt.limit, dispatchMsgChan)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})

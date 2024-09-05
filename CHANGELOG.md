@@ -18,7 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## Performance
 
-* Improve performance for TTU and userset by streaming intermediate results. [#1888](https://github.com/openfga/openfga/pull/1888)
+* Improve performance of Check API in the case that the query involves resolving a tuple to userset and/or a userset, by streaming intermediate results. [#1888](https://github.com/openfga/openfga/pull/1888)
 
 ## [1.6.0] - 2024-08-30
 
