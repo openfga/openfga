@@ -15,8 +15,6 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
@@ -90,11 +88,9 @@ func TestServerLogs(t *testing.T) {
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
 
-	observerLogger, logs := observer.New(zap.DebugLevel)
+	l, logs := logger.NewObserverLogger("debug")
 	serverCtx := &run.ServerContext{
-		Logger: &logger.ZapLogger{
-			Logger: zap.New(observerLogger),
-		},
+		Logger: l,
 	}
 
 	// We're starting a full fledged server because the logs we

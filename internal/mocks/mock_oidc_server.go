@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"go.uber.org/zap"
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 type mockOidcServer struct {
@@ -96,7 +96,7 @@ func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
 func (server *mockOidcServer) start() {
 	if err := server.httpServer.ListenAndServe(); err != nil {
 		if err != http.ErrServerClosed {
-			log.Fatal("failed to start mock OIDC server", zap.Error(err))
+			log.Fatal("failed to start mock OIDC server", logger.Error(err))
 		}
 	}
 	log.Println("mock OIDC server shut down.")

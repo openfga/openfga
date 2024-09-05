@@ -13,8 +13,6 @@ import (
 
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -72,10 +70,7 @@ func TestTrackerCheckResolver(t *testing.T) {
 	})
 
 	t.Run("tracker_logs_path_correctly", func(t *testing.T) {
-		observerLogger, logs := observer.New(zap.DebugLevel)
-		logger := &logger.ZapLogger{
-			Logger: zap.New(observerLogger),
-		}
+		logger, logs := logger.NewObserverLogger("debug")
 
 		resolvers := NewOrderedCheckResolvers(
 			WithTrackerCheckResolverOpts(true, WithTrackerLogger(logger)),
@@ -131,10 +126,7 @@ func TestTrackerCheckResolver(t *testing.T) {
 	})
 
 	t.Run("tracker_success_launch_flush", func(t *testing.T) {
-		observerLogger, logs := observer.New(zap.DebugLevel)
-		logger := &logger.ZapLogger{
-			Logger: zap.New(observerLogger),
-		}
+		logger, logs := logger.NewObserverLogger("debug")
 
 		resolvers := NewOrderedCheckResolvers(
 			WithTrackerCheckResolverOpts(true,
@@ -236,10 +228,7 @@ func TestTrackerCheckResolver(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		observerLogger, logs := observer.New(zap.DebugLevel)
-		logger := &logger.ZapLogger{
-			Logger: zap.New(observerLogger),
-		}
+		logger, logs := logger.NewObserverLogger("debug")
 
 		resolvers := NewOrderedCheckResolvers(
 			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx), WithTrackerLogger(logger)),
@@ -291,10 +280,7 @@ func TestTrackerCheckResolver(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		observerLogger, _ := observer.New(zap.DebugLevel)
-		logger := &logger.ZapLogger{
-			Logger: zap.New(observerLogger),
-		}
+		logger, _ := logger.NewObserverLogger("debug")
 
 		resolvers := NewOrderedCheckResolvers(
 			WithTrackerCheckResolverOpts(true, WithTrackerContext(ctx), WithTrackerLogger(logger)),

@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/pkg/storage"
 
@@ -148,7 +147,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	cacheKey, err := CheckRequestCacheKey(req)
 	if err != nil {
-		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		c.logger.Error("cache key computation failed with error", logger.Error(err))
 		telemetry.TraceError(span, err)
 		return nil, err
 	}

@@ -11,7 +11,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/exp/rand"
 	"golang.org/x/time/rate"
 
@@ -146,10 +145,10 @@ func (t *TrackerCheckResolver) logExecutionPaths(flush bool) {
 					return false
 				}
 				t.logger.Info("hits",
-					zap.String("store_id", storeModel.store),
-					zap.String("model_id", storeModel.model),
-					zap.String("path", path),
-					zap.Uint64("hits", node.hits.Load()))
+					logger.String("store_id", storeModel.store),
+					logger.String("model_id", storeModel.model),
+					logger.String("path", path),
+					logger.Uint64("hits", node.hits.Load()))
 
 				paths.Delete(path)
 			}

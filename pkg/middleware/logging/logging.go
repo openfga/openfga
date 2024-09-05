@@ -10,7 +10,6 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -52,7 +51,7 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 type reporter struct {
 	ctx            context.Context
 	logger         logger.Logger
-	fields         []zap.Field
+	fields         []logger.Field
 	protomarshaler protojson.MarshalOptions
 }
 
@@ -60,19 +59,19 @@ type reporter struct {
 func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	rpcDurationMs := strconv.FormatInt(rpcDuration.Milliseconds(), 10)
 
-	r.fields = append(r.fields, zap.String(queryDurationKey, rpcDurationMs))
+	r.fields = append(r.fields, logger.String(queryDurationKey, rpcDurationMs))
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
-	r.fields = append(r.fields, zap.Int32(grpcCodeKey, code))
+	r.fields = append(r.fields, logger.Int32(grpcCodeKey, code))
 
 	if err != nil {
 		var internalError serverErrors.InternalError
 		if errors.As(err, &internalError) {
-			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Unwrap().Error()))
+			r.fields = append(r.fields, logger.String(internalErrorKey, internalError.Unwrap().Error()))
 			r.logger.Error(err.Error(), r.fields...)
 		} else {
-			r.fields = append(r.fields, zap.Error(err))
+			r.fields = append(r.fields, logger.Error(err))
 			r.logger.Info(grpcReqCompleteKey, r.fields...)
 		}
 
@@ -91,14 +90,14 @@ func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 		encodedError := serverErrors.NewEncodedError(intCode, err.Error())
 		protomsg := encodedError.ActualError
 		if resp, err := json.Marshal(protomsg); err == nil {
-			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
+			r.fields = append(r.fields, logger.Any(rawResponseKey, json.RawMessage(resp)))
 		}
 		return
 	}
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if resp, err := r.protomarshaler.Marshal(protomsg); err == nil {
-			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
+			r.fields = append(r.fields, logger.Any(rawResponseKey, json.RawMessage(resp)))
 		}
 	}
 }
@@ -108,7 +107,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if req, err := r.protomarshaler.Marshal(protomsg); err == nil {
-			r.fields = append(r.fields, zap.Any(rawRequestKey, json.RawMessage(req)))
+			r.fields = append(r.fields, logger.Any(rawRequestKey, json.RawMessage(req)))
 		}
 	}
 }
@@ -129,19 +128,19 @@ func userAgentFromContext(ctx context.Context) (string, bool) {
 
 func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
-		fields := []zap.Field{
-			zap.String(grpcServiceKey, c.Service),
-			zap.String(grpcMethodKey, c.Method),
-			zap.String(grpcTypeKey, string(c.Typ)),
+		fields := []logger.Field{
+			logger.String(grpcServiceKey, c.Service),
+			logger.String(grpcMethodKey, c.Method),
+			logger.String(grpcTypeKey, string(c.Typ)),
 		}
 
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
-			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
+			fields = append(fields, logger.String(traceIDKey, spanCtx.TraceID().String()))
 		}
 
 		if userAgent, ok := userAgentFromContext(ctx); ok {
-			fields = append(fields, zap.String(userAgentKey, userAgent))
+			fields = append(fields, logger.String(userAgentKey, userAgent))
 		}
 
 		zapLogger := l.(*logger.ZapLogger)

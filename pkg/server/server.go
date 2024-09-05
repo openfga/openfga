@@ -24,7 +24,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -1340,7 +1339,7 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	s.logger.WarnWithContext(ctx, "datastore is not ready", zap.Any("status", status.Message))
+	s.logger.WarnWithContext(ctx, "datastore is not ready", logger.Any("status", status.Message))
 	return false, nil
 }
 
