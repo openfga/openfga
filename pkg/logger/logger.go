@@ -44,6 +44,9 @@ type ZapLogger struct {
 
 var _ Logger = (*ZapLogger)(nil)
 
+// With creates a child logger and adds structured context to it. Fields added
+// to the child don't affect the parent, and vice versa. Any fields that
+// require evaluation (such as Objects) are evaluated upon invocation of With.
 func (l *ZapLogger) With(fields ...zap.Field) Logger {
 	return &ZapLogger{l.Logger.With(fields...)}
 }
