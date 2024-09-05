@@ -1,4 +1,4 @@
-package authclaims
+package authcontext
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 type ctxKey string
 
 const authClaimsContextKey = ctxKey("auth-claims")
+const skipAuthz = ctxKey("skip-authz-key")
 
 // AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 type AuthClaims struct {
@@ -28,4 +29,15 @@ func AuthClaimsFromContext(ctx context.Context) (*AuthClaims, bool) {
 	}
 
 	return claims, true
+}
+
+// ContextWithSkipAuthzCheck attaches whether to skip authz check to the parent context.
+func ContextWithSkipAuthzCheck(parent context.Context, skipAuthzCheck bool) context.Context {
+	return context.WithValue(parent, skipAuthz, skipAuthzCheck)
+}
+
+// SkipAuthzCheckFromContext returns whether the authorize check can be skipped.
+func SkipAuthzCheckFromContext(ctx context.Context) bool {
+	isSkipped, ok := ctx.Value(skipAuthz).(bool)
+	return isSkipped && ok
 }

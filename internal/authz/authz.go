@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/pkg/authcontext"
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -120,30 +121,66 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	}
 }
 
-// AuthorizeCreateStore checks if the user has access to create a store.
-func (a *Authorizer) AuthorizeCreateStore(ctx context.Context, clientID string) (bool, error) {
-	relation, err := a.getRelation(CreateStore)
+// Authorize checks if the user has access to the resource.
+func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string) error {
+	relation, err := a.getRelation(apiMethod)
 	if err != nil {
-		return false, err
-	}
-	allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
-	if !allowed || err != nil {
-		return false, err
+		return err
 	}
 
-	return true, nil
+	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getStore(storeID), &openfgav1.ContextualTupleKeys{})
+	if err != nil {
+		return err
+	}
+
+	if !authorized {
+		return status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
+	}
+
+	return nil
+}
+
+// AuthorizeCreateStore checks if the user has access to create a store.
+func (a *Authorizer) AuthorizeCreateStore(ctx context.Context, clientID string) error {
+	relation, err := a.getRelation(CreateStore)
+	if err != nil {
+		return err
+	}
+	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
+	if err != nil {
+		return err
+	}
+
+	if !authorized {
+		return status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
+	}
+
+	return nil
+}
+
+// AuthorizeListStores checks if the user has access to list stores.
+func (a *Authorizer) AuthorizeListStores(ctx context.Context, clientID string) error {
+	relation, err := a.getRelation(ListStores)
+	if err != nil {
+		return err
+	}
+
+	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
+	if err != nil {
+		return err
+	}
+	if !authorized {
+		return status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
+	}
+
+	return nil
 }
 
 // ListAuthorizedStores returns the list of stores that the user has access to.
 func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) ([]string, error) {
-	relation, err := a.getRelation(ListStores)
+	err := a.AuthorizeListStores(ctx, clientID)
 	if err != nil {
 		return nil, err
-	}
-
-	allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
-	if !allowed || err != nil {
-		return nil, status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
 	}
 
 	req := &openfgav1.ListObjectsRequest{
@@ -154,33 +191,15 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 		Type:                 StoreType,
 	}
 
-	resp, err := a.server.ListObjectsWithoutAuthz(ctx, req)
+	// Disable authz check for the list objects request.
+	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, true)
+	resp, err := a.server.ListObjects(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, false)
 
 	return resp.GetObjects(), nil
-}
-
-// ContextWithSkipAuthzCheck attaches whether to skip authz check to the parent context.
-func ContextWithSkipAuthzCheck(parent context.Context, skipAuthzCheck bool) context.Context {
-	return context.WithValue(parent, skipAuthz, skipAuthzCheck)
-}
-
-// SkipAuthzCheckFromContext returns whether the authorize check can be skipped.
-func SkipAuthzCheckFromContext(ctx context.Context) bool {
-	isSkipped, ok := ctx.Value(skipAuthz).(bool)
-	return isSkipped && ok
-}
-
-// Authorize checks if the user has access to the resource.
-func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string) (bool, error) {
-	relation, err := a.getRelation(apiMethod)
-	if err != nil {
-		return false, err
-	}
-
-	return a.individualAuthorize(ctx, clientID, relation, a.getStore(storeID), &openfgav1.ContextualTupleKeys{})
 }
 
 func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) (bool, error) {
@@ -195,10 +214,13 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 		ContextualTuples: contextualTuples,
 	}
 
-	resp, err := a.server.CheckWithoutAuthz(ctx, req)
+	// Disable authz check for the check request.
+	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, true)
+	resp, err := a.server.Check(ctx, req)
 	if err != nil {
 		return false, err
 	}
+	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, false)
 
 	if !resp.GetAllowed() {
 		return false, nil

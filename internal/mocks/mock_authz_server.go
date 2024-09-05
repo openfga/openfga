@@ -40,32 +40,32 @@ func (m *MockServerInterface) EXPECT() *MockServerInterfaceMockRecorder {
 	return m.recorder
 }
 
-// CheckWithoutAuthz mocks base method.
-func (m *MockServerInterface) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+// Check mocks base method.
+func (m *MockServerInterface) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckWithoutAuthz", ctx, req)
+	ret := m.ctrl.Call(m, "Check", ctx, req)
 	ret0, _ := ret[0].(*openfgav1.CheckResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CheckWithoutAuthz indicates an expected call of CheckWithoutAuthz.
-func (mr *MockServerInterfaceMockRecorder) CheckWithoutAuthz(ctx, req any) *gomock.Call {
+// Check indicates an expected call of Check.
+func (mr *MockServerInterfaceMockRecorder) Check(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckWithoutAuthz", reflect.TypeOf((*MockServerInterface)(nil).CheckWithoutAuthz), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Check", reflect.TypeOf((*MockServerInterface)(nil).Check), ctx, req)
 }
 
-// ListObjectsWithoutAuthz mocks base method.
-func (m *MockServerInterface) ListObjectsWithoutAuthz(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+// ListObjects mocks base method.
+func (m *MockServerInterface) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListObjectsWithoutAuthz", ctx, req)
+	ret := m.ctrl.Call(m, "ListObjects", ctx, req)
 	ret0, _ := ret[0].(*openfgav1.ListObjectsResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListObjectsWithoutAuthz indicates an expected call of ListObjectsWithoutAuthz.
-func (mr *MockServerInterfaceMockRecorder) ListObjectsWithoutAuthz(ctx, req any) *gomock.Call {
+// ListObjects indicates an expected call of ListObjects.
+func (mr *MockServerInterfaceMockRecorder) ListObjects(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsWithoutAuthz", reflect.TypeOf((*MockServerInterface)(nil).ListObjectsWithoutAuthz), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjects", reflect.TypeOf((*MockServerInterface)(nil).ListObjects), ctx, req)
 }

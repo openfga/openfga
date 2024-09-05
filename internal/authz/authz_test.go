@@ -140,28 +140,25 @@ func TestAuthorizeCreateStore(t *testing.T) {
 
 	t.Run("error_when_authorized_errors", func(t *testing.T) {
 		errorMessage := fmt.Errorf("unable to perform action")
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
 
-		valid, err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
+		err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
 		require.Error(t, err)
 		require.Equal(t, errorMessage.Error(), err.Error())
-		require.False(t, valid)
 	})
 
 	t.Run("error_when_not_authorized", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 
-		valid, err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
-		require.NoError(t, err)
-		require.False(t, valid)
+		err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
+		require.Error(t, err)
 	})
 
 	t.Run("succeed", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 
-		valid, err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
+		err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
 		require.NoError(t, err)
-		require.True(t, valid)
 	})
 }
 
@@ -175,16 +172,16 @@ func TestListAuthorizedStores(t *testing.T) {
 
 	t.Run("error_when_authorized_errors", func(t *testing.T) {
 		errorMessage := fmt.Errorf("unable to perform action")
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		require.Equal(t, errorMessage.Error(), err.Error())
 		require.Equal(t, stores, []string(nil))
 	})
 
 	t.Run("error_when_not_authorized", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.Error(t, err)
@@ -194,8 +191,8 @@ func TestListAuthorizedStores(t *testing.T) {
 
 	t.Run("error_when_list_objects_errors", func(t *testing.T) {
 		errorMessage := fmt.Errorf("error")
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().ListObjectsWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: []string{"test-store"}}, errorMessage)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: []string{"test-store"}}, errorMessage)
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.Error(t, err)
@@ -205,30 +202,12 @@ func TestListAuthorizedStores(t *testing.T) {
 
 	t.Run("succeed", func(t *testing.T) {
 		expectedStores := []string{"test-store"}
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().ListObjectsWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: expectedStores}, nil)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: expectedStores}, nil)
 
 		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
 		require.NoError(t, err)
 		require.Equal(t, expectedStores, stores)
-	})
-}
-
-func TestSkipAuthzCheckFromContext(t *testing.T) {
-	t.Run("false", func(t *testing.T) {
-		ctx := ContextWithSkipAuthzCheck(context.Background(), false)
-		isSkipped := SkipAuthzCheckFromContext(ctx)
-		require.False(t, isSkipped)
-	})
-	t.Run("false for invalid bool", func(t *testing.T) {
-		isSkipped := SkipAuthzCheckFromContext(context.Background())
-		require.False(t, isSkipped)
-	})
-
-	t.Run("true", func(t *testing.T) {
-		ctx := ContextWithSkipAuthzCheck(context.Background(), true)
-		isSkipped := SkipAuthzCheckFromContext(ctx)
-		require.True(t, isSkipped)
 	})
 }
 
@@ -241,33 +220,29 @@ func TestAuthorize(t *testing.T) {
 	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
 
 	t.Run("error_when_given_invalid_api_method", func(t *testing.T) {
-		valid, err := authorizer.Authorize(context.Background(), "client-id", "store-id", "invalid-api-method")
+		err := authorizer.Authorize(context.Background(), "client-id", "store-id", "invalid-api-method")
 		require.Error(t, err)
 		require.Equal(t, "unknown api method: invalid-api-method", err.Error())
-		require.False(t, valid)
 	})
 
 	t.Run("error_when_check_errors", func(t *testing.T) {
 		errorMessage := fmt.Errorf("error")
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
-		valid, err := authorizer.Authorize(context.Background(), "client-id", "store-id", CreateStore)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
+		err := authorizer.Authorize(context.Background(), "client-id", "store-id", CreateStore)
 		require.Error(t, err)
 		require.Equal(t, errorMessage.Error(), err.Error())
-		require.False(t, valid)
 	})
 
-	t.Run("return_false_when_unauthorized", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
-		valid, err := authorizer.Authorize(context.Background(), "client-id", "store-id", CreateStore)
-		require.NoError(t, err)
-		require.False(t, valid)
+	t.Run("error_when_unauthorized", func(t *testing.T) {
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
+		err := authorizer.Authorize(context.Background(), "client-id", "store-id", CreateStore)
+		require.Error(t, err)
 	})
 
 	t.Run("succeed", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		valid, err := authorizer.Authorize(context.Background(), "client-id", "store-id", CreateStore)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+		err := authorizer.Authorize(context.Background(), "client-id", "store-id", CreateStore)
 		require.NoError(t, err)
-		require.True(t, valid)
 	})
 }
 
@@ -281,20 +256,20 @@ func TestIndividualAuthorize(t *testing.T) {
 
 	t.Run("error_when_check_errors", func(t *testing.T) {
 		errorMessage := fmt.Errorf("error")
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
 		valid, err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 		require.Error(t, err)
 		require.Equal(t, errorMessage.Error(), err.Error())
 		require.False(t, valid)
 	})
 	t.Run("return_false_when_unauthorized", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 		valid, err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 		require.NoError(t, err)
 		require.False(t, valid)
 	})
 	t.Run("succeed", func(t *testing.T) {
-		mockServer.EXPECT().CheckWithoutAuthz(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		valid, err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 		require.NoError(t, err)
 		require.True(t, valid)

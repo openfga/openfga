@@ -31,12 +31,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/authclaims"
-	"github.com/openfga/openfga/pkg/authz"
+	"github.com/openfga/openfga/pkg/authcontext"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -687,7 +687,7 @@ func (s *Server) Close() {
 	s.typesystemResolverStop()
 }
 
-func (s *Server) ListObjectsWithoutAuthz(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
@@ -717,6 +717,11 @@ func (s *Server) ListObjectsWithoutAuthz(ctx context.Context, req *openfgav1.Lis
 		Service: s.serviceName,
 		Method:  methodName,
 	})
+
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -797,15 +802,6 @@ func (s *Server) ListObjectsWithoutAuthz(ctx context.Context, req *openfgav1.Lis
 	}, nil
 }
 
-func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ListObjects)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.ListObjectsWithoutAuthz(ctx, req)
-}
-
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
@@ -836,7 +832,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Method:  methodName,
 	})
 
-	err = s.CheckAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
 	if err != nil {
 		return err
 	}
@@ -933,7 +929,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		Method:  authz.Read,
 	})
 
-	err = s.CheckAuthz(ctx, req.GetStoreId(), authz.Read)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -966,7 +962,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Method:  authz.Write,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.Write)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Write)
 	if err != nil {
 		return nil, err
 	}
@@ -995,7 +991,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	})
 }
 
-func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
 		return nil, err
@@ -1023,6 +1019,11 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 		Service: s.serviceName,
 		Method:  authz.Check,
 	})
+
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1121,70 +1122,6 @@ func (s *Server) CheckWithoutAuthz(ctx context.Context, req *openfgav1.CheckRequ
 	return res, nil
 }
 
-func (s *Server) CheckAuthzListStores(ctx context.Context) ([]string, error) {
-	if s.authorizer != nil {
-		claims, found := authclaims.AuthClaimsFromContext(ctx)
-		if !found || claims.ClientID == "" {
-			return nil, status.Error(codes.Internal, "client ID not found in context")
-		}
-
-		list, err := s.authorizer.ListAuthorizedStores(ctx, claims.ClientID)
-		if err != nil {
-			return nil, err
-		}
-
-		return list, nil
-	}
-	return nil, nil
-}
-
-func (s *Server) CheckCreateStoreAuthz(ctx context.Context) error {
-	if s.authorizer != nil {
-		claims, found := authclaims.AuthClaimsFromContext(ctx)
-		if !found || claims.ClientID == "" {
-			return status.Error(codes.Internal, "client ID not found in context")
-		}
-
-		authorized, err := s.authorizer.AuthorizeCreateStore(ctx, claims.ClientID)
-		if err != nil {
-			return err
-		}
-
-		if !authorized {
-			return status.Error(codes.Code(authz.ErrorResponse.GetCode()), authz.ErrorResponse.GetMessage())
-		}
-	}
-	return nil
-}
-
-func (s *Server) CheckAuthz(ctx context.Context, storeID, apiMethod string) error {
-	if s.authorizer != nil && !authz.SkipAuthzCheckFromContext(ctx) {
-		claims, found := authclaims.AuthClaimsFromContext(ctx)
-		if !found || claims.ClientID == "" {
-			return status.Error(codes.Internal, "client ID not found in context")
-		}
-
-		authorized, err := s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod)
-		if err != nil {
-			return err
-		}
-
-		if !authorized {
-			return status.Error(codes.Code(authz.ErrorResponse.GetCode()), authz.ErrorResponse.GetMessage())
-		}
-	}
-	return nil
-}
-
-func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.Check)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.CheckWithoutAuthz(ctx, req)
-}
-
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	err := s.validateConsistencyRequest(req.GetConsistency())
 	if err != nil {
@@ -1210,7 +1147,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		Method:  authz.Expand,
 	})
 
-	err = s.CheckAuthz(ctx, req.GetStoreId(), authz.Expand)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
 	if err != nil {
 		return nil, err
 	}
@@ -1248,7 +1185,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 		Method:  authz.ReadAuthorizationModel,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
 	if err != nil {
 		return nil, err
 	}
@@ -1272,7 +1209,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  authz.WriteAuthorizationModel,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
 	if err != nil {
 		return nil, err
 	}
@@ -1306,7 +1243,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		Method:  authz.ReadAuthorizationModels,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
 	if err != nil {
 		return nil, err
 	}
@@ -1333,7 +1270,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 		Method:  authz.WriteAssertions,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.WriteAssertions)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAssertions)
 	if err != nil {
 		return nil, err
 	}
@@ -1375,7 +1312,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 		Method:  authz.ReadAssertions,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadAssertions)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAssertions)
 	if err != nil {
 		return nil, err
 	}
@@ -1406,7 +1343,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		Method:  authz.ReadChanges,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
 	if err != nil {
 		return nil, err
 	}
@@ -1434,7 +1371,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 		Method:  authz.CreateStore,
 	})
 
-	err := s.CheckCreateStoreAuthz(ctx)
+	err := s.checkCreateStoreAuthz(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1465,7 +1402,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 		Method:  authz.DeleteStore,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.DeleteStore)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.DeleteStore)
 	if err != nil {
 		return nil, err
 	}
@@ -1496,7 +1433,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 		Method:  authz.GetStore,
 	})
 
-	err := s.CheckAuthz(ctx, req.GetStoreId(), authz.GetStore)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.GetStore)
 	if err != nil {
 		return nil, err
 	}
@@ -1520,7 +1457,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		Method:  authz.ListStores,
 	})
 
-	stores, err := s.CheckAuthzListStores(ctx)
+	stores, err := s.checkAuthzListStores(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1646,6 +1583,65 @@ func (s *Server) validateAccessControlEnabled() error {
 		_, err = ulid.Parse(s.AccessControl.ModelID)
 		if err != nil {
 			return fmt.Errorf("config '--access-control-model-id' must be a valid ULID")
+		}
+	}
+	return nil
+}
+
+// checkAuthClaims checks the auth claims in the context.
+func (s *Server) checkAuthClaims(ctx context.Context) (*authcontext.AuthClaims, error) {
+	claims, found := authcontext.AuthClaimsFromContext(ctx)
+	if !found || claims.ClientID == "" {
+		return nil, status.Error(codes.Internal, "client ID not found in context")
+	}
+	return claims, nil
+}
+
+// checkAuthz checks the authorization for calling an API method.
+func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string) error {
+	if s.authorizer != nil && !authcontext.SkipAuthzCheckFromContext(ctx) {
+		claims, err := s.checkAuthClaims(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkAuthzListStores checks the authorization for listing stores.
+func (s *Server) checkAuthzListStores(ctx context.Context) ([]string, error) {
+	if s.authorizer != nil {
+		claims, err := s.checkAuthClaims(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		list, err := s.authorizer.ListAuthorizedStores(ctx, claims.ClientID)
+		if err != nil {
+			return nil, err
+		}
+
+		return list, nil
+	}
+	return nil, nil
+}
+
+// checkCreateStoreAuthz checks the authorization for creating a store.
+func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
+	if s.authorizer != nil {
+		claims, err := s.checkAuthClaims(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = s.authorizer.AuthorizeCreateStore(ctx, claims.ClientID)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
