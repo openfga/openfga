@@ -45,8 +45,8 @@ type SQLite struct {
 // Ensures that SQLite implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*SQLite)(nil)
 
-// New creates a new [SQLite] storage.
-func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
+// Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
+func PrepareDSN(uri string) (string, error) {
 	// Set journal mode and busy timeout pragmas if not specified.
 	query := url.Values{}
 	var err error
@@ -54,7 +54,7 @@ func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
 	if i := strings.Index(uri, "?"); i != -1 {
 		query, err = url.ParseQuery(uri[i+1:])
 		if err != nil {
-			return nil, fmt.Errorf("error parsing dsn: %w", err)
+			return uri, fmt.Errorf("error parsing dsn: %w", err)
 		}
 
 		uri = uri[:i]
@@ -78,6 +78,16 @@ func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
 	}
 
 	uri += "?" + query.Encode()
+
+	return uri, nil
+}
+
+// New creates a new [SQLite] storage.
+func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
+	uri, err := PrepareDSN(uri)
+	if err != nil {
+		return nil, err
+	}
 
 	db, err := sql.Open("sqlite", uri)
 	if err != nil {
