@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## Added
 
 * Stack trace when logging panics [#1904](https://github.com/openfga/openfga/pull/1904)
+* Statistics on number of allowed vs. non-allowed check [#1911](https://github.com/openfga/openfga/pull/1911)
 
 ## Fixed
 
