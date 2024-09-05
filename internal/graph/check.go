@@ -572,10 +572,15 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	}, nil
 }
 
+type dispatchParams struct {
+	parentReq *ResolveCheckRequest
+	tk        *openfgav1.TupleKey
+}
+
 type dispatchMsg struct {
-	err          error
-	shortCircuit bool
-	dispatch     CheckHandlerFunc
+	err            error
+	shortCircuit   bool
+	dispatchParams *dispatchParams
 }
 
 func trySendDispatchChan(ctx context.Context, msg dispatchMsg, dispatchChan chan dispatchMsg) {
@@ -597,7 +602,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 				break
 			}
 			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
-			continue
+			break
 		}
 
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
@@ -615,7 +620,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 
 		if usersetRelation != "" {
 			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			trySendDispatchChan(ctx, dispatchMsg{dispatch: c.dispatch(ctx, req, tupleKey)}, dispatches)
+			trySendDispatchChan(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
 		}
 	}
 }
@@ -647,14 +652,14 @@ func (c *LocalChecker) processDispatches(ctx context.Context, pool *pool.Context
 				}}
 				return
 			}
-			// There is a max number of goroutines based on concurrency limits
-			// a call to Go() will block until the task can be started.
-			// so if one of the inflight returns, it will be scheduled and the select will run again
-			pool.Go(func(ctx context.Context) error {
-				resp, err := msg.dispatch(ctx)
-				outcomes <- checkOutcome{resp: resp, err: err}
-				return nil
-			})
+
+			if msg.dispatchParams != nil {
+				pool.Go(func(ctx context.Context) error {
+					resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+					outcomes <- checkOutcome{resp: resp, err: err}
+					return nil
+				})
+			}
 		}
 	}
 }
@@ -1118,7 +1123,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 				break
 			}
 			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
-			continue
+			break
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
@@ -1134,7 +1139,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 			User:     reqTupleKey.GetUser(),
 		}
 
-		trySendDispatchChan(ctx, dispatchMsg{dispatch: c.dispatch(ctx, req, tupleKey)}, dispatches)
+		trySendDispatchChan(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
 	}
 }
 

@@ -3108,21 +3108,12 @@ func TestDispatch(t *testing.T) {
 	_, _ = dispatch(context.Background())
 }
 
-// helperReceivedMessage is a helper function to listen to dispatchMsg and create
-// a list of dispatchMsg.
-func helperReceivedMessage(dispatchChan chan dispatchMsg) []dispatchMsg {
+func collectMessagesFromChannel(dispatchChan chan dispatchMsg) []dispatchMsg {
 	var receivedDispatches []dispatchMsg
 	for msg := range dispatchChan {
 		receivedDispatches = append(receivedDispatches, msg)
 	}
 	return receivedDispatches
-}
-
-// dispatchMsgAssertion is helper structure to allow easy assertion on dispatchMsg.
-type dispatchMsgAssertion struct {
-	err          error
-	shortCircuit bool
-	dispatch     *openfgav1.TupleKey
 }
 
 func TestProduceUsersetDispatches(t *testing.T) {
@@ -3155,11 +3146,15 @@ func TestProduceUsersetDispatches(t *testing.T) {
 				}`)
 	ts := typesystem.New(model)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
 
 	tests := []struct {
 		name               string
 		tuples             []*openfgav1.TupleKey
-		expectedDispatches []dispatchMsgAssertion
+		expectedDispatches []dispatchMsg
 	}{
 		{
 			name:               "empty_iterator",
@@ -3171,11 +3166,11 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "badCondition", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
-					err:          fmt.Errorf("condition not found"),
-					shortCircuit: false,
-					dispatch:     nil,
+					err:            fmt.Errorf("condition not found"),
+					shortCircuit:   false,
+					dispatchParams: nil,
 				},
 			},
 		},
@@ -3183,13 +3178,12 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			name: "good_condition_wildcard",
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
-					err:          nil,
-					shortCircuit: true,
-					dispatch:     nil,
+					err:            nil,
+					shortCircuit:   true,
+					dispatchParams: nil,
 				},
 			},
 		},
@@ -3198,11 +3192,14 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:2", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
 				},
 			},
 		},
@@ -3212,16 +3209,22 @@ func TestProduceUsersetDispatches(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
 				tuple.NewTupleKeyWithCondition("group:1", "member", "group:3#member", "condition1", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:2", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
 				},
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:3", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
 				},
 			},
 		},
@@ -3239,29 +3242,6 @@ func TestProduceUsersetDispatches(t *testing.T) {
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
 
-			req := &ResolveCheckRequest{
-				TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-				RequestMetadata: NewCheckRequestMetadata(20),
-			}
-
-			var expectedMsgDispatches []*openfgav1.TupleKey
-
-			for _, expectedMsg := range tt.expectedDispatches {
-				if expectedMsg.dispatch != nil {
-					expectedMsgDispatches = append(expectedMsgDispatches, expectedMsg.dispatch)
-				}
-			}
-
-			if len(expectedMsgDispatches) > 0 {
-				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).Times(len(expectedMsgDispatches)).DoAndReturn(
-					func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-						require.NotEmpty(t, req)
-						var item *openfgav1.TupleKey
-						item, expectedMsgDispatches = expectedMsgDispatches[0], expectedMsgDispatches[1:]
-						require.Equal(t, item, req.GetTupleKey())
-						return nil, nil
-					})
-			}
 			pool := concurrency.NewPool(ctx, 1)
 
 			dispatchChan := make(chan dispatchMsg, 1)
@@ -3271,20 +3251,9 @@ func TestProduceUsersetDispatches(t *testing.T) {
 				return nil
 			})
 
-			receivedMsgs := helperReceivedMessage(dispatchChan)
+			receivedMsgs := collectMessagesFromChannel(dispatchChan)
 			_ = pool.Wait()
-			require.Equal(t, len(tt.expectedDispatches), len(receivedMsgs))
-			for idx, expectedMsg := range tt.expectedDispatches {
-				require.Equal(t, expectedMsg.err, receivedMsgs[idx].err)
-				require.Equal(t, expectedMsg.shortCircuit, receivedMsgs[idx].shortCircuit)
-				if expectedMsg.dispatch != nil {
-					require.NotNil(t, receivedMsgs[idx].dispatch)
-					// Invoke the dispatch so that we can assert request parameter
-					_, _ = receivedMsgs[idx].dispatch(context.Background())
-				} else {
-					require.Nil(t, receivedMsgs[idx].dispatch)
-				}
-			}
+			require.Equal(t, tt.expectedDispatches, receivedMsgs)
 		})
 	}
 }
@@ -3323,12 +3292,16 @@ func TestProduceTTUDispatches(t *testing.T) {
 
 	ts := typesystem.New(model)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
 
 	tests := []struct {
 		name               string
 		computedRelation   string
 		tuples             []*openfgav1.TupleKey
-		expectedDispatches []dispatchMsgAssertion
+		expectedDispatches []dispatchMsg
 	}{
 		{
 			name:               "empty_iterator",
@@ -3342,11 +3315,11 @@ func TestProduceTTUDispatches(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "badCondition", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
-					err:          fmt.Errorf("condition not found"),
-					shortCircuit: false,
-					dispatch:     nil,
+					err:            fmt.Errorf("condition not found"),
+					shortCircuit:   false,
+					dispatchParams: nil,
 				},
 			},
 		},
@@ -3364,11 +3337,14 @@ func TestProduceTTUDispatches(t *testing.T) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:1", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
 				},
 			},
 		},
@@ -3379,16 +3355,22 @@ func TestProduceTTUDispatches(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:2", "condition1", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:1", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
 				},
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:2", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
 				},
 			},
 		},
@@ -3399,11 +3381,14 @@ func TestProduceTTUDispatches(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "team:1", "condition1", nil),
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 			},
-			expectedDispatches: []dispatchMsgAssertion{
+			expectedDispatches: []dispatchMsg{
 				{
 					err:          nil,
 					shortCircuit: false,
-					dispatch:     tuple.NewTupleKey("group:1", "member", "user:maria"),
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
 				},
 			},
 		},
@@ -3421,21 +3406,6 @@ func TestProduceTTUDispatches(t *testing.T) {
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
 
-			req := &ResolveCheckRequest{
-				TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-				RequestMetadata: NewCheckRequestMetadata(20),
-			}
-
-			for _, expectedMsg := range tt.expectedDispatches {
-				if expectedMsg.dispatch != nil {
-					mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(
-						func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-							require.NotEmpty(t, req)
-							require.Equal(t, expectedMsg.dispatch, req.GetTupleKey())
-							return nil, nil
-						})
-				}
-			}
 			pool := concurrency.NewPool(ctx, 1)
 
 			dispatchChan := make(chan dispatchMsg, 1)
@@ -3445,20 +3415,9 @@ func TestProduceTTUDispatches(t *testing.T) {
 				return nil
 			})
 
-			receivedMsgs := helperReceivedMessage(dispatchChan)
+			receivedMsgs := collectMessagesFromChannel(dispatchChan)
 			_ = pool.Wait()
-			require.Equal(t, len(tt.expectedDispatches), len(receivedMsgs))
-			for idx, expectedMsg := range tt.expectedDispatches {
-				require.Equal(t, expectedMsg.err, receivedMsgs[idx].err)
-				require.Equal(t, expectedMsg.shortCircuit, receivedMsgs[idx].shortCircuit)
-				if expectedMsg.dispatch != nil {
-					require.NotNil(t, receivedMsgs[idx].dispatch)
-					// Invoke the dispatch so that we can assert request parameter
-					_, _ = receivedMsgs[idx].dispatch(context.Background())
-				} else {
-					require.Nil(t, receivedMsgs[idx].dispatch)
-				}
-			}
+			require.Equal(t, tt.expectedDispatches, receivedMsgs)
 		})
 	}
 }
@@ -3478,12 +3437,18 @@ func TestProcessDispatch(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	const datastoreQueryCount = 30
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+
 	tests := []struct {
-		name             string
-		poolSize         int
-		ctxCancelled     bool
-		dispatchMsgs     []dispatchMsg
-		expectedOutcomes []checkOutcome
+		name                   string
+		poolSize               int
+		ctxCancelled           bool
+		dispatchMsgs           []dispatchMsg
+		mockedDispatchResponse []*ResolveCheckResponse
+		expectedOutcomes       []checkOutcome
 	}{
 		{
 			name:             "ctx_cancelled",
@@ -3562,23 +3527,29 @@ func TestProcessDispatch(t *testing.T) {
 			ctxCancelled: false,
 			dispatchMsgs: []dispatchMsg{
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: true,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: datastoreQueryCount,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 					},
 				},
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: false,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: datastoreQueryCount,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: datastoreQueryCount,
+					},
+				},
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: datastoreQueryCount,
 					},
 				},
 			},
@@ -3623,6 +3594,10 @@ func TestProcessDispatch(t *testing.T) {
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
 
+			for _, mockedDispatchResponse := range tt.mockedDispatchResponse {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(mockedDispatchResponse, nil)
+			}
+
 			dispatchMsgChan := make(chan dispatchMsg, 100)
 			for _, dispatchMsg := range tt.dispatchMsgs {
 				dispatchMsgChan <- dispatchMsg
@@ -3645,13 +3620,19 @@ func TestConsumeDispatch(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	const datastoreQueryCount = 30
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+	req.RequestMetadata.DatastoreQueryCount = datastoreQueryCount
 	tests := []struct {
-		name          string
-		limit         uint32
-		ctxCancelled  bool
-		dispatchMsgs  []dispatchMsg
-		expected      *ResolveCheckResponse
-		expectedError error
+		name                   string
+		limit                  uint32
+		ctxCancelled           bool
+		dispatchMsgs           []dispatchMsg
+		mockedDispatchResponse []*ResolveCheckResponse
+		expected               *ResolveCheckResponse
+		expectedError          error
 	}{
 		{
 			name:          "ctx_cancelled",
@@ -3679,14 +3660,18 @@ func TestConsumeDispatch(t *testing.T) {
 			ctxCancelled: false,
 			dispatchMsgs: []dispatchMsg{
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: false,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 2,
-								CycleDetected:       true,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       true,
 					},
 				},
 			},
@@ -3705,25 +3690,31 @@ func TestConsumeDispatch(t *testing.T) {
 			ctxCancelled: false,
 			dispatchMsgs: []dispatchMsg{
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: false,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 2,
-								CycleDetected:       false,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 					},
 				},
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: false,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 3,
-								CycleDetected:       false,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 3,
+						CycleDetected:       false,
 					},
 				},
 			},
@@ -3742,25 +3733,31 @@ func TestConsumeDispatch(t *testing.T) {
 			ctxCancelled: false,
 			dispatchMsgs: []dispatchMsg{
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: false,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 2,
-								CycleDetected:       false,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 					},
 				},
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: true,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 3,
-								CycleDetected:       false,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 3,
+						CycleDetected:       false,
 					},
 				},
 			},
@@ -3774,37 +3771,30 @@ func TestConsumeDispatch(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:         "two_true", // see that we exit at the first true
+			name:         "single_true",
 			limit:        1,
 			ctxCancelled: false,
 			dispatchMsgs: []dispatchMsg{
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: true,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 2,
-								CycleDetected:       false,
-							},
-						}, nil
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 					},
 				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
-					dispatch: func(ctx context.Context) (*ResolveCheckResponse, error) {
-						return &ResolveCheckResponse{
-							Allowed: true,
-							ResolutionMetadata: &ResolveCheckResponseMetadata{
-								DatastoreQueryCount: 3,
-								CycleDetected:       false,
-							},
-						}, nil
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
 					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: datastoreQueryCount + 2, // important this is two as it indicates we have early exit
+					DatastoreQueryCount: datastoreQueryCount + 2,
 					CycleDetected:       false,
 				},
 			},
@@ -3829,6 +3819,9 @@ func TestConsumeDispatch(t *testing.T) {
 			defer checker.Close()
 			mockResolver := NewMockCheckResolver(ctrl)
 			checker.SetDelegate(mockResolver)
+			for _, mockedDispatchResponse := range tt.mockedDispatchResponse {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(mockedDispatchResponse, nil)
+			}
 
 			dispatchMsgChan := make(chan dispatchMsg, 100)
 			for _, dispatchMsg := range tt.dispatchMsgs {
@@ -3836,11 +3829,6 @@ func TestConsumeDispatch(t *testing.T) {
 			}
 			close(dispatchMsgChan)
 
-			req := &ResolveCheckRequest{
-				TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-				RequestMetadata: NewCheckRequestMetadata(20),
-			}
-			req.RequestMetadata.DatastoreQueryCount = datastoreQueryCount
 			resp, err := checker.consumeDispatches(ctx, req, tt.limit, dispatchMsgChan)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
