@@ -97,7 +97,7 @@ var (
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_count",
 		Help:      "The total number of requests that have been throttled.",
-	}, []string{"api"})
+	}, []string{"grpc_method"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -759,7 +759,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
+		throttledRequestCounter.With(prometheus.Labels{"grpc_method": methodName}).Inc()
 	}
 
 	return &openfgav1.ListObjectsResponse{
@@ -858,7 +858,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
+		throttledRequestCounter.With(prometheus.Labels{"grpc_method": methodName}).Inc()
 	}
 
 	return nil
@@ -1012,7 +1012,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		// Note for ListObjects:
 		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
+			throttledRequestCounter.With(prometheus.Labels{"grpc_method": methodName}).Inc()
 			return nil, serverErrors.ThrottledTimeout
 		}
 
@@ -1054,7 +1054,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
+		throttledRequestCounter.With(prometheus.Labels{"grpc_method": methodName}).Inc()
 	}
 
 	return res, nil

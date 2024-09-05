@@ -120,7 +120,7 @@ func (s *Server) ListUsers(
 
 	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.With(prometheus.Labels{"api": methodName}).Inc()
+		throttledRequestCounter.With(prometheus.Labels{"grpc_method": methodName}).Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{
