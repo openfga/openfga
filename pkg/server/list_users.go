@@ -8,7 +8,6 @@ import (
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
-	"github.com/prometheus/client_golang/prometheus"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -120,7 +119,7 @@ func (s *Server) ListUsers(
 
 	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
 	if wasRequestThrottled {
-		throttledRequestCounter.With(prometheus.Labels{"grpc_method": methodName}).Inc()
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
 
 	return &openfgav1.ListUsersResponse{
