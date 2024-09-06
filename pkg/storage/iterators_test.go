@@ -905,3 +905,35 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 		}
 	})
 }
+
+func TestIterIsDoneOrCancelled(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+	}{
+		{
+			err:      ErrIteratorDone,
+			expected: true,
+		},
+		{
+			err:      context.Canceled,
+			expected: true,
+		},
+		{
+			err:      context.DeadlineExceeded,
+			expected: true,
+		},
+		{
+			err:      fmt.Errorf("some error"),
+			expected: false,
+		},
+		{
+			err:      nil,
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		output := IterIsDoneOrCancelled(tt.err)
+		require.Equal(t, tt.expected, output)
+	}
+}
