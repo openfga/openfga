@@ -130,6 +130,19 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 			},
 		},
 		{
+			_name:        "writing_assertion_with_context_succeeds",
+			inputModelID: modelID,
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
+					Expectation: false,
+					Context: testutils.MustNewStruct(t, map[string]interface{}{
+						"x": 10,
+					}),
+				},
+			},
+		},
+		{
 			_name:        "writing_assertion_with_contextual_tuple_with_condition_succeeds",
 			inputModelID: modelID,
 			assertions: []*openfgav1.Assertion{
