@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -37,23 +38,27 @@ var tuples = []*openfgav1.TupleKey{
 }
 
 func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory")
+	testRunTestMatrix(t, "memory", false)
+	testRunTestMatrix(t, "memory", true)
 }
 
-func testRunTestMatrix(t *testing.T, engine string) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
+	t.Run("test_matrix_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		cfg := config.MustDefaultConfig()
+		cfg.Log.Level = "error"
+		cfg.Datastore.Engine = engine
+		cfg.ListUsersDeadline = 0   // no deadline
+		cfg.ListObjectsDeadline = 0 // no deadline
+
+		tests.StartServer(t, cfg)
+
+		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+
+		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
 	})
-	cfg := config.MustDefaultConfig()
-	// cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
-
-	tests.StartServer(t, cfg)
-
-	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-
-	runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
 }
 
 func TestCheckMemory(t *testing.T) {
@@ -319,7 +324,6 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 
@@ -386,7 +390,6 @@ const githubModel = `
 // and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
