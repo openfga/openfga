@@ -4,17 +4,19 @@ CREATE TABLE tuple (
     object_type VARCHAR(128) NOT NULL,
     object_id VARCHAR(128) NOT NULL,
     relation VARCHAR(50) NOT NULL,
-    _user VARCHAR(256) NOT NULL,
+    user_object_type VARCHAR(128) NOT NULL,
+    user_object_id VARCHAR(128) NOT NULL,
+    user_relation VARCHAR(50) NOT NULL,
     user_type VARCHAR(7) NOT NULL,
     ulid CHAR(26) NOT NULL,
     inserted_at TIMESTAMP NOT NULL,
     condition_name VARCHAR(256),
     condition_context LONGBLOB,
-    PRIMARY KEY (store, object_type, object_id, relation, _user)
+    PRIMARY KEY (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation)
 );
 
 CREATE UNIQUE INDEX idx_tuple_ulid ON tuple (ulid);
-CREATE INDEX idx_reverse_lookup_user ON tuple (store, object_type, relation, _user);
+CREATE INDEX idx_reverse_lookup_user ON tuple (store, object_type, relation, user_object_type, user_object_id, user_relation);
 
 CREATE TABLE authorization_model (
     store CHAR(26) NOT NULL,
@@ -44,7 +46,9 @@ CREATE TABLE changelog (
     object_type VARCHAR(256) NOT NULL,
     object_id VARCHAR(256) NOT NULL,
     relation VARCHAR(50) NOT NULL,
-    _user VARCHAR(512) NOT NULL,
+    user_object_type VARCHAR(128) NOT NULL,
+    user_object_id VARCHAR(128) NOT NULL,
+    user_relation VARCHAR(50) NOT NULL,
     operation INTEGER NOT NULL,
     ulid CHAR(26) NOT NULL,
     inserted_at TIMESTAMP NOT NULL,

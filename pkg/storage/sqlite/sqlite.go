@@ -11,6 +11,7 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -151,13 +152,13 @@ func (m *SQLite) ReadPage(
 	return iter.ToArray(options.Pagination)
 }
 
-func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "sqlite.read")
 	defer span.End()
 
 	sb := m.stbl.
 		Select(
-			"store", "object_type", "object_id", "relation", "_user",
+			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		).
 		From("tuple").
@@ -176,7 +177,12 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
 	}
 	if tupleKey.GetUser() != "" {
-		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
+		sb = sb.Where(sq.Eq{
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
+		})
 	}
 	if options != nil && options.Pagination.From != "" {
 		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
@@ -194,7 +200,7 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return NewSQLTupleIterator(rows), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -206,10 +212,181 @@ func (m *SQLite) Write(ctx context.Context, store string, deletes storage.Delete
 		return storage.ErrExceededWriteBatchLimit
 	}
 
-	return busyRetry(func() error {
-		now := time.Now().UTC()
-		return sqlcommon.Write(ctx, m.dbInfo, store, deletes, writes, now)
-	})
+	return m.write(ctx, store, deletes, writes, time.Now().UTC())
+}
+
+// Write provides the common method for writing to database across sql storage.
+func (m *SQLite) write(
+	ctx context.Context,
+	store string,
+	deletes storage.Deletes,
+	writes storage.Writes,
+	now time.Time,
+) error {
+	txn, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return sqlcommon.HandleSQLError(err)
+	}
+	defer func() {
+		_ = txn.Rollback()
+	}()
+
+	changelogBuilder := m.stbl.
+		Insert("changelog").
+		Columns(
+			"store",
+			"object_type",
+			"object_id",
+			"relation",
+			"user_object_type",
+			"user_object_id",
+			"user_relation",
+			"condition_name",
+			"condition_context",
+			"operation",
+			"ulid",
+			"inserted_at",
+		)
+
+	deleteBuilder := m.stbl.Delete("tuple")
+
+	for _, tk := range deletes {
+		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+
+		var res sql.Result
+		var err error
+		err = busyRetry(func() error {
+			res, err = deleteBuilder.
+				Where(sq.Eq{
+					"store":            store,
+					"object_type":      objectType,
+					"object_id":        objectID,
+					"relation":         tk.GetRelation(),
+					"user_object_type": userObjectType,
+					"user_object_id":   userObjectID,
+					"user_relation":    userRelation,
+					"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				}).
+				RunWith(txn). // Part of a txn.
+				ExecContext(ctx)
+			return err
+		})
+		if err != nil {
+			return sqlcommon.HandleSQLError(err, tk)
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return sqlcommon.HandleSQLError(err)
+		}
+
+		if rowsAffected != 1 {
+			return storage.InvalidWriteInputError(
+				tk,
+				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			)
+		}
+
+		changelogBuilder = changelogBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			userObjectType,
+			userObjectID,
+			userRelation,
+			"",
+			nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			id,
+			sq.Expr("datetime('subsec')"),
+		)
+	}
+
+	insertBuilder := m.stbl.
+		Insert("tuple").
+		Columns(
+			"store",
+			"object_type",
+			"object_id",
+			"relation",
+			"user_object_type",
+			"user_object_id",
+			"user_relation",
+			"user_type",
+			"condition_name",
+			"condition_context",
+			"ulid",
+			"inserted_at",
+		)
+
+	for _, tk := range writes {
+		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+
+		conditionName, conditionContext, err := sqlcommon.MarshalRelationshipCondition(tk.GetCondition())
+		if err != nil {
+			return err
+		}
+
+		err = busyRetry(func() error {
+			_, err = insertBuilder.
+				Values(
+					store,
+					objectType,
+					objectID,
+					tk.GetRelation(),
+					userObjectType,
+					userObjectID,
+					userRelation,
+					tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+					conditionName,
+					conditionContext,
+					id,
+					sq.Expr("datetime('subsec')"),
+				).
+				RunWith(txn). // Part of a txn.
+				ExecContext(ctx)
+			return err
+		})
+		if err != nil {
+			return sqlcommon.HandleSQLError(err, tk)
+		}
+
+		changelogBuilder = changelogBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			userObjectType,
+			userObjectID,
+			userRelation,
+			conditionName,
+			conditionContext,
+			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			id,
+			sq.Expr("datetime('subsec')"),
+		)
+	}
+
+	if len(writes) > 0 || len(deletes) > 0 {
+		err := busyRetry(func() error {
+			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
+			return err
+		})
+		if err != nil {
+			return sqlcommon.HandleSQLError(err)
+		}
+	}
+
+	if err := txn.Commit(); err != nil {
+		return sqlcommon.HandleSQLError(err)
+	}
+
+	return nil
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -219,6 +396,7 @@ func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
+	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
 
 	var conditionName sql.NullString
 	var conditionContext []byte
@@ -226,24 +404,28 @@ func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 
 	err := m.stbl.
 		Select(
-			"object_type", "object_id", "relation", "_user",
+			"object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context",
 		).
 		From("tuple").
 		Where(sq.Eq{
-			"store":       store,
-			"object_type": objectType,
-			"object_id":   objectID,
-			"relation":    tupleKey.GetRelation(),
-			"_user":       tupleKey.GetUser(),
-			"user_type":   userType,
+			"store":            store,
+			"object_type":      objectType,
+			"object_id":        objectID,
+			"relation":         tupleKey.GetRelation(),
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
+			"user_type":        userType,
 		}).
 		QueryRowContext(ctx).
 		Scan(
 			&record.ObjectType,
 			&record.ObjectID,
 			&record.Relation,
-			&record.User,
+			&record.UserObjectType,
+			&record.UserObjectID,
+			&record.UserRelation,
 			&conditionName,
 			&conditionContext,
 		)
@@ -278,7 +460,7 @@ func (m *SQLite) ReadUsersetTuples(
 
 	sb := m.stbl.
 		Select(
-			"store", "object_type", "object_id", "relation", "_user",
+			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		).
 		From("tuple").
@@ -299,10 +481,10 @@ func (m *SQLite) ReadUsersetTuples(
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
 			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.GetType() + ":%#" + userset.GetRelation()})
+				orConditions = append(orConditions, sq.Eq{"user_object_type": userset.GetType(), "user_relation": userset.GetRelation()})
 			}
 			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"_user": userset.GetType() + ":*"})
+				orConditions = append(orConditions, sq.Eq{"user_object_type": userset.GetType(), "user_object_id": "*"})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -312,7 +494,7 @@ func (m *SQLite) ReadUsersetTuples(
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return NewSQLTupleIterator(rows), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -325,18 +507,22 @@ func (m *SQLite) ReadStartingWithUser(
 	ctx, span := tracer.Start(ctx, "sqlite.ReadStartingWithUser")
 	defer span.End()
 
-	var targetUsersArg []string
+	var targetUsersArg sq.Or
 	for _, u := range filter.UserFilter {
-		targetUser := u.GetObject()
-		if u.GetRelation() != "" {
-			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserPartsFromObjectRelation(u)
+		targetUser := sq.Eq{
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+		}
+		if userRelation != "" {
+			targetUser["user_relation"] = userRelation
 		}
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
 	builder := m.stbl.
 		Select(
-			"store", "object_type", "object_id", "relation", "_user",
+			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		).
 		From("tuple").
@@ -344,8 +530,8 @@ func (m *SQLite) ReadStartingWithUser(
 			"store":       store,
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
-			"_user":       targetUsersArg,
-		})
+		}).
+		Where(targetUsersArg)
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
@@ -356,7 +542,7 @@ func (m *SQLite) ReadStartingWithUser(
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return NewSQLTupleIterator(rows), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -786,7 +972,7 @@ func (m *SQLite) ReadChanges(
 
 	sb := m.stbl.
 		Select(
-			"ulid", "object_type", "object_id", "relation", "_user", "operation",
+			"ulid", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "operation",
 			"condition_name", "condition_context", "inserted_at",
 		).
 		From("changelog").
@@ -821,7 +1007,7 @@ func (m *SQLite) ReadChanges(
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, user string
+		var objectType, objectID, relation, userObjectType, userObjectID, userRelation string
 		var operation int
 		var insertedAt time.Time
 		var conditionName sql.NullString
@@ -832,7 +1018,9 @@ func (m *SQLite) ReadChanges(
 			&objectType,
 			&objectID,
 			&relation,
-			&user,
+			&userObjectType,
+			&userObjectID,
+			&userRelation,
 			&operation,
 			&conditionName,
 			&conditionContext,
@@ -854,7 +1042,7 @@ func (m *SQLite) ReadChanges(
 		tk := tupleUtils.NewTupleKeyWithCondition(
 			tupleUtils.BuildObject(objectType, objectID),
 			relation,
-			user,
+			tupleUtils.FromUserParts(userObjectType, userObjectID, userRelation),
 			conditionName.String,
 			&conditionContextStruct,
 		)

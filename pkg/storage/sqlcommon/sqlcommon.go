@@ -510,7 +510,7 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
+		conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
 			return err
 		}
