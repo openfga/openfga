@@ -3,13 +3,18 @@ package authz
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/utils"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/pkg/authcontext"
 	"github.com/openfga/openfga/pkg/logger"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const (
@@ -50,6 +55,7 @@ const (
 	CanCallReadChanges              = "can_call_read_changes"
 
 	StoreType       = "store"
+	ModuleType      = "module"
 	ApplicationType = "application"
 	SystemType      = "system"
 	RootSystemID    = "fga"
@@ -117,10 +123,14 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 }
 
 // Authorize checks if the user has access to the resource.
-func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string) error {
+func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...string) error {
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
 		return err
+	}
+
+	if len(modules) > 0 {
+		return a.moduleAuthorize(ctx, clientID, relation, storeID, modules)
 	}
 
 	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getStore(storeID), &openfgav1.ContextualTupleKeys{})
@@ -197,6 +207,66 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context, clientID string) 
 	return resp.GetObjects(), nil
 }
 
+// GetModulesForWriteRequest returns the modules that should be checked for the write request.
+// If we encounter a type with no attached module, we should break and return no modules so that the authz check will be against the store
+// Otherwise we return a list of unique modules encountered so that FGA on FGA can check them after.
+func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+	modulesMap := make(map[string]struct{})
+
+	// We keep track of shouldCheckOnStore to avoid checking on store if we encounter a type with no module
+	shouldCheckOnStore := false
+	for _, tupleKey := range req.GetWrites().GetTupleKeys() {
+		objType, _ := tuple.SplitObject(tupleKey.GetObject())
+		objectType, ok := typesys.GetTypeDefinition(objType)
+		if !ok {
+			return nil, serverErrors.TypeNotFound(objType)
+		}
+		module, err := parser.GetModuleForObjectTypeRelation(objectType, tupleKey.GetRelation())
+		if err != nil {
+			return nil, err
+		}
+		if module == "" {
+			// If we encounter a type with no module, we should break and return no modules so that
+			// the authz check will be against the store
+			shouldCheckOnStore = true
+			break
+		}
+		modulesMap[module] = struct{}{}
+	}
+
+	if !shouldCheckOnStore {
+		for _, tupleKey := range req.GetDeletes().GetTupleKeys() {
+			objType, _ := tuple.SplitObject(tupleKey.GetObject())
+			objectType, ok := typesys.GetTypeDefinition(objType)
+			if !ok {
+				return nil, serverErrors.TypeNotFound(objType)
+			}
+			module, err := parser.GetModuleForObjectTypeRelation(objectType, tupleKey.GetRelation())
+			if err != nil {
+				return nil, err
+			}
+			if module == "" {
+				// If we encounter a type with no module, we should break and return no modules so that
+				// the authz check will be against the store
+				shouldCheckOnStore = true
+				break
+			}
+			modulesMap[module] = struct{}{}
+		}
+	}
+
+	if shouldCheckOnStore {
+		return []string{}, nil
+	}
+
+	modules := make([]string, 0, len(modulesMap))
+	for module := range modulesMap {
+		modules = append(modules, module)
+	}
+
+	return modules, nil
+}
+
 func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) (bool, error) {
 	req := &openfgav1.CheckRequest{
 		StoreId:              a.config.StoreID,
@@ -224,8 +294,55 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	return true, nil
 }
 
+func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, storeID string, modules []string) error {
+	var err error
+	var wg sync.WaitGroup
+	errorChannel := make(chan error, len(modules))
+	defer close(errorChannel)
+	done := make(chan struct{})
+	defer close(done)
+
+	for _, module := range modules {
+		wg.Add(1)
+		go func(module string) {
+			defer wg.Done()
+			contextualTuples := openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					{
+						User:     a.getStore(storeID),
+						Relation: "store",
+						Object:   a.getModule(storeID, module),
+					},
+				},
+			}
+
+			allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getModule(storeID, module), &contextualTuples)
+
+			if err != nil || !allowed {
+				errorChannel <- err
+			}
+		}(module)
+	}
+
+	go func() {
+		wg.Wait()
+		done <- struct{}{}
+	}()
+
+	select {
+	case err = <-errorChannel:
+		return err
+	case <-done:
+		return nil
+	}
+}
+
 func (a *Authorizer) getStore(storeID string) string {
 	return fmt.Sprintf(`%s:%s`, StoreType, storeID)
+}
+
+func (a *Authorizer) getModule(storeID, module string) string {
+	return fmt.Sprintf(`%s:%s|%s`, ModuleType, storeID, module)
 }
 
 func (a *Authorizer) getApplication(clientID string) string {

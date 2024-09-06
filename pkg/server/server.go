@@ -962,11 +962,6 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Method:  authz.Write,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Write)
-	if err != nil {
-		return nil, err
-	}
-
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -978,6 +973,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Service: s.serviceName,
 		Method:  authz.Write,
 	})
+
+	err = s.checkWrite(ctx, req, typesys)
+	if err != nil {
+		return nil, err
+	}
 
 	cmd := commands.NewWriteCommand(
 		s.datastore,
@@ -1598,14 +1598,14 @@ func (s *Server) checkAuthClaims(ctx context.Context) (*authcontext.AuthClaims, 
 }
 
 // checkAuthz checks the authorization for calling an API method.
-func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string) error {
+func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
 	if s.authorizer != nil && !authcontext.SkipAuthzCheckFromContext(ctx) {
 		claims, err := s.checkAuthClaims(ctx)
 		if err != nil {
 			return err
 		}
 
-		err = s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod)
+		err = s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod, modules...)
 		if err != nil {
 			return err
 		}
@@ -1640,6 +1640,22 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 		}
 
 		err = s.authorizer.AuthorizeCreateStore(ctx, claims.ClientID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkWrite checks the authorization for modules if they exist, otherwise the store on write requests.
+func (s *Server) checkWrite(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
+	if s.authorizer != nil {
+		modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
+		if err != nil {
+			return err
+		}
+
+		err = s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
 		if err != nil {
 			return err
 		}
