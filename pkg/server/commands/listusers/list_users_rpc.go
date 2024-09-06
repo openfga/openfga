@@ -47,6 +47,7 @@ type listUsersQuery struct {
 	maxConcurrentReads      uint32
 	deadline                time.Duration
 	dispatchThrottlerConfig threshold.Config
+	wasThrottled            *atomic.Bool
 }
 
 type expandResponse struct {
@@ -139,6 +140,7 @@ func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
+		l.wasThrottled.Store(true)
 		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }
@@ -159,6 +161,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasThrottled:            new(atomic.Bool),
 	}
 
 	for _, opt := range opts {
@@ -207,6 +210,7 @@ func (l *listUsersQuery) ListUsers(
 				Metadata: listUsersResponseMetadata{
 					DatastoreQueryCount: 0,
 					DispatchCounter:     new(atomic.Uint32),
+					WasThrottled:        new(atomic.Bool),
 				},
 			}, nil
 		}
@@ -287,6 +291,7 @@ func (l *listUsersQuery) ListUsers(
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 			DispatchCounter:     &dispatchCount,
+			WasThrottled:        l.wasThrottled,
 		},
 	}, nil
 }
