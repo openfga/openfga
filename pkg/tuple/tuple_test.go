@@ -306,10 +306,6 @@ func TestIsValidUser(t *testing.T) {
 			name:  "anne@openfga .com", // empty space
 			valid: false,
 		},
-		{
-			name:  "group:*#member",
-			valid: false,
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := IsValidUser(tc.name)

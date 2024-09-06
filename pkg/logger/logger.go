@@ -18,7 +18,6 @@ type Logger interface {
 	Error(string, ...zap.Field)
 	Panic(string, ...zap.Field)
 	Fatal(string, ...zap.Field)
-	With(...zap.Field) Logger
 
 	// These are the equivalent logger function but with context provided
 	DebugWithContext(context.Context, string, ...zap.Field)
@@ -44,11 +43,8 @@ type ZapLogger struct {
 
 var _ Logger = (*ZapLogger)(nil)
 
-// With creates a child logger and adds structured context to it. Fields added
-// to the child don't affect the parent, and vice versa. Any fields that
-// require evaluation (such as Objects) are evaluated upon invocation of With.
-func (l *ZapLogger) With(fields ...zap.Field) Logger {
-	return &ZapLogger{l.Logger.With(fields...)}
+func (l *ZapLogger) With(fields ...zap.Field) {
+	l.Logger = l.Logger.With(fields...)
 }
 
 func (l *ZapLogger) Debug(msg string, fields ...zap.Field) {

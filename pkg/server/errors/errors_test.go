@@ -1,7 +1,6 @@
 package errors
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -11,47 +10,24 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	errors2 "github.com/openfga/openfga/internal/errors"
-
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestInternalError(t *testing.T) {
-	t.Run("no_public_message_set", func(t *testing.T) {
-		err := NewInternalError("", errors.New("internal"))
-		require.Contains(t, err.Error(), InternalServerErrorMsg)
-	})
+func TestInternalErrorDontLeakInternals(t *testing.T) {
+	err := NewInternalError("public", errors.New("internal"))
 
-	t.Run("public_message_set", func(t *testing.T) {
-		err := NewInternalError("public", errors.New("internal"))
-		require.Contains(t, err.Error(), "public")
-	})
-
-	t.Run("grpc_status", func(t *testing.T) {
-		err := NewInternalError("", errors2.ErrUnknown)
-
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Code(openfgav1.InternalErrorCode_internal_error), st.Code())
-		require.Equal(t, "rpc error: code = Code(4000) desc = Internal Server Error", st.String())
-	})
-
-	t.Run("error_is", func(t *testing.T) {
-		err := NewInternalError("", errors2.ErrUnknown)
-		require.ErrorIs(t, err, errors2.ErrUnknown)
-		err = NewInternalError("", fmt.Errorf("%w", errors2.ErrUnknown))
-		require.ErrorIs(t, err, errors2.ErrUnknown)
-	})
-
-	t.Run("unwrap", func(t *testing.T) {
-		err := NewInternalError("", errors2.ErrUnknown)
-
-		require.Equal(t, err.Unwrap(), errors2.ErrUnknown)
-	})
+	require.NotContains(t, err.Error(), "internal")
 }
 
-func TestHandleErrors(t *testing.T) {
+func TestInternalErrorsWithNoMessageReturnsInternalServiceError(t *testing.T) {
+	err := NewInternalError("", errors.New("internal"))
+
+	expected := InternalServerErrorMsg
+	require.Contains(t, err.Error(), expected)
+}
+
+func TestHandleStorageErrors(t *testing.T) {
 	tests := map[string]struct {
 		storageErr              error
 		expectedTranslatedError error
@@ -65,11 +41,11 @@ func TestHandleErrors(t *testing.T) {
 			expectedTranslatedError: MismatchObjectType,
 		},
 		`context_cancelled`: {
-			storageErr:              context.Canceled,
+			storageErr:              storage.ErrCancelled,
 			expectedTranslatedError: RequestCancelled,
 		},
-		`context_deadline_exceeded`: {
-			storageErr:              context.DeadlineExceeded,
+		`context_deadline_exceeeded`: {
+			storageErr:              storage.ErrDeadlineExceeded,
 			expectedTranslatedError: RequestDeadlineExceeded,
 		},
 		`invalid_write_input`: {
@@ -142,7 +118,7 @@ func TestHandleTupleValidateError(t *testing.T) {
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
-			require.EqualError(t, HandleTupleValidateError(test.validateError), test.expectedTranslatedError.Error())
+			require.ErrorIs(t, HandleTupleValidateError(test.validateError), test.expectedTranslatedError)
 		})
 	}
 }

@@ -71,7 +71,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 
 				type folder
 					relations
-						define viewer: [user]
+						define viewer: [user] 
 			`,
 			tuples: []string{
 				"folder:C#viewer@user:jon",
@@ -95,7 +95,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				type folder
 					relations
 						define editor: [user]
-						define viewer: [user] or editor
+						define viewer: [user] or editor 
 			`,
 			tuples: []string{
 				"folder:C#editor@user:jon",
@@ -119,7 +119,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				type folder
 					relations
 						define editor: [user]
-						define can_delete: [user] and editor
+						define can_delete: [user] and editor 
 			`,
 			tuples: []string{
 				"folder:C#can_delete@user:jon",
@@ -143,7 +143,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				type folder
 					relations
 						define editor: [user]
-						define can_delete: [user] and editor
+						define can_delete: [user] and editor 
 			`,
 			tuples:                  []string{},
 			objectType:              "folder",
@@ -290,6 +290,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithCachedCheckResolverOpts(true, []graph.CachedCheckResolverOpt{
+			graph.WithEnabledConsistencyParams(true),
 			graph.WithExistingCache(checkCache),
 		}...),
 	}...).Build()

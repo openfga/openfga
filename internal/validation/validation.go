@@ -278,11 +278,11 @@ func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) erro
 		return fmt.Errorf("invalid 'object' field format")
 	}
 
-	objectType, id := tuple.SplitObject(object)
-	if id == tuple.Wildcard {
+	if tuple.IsTypedWildcard(object) {
 		return fmt.Errorf("the 'object' field cannot reference a typed wildcard")
 	}
 
+	objectType := tuple.GetType(object)
 	_, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
 		return &tuple.TypeNotFoundError{TypeName: objectType}
@@ -330,26 +330,29 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 		return fmt.Errorf("the 'user' field is malformed")
 	}
 
-	isValidObject := tuple.IsValidObject(user)
-	isValidUserset := tuple.IsObjectRelation(user)
-	userObject, userRelation := tuple.SplitObjectRelation(user)
-	userObjectType := tuple.GetType(userObject)
 	schemaVersion := typesys.GetSchemaVersion()
 
+	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
 	if typesystem.IsSchemaVersionSupported(schemaVersion) {
-		if !isValidObject && !isValidUserset {
+		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
 		}
 
-		_, ok := typesys.GetTypeDefinition(userObjectType)
-		if !ok {
-			return &tuple.TypeNotFoundError{TypeName: userObjectType}
+		if tuple.IsObjectRelation(user) {
+			userObj, _ := tuple.SplitObjectRelation(user)
+
+			if tuple.IsTypedWildcard(userObj) {
+				return fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value")
+			}
 		}
 	}
 
+	userObject, userRelation := tuple.SplitObjectRelation(user)
+	userObjectType := tuple.GetType(userObject)
+
 	// for 1.0 and 1.1 models if the 'user' field is a userset then we validate the 'object#relation'
 	// by making sure the user objectType and relation are defined in the model.
-	if isValidUserset {
+	if tuple.IsObjectRelation(user) {
 		_, err := typesys.GetRelation(userObjectType, userRelation)
 		if err != nil {
 			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
@@ -359,6 +362,15 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 			if errors.Is(err, typesystem.ErrRelationUndefined) {
 				return &tuple.RelationNotFoundError{Relation: userRelation, TypeName: userObjectType}
 			}
+		}
+	}
+
+	// if the model is a 1.1 model we make sure that the objectType of the 'user' field is a defined
+	// type in the model.
+	if typesystem.IsSchemaVersionSupported(schemaVersion) {
+		_, ok := typesys.GetTypeDefinition(userObjectType)
+		if !ok {
+			return &tuple.TypeNotFoundError{TypeName: userObjectType}
 		}
 	}
 

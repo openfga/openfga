@@ -69,7 +69,7 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 	if err != nil {
 		var internalError serverErrors.InternalError
 		if errors.As(err, &internalError) {
-			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Unwrap().Error()))
+			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Internal().Error()))
 			r.logger.Error(err.Error(), r.fields...)
 		} else {
 			r.fields = append(r.fields, zap.Error(err))

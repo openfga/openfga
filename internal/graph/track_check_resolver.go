@@ -204,7 +204,15 @@ func (t *TrackerCheckResolver) ResolveCheck(
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.Bool("track_execution", true))
 
-	resp, err := t.delegate.ResolveCheck(ctx, req)
+	resp, err := t.delegate.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              req.GetStoreID(),
+		AuthorizationModelID: req.GetAuthorizationModelID(),
+		TupleKey:             req.GetTupleKey(),
+		ContextualTuples:     req.GetContextualTuples(),
+		RequestMetadata:      req.GetRequestMetadata(),
+		VisitedPaths:         req.VisitedPaths,
+		Context:              req.GetContext(),
+	})
 
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		t.addPathHits(req)

@@ -39,11 +39,12 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 	// if the tuple is different, it should result in fetching from cache
 	tests := []struct {
-		name                string
-		initialReq          *ResolveCheckRequest
-		subsequentReq       *ResolveCheckRequest
-		setInitialResult    func(mock *MockCheckResolver, request *ResolveCheckRequest)
-		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		name                     string
+		initialReq               *ResolveCheckRequest
+		subsequentReq            *ResolveCheckRequest
+		setInitialResult         func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		setTestExpectations      func(mock *MockCheckResolver, request *ResolveCheckRequest)
+		consistencyOptionEnabled bool
 	}{
 		{
 			name: "same_request_returns_results_from_cache",
@@ -61,7 +62,8 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			name: "same_request_returns_results_from_cache_when_minimize_latency_requested",
+			name:                     "same_request_returns_results_from_cache_when_minimize_latency_requested",
+			consistencyOptionEnabled: true,
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
@@ -77,7 +79,8 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			name: "same_request_returns_results_from_cache_when_no_consistency_requested",
+			name:                     "same_request_returns_results_from_cache_when_no_consistency_requested",
+			consistencyOptionEnabled: true,
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
@@ -93,7 +96,8 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			name: "same_request_does_not_use_cache_if_higher_consistency_requested",
+			name:                     "same_request_does_not_use_cache_if_higher_consistency_requested",
+			consistencyOptionEnabled: true,
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
@@ -109,7 +113,8 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			name: "result_added_to_cache_when_higher_consistency_requested",
+			name:                     "result_added_to_cache_when_higher_consistency_requested",
+			consistencyOptionEnabled: true,
 			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
@@ -463,7 +468,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockResolver := NewMockCheckResolver(ctrl)
-			dut := NewCachedCheckResolver()
+			dut := NewCachedCheckResolver(WithEnabledConsistencyParams(test.consistencyOptionEnabled))
 			defer dut.Close()
 			dut.SetDelegate(mockResolver)
 
@@ -670,6 +675,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	localCheckResolver := NewLocalChecker(
 		WithMaxConcurrentReads(1),
+		WithOptimizations(true),
 	)
 	defer localCheckResolver.Close()
 

@@ -61,7 +61,6 @@ const (
 	ExperimentalEnableConsistencyParams ExperimentalFeatureFlag = "enable-consistency-params"
 	ExperimentalCheckOptimizations      ExperimentalFeatureFlag = "enable-check-optimizations"
 	ExperimentalAccessControlParams     ExperimentalFeatureFlag = "enable-access-control"
-	allowedLabel                                                = "allowed"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -102,19 +101,6 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count", "consistency"})
-
-	throttledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "throttled_requests_count",
-		Help:      "The total number of requests that have been throttled.",
-	}, []string{"grpc_service", "grpc_method"})
-
-	checkResultCounterName = "check_result_count"
-	checkResultCounter     = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      checkResultCounterName,
-		Help:      "The total number of check requests by response result",
-	}, []string{allowedLabel})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -656,11 +642,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, []graph.CachedCheckResolverOpt{
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithEnabledConsistencyParams(s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams)),
 		}...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
@@ -700,6 +688,11 @@ func (s *Server) Close() {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 
 	targetObjectType := req.GetType()
@@ -725,7 +718,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
 	if err != nil {
 		return nil, err
 	}
@@ -804,17 +797,17 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-	}
-
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return err
+	}
+
 	start := time.Now()
 
 	ctx := srv.Context()
@@ -839,7 +832,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
 	if err != nil {
 		return err
 	}
@@ -908,15 +901,14 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-	}
-
 	return nil
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, authz.Read, trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -937,7 +929,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		Method:  authz.Read,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Read)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -1000,6 +992,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 
 	tk := req.GetTupleKey()
@@ -1023,7 +1020,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  authz.Check,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
 	if err != nil {
 		return nil, err
 	}
@@ -1068,8 +1065,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Consistency:          req.GetConsistency(),
 	}
 
-	const methodName = "check"
-
 	resp, err := s.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -1082,9 +1077,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		}
 
 		// Note for ListObjects:
-		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
+		// Currently this is not feasible in ListObjects as we return partial results.
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 			return nil, serverErrors.ThrottledTimeout
 		}
 
@@ -1092,6 +1086,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+	const methodName = "check"
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
@@ -1114,8 +1109,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
-	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
-
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
 
 	requestDurationHistogram.WithLabelValues(
@@ -1126,15 +1119,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-	}
-
 	return res, nil
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, authz.Expand, trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -1154,7 +1147,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		Method:  authz.Expand,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
 	if err != nil {
 		return nil, err
 	}

@@ -244,6 +244,28 @@ func TestExperimentalListUsers(t *testing.T) {
 		server.Close()
 	})
 
+	t.Run("list_users_errors_if_not_higher_consistency_param_sent_but_not_experimentally_enabled", func(t *testing.T) {
+		_, err := server.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId: storeID,
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
+
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.InvalidArgument, e.Code())
+	})
+
 	t.Run("list_users_returns_error_if_latest_model_not_found", func(t *testing.T) {
 		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), gomock.Any()).Return(nil, storage.ErrNotFound) // error demonstrates that main code path is reached
 
@@ -395,62 +417,6 @@ func TestListUsers_Deadline(t *testing.T) {
 				{Type: "user"},
 			},
 		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Len(t, resp.GetUsers(), 1)
-	})
-
-	t.Run("return_no_error_and_partial_results_if_throttled_until_deadline", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-
-		modelStr := `
-			model
-				schema 1.1
-			type user
-
-			type group
-			relations
-				define member: [user, group#member]
-
-			type document
-			relations
-				define viewer: [user, group#member]`
-
-		tuples := []string{
-			"document:1#viewer@user:jon", // Observed before first dispatch
-			"document:1#viewer@group:eng#member",
-			"group:eng#member@group:backend#member",
-			"group:backend#member@user:tyler", // Requires two dispatches, gets throtled
-		}
-
-		storeID, model := test.BootstrapFGAStore(t, ds, modelStr, tuples)
-		t.Cleanup(ds.Close)
-
-		deadline := 30 * time.Millisecond
-
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithListUsersDeadline(deadline),
-			WithListUsersDispatchThrottlingEnabled(true),
-			WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
-			WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
-		)
-		t.Cleanup(s.Close)
-
-		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.GetId(),
-			Object: &openfgav1.Object{
-				Type: "document",
-				Id:   "1",
-			},
-			Relation: "viewer",
-			UserFilters: []*openfgav1.UserTypeFilter{
-				{Type: "user"},
-			},
-		})
-
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Len(t, resp.GetUsers(), 1)

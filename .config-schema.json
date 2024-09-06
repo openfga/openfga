@@ -141,7 +141,7 @@
                     "type": "string",
                     "default": "",
                     "x-env-variable": "OPENFGA_ACCESS_CONTROL_MODEL_ID"
-                }
+                },
             }
         },
         "checkTrackerEnabled": {

@@ -156,7 +156,7 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 		{
 			_name:             "cancelled",
 			status:            status.New(codes.Canceled, "other error"),
-			expectedErrorCode: int32(openfgav1.ErrorCode_cancelled),
+			expectedErrorCode: int32(openfgav1.InternalErrorCode_cancelled),
 		},
 		{
 			_name:             "unknown",

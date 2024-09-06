@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 
@@ -47,7 +46,6 @@ type listUsersQuery struct {
 	maxConcurrentReads      uint32
 	deadline                time.Duration
 	dispatchThrottlerConfig threshold.Config
-	wasThrottled            *atomic.Bool
 }
 
 type expandResponse struct {
@@ -140,7 +138,6 @@ func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
-		l.wasThrottled.Store(true)
 		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }
@@ -161,7 +158,6 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:            new(atomic.Bool),
 	}
 
 	for _, opt := range opts {
@@ -210,7 +206,6 @@ func (l *listUsersQuery) ListUsers(
 				Metadata: listUsersResponseMetadata{
 					DatastoreQueryCount: 0,
 					DispatchCounter:     new(atomic.Uint32),
-					WasThrottled:        new(atomic.Bool),
 				},
 			}, nil
 		}
@@ -291,7 +286,6 @@ func (l *listUsersQuery) ListUsers(
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 			DispatchCounter:     &dispatchCount,
-			WasThrottled:        l.wasThrottled,
 		},
 	}, nil
 }
@@ -474,16 +468,22 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condMet, err := tupleConditionMet(ctx, req.GetContext(), typesys, tupleKey)
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
 			errs = errors.Join(errs, err)
-			if !errors.Is(err, condition.ErrEvaluationFailed) {
-				break LoopOnIterator
-			}
-			telemetry.TraceError(span, err)
+			break LoopOnIterator
 		}
 
-		if !condMet {
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
 			continue
 		}
 
@@ -895,16 +895,22 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condMet, err := tupleConditionMet(ctx, req.GetContext(), typesys, tupleKey)
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 		if err != nil {
 			errs = errors.Join(errs, err)
-			if !errors.Is(err, condition.ErrEvaluationFailed) {
-				break LoopOnIterator
-			}
-			telemetry.TraceError(span, err)
+			break LoopOnIterator
 		}
 
-		if !condMet {
+		if len(condEvalResult.MissingParameters) > 0 {
+			err := condition.NewEvaluationError(
+				tupleKey.GetCondition().GetName(),
+				fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+			)
+			telemetry.TraceError(span, err)
+			errs = errors.Join(errs, err)
+		}
+
+		if !condEvalResult.ConditionMet {
 			continue
 		}
 
@@ -955,22 +961,4 @@ func trySendResult(ctx context.Context, user foundUser, foundUsersCh chan<- foun
 	case foundUsersCh <- user:
 		return
 	}
-}
-
-func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem, t *openfgav1.TupleKey) (bool, error) {
-	condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, reqCtx)
-	if err != nil {
-		return false, err
-	}
-
-	if len(condEvalResult.MissingParameters) > 0 {
-		return false, condition.NewEvaluationError(
-			t.GetCondition().GetName(),
-			fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-				tuple.TupleKeyToString(t),
-				condEvalResult.MissingParameters),
-		)
-	}
-
-	return condEvalResult.ConditionMet, nil
 }

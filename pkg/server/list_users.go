@@ -33,6 +33,11 @@ func (s *Server) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
+	err := s.validateConsistencyRequest(req.GetConsistency())
+	if err != nil {
+		return nil, err
+	}
+
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
@@ -116,11 +121,6 @@ func (s *Server) ListUsers(
 		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
-
-	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-	}
 
 	return &openfgav1.ListUsersResponse{
 		Users: resp.GetUsers(),
