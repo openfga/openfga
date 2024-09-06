@@ -52,7 +52,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382 # v3.6.0
 
-      - uses: anchore/sbom-action/download-syft@ab9d16d4b419c9d1a02df5213fa0ebe965ca5a57 # v0.17.1
+      - uses: anchore/sbom-action/download-syft@61119d458adab75f756bc0b9e4bde25725f86a7a # v0.17.2
 
       - name: Run GoReleaser
         id: goreleaser
@@ -109,7 +109,7 @@ jobs:
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
-        uses: snyk/actions/docker@ae9442546152ba9bb0a1c85e2672112c97e7a06d # pin@master
+        uses: snyk/actions/docker@9213221444c2dc9e8b2502c1e857c26d851e84a7 # pin@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -124,7 +124,7 @@ jobs:
           sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@883d8588e56d1753a8a58c1c86e88976f0c23449 # pin@v2
+        uses: github/codeql-action/upload-sarif@4dd16135b69a43b6c8efb853346f8437d92d3c93 # pin@v2
         with:
           sarif_file: snyk.sarif
 

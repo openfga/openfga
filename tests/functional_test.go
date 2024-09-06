@@ -25,7 +25,6 @@ import (
 // newOpenFGAServerAndClient starts an OpenFGA server, waits until its is healthy, and returns a grpc client to it.
 func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
