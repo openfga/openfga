@@ -551,30 +551,22 @@ func (m *SQLite) MaxTuplesPerWrite() int {
 }
 
 func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
-	var modelID string
-	var schemaVersion string
-
 	if rows.Next() {
+		var modelID string
+		var schemaVersion string
 		var marshalledModel []byte
+
 		err := rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
 			return nil, sqlcommon.HandleSQLError(err)
 		}
 
-		if len(marshalledModel) > 0 {
-			// Prefer building an authorization model if the row has it available.
-			var model openfgav1.AuthorizationModel
-			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
-				return nil, err
-			}
-
-			return &model, nil
+		var model openfgav1.AuthorizationModel
+		if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+			return nil, err
 		}
 
-		return &openfgav1.AuthorizationModel{
-			SchemaVersion: schemaVersion,
-			Id:            modelID,
-		}, nil
+		return &model, nil
 	}
 
 	if err := rows.Err(); err != nil {
@@ -615,8 +607,7 @@ func (m *SQLite) ReadAuthorizationModels(
 	defer span.End()
 
 	sb := m.stbl.
-		Select("authorization_model_id").
-		Distinct().
+		Select("authorization_model_id", "schema_version", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc")
@@ -638,42 +629,38 @@ func (m *SQLite) ReadAuthorizationModels(
 	}
 	defer rows.Close()
 
-	var modelIDs []string
 	var modelID string
+	var schemaVersion string
+	var marshalledModel []byte
+
+	models := make([]*openfgav1.AuthorizationModel, 0, options.Pagination.PageSize)
+	var token []byte
 
 	for rows.Next() {
-		err = rows.Scan(&modelID)
+		err = rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
-		modelIDs = append(modelIDs, modelID)
+		if options.Pagination.PageSize > 0 && len(models) >= options.Pagination.PageSize {
+			token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
+			if err != nil {
+				return nil, nil, err
+			}
+
+			return models, token, nil
+		}
+
+		var model openfgav1.AuthorizationModel
+		if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+			return nil, nil, err
+		}
+
+		models = append(models, &model)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, nil, sqlcommon.HandleSQLError(err)
-	}
-
-	var token []byte
-	numModelIDs := len(modelIDs)
-	if len(modelIDs) > options.Pagination.PageSize {
-		numModelIDs = options.Pagination.PageSize
-		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-
-	// TODO: make this concurrent with a maximum of 5 goroutines. This may be helpful:
-	// https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-	models := make([]*openfgav1.AuthorizationModel, 0, numModelIDs)
-	// We use numModelIDs here to avoid retrieving possibly one extra model.
-	for i := 0; i < numModelIDs; i++ {
-		model, err := m.ReadAuthorizationModel(ctx, store, modelIDs[i])
-		if err != nil {
-			return nil, nil, err
-		}
-		models = append(models, model)
 	}
 
 	return models, token, nil
