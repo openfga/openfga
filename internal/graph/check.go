@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -625,51 +624,57 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 	}
 }
 
-func (c *LocalChecker) processDispatches(ctx context.Context, pool *pool.ContextPool, dispatchChan chan dispatchMsg, outcomes chan checkOutcome) {
-	defer func() {
-		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
-		close(outcomes)
-	}()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case msg, ok := <-dispatchChan:
-			if !ok {
-				return
-			}
-			if msg.err != nil {
-				outcomes <- checkOutcome{err: msg.err}
-				break // continue
-			}
-			if msg.shortCircuit {
-				outcomes <- checkOutcome{resp: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 0,
-					},
-				}}
-				return
-			}
+// processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) chan checkOutcome {
+	outcomes := make(chan checkOutcome, limit)
+	dispatchPool := concurrency.NewPool(ctx, int(limit))
 
-			if msg.dispatchParams != nil {
-				pool.Go(func(ctx context.Context) error {
-					resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-					outcomes <- checkOutcome{resp: resp, err: err}
-					return nil
-				})
+	go func() {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			_ = dispatchPool.Wait()
+			close(outcomes)
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-dispatchChan:
+				if !ok {
+					return
+				}
+				if msg.err != nil {
+					outcomes <- checkOutcome{err: msg.err}
+					break // continue
+				}
+				if msg.shortCircuit {
+					outcomes <- checkOutcome{resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 0,
+						},
+					}}
+					return
+				}
+
+				if msg.dispatchParams != nil {
+					dispatchPool.Go(func(ctx context.Context) error {
+						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+						outcomes <- checkOutcome{resp: resp, err: err}
+						return nil
+					})
+				}
 			}
 		}
-	}
+	}()
+
+	return outcomes
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
-	outcomes := make(chan checkOutcome, limit)
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	dispatchPool := concurrency.NewPool(cancellableCtx, int(limit))
-
-	go c.processDispatches(ctx, dispatchPool, dispatchChan, outcomes)
+	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -684,7 +689,7 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
-		case outcome, ok := <-outcomes:
+		case outcome, ok := <-outcomeChannel:
 			if !ok {
 				break ConsumerLoop
 			}

@@ -3581,7 +3581,6 @@ func TestProcessDispatch(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			dutPool := concurrency.NewPool(context.Background(), tt.poolSize)
 			ctx := context.Background()
 			var cancel context.CancelFunc
 			if tt.ctxCancelled {
@@ -3602,9 +3601,8 @@ func TestProcessDispatch(t *testing.T) {
 			for _, dispatchMsg := range tt.dispatchMsgs {
 				dispatchMsgChan <- dispatchMsg
 			}
-			outcomeChan := make(chan checkOutcome, 100)
 
-			go checker.processDispatches(ctx, dutPool, dispatchMsgChan, outcomeChan)
+			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
