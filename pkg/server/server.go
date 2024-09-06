@@ -725,7 +725,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		Method:  methodName,
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
 	if err != nil {
 		return nil, err
 	}
@@ -839,7 +839,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Method:  methodName,
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
 	if err != nil {
 		return err
 	}
@@ -937,7 +937,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		Method:  authz.Read,
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Read)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -1023,7 +1023,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  authz.Check,
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
 	if err != nil {
 		return nil, err
 	}
@@ -1154,7 +1154,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		Method:  authz.Expand,
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
 	if err != nil {
 		return nil, err
 	}
