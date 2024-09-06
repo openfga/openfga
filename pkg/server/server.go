@@ -52,6 +52,7 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
+	allowedLabel               = "allowed"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -98,6 +99,13 @@ var (
 		Name:      "throttled_requests_count",
 		Help:      "The total number of requests that have been throttled.",
 	}, []string{"grpc_service", "grpc_method"})
+
+	checkResultCounterName = "check_result_count"
+	checkResultCounter     = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      checkResultCounterName,
+		Help:      "The total number of check requests by response result",
+	}, []string{allowedLabel})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -1041,6 +1049,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
 	}
+
+	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
 
