@@ -982,7 +982,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Method:  authz.Write,
 	})
 
-	err = s.checkWrite(ctx, req, typesys)
+	err = s.checkWriteAuthz(ctx, req, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -1645,8 +1645,8 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 	return nil
 }
 
-// checkWrite checks the authorization for modules if they exist, otherwise the store on write requests.
-func (s *Server) checkWrite(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
+// checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
+func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
 	if s.authorizer != nil {
 		modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
 		if err != nil {

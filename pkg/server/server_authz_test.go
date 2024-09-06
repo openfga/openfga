@@ -682,6 +682,114 @@ func TestCheckAuthz(t *testing.T) {
 	})
 }
 
+func TestCheckWriteAuthz(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	module1 := "module1"
+	model := &openfgav1.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "folder-with-module",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Module: module1,
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"parent": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "folder"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	typesys := typesystem.New(model)
+
+	t.Run("checkWriteAuthz_no_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		err := openfga.checkWriteAuthz(context.Background(), &openfgav1.WriteRequest{
+			StoreId: "store-id",
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+					{Object: "folder-with-module:2", Relation: "viewer", User: "user:jon"},
+				},
+			},
+		}, typesys)
+		require.NoError(t, err)
+	})
+
+	t.Run("checkWriteAuthz_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.root.id, ModelID: settings.root.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_GetModulesForWriteRequest_errors", func(t *testing.T) {
+			err := openfga.checkWriteAuthz(context.Background(), &openfgav1.WriteRequest{
+				StoreId: "store-id",
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{Object: "unknown:2", Relation: "viewer", User: "user:jon"},
+					},
+				},
+			}, typesys)
+			require.Error(t, err)
+		})
+
+		t.Run("error_when_checkAuthz_errors", func(t *testing.T) {
+			err := openfga.checkWriteAuthz(context.Background(), &openfgav1.WriteRequest{
+				StoreId: "store-id",
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{Object: "folder-with-module:2", Relation: "viewer", User: "user:jon"},
+					},
+				},
+			}, typesys)
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		})
+
+		t.Run("authz_is_valid", func(t *testing.T) {
+			// TODO: need to write a model with modules, then check if authz works when a module is given authz permission
+		})
+	})
+}
+
 func TestCheck(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
