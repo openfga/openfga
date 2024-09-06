@@ -466,6 +466,189 @@ func TestNewTypeSystem(t *testing.T) {
 				},
 			},
 		},
+		// test that three rewrites in an intersection are represented as
+		// direct children of the intersection.
+		"three_intersection_children": {
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: criteria1 and criteria2 and criteria3
+						define criteria1: [user]
+						define criteria2: [user]
+						define criteria3: [user]`,
+			output: TypeSystem{
+				schemaVersion: SchemaVersion1_1,
+				ttuRelations: map[string]map[string][]*openfgav1.TupleToUserset{
+					"user": {},
+					"document": {
+						"viewer":    []*openfgav1.TupleToUserset{},
+						"criteria1": []*openfgav1.TupleToUserset{},
+						"criteria2": []*openfgav1.TupleToUserset{},
+						"criteria3": []*openfgav1.TupleToUserset{},
+					},
+				},
+				conditions: map[string]*condition.EvaluableCondition{},
+				relations: map[string]map[string]*openfgav1.Relation{
+					"document": {
+						"viewer": {
+							Name: "viewer",
+							Rewrite: &openfgav1.Userset{
+								Userset: &openfgav1.Userset_Intersection{
+									Intersection: &openfgav1.Usersets{
+										Child: []*openfgav1.Userset{
+											{
+												Userset: &openfgav1.Userset_ComputedUserset{
+													ComputedUserset: &openfgav1.ObjectRelation{
+														Relation: "criteria1",
+													},
+												},
+											},
+											{
+												Userset: &openfgav1.Userset_ComputedUserset{
+													ComputedUserset: &openfgav1.ObjectRelation{
+														Relation: "criteria2",
+													},
+												},
+											},
+											{
+												Userset: &openfgav1.Userset_ComputedUserset{
+													ComputedUserset: &openfgav1.ObjectRelation{
+														Relation: "criteria3",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+							TypeInfo: &openfgav1.RelationTypeInfo{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{},
+							},
+						},
+						"criteria1": {
+							Name: "criteria1",
+							Rewrite: &openfgav1.Userset{
+								Userset: &openfgav1.Userset_This{},
+							},
+							TypeInfo: &openfgav1.RelationTypeInfo{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+						"criteria2": {
+							Name: "criteria2",
+							Rewrite: &openfgav1.Userset{
+								Userset: &openfgav1.Userset_This{},
+							},
+							TypeInfo: &openfgav1.RelationTypeInfo{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+						"criteria3": {
+							Name: "criteria3",
+							Rewrite: &openfgav1.Userset{
+								Userset: &openfgav1.Userset_This{},
+							},
+							TypeInfo: &openfgav1.RelationTypeInfo{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
+					"user": {},
+				},
+				typeDefinitions: map[string]*openfgav1.TypeDefinition{
+					"document": {
+						Type: "document",
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{},
+								},
+								"criteria1": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+								"criteria2": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+								"criteria3": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+							},
+						},
+						Relations: map[string]*openfgav1.Userset{
+							"criteria1": {
+								Userset: &openfgav1.Userset_This{},
+							},
+							"criteria2": {
+								Userset: &openfgav1.Userset_This{},
+							},
+							"criteria3": {
+								Userset: &openfgav1.Userset_This{},
+							},
+							"viewer": {
+								Userset: &openfgav1.Userset_Intersection{
+									Intersection: &openfgav1.Usersets{
+										Child: []*openfgav1.Userset{
+											{
+												Userset: &openfgav1.Userset_ComputedUserset{
+													ComputedUserset: &openfgav1.ObjectRelation{
+														Relation: "criteria1",
+													},
+												},
+											},
+											{
+												Userset: &openfgav1.Userset_ComputedUserset{
+													ComputedUserset: &openfgav1.ObjectRelation{
+														Relation: "criteria2",
+													},
+												},
+											},
+											{
+												Userset: &openfgav1.Userset_ComputedUserset{
+													ComputedUserset: &openfgav1.ObjectRelation{
+														Relation: "criteria3",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					"user": {
+						Type:      "user",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+			},
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

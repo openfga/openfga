@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## Added
 
 * Stack trace when logging panics [#1904](https://github.com/openfga/openfga/pull/1904)
+* Throttling metric `throttled_requests_count` for observing the number of throttled requests for a given throttling configuration [#1863](https://github.com/openfga/openfga/pull/1863)
 * New metric on number of allowed vs. non-allowed Check responses [#1911](https://github.com/openfga/openfga/pull/1911)
 
 ## Fixed
