@@ -1443,15 +1443,6 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 	return typesys, nil
 }
 
-// If the requested consistency preference is not UNSPECIFIED, but the experimental flag is not enabled,
-// returns an error.
-func (s *Server) validateConsistencyRequest(c openfgav1.ConsistencyPreference) error {
-	if !s.IsExperimentallyEnabled(ExperimentalEnableConsistencyParams) && openfgav1.ConsistencyPreference_UNSPECIFIED != c {
-		return status.Error(codes.InvalidArgument, "Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server")
-	}
-	return nil
-}
-
 // validateAccessControlEnabled validates the access control parameters.
 func (s *Server) validateAccessControlEnabled() error {
 	if s.IsAccessControlEnabled() {
