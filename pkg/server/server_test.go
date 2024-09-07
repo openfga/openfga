@@ -39,6 +39,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -2024,5 +2025,91 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
+	})
+}
+
+func TestServer_ThrottleUntilDeadline(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	modelStr := `
+		model
+			schema 1.1
+		type user
+
+		type group
+		relations
+			define member: [user, group#member]
+
+		type document
+		relations
+			define viewer: [user, group#member]`
+
+	tuples := []string{
+		"document:1#viewer@user:jon", // Observed before first dispatch
+		"document:1#viewer@group:eng#member",
+		"group:eng#member@group:backend#member",
+		"group:backend#member@user:tyler", // Requires two dispatches, gets throttled
+
+		"document:2#viewer@user:tyler",
+	}
+
+	storeID, model := storageTest.BootstrapFGAStore(t, ds, modelStr, tuples)
+	t.Cleanup(ds.Close)
+
+	deadline := 50 * time.Millisecond
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+
+		WithDispatchThrottlingCheckResolverEnabled(true),
+		WithDispatchThrottlingCheckResolverFrequency(3*deadline), // Forces time-out when throttling occurs
+		WithDispatchThrottlingCheckResolverThreshold(1),          // Applies throttling after first dispatch
+
+		WithListObjectsDeadline(deadline),
+		WithListObjectsDispatchThrottlingEnabled(true),
+		WithListObjectsDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+		WithListObjectsDispatchThrottlingFrequency(3*deadline), // Forces time-out when throttling occurs
+
+		WithListUsersDeadline(deadline),
+		WithListUsersDispatchThrottlingEnabled(true),
+		WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+		WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
+	)
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+
+	t.Run("list_users_return_no_error_and_partial_results", func(t *testing.T) {
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
+	})
+
+	t.Run("list_objects_return_no_error_and_partial_results", func(t *testing.T) {
+		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetObjects(), 1)
 	})
 }
