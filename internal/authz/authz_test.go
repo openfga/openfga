@@ -362,6 +362,7 @@ func TestAuthorize(t *testing.T) {
 	t.Run("error_when_modules_errors", func(t *testing.T) {
 		modules := []string{"module1", "module2", "module3"}
 		errorMessage := fmt.Errorf("error")
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
@@ -392,6 +393,7 @@ func TestAuthorize(t *testing.T) {
 
 	t.Run("succeed_with_modules", func(t *testing.T) {
 		modules := []string{"module1", "module2", "module3"}
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(3).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		err := authorizer.Authorize(context.Background(), "client-id", "store-id", Write, modules...)
 		require.NoError(t, err)

@@ -129,15 +129,19 @@ func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod
 		return err
 	}
 
-	if len(modules) > 0 {
-		return a.moduleAuthorize(ctx, clientID, relation, storeID, modules)
-	}
-
+	// Check if there is top-level authorization first, before checking modules
 	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getStore(storeID), &openfgav1.ContextualTupleKeys{})
 	if err != nil {
 		return err
 	}
+	if authorized {
+		return nil
+	}
 
+	if len(modules) > 0 {
+		return a.moduleAuthorize(ctx, clientID, relation, storeID, modules)
+	}
+	// If there are no modules to check, return the top-level authorization error
 	if !authorized {
 		return status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
 	}
@@ -316,8 +320,11 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 
 			allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getModule(storeID, module), &contextualTuples)
 
-			if err != nil || !allowed {
+			if err != nil {
 				errorChannel <- err
+			}
+			if !allowed {
+				errorChannel <- status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
 			}
 		}(module)
 	}
