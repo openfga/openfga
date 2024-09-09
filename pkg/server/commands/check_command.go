@@ -27,7 +27,7 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
-type CheckCommand struct {
+type CheckQuery struct {
 	logger        logger.Logger
 	checkResolver graph.CheckResolver
 	typesys       *typesystem.TypeSystem
@@ -37,28 +37,28 @@ type CheckCommand struct {
 	maxConcurrentReads uint32
 }
 
-type CheckCmdOption func(*CheckCommand)
+type CheckQueryOption func(*CheckQuery)
 
-func WithCheckCmdResolveNodeLimit(nl uint32) CheckCmdOption {
-	return func(c *CheckCommand) {
+func WithCheckCmdResolveNodeLimit(nl uint32) CheckQueryOption {
+	return func(c *CheckQuery) {
 		c.resolveNodeLimit = nl
 	}
 }
 
-func WithCheckCmdMaxConcurrentReads(m uint32) CheckCmdOption {
-	return func(c *CheckCommand) {
+func WithCheckCmdMaxConcurrentReads(m uint32) CheckQueryOption {
+	return func(c *CheckQuery) {
 		c.maxConcurrentReads = m
 	}
 }
 
-func WithCheckCmdLogger(l logger.Logger) CheckCmdOption {
-	return func(c *CheckCommand) {
+func WithCheckCmdLogger(l logger.Logger) CheckQueryOption {
+	return func(c *CheckQuery) {
 		c.logger = l
 	}
 }
 
-func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckCmdOption) *CheckCommand {
-	cmd := &CheckCommand{
+func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
+	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
 		datastore:          datastore,
 		checkResolver:      checkResolver,
@@ -73,7 +73,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	return cmd
 }
 
-func (c *CheckCommand) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
 	err := validateCheckRequest(ctx, req, c.typesys)
 	if err != nil {
 		return nil, nil, err
