@@ -11,7 +11,6 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestGetRelation(t *testing.T) {
@@ -88,12 +87,6 @@ func TestGetRelation(t *testing.T) {
 		require.Equal(t, CanCallWriteAuthorizationModels, result)
 	})
 
-	t.Run("ListStores", func(t *testing.T) {
-		result, err := authorizer.getRelation(ListStores)
-		require.NoError(t, err)
-		require.Equal(t, CanCallListStores, result)
-	})
-
 	t.Run("CreateStore", func(t *testing.T) {
 		result, err := authorizer.getRelation(CreateStore)
 		require.NoError(t, err)
@@ -160,188 +153,6 @@ func TestAuthorizeCreateStore(t *testing.T) {
 
 		err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
 		require.NoError(t, err)
-	})
-}
-
-func TestListAuthorizedStores(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockServer := mocks.NewMockServerInterface(mockController)
-
-	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
-
-	t.Run("error_when_authorized_errors", func(t *testing.T) {
-		errorMessage := fmt.Errorf("unable to perform action")
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
-		require.Equal(t, stores, []string(nil))
-	})
-
-	t.Run("error_when_not_authorized", func(t *testing.T) {
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
-		require.Equal(t, stores, []string(nil))
-	})
-
-	t.Run("error_when_list_objects_errors", func(t *testing.T) {
-		errorMessage := fmt.Errorf("error")
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: []string{"test-store"}}, errorMessage)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
-		require.Equal(t, stores, []string(nil))
-	})
-
-	t.Run("succeed", func(t *testing.T) {
-		expectedStores := []string{"test-store"}
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: expectedStores}, nil)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.NoError(t, err)
-		require.Equal(t, expectedStores, stores)
-	})
-}
-
-func TestGetModulesForWriteRequest(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockServer := mocks.NewMockServerInterface(mockController)
-
-	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
-
-	module1 := "module1"
-	model := &openfgav1.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: []*openfgav1.TypeDefinition{
-			{
-				Type: "user",
-			},
-			{
-				Type: "folder",
-				Relations: map[string]*openfgav1.Userset{
-					"viewer": typesystem.This(),
-				},
-				Metadata: &openfgav1.Metadata{
-					Relations: map[string]*openfgav1.RelationMetadata{
-						"viewer": {
-							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-								{Type: "user"},
-							},
-						},
-					},
-				},
-			},
-			{
-				Type: "folder-with-module",
-				Relations: map[string]*openfgav1.Userset{
-					"viewer": typesystem.This(),
-				},
-				Metadata: &openfgav1.Metadata{
-					Module: module1,
-					Relations: map[string]*openfgav1.RelationMetadata{
-						"parent": {
-							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-								{Type: "folder"},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-	typesys := typesystem.New(model)
-
-	t.Run("error_when_write_tuples_errors", func(t *testing.T) {
-		modules, err := authorizer.GetModulesForWriteRequest(
-			&openfgav1.WriteRequest{
-				StoreId: "store-id",
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						{Object: "unknown:2", Relation: "viewer", User: "user:jon"},
-					},
-				},
-			},
-			typesys,
-		)
-		require.Error(t, err)
-		require.Empty(t, modules)
-	})
-
-	t.Run("error_when_write_tuples_errors", func(t *testing.T) {
-		modules, err := authorizer.GetModulesForWriteRequest(
-			&openfgav1.WriteRequest{
-				StoreId: "store-id",
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "unknown:2", Relation: "viewer", User: "user:jon"},
-					},
-				},
-			},
-			typesys,
-		)
-		require.Error(t, err)
-		require.Empty(t, modules)
-	})
-
-	t.Run("return_empty_when_a_write_tuple_has_no_modules", func(t *testing.T) {
-		modules, err := authorizer.GetModulesForWriteRequest(
-			&openfgav1.WriteRequest{
-				StoreId: "store-id",
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "folder-with-module:2", Relation: "viewer", User: "user:jon"},
-						{Object: "folder:2", Relation: "viewer", User: "user:jon"},
-					},
-				},
-			},
-			typesys,
-		)
-		require.NoError(t, err)
-		require.Empty(t, modules)
-	})
-
-	t.Run("return_empty_when_a_delete_tuple_has_no_modules", func(t *testing.T) {
-		modules, err := authorizer.GetModulesForWriteRequest(
-			&openfgav1.WriteRequest{
-				StoreId: "store-id",
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "folder-with-module:2", Relation: "viewer", User: "user:jon"},
-						{Object: "folder:2", Relation: "viewer", User: "user:jon"},
-					},
-				},
-			},
-			typesys,
-		)
-		require.NoError(t, err)
-		require.Empty(t, modules)
-	})
-
-	t.Run("return_modules", func(t *testing.T) {
-		modules, err := authorizer.GetModulesForWriteRequest(
-			&openfgav1.WriteRequest{
-				StoreId: "store-id",
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "folder-with-module:2", Relation: "viewer", User: "user:jon"},
-					},
-				},
-			},
-			typesys,
-		)
-		require.NoError(t, err)
-		require.Equal(t, []string{module1}, modules)
 	})
 }
 

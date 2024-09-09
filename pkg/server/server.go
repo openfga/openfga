@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1450,7 +1449,8 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 }
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ListStores)
+	method := "ListStores"
+	ctx, span := tracer.Start(ctx, method)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1461,57 +1461,14 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.ListStores,
+		Method:  method,
 	})
-
-	stores, err := s.checkAuthzListStores(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	q := commands.NewListStoresQuery(s.datastore,
 		commands.WithListStoresQueryLogger(s.logger),
 		commands.WithListStoresQueryEncoder(s.encoder),
 	)
-
-	if s.authorizer == nil {
-		return q.Execute(ctx, req)
-	}
-
-	storesMap := make(map[string]struct{})
-	re := regexp.MustCompile(`^.*:(.*)`)
-	for _, store := range stores {
-		id := re.FindStringSubmatch(store)
-		storesMap[id[1]] = struct{}{}
-	}
-
-	var accessibleStores []*openfgav1.Store
-	var continuationToken string
-
-	for {
-		req.ContinuationToken = continuationToken
-		resp, err := q.Execute(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, store := range resp.GetStores() {
-			if _, ok := storesMap[store.GetId()]; ok {
-				accessibleStores = append(accessibleStores, store)
-			}
-		}
-
-		continuationToken = resp.GetContinuationToken()
-
-		if len(accessibleStores) > 0 || resp.GetContinuationToken() == "" {
-			break
-		}
-	}
-
-	return &openfgav1.ListStoresResponse{
-		Stores:            accessibleStores,
-		ContinuationToken: continuationToken,
-	}, nil
+	return q.Execute(ctx, req)
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
@@ -1609,24 +1566,6 @@ func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modu
 		}
 	}
 	return nil
-}
-
-// checkAuthzListStores checks the authorization for listing stores.
-func (s *Server) checkAuthzListStores(ctx context.Context) ([]string, error) {
-	if s.authorizer != nil {
-		claims, err := s.checkAuthClaims(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		list, err := s.authorizer.ListAuthorizedStores(ctx, claims.ClientID)
-		if err != nil {
-			return nil, err
-		}
-
-		return list, nil
-	}
-	return nil, nil
 }
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
