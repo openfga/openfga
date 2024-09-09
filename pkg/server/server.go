@@ -963,8 +963,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	const methodName = "check"
-
 	resp, checkRequestMetadata, err := commands.NewCheckCommand(
 		s.datastore,
 		s.checkResolver,
@@ -975,17 +973,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	).Execute(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
-
-		// Note for ListObjects:
-		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
-		if errors.Is(err, context.DeadlineExceeded) && checkRequestMetadata.WasThrottled.Load() {
-			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-			return nil, serverErrors.ThrottledTimeout
-		}
-
-		return nil, serverErrors.HandleError("", err)
+		return nil, err
 	}
 
+	const methodName = "check"
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
