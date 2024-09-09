@@ -241,7 +241,7 @@ func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, type
 	return modules, nil
 }
 
-// Define an interface that both TupleKeyWithoutCondition and TupleKey implement
+// Define an interface that both TupleKeyWithoutCondition and TupleKey implement.
 type TupleKeyInterface interface {
 	GetObject() string
 	GetRelation() string

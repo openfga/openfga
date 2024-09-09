@@ -100,7 +100,7 @@ func testStoreModelWithModule(module string) []*openfgav1.TypeDefinition {
 	// Add a module to the test store
 	typeDef := language.MustTransformDSLToProto(testStoreModel).GetTypeDefinitions()
 	for _, td := range typeDef {
-		if td.Type == "workspace" {
+		if td.GetType() == "workspace" {
 			td.Metadata.Module = module
 		}
 	}
@@ -171,9 +171,9 @@ func (s *authzSettings) writeHelper(ctx context.Context, t *testing.T, storeID, 
 			Deletes: &openfgav1.WriteRequestDeletes{
 				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
 					{
-						User:     tuple.User,
-						Relation: tuple.Relation,
-						Object:   tuple.Object,
+						User:     tuple.GetUser(),
+						Relation: tuple.GetRelation(),
+						Object:   tuple.GetObject(),
 					},
 				},
 			},

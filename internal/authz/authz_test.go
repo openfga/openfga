@@ -275,7 +275,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 			typesys,
 		)
 		require.Error(t, err)
-		require.Len(t, modules, 0)
+		require.Empty(t, modules)
 	})
 
 	t.Run("error_when_write_tuples_errors", func(t *testing.T) {
@@ -291,7 +291,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 			typesys,
 		)
 		require.Error(t, err)
-		require.Len(t, modules, 0)
+		require.Empty(t, modules)
 	})
 
 	t.Run("return_empty_when_a_write_tuple_has_no_modules", func(t *testing.T) {
@@ -308,7 +308,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 			typesys,
 		)
 		require.NoError(t, err)
-		require.Len(t, modules, 0)
+		require.Empty(t, modules)
 	})
 
 	t.Run("return_empty_when_a_delete_tuple_has_no_modules", func(t *testing.T) {
@@ -325,7 +325,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 			typesys,
 		)
 		require.NoError(t, err)
-		require.Len(t, modules, 0)
+		require.Empty(t, modules)
 	})
 
 	t.Run("return_modules", func(t *testing.T) {
