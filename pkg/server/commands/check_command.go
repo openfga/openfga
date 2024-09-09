@@ -94,7 +94,7 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
-		return nil, nil, translateError(resolveCheckRequest.GetRequestMetadata(), err)
+		return nil, nil, translateError(err)
 	}
 	return resp, resolveCheckRequest.GetRequestMetadata(), err
 }
@@ -136,7 +136,7 @@ func buildCheckContext(ctx context.Context, typesys *typesystem.TypeSystem, data
 	return ctx
 }
 
-func translateError(reqMetadata *graph.ResolveCheckRequestMetadata, err error) error {
+func translateError(err error) error {
 	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
@@ -145,9 +145,5 @@ func translateError(reqMetadata *graph.ResolveCheckRequestMetadata, err error) e
 		return serverErrors.ValidationError(err)
 	}
 
-	if errors.Is(err, context.DeadlineExceeded) && reqMetadata.WasThrottled.Load() {
-		return serverErrors.ThrottledTimeout
-	}
-
-	return serverErrors.HandleError("", err)
+	return err
 }

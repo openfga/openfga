@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -198,16 +197,6 @@ type doc
 }
 
 func TestTranslateError(t *testing.T) {
-	throttledRequestMetadata := &graph.ResolveCheckRequestMetadata{
-		WasThrottled: &atomic.Bool{},
-	}
-	throttledRequestMetadata.WasThrottled.Store(true)
-
-	nonThrottledRequestMedata := &graph.ResolveCheckRequestMetadata{
-		WasThrottled: &atomic.Bool{},
-	}
-	nonThrottledRequestMedata.WasThrottled.Store(false)
-
 	testcases := map[string]struct {
 		inputError    error
 		reqMetadata   *graph.ResolveCheckRequestMetadata
@@ -222,16 +211,6 @@ func TestTranslateError(t *testing.T) {
 			expectedError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
 		},
 		`3`: {
-			inputError:    context.DeadlineExceeded,
-			reqMetadata:   throttledRequestMetadata,
-			expectedError: serverErrors.ThrottledTimeout,
-		},
-		`4`: {
-			inputError:    context.DeadlineExceeded,
-			reqMetadata:   nonThrottledRequestMedata,
-			expectedError: serverErrors.RequestDeadlineExceeded,
-		},
-		`5`: {
 			inputError:    errors.ErrUnknown,
 			expectedError: errors.ErrUnknown,
 		},
@@ -239,7 +218,7 @@ func TestTranslateError(t *testing.T) {
 
 	for name, test := range testcases {
 		t.Run(name, func(t *testing.T) {
-			actualError := translateError(test.reqMetadata, test.inputError)
+			actualError := translateError(test.inputError)
 			require.ErrorIs(t, actualError, test.expectedError)
 		})
 	}
