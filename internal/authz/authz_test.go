@@ -87,12 +87,6 @@ func TestGetRelation(t *testing.T) {
 		require.Equal(t, CanCallWriteAuthorizationModels, result)
 	})
 
-	t.Run("ListStores", func(t *testing.T) {
-		result, err := authorizer.getRelation(ListStores)
-		require.NoError(t, err)
-		require.Equal(t, CanCallListStores, result)
-	})
-
 	t.Run("CreateStore", func(t *testing.T) {
 		result, err := authorizer.getRelation(CreateStore)
 		require.NoError(t, err)
@@ -159,55 +153,6 @@ func TestAuthorizeCreateStore(t *testing.T) {
 
 		err := authorizer.AuthorizeCreateStore(context.Background(), "test-client")
 		require.NoError(t, err)
-	})
-}
-
-func TestListAuthorizedStores(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockServer := mocks.NewMockServerInterface(mockController)
-
-	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
-
-	t.Run("error_when_authorized_errors", func(t *testing.T) {
-		errorMessage := fmt.Errorf("unable to perform action")
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
-		require.Equal(t, stores, []string(nil))
-	})
-
-	t.Run("error_when_not_authorized", func(t *testing.T) {
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
-		require.Equal(t, stores, []string(nil))
-	})
-
-	t.Run("error_when_list_objects_errors", func(t *testing.T) {
-		errorMessage := fmt.Errorf("error")
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: []string{"test-store"}}, errorMessage)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
-		require.Equal(t, stores, []string(nil))
-	})
-
-	t.Run("succeed", func(t *testing.T) {
-		expectedStores := []string{"test-store"}
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: expectedStores}, nil)
-
-		stores, err := authorizer.ListAuthorizedStores(context.Background(), "test-client")
-		require.NoError(t, err)
-		require.Equal(t, expectedStores, stores)
 	})
 }
 
