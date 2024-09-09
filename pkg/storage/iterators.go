@@ -40,31 +40,6 @@ type TupleIterator = Iterator[*openfgav1.Tuple]
 // returns an [ErrIteratorDone] error.
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
-type emptyTupleIterator struct{}
-
-var _ TupleIterator = (*emptyTupleIterator)(nil)
-
-// Next see [Iterator.Next].
-func (e *emptyTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
-	return nil, ErrIteratorDone
-}
-
-// Stop see [Iterator.Stop].
-func (e *emptyTupleIterator) Stop() {}
-
-// Head see [Iterator.Head].
-func (e *emptyTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
-	return nil, ErrIteratorDone
-}
-
 type combinedIterator[T any] struct {
 	iters []Iterator[T]
 }
