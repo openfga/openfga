@@ -963,6 +963,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
+	const methodName = "check"
 	resp, checkRequestMetadata, err := commands.NewCheckCommand(
 		s.datastore,
 		s.checkResolver,
@@ -970,13 +971,18 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCmdLogger(s.logger),
 		commands.WithCheckCmdMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCmdResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithCheckCmdServiceAndMethodName(s.serviceName, methodName),
 	).Execute(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		if errors.Is(err, serverErrors.ThrottledTimeout) {
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+		}
+		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
+		// and add a wrapper helper that automatically injects the service name tag?
 		return nil, err
 	}
 
-	const methodName = "check"
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
