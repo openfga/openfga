@@ -33,33 +33,25 @@ type CheckQuery struct {
 	typesys       *typesystem.TypeSystem
 	datastore     storage.RelationshipTupleReader
 
-	servicename        string
-	methodname         string
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
 }
 
 type CheckQueryOption func(*CheckQuery)
 
-func WithCheckCmdServiceAndMethodName(servicename, methodname string) CheckQueryOption {
-	return func(c *CheckQuery) {
-		c.servicename, c.methodname = servicename, methodname
-	}
-}
-
-func WithCheckCmdResolveNodeLimit(nl uint32) CheckQueryOption {
+func WithCheckCommandResolveNodeLimit(nl uint32) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.resolveNodeLimit = nl
 	}
 }
 
-func WithCheckCmdMaxConcurrentReads(m uint32) CheckQueryOption {
+func WithCheckCommandMaxConcurrentReads(m uint32) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.maxConcurrentReads = m
 	}
 }
 
-func WithCheckCmdLogger(l logger.Logger) CheckQueryOption {
+func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.logger = l
 	}

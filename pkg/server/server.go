@@ -968,10 +968,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.datastore,
 		s.checkResolver,
 		typesys,
-		commands.WithCheckCmdLogger(s.logger),
-		commands.WithCheckCmdMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-		commands.WithCheckCmdResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithCheckCmdServiceAndMethodName(s.serviceName, methodName),
+		commands.WithCheckCommandLogger(s.logger),
+		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
 	).Execute(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
