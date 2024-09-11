@@ -2,8 +2,20 @@
 
 This document describes the versioning and release process of OpenFGA. This document will be considered a living document. Scheduled releases, supported timelines, and API stability guarantees will be updated here as they change.
 
-## Release Cycle
-OpenFGA endeavors to follow a [4 | 6] release cycle with new releases in the openfga/openfga and openfga/helm-chats repositories including OpenFGA server binaries, container images published on Docker Hub, and updated Helm charts for each new version.  Off-cycle releases may also occur when required to address critical issues.
+## Release Requirements
+OpenFGA endeavours to rapidly release new features to the community.  To support that goal releases are performed based on the impact and quantity of updates to the codebase in a release-ready state.  Releases may be initiated based on a number of factors.
+
+### Functional Changes
+Changes ready for use in production environments which add new functionality or performance improvements may individually trigger an new release.
+
+### Feature Previews
+New features which are ready for testing by the community but are disabled unless OpenFGA is launched with a feature flag may also trigger a new release.
+
+### Maintenance Updates
+Minor updates, performance improvements, code refinements, or other items which do not introduce signifigant changes may not trigger a release individually, however when several minor changes have been merged a release may be initiated if no new version has been released in two weeks.
+
+### Security Updates and Bugfixes
+Changes made to address a known vulnerability or security issue or fixes to resolve a bug impacting users in production will trigger a release as soon as the changes have been tested and are considered production-ready.  A CVE will also be issued if relevant.
 
 ## Versioning
 Releases of OpenFGA will be versioned using dotted triples. For the purposes of this document, we will refer to the respective components of this triple as \<major\>.\<minor\>.\<patch\>. When release candidates are published, they will include the suffix "-rc" followed by a release candidate number which identifies them as "pre-releases".
@@ -19,6 +31,7 @@ Release dates for all releases (not including release candidates)
 
 | Version | Release Date |
 |---------| ------------ |
+| v1.6.0 | Aug 30, 2024 |
 | v1.5.9 | Aug 13, 2024 |
 | v1.5.8 | Aug 8, 2024 |
 | v1.5.7 | Jul 26, 2024 |
