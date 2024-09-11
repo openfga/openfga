@@ -3,7 +3,7 @@ package authn
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 
 	"github.com/MicahParks/keyfunc/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -19,7 +19,7 @@ var (
 type Authenticator interface {
 	// Authenticate returns a nil error and the AuthClaims info (if available) if the subject is authenticated or a
 	// non-nil error with an appropriate error cause otherwise.
-	Authenticate(requestContext context.Context) (*authcontext.AuthClaims, error)
+	Authenticate(requestContext context.Context) (*authclaims.AuthClaims, error)
 	// Close Cleans up the authenticator.
 	Close()
 }
@@ -28,8 +28,8 @@ type NoopAuthenticator struct{}
 
 var _ Authenticator = (*NoopAuthenticator)(nil)
 
-func (n NoopAuthenticator) Authenticate(requestContext context.Context) (*authcontext.AuthClaims, error) {
-	return &authcontext.AuthClaims{
+func (n NoopAuthenticator) Authenticate(requestContext context.Context) (*authclaims.AuthClaims, error) {
+	return &authclaims.AuthClaims{
 		Subject: "",
 		Scopes:  nil,
 	}, nil

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -182,7 +182,7 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	}
 
 	// Disable authz check for the check request.
-	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, true)
+	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.Check(ctx, req)
 	if err != nil {
 		return err
@@ -196,8 +196,8 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 }
 
 // checkAuthClaims checks the auth claims in the context.
-func checkAuthClaims(ctx context.Context) (*authcontext.AuthClaims, error) {
-	claims, found := authcontext.AuthClaimsFromContext(ctx)
+func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
+	claims, found := authclaims.AuthClaimsFromContext(ctx)
 	if !found || claims.ClientID == "" {
 		return nil, status.Error(codes.Internal, "client ID not found in context")
 	}

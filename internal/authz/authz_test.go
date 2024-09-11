@@ -10,7 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -72,7 +72,7 @@ func TestAuthorizeCreateStore(t *testing.T) {
 		errorMessage := fmt.Errorf("unable to perform action")
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
 
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 		err := authorizer.AuthorizeCreateStore(ctx)
 
 		require.Error(t, err)
@@ -82,7 +82,7 @@ func TestAuthorizeCreateStore(t *testing.T) {
 	t.Run("error_when_not_authorized", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 		err := authorizer.AuthorizeCreateStore(ctx)
 
 		require.Error(t, err)
@@ -91,7 +91,7 @@ func TestAuthorizeCreateStore(t *testing.T) {
 	t.Run("succeed", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 		err := authorizer.AuthorizeCreateStore(ctx)
 
 		require.NoError(t, err)
@@ -107,7 +107,7 @@ func TestAuthorize(t *testing.T) {
 	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
 
 	t.Run("error_when_given_invalid_api_method", func(t *testing.T) {
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 
 		err := authorizer.Authorize(ctx, "store-id", "invalid-api-method")
 
@@ -119,7 +119,7 @@ func TestAuthorize(t *testing.T) {
 		errorMessage := fmt.Errorf("error")
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
 
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 
 		require.Error(t, err)
@@ -128,7 +128,7 @@ func TestAuthorize(t *testing.T) {
 
 	t.Run("error_when_unauthorized", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 
@@ -138,7 +138,7 @@ func TestAuthorize(t *testing.T) {
 
 	t.Run("succeed", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "test-client"})
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 

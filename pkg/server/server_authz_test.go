@@ -15,7 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/openfga/openfga/internal/authz"
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -211,7 +211,7 @@ func TestListObjects(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
@@ -224,7 +224,7 @@ func TestListObjects(t *testing.T) {
 		})
 
 		t.Run("successfully_call_list_objects", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallListObjects)
 
 			listObjectsResponse, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
@@ -288,7 +288,7 @@ func TestStreamedListObjects(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			server := NewMockStreamServer(ctx)
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 				StoreId:              settings.testData.id,
@@ -303,7 +303,7 @@ func TestStreamedListObjects(t *testing.T) {
 		})
 
 		t.Run("successfully_call_streamed_list_objects", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallListObjects)
 
 			server := NewMockStreamServer(ctx)
@@ -368,7 +368,7 @@ func TestRead(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.Read(ctx, &openfgav1.ReadRequest{
 				StoreId: settings.testData.id,
 				TupleKey: &openfgav1.ReadRequestTupleKey{
@@ -382,7 +382,7 @@ func TestRead(t *testing.T) {
 		})
 
 		t.Run("successfully_call_read", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallRead)
 
 			readResponse, err := openfga.Read(ctx, &openfgav1.ReadRequest{
@@ -441,7 +441,7 @@ func TestWrite(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
@@ -456,7 +456,7 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("successfully_call_write", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallWrite)
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
@@ -508,21 +508,21 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: ""})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkCreateStoreAuthz(ctx)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkCreateStoreAuthz(ctx)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.rootData.id,
 				AuthorizationModelId: settings.rootData.modelID,
@@ -572,7 +572,7 @@ func TestCheckAuthz(t *testing.T) {
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
 			fmt.Printf("%v", openfga.authorizer)
-			ctx := authcontext.ContextWithSkipAuthzCheck(context.Background(), true)
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
 
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 			require.NoError(t, err)
@@ -585,28 +585,28 @@ func TestCheckAuthz(t *testing.T) {
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: ""})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: "ID"})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "ID"})
 			err := openfga.checkAuthz(ctx, settings.testData.id, "invalid api method")
 			require.Error(t, err)
 			require.Equal(t, authz.ErrUnknownAPIMethod.Error(), err.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 			require.Error(t, err)
 			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallCheck)
 
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
@@ -657,7 +657,7 @@ func TestCheck(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.Check(ctx, &openfgav1.CheckRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
@@ -672,7 +672,7 @@ func TestCheck(t *testing.T) {
 		})
 
 		t.Run("successfully_call_check", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, "writer")
 			settings.addAuthForRelation(ctx, t, authz.CanCallCheck)
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
@@ -791,7 +791,7 @@ func TestExpand(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.Expand(ctx, &openfgav1.ExpandRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
@@ -805,7 +805,7 @@ func TestExpand(t *testing.T) {
 		})
 
 		t.Run("successfully_call_expand", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallExpand)
 
 			expandResponse, err := openfga.Expand(ctx, &openfgav1.ExpandRequest{
@@ -878,7 +878,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.ReadAuthorizationModel(
 				ctx,
 				&openfgav1.ReadAuthorizationModelRequest{
@@ -891,7 +891,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 		})
 
 		t.Run("successfully_call_readAuthorizationModel", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallReadAuthorizationModels)
 
 			readAuthorizationModelResponse, err := openfga.ReadAuthorizationModel(
@@ -948,7 +948,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.ReadAuthorizationModels(
 				ctx,
 				&openfgav1.ReadAuthorizationModelsRequest{
@@ -960,7 +960,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 		})
 
 		t.Run("successfully_call_readAuthorizationModels", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallReadAuthorizationModels)
 
 			readAuthorizationModelResponse, err := openfga.ReadAuthorizationModels(
@@ -1037,7 +1037,7 @@ func TestWriteAssertions(t *testing.T) {
 					Expectation: false,
 				},
 			}
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
@@ -1054,7 +1054,7 @@ func TestWriteAssertions(t *testing.T) {
 					Expectation: false,
 				},
 			}
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallWriteAssertions)
 
 			_, err := openfga.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
@@ -1122,7 +1122,7 @@ func TestReadAssertions(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
@@ -1132,7 +1132,7 @@ func TestReadAssertions(t *testing.T) {
 		})
 
 		t.Run("successfully_call_readAssertions", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallReadAssertions)
 
 			readAssertionsResponse, err := openfga.ReadAssertions(ctx, &openfgav1.ReadAssertionsRequest{
@@ -1194,7 +1194,7 @@ func TestReadChanges(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.ReadChanges(ctx, &openfgav1.ReadChangesRequest{
 				StoreId:  settings.testData.id,
 				Type:     "user",
@@ -1205,7 +1205,7 @@ func TestReadChanges(t *testing.T) {
 		})
 
 		t.Run("successfully_call_readChanges", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallReadChanges)
 
 			readChangesResponse, err := openfga.ReadChanges(ctx, &openfgav1.ReadChangesRequest{
@@ -1262,7 +1262,7 @@ func TestCreateStore(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			name := "new store"
 			_, err := openfga.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 				Name: name,
@@ -1272,7 +1272,7 @@ func TestCreateStore(t *testing.T) {
 		})
 
 		t.Run("successfully_call_createStore", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.rootData.id,
 				AuthorizationModelId: settings.rootData.modelID,
@@ -1330,7 +1330,7 @@ func TestDeleteStore(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
 				StoreId: settings.testData.id,
 			})
@@ -1339,7 +1339,7 @@ func TestDeleteStore(t *testing.T) {
 		})
 
 		t.Run("successfully_call_deleteStore", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallDeleteStore)
 
 			_, err := openfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
@@ -1387,7 +1387,7 @@ func TestGetStore(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.GetStore(ctx, &openfgav1.GetStoreRequest{
 				StoreId: settings.testData.id,
 			})
@@ -1396,7 +1396,7 @@ func TestGetStore(t *testing.T) {
 		})
 
 		t.Run("successfully_call_getStore", func(t *testing.T) {
-			ctx := authcontext.ContextWithAuthClaims(context.Background(), &authcontext.AuthClaims{ClientID: clientID})
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallGetStore)
 
 			getStoreResponse, err := openfga.GetStore(ctx, &openfgav1.GetStoreRequest{

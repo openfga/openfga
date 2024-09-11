@@ -35,7 +35,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -1545,7 +1545,7 @@ func (s *Server) validateAccessControlEnabled() error {
 
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string) error {
-	if s.authorizer != nil && !authcontext.SkipAuthzCheckFromContext(ctx) {
+	if s.authorizer != nil && !authclaims.SkipAuthzCheckFromContext(ctx) {
 		err := s.authorizer.Authorize(ctx, storeID, apiMethod)
 		if err != nil {
 			return err
