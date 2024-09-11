@@ -1060,7 +1060,7 @@ func TestListUsersConditions(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:will", "isEqualToFive", nil),
 				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isEqualToTen", nil),
 			},
-			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - context is missing parameters '[param2]'",
+			expectedErrorMsg: "failed to evaluate relationship condition: 'isEqualToTen' - tuple 'document:1#viewer@user:maria' is missing context parameters '[param2]",
 		},
 		{
 			name: "multiple_conditions_all_params_provided",
@@ -3538,7 +3538,7 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 			},
 			inputConfigDeadline: 0 * time.Millisecond, // infinite
 			inputReadDelay:      50 * time.Millisecond,
-			expectError:         "context is missing parameters '[x]'",
+			expectError:         "failed to evaluate relationship condition: 'condX' - tuple 'repo:target#admin@user:1' is missing context parameters '[x]",
 		},
 		`deadline_very_small_returns_nothing`: {
 			inputModel: `
@@ -3863,6 +3863,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
 		q.throttle(ctx, uint32(190))
+		require.False(t, q.wasThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
@@ -3878,6 +3879,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
 		q.throttle(ctx, uint32(201))
+		require.True(t, q.wasThrottled.Load())
 	})
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
@@ -3893,6 +3895,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
 		q.throttle(ctx, uint32(190))
+		require.False(t, q.wasThrottled.Load())
 	})
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
@@ -3911,6 +3914,7 @@ func TestListUsersThrottle(t *testing.T) {
 		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
 
 		q.throttle(ctx, dispatchCountValue)
+		require.True(t, q.wasThrottled.Load())
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -3929,6 +3933,7 @@ func TestListUsersThrottle(t *testing.T) {
 		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
 
 		q.throttle(ctx, dispatchCountValue)
+		require.True(t, q.wasThrottled.Load())
 	})
 }
 

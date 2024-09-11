@@ -54,8 +54,7 @@ type CachedCheckResolver struct {
 	logger       logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
-	allocatedCache           bool
-	enableConsistencyOptions bool
+	allocatedCache bool
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -92,12 +91,6 @@ func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) Cache
 func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.logger = logger
-	}
-}
-
-func WithEnabledConsistencyParams(enable bool) CachedCheckResolverOpt {
-	return func(ccr *CachedCheckResolver) {
-		ccr.enableConsistencyOptions = enable
 	}
 }
 
@@ -160,19 +153,19 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	tryCache := !c.enableConsistencyOptions || req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
 	if tryCache {
 		checkCacheTotalCounter.Inc()
 
 		cachedResp := c.cache.Get(cacheKey)
-		isCached := cachedResp != nil && !cachedResp.Expired
+		isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
 		span.SetAttributes(attribute.Bool("is_cached", isCached))
 		if isCached {
 			checkCacheHitCounter.Inc()
 
 			// return a copy to avoid races across goroutines
-			return CloneResolveCheckResponse(cachedResp.Value), nil
+			return cachedResp.Value.clone(), nil
 		}
 	}
 
@@ -186,7 +179,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	// the cached subproblem's resolution metadata doesn't necessarily reflect
 	// the actual number of database reads for the inflight request, so set it
 	// to 0 so it doesn't bias the resolution metadata negatively
-	clonedResp := CloneResolveCheckResponse(resp)
+	clonedResp := resp.clone()
 	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
 
 	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)

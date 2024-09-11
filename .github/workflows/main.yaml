@@ -8,6 +8,28 @@ permissions:
   contents: read
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v3.5.2
+
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        with:
+          go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
+
+      - name: Tests
+        run: make test
+
+      - name: upload coverage to codecov
+        uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # v4.5.0
+        with:
+          files: ./coverageunit.out
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
   go-bench:
     runs-on: ubuntu-latest
     timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172

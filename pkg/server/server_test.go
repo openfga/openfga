@@ -39,6 +39,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -1245,7 +1246,7 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 
 			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore)
 			_, err := writeAssertionCmd.Execute(ctx, request)
-			require.ErrorIs(t, curTest.expectedError, err)
+			require.EqualError(t, err, curTest.expectedError.Error())
 		})
 	}
 }
@@ -1274,7 +1275,7 @@ func TestReadAssertionModelDSError(t *testing.T) {
 	expectedError := serverErrors.NewInternalError(
 		"", fmt.Errorf("unable to read"),
 	)
-	require.ErrorIs(t, expectedError, err)
+	require.EqualError(t, err, expectedError.Error())
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
@@ -1428,7 +1429,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			User:                 "user:bob",
 		})
 
-		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 
 		err = s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 			StoreId:              store,
@@ -1438,7 +1439,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			User:                 "user:bob",
 		}, NewMockStreamServer())
 
-		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 	}
 }
 
@@ -1497,7 +1498,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			})
 
 			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
 
 		t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
@@ -1509,7 +1510,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				User:                 "user:bob",
 			}, NewMockStreamServer())
 
-			require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
 	})
 
@@ -2027,184 +2028,88 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 	})
 }
 
-func TestErrorThrownIfConsistencyRequestedWithoutFlagEnabled(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
+func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	openfga := MustNewServerWithOpts(WithDatastore(ds))
-	t.Cleanup(openfga.Close)
 
-	t.Run("check_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              "store-id",
-			AuthorizationModelId: "auth-model-id",
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     "user:anne",
-				Relation: "reader",
-				Object:   "document:budget",
+	modelStr := `
+		model
+			schema 1.1
+		type user
+
+		type group
+		relations
+			define member: [user, group#member]
+
+		type document
+		relations
+			define viewer: [user, group#member]`
+
+	tuples := []string{
+		"document:1#viewer@user:jon", // Observed before first dispatch
+		"document:1#viewer@group:eng#member",
+		"group:eng#member@group:backend#member",
+		"group:backend#member@user:tyler", // Requires two dispatches, gets throttled
+
+		"document:2#viewer@user:tyler",
+	}
+
+	storeID, model := storageTest.BootstrapFGAStore(t, ds, modelStr, tuples)
+	t.Cleanup(ds.Close)
+
+	deadline := 50 * time.Millisecond
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+
+		WithDispatchThrottlingCheckResolverEnabled(true),
+		WithDispatchThrottlingCheckResolverFrequency(3*deadline), // Forces time-out when throttling occurs
+		WithDispatchThrottlingCheckResolverThreshold(1),          // Applies throttling after first dispatch
+
+		WithListObjectsDeadline(deadline),
+		WithListObjectsDispatchThrottlingEnabled(true),
+		WithListObjectsDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+		WithListObjectsDispatchThrottlingFrequency(3*deadline), // Forces time-out when throttling occurs
+
+		WithListUsersDeadline(deadline),
+		WithListUsersDispatchThrottlingEnabled(true),
+		WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+		WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
+	)
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+
+	t.Run("list_users_return_no_error_and_partial_results", func(t *testing.T) {
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
 			},
-			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("check_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              "store-id",
-			AuthorizationModelId: "auth-model-id",
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     "user:anne",
-				Relation: "reader",
-				Object:   "document:budget",
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
 			},
-			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
 
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
 	})
 
-	t.Run("read_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.Read(context.Background(), &openfgav1.ReadRequest{
-			StoreId: "store-id",
-			TupleKey: &openfgav1.ReadRequestTupleKey{
-				User:     "user:anne",
-				Relation: "reader",
-				Object:   "document:budget",
-			},
-			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+	t.Run("list_objects_return_no_error_and_partial_results", func(t *testing.T) {
+		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
 		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
 
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("read_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.Read(context.Background(), &openfgav1.ReadRequest{
-			StoreId: "store-id",
-			TupleKey: &openfgav1.ReadRequestTupleKey{
-				User:     "user:anne",
-				Relation: "reader",
-				Object:   "document:budget",
-			},
-			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("list_objects_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-			Type:        "folder",
-			Relation:    "can_edit",
-			User:        "user:becky",
-			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("list_objects_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-			Type:        "folder",
-			Relation:    "can_edit",
-			User:        "user:becky",
-			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("streamed_list_objects_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
-		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              "store-id",
-			AuthorizationModelId: "model-id",
-			Type:                 "repo",
-			Relation:             "r1",
-			User:                 "user:anne",
-			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		}, NewMockStreamServer())
-
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("streamed_list_objects_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
-		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              "store-id",
-			AuthorizationModelId: "model-id",
-			Type:                 "repo",
-			Relation:             "r1",
-			User:                 "user:anne",
-			Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-		}, NewMockStreamServer())
-
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("expand_throws_error_if_higher_consistency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{
-			TupleKey: &openfgav1.ExpandRequestTupleKey{
-				Object:   "folder:C",
-				Relation: "can_edit",
-			},
-			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
-	})
-
-	t.Run("expand_throws_error_if_minimize_latency_requested_without_flag", func(t *testing.T) {
-		_, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{
-			TupleKey: &openfgav1.ExpandRequestTupleKey{
-				Object:   "folder:C",
-				Relation: "can_edit",
-			},
-			Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-		})
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = Consistency parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-consistency-params` configuration option when running OpenFGA server", err.Error())
-
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.InvalidArgument, e.Code())
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetObjects(), 1)
 	})
 }

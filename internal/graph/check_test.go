@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/checkutil"
 
 	"github.com/openfga/openfga/internal/mocks"
 
@@ -72,6 +72,28 @@ var (
 		return nil, errors.New(simulatedDBErrorMessage)
 	}
 )
+
+// usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
+type usersetsChannelStruct struct {
+	err            error
+	objectRelation string
+	objectIDs      []string
+}
+
+func usersetsChannelFromUsersetsChannelStruct(orig []usersetsChannelStruct) []usersetsChannelType {
+	output := make([]usersetsChannelType, len(orig))
+	for i, result := range orig {
+		output[i] = usersetsChannelType{
+			err:            result.err,
+			objectRelation: result.objectRelation,
+			objectIDs:      storage.NewSortedSet(),
+		}
+		for _, objectID := range result.objectIDs {
+			output[i].objectIDs.Add(objectID)
+		}
+	}
+	return output
+}
 
 func TestCheck_CorrectContext(t *testing.T) {
 	checker := NewLocalChecker()
@@ -2090,40 +2112,6 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	}
 }
 
-func TestCloneResolveCheckResponse(t *testing.T) {
-	resp1 := &ResolveCheckResponse{
-		Allowed: true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 1,
-			CycleDetected:       false,
-		},
-	}
-	clonedResp1 := CloneResolveCheckResponse(resp1)
-
-	require.Equal(t, resp1, clonedResp1)
-	require.NotSame(t, resp1, clonedResp1)
-
-	// mutate the clone and ensure the original reference is
-	// unchanged
-	clonedResp1.Allowed = false
-	clonedResp1.ResolutionMetadata.DatastoreQueryCount = 2
-	clonedResp1.ResolutionMetadata.CycleDetected = true
-	require.True(t, resp1.GetAllowed())
-	require.Equal(t, uint32(1), resp1.GetResolutionMetadata().DatastoreQueryCount)
-	require.False(t, resp1.GetResolutionMetadata().CycleDetected)
-
-	resp2 := &ResolveCheckResponse{
-		Allowed: true,
-	}
-	clonedResp2 := CloneResolveCheckResponse(resp2)
-
-	require.NotSame(t, resp2, clonedResp2)
-	require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
-	require.NotNil(t, clonedResp2.ResolutionMetadata)
-	require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
-	require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
-}
-
 func TestCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
@@ -2205,393 +2193,6 @@ func TestCycleDetection(t *testing.T) {
 	})
 }
 
-func TestGetComputedRelation(t *testing.T) {
-	tests := []struct {
-		name             string
-		model            string
-		objectType       string
-		relation         string
-		expectedError    bool
-		expectedRelation string
-	}{
-		{
-			name: "direct_assignment",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]`,
-			objectType:       "group",
-			relation:         "member",
-			expectedRelation: "member",
-			expectedError:    false,
-		},
-		{
-			name: "computed_relation",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define viewable_member1: member
-					define viewable_member2: viewable_member1`,
-			objectType:       "group",
-			relation:         "viewable_member2",
-			expectedRelation: "member",
-			expectedError:    false,
-		},
-		{
-			name: "deep_computed_relation",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define viewable_member1: member
-					define viewable_member2: viewable_member1
-					define viewable_member3: viewable_member2
-					define viewable_member4: viewable_member3`,
-
-			objectType:       "group",
-			relation:         "viewable_member4",
-			expectedRelation: "member",
-			expectedError:    false,
-		},
-		{
-			name: "unexpected_rel",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define viewable_member1: member
-					define viewable_member2: [user] and viewable_member1`,
-			objectType:       "group",
-			relation:         "viewable_member2",
-			expectedRelation: "",
-			expectedError:    true,
-		},
-		{
-			name: "rel_not_found",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]`,
-			objectType:       "group",
-			relation:         "not_found",
-			expectedRelation: "",
-			expectedError:    true,
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			output, err := getComputedRelation(ts, tt.objectType, tt.relation)
-			if tt.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tt.expectedRelation, output)
-		})
-	}
-}
-
-func TestTupleIDInSortedSet(t *testing.T) {
-	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
-		if tupleKey.GetCondition().GetName() == "condition1" {
-			return true, nil
-		}
-		return false, fmt.Errorf("condition not found")
-	}
-
-	tests := []struct {
-		name          string
-		tuples        []*openfgav1.TupleKey
-		objectIDs     []string
-		expectedError bool
-		expected      bool
-	}{
-		{
-			name: "no_match",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc2", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc3", "viewer", "group:2#member", "condition1", nil),
-			},
-			objectIDs:     []string{"doc0", "doc5", "doc6"},
-			expected:      false,
-			expectedError: false,
-		},
-		{
-			name: "match",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc2", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc3", "viewer", "group:2#member", "condition1", nil),
-			},
-			objectIDs:     []string{"doc0", "doc2", "doc6"},
-			expected:      true,
-			expectedError: false,
-		},
-		{
-			name: "error",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "badCondition", nil),
-			},
-			objectIDs:     []string{"doc0", "doc2", "doc6"},
-			expected:      false,
-			expectedError: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			objectIDs := storage.NewSortedSet()
-			for _, item := range tt.objectIDs {
-				objectIDs.Add(item)
-			}
-			result, err := tupleIDInSortedSet(context.Background(), iter, objectIDs)
-			if tt.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestBuildUsersetDetailsUserset(t *testing.T) {
-	tests := []struct {
-		name             string
-		model            string
-		tuple            *openfgav1.TupleKey
-		expectedHasError bool
-		expectedRelation string
-		expectedObjectID string
-	}{
-		{
-			name: "userset_direct_assignment",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define viewer: [group#member]
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#member"),
-			expectedHasError: false,
-			expectedRelation: "group#member",
-			expectedObjectID: "2",
-		},
-		{
-			name: "userset_computed_userset",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define computed_member: member
-			type folder
-				relations
-					define viewer: [group#computed_member]
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#computed_member"),
-			expectedHasError: false,
-			expectedRelation: "group#member",
-			expectedObjectID: "2",
-		},
-		{
-			name: "relation_not_found",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define viewer: [group#computed_member]
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#computed_member"),
-			expectedHasError: true,
-			expectedRelation: "",
-			expectedObjectID: "",
-		},
-		{
-			name: "nonuserset_model",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define owner: [user]
-					define viewer: member or owner
-			type folder
-				relations
-					define viewer: [group#viewer]
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "viewer", "group:2#viewer"),
-			expectedHasError: true,
-			expectedRelation: "",
-			expectedObjectID: "",
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			usersetFunc := buildUsersetDetailsUserset(ts)
-			rel, obj, err := usersetFunc(tt.tuple)
-			if tt.expectedHasError {
-				// details of the error doesn't really matter
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tt.expectedRelation, rel)
-			require.Equal(t, tt.expectedObjectID, obj)
-		})
-	}
-}
-
-func TestBuildUsersetDetailsTTU(t *testing.T) {
-	tests := []struct {
-		name             string
-		model            string
-		tuple            *openfgav1.TupleKey
-		computedRelation string
-		expectedHasError bool
-		expectedRelation string
-		expectedObjectID string
-	}{
-		{
-			name: "ttu_direct_assignment",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
-			computedRelation: "member",
-			expectedHasError: false,
-			expectedRelation: "group#member",
-			expectedObjectID: "2",
-		},
-		{
-			name: "ttu_computed_userset",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define viewable_member: member
-			type folder
-				relations
-					define owner: [group]
-					define viewer: viewable_member from owner
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
-			computedRelation: "viewable_member",
-			expectedHasError: false,
-			expectedRelation: "group#member",
-			expectedObjectID: "2",
-		},
-		{
-			name: "ttu_not_found",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define viewable_member: member
-			type folder
-				relations
-					define owner: [group]
-					define viewer: viewable_member from owner
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
-			computedRelation: "not_found",
-			expectedHasError: true,
-			expectedRelation: "",
-			expectedObjectID: "",
-		},
-		{
-			name: "ttu_not_assignable",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-					define viewable_member: [user] or member
-			type folder
-				relations
-					define owner: [group]
-					define viewer: viewable_member from owner
-`,
-			tuple:            tuple.NewTupleKey("folder:1", "owner", "group:2"),
-			computedRelation: "viewable_member",
-			expectedHasError: true,
-			expectedRelation: "",
-			expectedObjectID: "",
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			usersetFunc := buildUsersetDetailsTTU(ts, tt.computedRelation)
-			rel, obj, err := usersetFunc(tt.tuple)
-			if tt.expectedHasError {
-				// details of the error doesn't really matter
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tt.expectedRelation, rel)
-			require.Equal(t, tt.expectedObjectID, obj)
-		})
-	}
-}
-
 func TestProduceUsersets(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2604,16 +2205,10 @@ func TestProduceUsersets(t *testing.T) {
 		return false, fmt.Errorf("condition not found")
 	}
 
-	type usersetsChannelStruct struct {
-		err            error
-		objectRelation string
-		objectIDs      []string
-	}
-
 	tests := []struct {
 		name                  string
 		tuples                []*openfgav1.TupleKey
-		usersetDetails        usersetDetailsFunc
+		usersetDetails        checkutil.UsersetDetailsFunc
 		usersetBatchSize      uint32
 		usersetsChannelResult []usersetsChannelStruct
 	}{
@@ -2801,17 +2396,7 @@ func TestProduceUsersets(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			expectedUsersetsChannelResult := make([]usersetsChannelType, len(tt.usersetsChannelResult))
-			for i, result := range tt.usersetsChannelResult {
-				expectedUsersetsChannelResult[i] = usersetsChannelType{
-					err:            result.err,
-					objectRelation: result.objectRelation,
-					objectIDs:      storage.NewSortedSet(),
-				}
-				for _, objectID := range result.objectIDs {
-					expectedUsersetsChannelResult[i].objectIDs.Add(objectID)
-				}
-			}
+			expectedUsersetsChannelResult := usersetsChannelFromUsersetsChannelStruct(tt.usersetsChannelResult)
 
 			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
 
@@ -2853,279 +2438,6 @@ func TestProduceUsersets(t *testing.T) {
 					require.EqualValues(t, expectedUsersetsChannelResult[idx].objectIDs.Values(), result.objectIDs.Values())
 				}
 			}
-		})
-	}
-}
-
-func TestUserFilter(t *testing.T) {
-	tests := []struct {
-		name                    string
-		hasPubliclyAssignedType bool
-		user                    string
-		userType                string
-		expected                []*openfgav1.ObjectRelation
-	}{
-		{
-			name:                    "non_public",
-			hasPubliclyAssignedType: false,
-			user:                    "user:1",
-			userType:                "user",
-			expected: []*openfgav1.ObjectRelation{{
-				Object: "user:1",
-			}},
-		},
-		{
-			name:                    "public",
-			hasPubliclyAssignedType: true,
-			user:                    "user:1",
-			userType:                "user",
-			expected: []*openfgav1.ObjectRelation{
-				{Object: "user:1"},
-				{Object: "user:*"},
-			},
-		},
-		{
-			name:                    "user_wildcard",
-			hasPubliclyAssignedType: true,
-			user:                    "user:*",
-			userType:                "user",
-			expected: []*openfgav1.ObjectRelation{
-				{Object: "user:*"},
-			},
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			result := userFilter(tt.hasPubliclyAssignedType, tt.user, tt.userType)
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestIteratorReadStartingFromUser(t *testing.T) {
-	tests := []struct {
-		name             string
-		model            string
-		reqConsistency   openfgav1.ConsistencyPreference
-		expectedIsPublic bool
-	}{
-		{
-			name: "non_public",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner
-`,
-			reqConsistency:   openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-			expectedIsPublic: false,
-		},
-		{
-			name: "public",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user, user:*]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner
-`,
-			reqConsistency:   openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-			expectedIsPublic: true,
-		},
-		{
-			name: "higher_consistency",
-			model: `
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define member: [user]
-			type folder
-				relations
-					define owner: [group]
-					define viewer: member from owner
-`,
-			reqConsistency:   openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-			expectedIsPublic: false,
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctrl := gomock.NewController(t)
-			t.Cleanup(ctrl.Finish)
-
-			storeID := ulid.Make().String()
-
-			req := ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
-				Consistency:          tt.reqConsistency,
-			}
-			objectIDs := storage.NewSortedSet()
-
-			expectedFilter := storage.ReadStartingWithUserFilter{
-				ObjectType: "group",
-				Relation:   "member",
-				UserFilter: userFilter(tt.expectedIsPublic, "user:maria", "user"),
-				ObjectIDs:  objectIDs,
-			}
-			expectedOpts := storage.ReadStartingWithUserOptions{
-				Consistency: storage.ConsistencyOptions{
-					Preference: req.GetConsistency(),
-				},
-			}
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
-			_, _ = iteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs)
-		})
-	}
-}
-
-func TestBuildTupleKeyConditionFilter(t *testing.T) {
-	tests := []struct {
-		name         string
-		tupleKey     *openfgav1.TupleKey
-		model        *openfgav1.AuthorizationModel
-		context      map[string]interface{}
-		conditionMet bool
-		expectedErr  error
-	}{
-		{
-			name:     "no_condition",
-			tupleKey: tuple.NewTupleKey("document:1", "can_view", "user:maria"),
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define can_view: [user]`),
-			context:      map[string]interface{}{},
-			conditionMet: true,
-			expectedErr:  nil,
-		},
-		{
-			name:     "condition_not_met",
-			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define can_view: [user]`),
-			context:      map[string]interface{}{},
-			conditionMet: false,
-			expectedErr:  condition.NewEvaluationError("correct_ip", fmt.Errorf("condition was not found")),
-		},
-		{
-			name:     "condition_met",
-			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "x", nil),
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define can_view: [user with x]
-
-				condition x(x: int) {
-					x == 1
-				}
-`),
-			context:      map[string]interface{}{"x": 1},
-			conditionMet: true,
-			expectedErr:  nil,
-		},
-		{
-			name:     "condition_false",
-			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "x", nil),
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define can_view: [user with x]
-
-				condition x(x: int) {
-					x == 1
-				}
-`),
-			context:      map[string]interface{}{"x": 15},
-			conditionMet: false,
-			expectedErr:  nil,
-		},
-		{
-			name:     "condition_missing_parameter",
-			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:maria", "x_y", nil),
-			model: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define can_view: [user with x_y]
-
-				condition x_y(x: int, y: int) {
-					x == 1 && y == 0
-				}
-`),
-			context:      map[string]interface{}{"x": 5},
-			conditionMet: false,
-			expectedErr: condition.NewEvaluationError("x_y",
-				fmt.Errorf("tuple 'document:1#can_view@user:maria' is missing context parameters '[y]'")),
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ts, err := typesystem.NewAndValidate(context.Background(), tt.model)
-			require.NoError(t, err)
-
-			contextStruct, err := structpb.NewStruct(tt.context)
-			require.NoError(t, err)
-
-			iterFunc := buildTupleKeyConditionFilter(context.Background(), contextStruct, ts)
-			result, err := iterFunc(tt.tupleKey)
-			if tt.expectedErr != nil {
-				require.Equal(t, tt.expectedErr.Error(), err.Error())
-			} else {
-				require.NoError(t, err)
-			}
-			require.Equal(t, tt.conditionMet, result)
 		})
 	}
 }
@@ -3409,6 +2721,1343 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Equal(t, tt.expectedResolveCheckResponse, result)
+		})
+	}
+}
+
+func TestConsumeUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [group#member]`)
+	type dsResults struct {
+		tuples []*openfgav1.Tuple
+		err    error
+	}
+	tests := []struct {
+		name                         string
+		tuples                       []dsResults
+		usersetsChannelResult        []usersetsChannelStruct
+		ctxCancelled                 bool
+		expectedResolveCheckResponse *ResolveCheckResponse
+		errorExpected                error
+	}{
+		{
+			name: "userset_tuple_found",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:2", "member", "user:maria")},
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"2"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "userset_tuple_found_multi_batches",
+			tuples: []dsResults{
+				// we expect 3 ds.ReadStartingWithUser to be called in response to 3 batches from usersetsChannel
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+				{
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"2"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"11"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "userset_tuple_not_found",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"5"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "userset_tuple_not_found_multiset",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"5"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"6"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"7"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name:                         "ctx_cancelled",
+			tuples:                       []dsResults{},
+			usersetsChannelResult:        []usersetsChannelStruct{},
+			ctxCancelled:                 true,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                context.Canceled,
+		},
+		{
+			name: "iterator_error_first_batch",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    fmt.Errorf("mock_error"),
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"10"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "iterator_error_first_batch_and_second_batch",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    fmt.Errorf("mock_error"),
+				},
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    fmt.Errorf("mock_error"),
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"10"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"13"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "iterator_error_first_batch_but_success_second",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    fmt.Errorf("mock_error"),
+				},
+				{
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"11"},
+				},
+			},
+			ctxCancelled: false,
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+				},
+			},
+			errorExpected: nil,
+		},
+		{
+			name: "iterator_error_first_batch_but_not_found_second",
+			tuples: []dsResults{
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    fmt.Errorf("mock_error"),
+				},
+				{
+					tuples: []*openfgav1.Tuple{},
+					err:    nil,
+				},
+			},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"1"},
+				},
+				{
+					err:            nil,
+					objectRelation: "group#member",
+					objectIDs:      []string{"4"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+		{
+			name:   "userset_chan_error",
+			tuples: []dsResults{},
+			usersetsChannelResult: []usersetsChannelStruct{
+				{
+					err:            fmt.Errorf("mock_error"),
+					objectRelation: "group#member",
+					objectIDs:      []string{"0", "2", "8"},
+				},
+			},
+			ctxCancelled:                 false,
+			expectedResolveCheckResponse: nil,
+			errorExpected:                fmt.Errorf("mock_error"),
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			checker := NewLocalChecker()
+			t.Cleanup(checker.Close)
+
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+
+			for _, curTuples := range tt.tuples {
+				// Note that we need to return a new iterator for each DS call
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(
+					storage.NewStaticTupleIterator(curTuples.tuples), curTuples.err)
+			}
+
+			ts := typesystem.New(model)
+			var ctx context.Context
+			var cancel context.CancelFunc
+			ctx = context.Background()
+			if tt.ctxCancelled {
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			usersetsChannelItems := usersetsChannelFromUsersetsChannelStruct(tt.usersetsChannelResult)
+
+			usersetChan := make(chan usersetsChannelType)
+			pool := concurrency.NewPool(context.Background(), 1)
+			pool.Go(func(ctx context.Context) error {
+				for _, item := range usersetsChannelItems {
+					usersetChan <- item
+				}
+				close(usersetChan)
+				return nil
+			})
+
+			result, err := checker.consumeUsersets(ctx, &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}, usersetChan)
+			require.Equal(t, tt.errorExpected, err)
+			require.Equal(t, tt.expectedResolveCheckResponse, result)
+
+			require.NoError(t, pool.Wait())
+		})
+	}
+}
+
+func TestDispatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	checker := NewLocalChecker()
+	defer checker.Close()
+	mockResolver := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockResolver)
+
+	parentReq := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+	tk := tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil)
+
+	expectedReq := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(19),
+	}
+
+	var req *ResolveCheckRequest
+	mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).DoAndReturn(
+		func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			require.Equal(t, expectedReq.GetTupleKey(), req.GetTupleKey())
+			require.Equal(t, expectedReq.GetRequestMetadata().Depth, req.GetRequestMetadata().Depth)
+			require.Equal(t, uint32(1), req.GetRequestMetadata().DispatchCounter.Load())
+			return nil, nil
+		})
+	dispatch := checker.dispatch(context.Background(), parentReq, tk)
+	_, _ = dispatch(context.Background())
+}
+
+func collectMessagesFromChannel(dispatchChan chan dispatchMsg) []dispatchMsg {
+	var receivedDispatches []dispatchMsg
+	for msg := range dispatchChan {
+		receivedDispatches = append(receivedDispatches, msg)
+	}
+	return receivedDispatches
+}
+
+func TestProduceUsersetDispatches(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+.
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX, group#member]
+				type document
+					relations
+						define viewer: [group#member]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+
+	tests := []struct {
+		name               string
+		tuples             []*openfgav1.TupleKey
+		expectedDispatches []dispatchMsg
+	}{
+		{
+			name:               "empty_iterator",
+			tuples:             nil,
+			expectedDispatches: nil,
+		},
+		{
+			name: "iterator_error_first_tuple",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "badCondition", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:            fmt.Errorf("condition not found"),
+					shortCircuit:   false,
+					dispatchParams: nil,
+				},
+			},
+		},
+		{
+			name: "good_condition_wildcard",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:            nil,
+					shortCircuit:   true,
+					dispatchParams: nil,
+				},
+			},
+		},
+		{
+			name: "good_condition_non_wildcard",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+			},
+		},
+		{
+			name: "multiple_tuples",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:3#member", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			pool := concurrency.NewPool(ctx, 1)
+
+			dispatchChan := make(chan dispatchMsg, 1)
+
+			pool.Go(func(ctx context.Context) error {
+				checker.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+				return nil
+			})
+
+			receivedMsgs := collectMessagesFromChannel(dispatchChan)
+			_ = pool.Wait()
+			require.Equal(t, tt.expectedDispatches, receivedMsgs)
+		})
+	}
+}
+
+func TestProduceTTUDispatches(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+ and computedRelation is defined for type
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX]
+				type team
+					relations
+						define teammate: [user with condX]
+				type document
+					relations
+						define viewer: member from owner
+						define owner: [group, team]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+
+	tests := []struct {
+		name               string
+		computedRelation   string
+		tuples             []*openfgav1.TupleKey
+		expectedDispatches []dispatchMsg
+	}{
+		{
+			name:               "empty_iterator",
+			computedRelation:   "member",
+			tuples:             nil,
+			expectedDispatches: nil,
+		},
+		{
+			name:             "iterator_error_first_tuple",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "badCondition", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:            fmt.Errorf("condition not found"),
+					shortCircuit:   false,
+					dispatchParams: nil,
+				},
+			},
+		},
+		{
+			name:             "relation_not_found",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "team:1", "condition1", nil),
+			},
+			expectedDispatches: nil,
+		},
+		{
+			name:             "single_match",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+		},
+		{
+			name:             "multiple_matches",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:2", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+			},
+		},
+		{
+			name:             "mix_relation_found_not_found",
+			computedRelation: "member",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "team:1", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			expectedDispatches: []dispatchMsg{
+				{
+					err:          nil,
+					shortCircuit: false,
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			pool := concurrency.NewPool(ctx, 1)
+
+			dispatchChan := make(chan dispatchMsg, 1)
+
+			pool.Go(func(ctx context.Context) error {
+				checker.produceTTUDispatches(ctx, tt.computedRelation, req, dispatchChan, iter)
+				return nil
+			})
+
+			receivedMsgs := collectMessagesFromChannel(dispatchChan)
+			_ = pool.Wait()
+			require.Equal(t, tt.expectedDispatches, receivedMsgs)
+		})
+	}
+}
+
+// helperReceivedOutcome is a helper function that listen to chan checkOutcome and return
+// all the checkOutcomes when channel is closed.
+func helperReceivedOutcome(outcomes chan checkOutcome) []checkOutcome {
+	var checkOutcome []checkOutcome
+	for outcome := range outcomes {
+		checkOutcome = append(checkOutcome, outcome)
+	}
+	return checkOutcome
+}
+
+func TestProcessDispatch(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	const datastoreQueryCount = 30
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+
+	tests := []struct {
+		name                   string
+		poolSize               int
+		ctxCancelled           bool
+		dispatchMsgs           []dispatchMsg
+		mockedDispatchResponse []*ResolveCheckResponse
+		expectedOutcomes       []checkOutcome
+	}{
+		{
+			name:             "ctx_cancelled",
+			poolSize:         1,
+			ctxCancelled:     true,
+			dispatchMsgs:     []dispatchMsg{},
+			expectedOutcomes: nil,
+		},
+		{
+			name:         "two_error",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					err: fmt.Errorf("error_1"),
+				},
+				{
+					err: fmt.Errorf("error_2"),
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					err: fmt.Errorf("error_1"),
+				},
+				{
+					err: fmt.Errorf("error_2"),
+				},
+			},
+		},
+		{
+			name:         "shortcut_with_only",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					shortCircuit: true,
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 0,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "shortcut_with_error_at_end",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					shortCircuit: true,
+				},
+				{
+					err: fmt.Errorf("should_not_process_this"),
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 0,
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "multiple_dispatches",
+			poolSize:     1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: datastoreQueryCount,
+					},
+				},
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: datastoreQueryCount,
+					},
+				},
+			},
+			expectedOutcomes: []checkOutcome{
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: datastoreQueryCount,
+						},
+					},
+				},
+				{
+					resp: &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: datastoreQueryCount,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.ctxCancelled {
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			for _, mockedDispatchResponse := range tt.mockedDispatchResponse {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(mockedDispatchResponse, nil)
+			}
+
+			dispatchMsgChan := make(chan dispatchMsg, 100)
+			for _, dispatchMsg := range tt.dispatchMsgs {
+				dispatchMsgChan <- dispatchMsg
+			}
+
+			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+
+			// now, close the channel to simulate everything is sent
+			close(dispatchMsgChan)
+			outcomes := helperReceivedOutcome(outcomeChan)
+
+			require.Equal(t, tt.expectedOutcomes, outcomes)
+		})
+	}
+}
+
+func TestConsumeDispatch(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	const datastoreQueryCount = 30
+	req := &ResolveCheckRequest{
+		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
+		RequestMetadata: NewCheckRequestMetadata(20),
+	}
+	req.RequestMetadata.DatastoreQueryCount = datastoreQueryCount
+	tests := []struct {
+		name                   string
+		limit                  uint32
+		ctxCancelled           bool
+		dispatchMsgs           []dispatchMsg
+		mockedDispatchResponse []*ResolveCheckResponse
+		expected               *ResolveCheckResponse
+		expectedError          error
+	}{
+		{
+			name:          "ctx_cancelled",
+			limit:         1,
+			ctxCancelled:  true,
+			dispatchMsgs:  []dispatchMsg{},
+			expected:      nil,
+			expectedError: context.Canceled,
+		},
+		{
+			name:         "single_error",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					err: fmt.Errorf("error_1"),
+				},
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("error_1"),
+		},
+		{
+			name:         "false_cycle_detected",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       true,
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2,
+					CycleDetected:       true,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:         "two_false_no_cycle",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 3,
+						CycleDetected:       false,
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2 + 3,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:         "false_true",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 3,
+						CycleDetected:       false,
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2 + 3,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:         "single_true",
+			limit:        1,
+			ctxCancelled: false,
+			dispatchMsgs: []dispatchMsg{
+				{
+					dispatchParams: &dispatchParams{
+						parentReq: req,
+						tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+			},
+			mockedDispatchResponse: []*ResolveCheckResponse{
+				{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: datastoreQueryCount + 2,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			ctx := context.Background()
+			var cancel context.CancelFunc
+			if tt.ctxCancelled {
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+			for _, mockedDispatchResponse := range tt.mockedDispatchResponse {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(mockedDispatchResponse, nil)
+			}
+
+			dispatchMsgChan := make(chan dispatchMsg, 100)
+			for _, dispatchMsg := range tt.dispatchMsgs {
+				dispatchMsgChan <- dispatchMsg
+			}
+			close(dispatchMsgChan)
+
+			resp, err := checker.consumeDispatches(ctx, req, tt.limit, dispatchMsgChan)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
+		})
+	}
+}
+
+func TestCheckUsersetSlowPath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+.
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX, user:* with condX, group#member]
+				type document
+					relations
+						define viewer: [group#member]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	const initialDSCount = 20
+	tests := []struct {
+		name          string
+		tuples        []*openfgav1.TupleKey
+		expected      *ResolveCheckResponse
+		expectedError error
+	}{
+		{
+			name: "shortcut",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condition1", nil),
+				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name: "error",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "badCondition", nil),
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("condition not found"),
+		},
+		{
+			name:   "notFound",
+			tuples: []*openfgav1.TupleKey{},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1,
+				},
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+			req.RequestMetadata.DatastoreQueryCount = initialDSCount
+			resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
+		})
+	}
+}
+
+func TestCheckTTUSlowPath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
+		if tupleKey.GetCondition().GetName() == "condition1" {
+			return true, nil
+		}
+		return false, fmt.Errorf("condition not found")
+	}
+
+	// model does not matter for this unit test.  All we care about is schema 1.1+ and computedRelation is defined for type
+	model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user with condX]
+				type team
+					relations
+						define teammate: [user with condX]
+				type document
+					relations
+						define viewer: member from owner
+						define owner: [group, team]
+
+				condition condX(x: int) {
+					x < 100
+				}`)
+
+	ts := typesystem.New(model)
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	const initialDSCount = 20
+
+	tests := []struct {
+		name             string
+		rewrite          *openfgav1.Userset
+		tuples           []*openfgav1.TupleKey
+		dispatchResponse *ResolveCheckResponse
+		expected         *ResolveCheckResponse
+		expectedError    error
+	}{
+		{
+			name:    "no_tuple",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples:  []*openfgav1.TupleKey{},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1, // 1 for getting the parent
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:    "error",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "badCondition", nil),
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("condition not found"),
+		},
+		{
+			name:    "dispatcher_found",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			dispatchResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1 + 1, // 1 for getting the parent and 1 for the dispatch
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:    "dispatcher_not_found",
+			rewrite: typesystem.TupleToUserset("owner", "member"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+			},
+			dispatchResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: initialDSCount + 1 + 1, // 1 for getting the parent and 1 for the dispatch
+				},
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
+			checker := NewLocalChecker()
+			defer checker.Close()
+			mockResolver := NewMockCheckResolver(ctrl)
+			checker.SetDelegate(mockResolver)
+
+			if tt.dispatchResponse != nil {
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(tt.dispatchResponse, nil)
+			}
+
+			req := &ResolveCheckRequest{
+				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(20),
+			}
+			req.RequestMetadata.DatastoreQueryCount = initialDSCount
+			resp, err := checker.checkTTUSlowPath(ctx, req, tt.rewrite, iter)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
 		})
 	}
 }
