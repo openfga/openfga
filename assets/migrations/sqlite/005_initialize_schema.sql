@@ -17,6 +17,8 @@ CREATE TABLE tuple (
 
 CREATE UNIQUE INDEX idx_tuple_ulid ON tuple (ulid);
 CREATE INDEX idx_reverse_lookup_user ON tuple (store, object_type, relation, user_object_type, user_object_id, user_relation);
+CREATE INDEX idx_tuple_partial_user ON tuple (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation) WHERE user_type = 'user';
+CREATE INDEX idx_tuple_partial_userset ON tuple (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation) WHERE user_type = 'userset';
 
 CREATE TABLE authorization_model (
     store CHAR(26) NOT NULL,

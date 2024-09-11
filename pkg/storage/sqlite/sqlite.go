@@ -78,6 +78,11 @@ func PrepareDSN(uri string) (string, error) {
 		query.Add("_pragma", "busy_timeout(100)")
 	}
 
+	// Set transaction mode to immediate if not specified
+	if !query.Has("_txlock") {
+		query.Set("_txlock", "immediate")
+	}
+
 	uri += "?" + query.Encode()
 
 	return uri, nil
@@ -223,7 +228,12 @@ func (m *SQLite) write(
 	writes storage.Writes,
 	now time.Time,
 ) error {
-	txn, err := m.db.BeginTx(ctx, nil)
+	var txn *sql.Tx
+	err := busyRetry(func() error {
+		var err error
+		txn, err = m.db.BeginTx(ctx, nil)
+		return err
+	})
 	if err != nil {
 		return sqlcommon.HandleSQLError(err)
 	}
@@ -382,7 +392,10 @@ func (m *SQLite) write(
 		}
 	}
 
-	if err := txn.Commit(); err != nil {
+	err = busyRetry(func() error {
+		return txn.Commit()
+	})
+	if err != nil {
 		return sqlcommon.HandleSQLError(err)
 	}
 
@@ -732,7 +745,14 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 	ctx, span := tracer.Start(ctx, "sqlite.CreateStore")
 	defer span.End()
 
-	txn, err := m.db.BeginTx(ctx, &sql.TxOptions{})
+	var txn *sql.Tx
+	err := busyRetry(func() error {
+		var err error
+		txn, err = m.db.BeginTx(ctx, &sql.TxOptions{
+			Isolation: sql.LevelSerializable,
+		})
+		return err
+	})
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -755,20 +775,20 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 
 	var createdAt time.Time
 	var id, name string
-	err = busyRetry(func() error {
-		return m.stbl.
-			Select("id", "name", "created_at").
-			From("store").
-			Where(sq.Eq{"id": store.GetId()}).
-			RunWith(txn).
-			QueryRowContext(ctx).
-			Scan(&id, &name, &createdAt)
-	})
+	err = m.stbl.
+		Select("id", "name", "created_at").
+		From("store").
+		Where(sq.Eq{"id": store.GetId()}).
+		RunWith(txn).
+		QueryRowContext(ctx).
+		Scan(&id, &name, &createdAt)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	err = txn.Commit()
+	err = busyRetry(func() error {
+		return txn.Commit()
+	})
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -1059,20 +1079,22 @@ func (m *SQLite) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 }
 
 // SQLite will return an SQLITE_BUSY error when the database is locked rather than waiting for the lock.
-// This function retries the operation up to 5 times before returning the error.
+// This function retries the operation up to maxRetries times before returning the error.
 func busyRetry(fn func() error) error {
-	const maxRetries = 5
+	const maxRetries = 10
 	for retries := 0; ; retries++ {
 		err := fn()
-		if err == nil || retries == maxRetries {
-			return err
+		if err == nil {
+			return nil
 		}
 
 		var sqliteErr *sqlite.Error
-		// check for raw errors directly from SQLite or that have gone through sqlcommon.HandleSQLError
 		if (errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_BUSY) || strings.Contains(err.Error(), "SQLITE_BUSY") {
-			time.Sleep(50 * time.Millisecond)
-			continue
+			if retries < maxRetries {
+				continue
+			}
+
+			return fmt.Errorf("sqlite busy error after %d retries: %w", maxRetries, err)
 		}
 
 		return err
