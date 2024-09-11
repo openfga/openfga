@@ -44,7 +44,6 @@ func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 
 func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 
 	if t.firstRow != nil {
 		// If head was called previously, we don't need to scan / next
@@ -58,17 +57,51 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		// If head() was not called, t.firstRow would be nil and we can follow the t.rows.Next() logic below.
 		firstRow := t.firstRow
 		t.firstRow = nil
+		t.mu.Unlock()
 		return firstRow, nil
 	}
 
 	if !t.rows.Next() {
+		t.mu.Unlock()
 		if err := t.rows.Err(); err != nil {
 			return nil, err
 		}
 		return nil, storage.ErrIteratorDone
 	}
 
-	return t.scan()
+	var conditionName sql.NullString
+	var conditionContext []byte
+	var record storage.TupleRecord
+	err := t.rows.Scan(
+		&record.Store,
+		&record.ObjectType,
+		&record.ObjectID,
+		&record.Relation,
+		&record.UserObjectType,
+		&record.UserObjectID,
+		&record.UserRelation,
+		&conditionName,
+		&conditionContext,
+		&record.Ulid,
+		&record.InsertedAt,
+	)
+	t.mu.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+
+	record.ConditionName = conditionName.String
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
+	}
+
+	return &record, nil
 }
 
 func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
@@ -96,21 +129,9 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
-	record, err := t.scan()
-	if err != nil {
-		return nil, err
-	}
-
-	t.firstRow = record
-
-	return record, nil
-}
-
-func (t *SQLTupleIterator) scan() (*storage.TupleRecord, error) {
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
-
 	err := t.rows.Scan(
 		&record.Store,
 		&record.ObjectType,
@@ -137,6 +158,7 @@ func (t *SQLTupleIterator) scan() (*storage.TupleRecord, error) {
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
+	t.firstRow = &record
 
 	return &record, nil
 }
