@@ -62,13 +62,6 @@ func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	}
 }
 
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck.
-func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.maxConcurrentReads = limit
-	}
-}
-
 func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.logger = logger
