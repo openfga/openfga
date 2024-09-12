@@ -73,6 +73,10 @@ func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
+func TestCheckSQLite(t *testing.T) {
+	testRunAll(t, "sqlite")
+}
+
 // TODO move elsewhere as this isn't asserting on just Check API logs.
 func TestServerLogs(t *testing.T) {
 	t.Cleanup(func() {
@@ -344,6 +348,10 @@ func BenchmarkCheckPostgres(b *testing.B) {
 
 func BenchmarkCheckMySQL(b *testing.B) {
 	benchmarkAll(b, "mysql")
+}
+
+func BenchmarkCheckSQLite(b *testing.B) {
+	benchmarkAll(b, "sqlite")
 }
 
 func benchmarkAll(b *testing.B, engine string) {

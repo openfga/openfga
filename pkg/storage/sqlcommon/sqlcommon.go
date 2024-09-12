@@ -405,6 +405,13 @@ func HandleSQLError(err error, args ...interface{}) error {
 			}
 		}
 		return storage.ErrCollision
+	} else if strings.Contains(err.Error(), "UNIQUE constraint failed:") { // Sqlite.
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+			}
+		}
+		return storage.ErrCollision
 	}
 
 	return fmt.Errorf("sql error: %w", err)
@@ -503,7 +510,7 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
+		conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
 			return err
 		}

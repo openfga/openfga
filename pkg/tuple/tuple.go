@@ -390,3 +390,27 @@ func ParseTupleString(s string) (*openfgav1.TupleKey, error) {
 		User:     user,
 	}, nil
 }
+
+func ToUserPartsFromObjectRelation(u *openfgav1.ObjectRelation) (string, string, string) {
+	userObjectType, userObjectID := SplitObject(u.GetObject())
+	return userObjectType, userObjectID, u.GetRelation()
+}
+
+func ToUserParts(user string) (string, string, string) {
+	userObject, userRelation := SplitObjectRelation(user) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
+
+	userObjectType, userObjectID := SplitObject(userObject)
+
+	return userObjectType, userObjectID, userRelation
+}
+
+func FromUserParts(userObjectType, userObjectID, userRelation string) string {
+	user := userObjectID
+	if userObjectType != "" {
+		user = fmt.Sprintf("%s:%s", userObjectType, userObjectID)
+	}
+	if userRelation != "" {
+		user = fmt.Sprintf("%s#%s", user, userRelation)
+	}
+	return user
+}
