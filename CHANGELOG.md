@@ -21,6 +21,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
 * Makes the `pkg.logger.Logger.With` immutable by creating a child logger instead of mutating the delegate one to prevent side effects [1906](https://github.com/openfga/openfga/pull/1906)
+* Extend request timeout to 10s for slow tests [1926](https://github.com/openfga/openfga/pull/1926)
 
 ## Performance
 
