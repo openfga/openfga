@@ -659,7 +659,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 	if s.checkQueryCacheEnabled {
-		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int64(100), s.checkQueryCacheTTL)
+		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int64(s.checkQueryCacheLimit), s.checkQueryCacheTTL)
 	} else {
 		s.checkDatastore = s.datastore
 	}
@@ -679,10 +679,14 @@ func (s *Server) Close() {
 	}
 
 	s.checkResolverCloser()
-	s.datastore.Close()
+
 	if s.checkQueryCacheEnabled {
+		// Closing checkDatastore will close the parent datastore
 		s.checkDatastore.Close()
+	} else {
+		s.datastore.Close()
 	}
+
 	s.typesystemResolverStop()
 }
 
