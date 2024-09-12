@@ -27,6 +27,8 @@ openfga migrate --datastore-engine sqlite --datastore-uri openfga.sqlite
 openfga run --datastore-engine sqlite --datastore-uri openfga.sqlite
 ```
 
+Thanks @DanCech!
+
 ## Fixed
 
 * When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
