@@ -1,0 +1,11 @@
+{
+  "name": "openfga",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar ",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openfga/openfga.git"
+  }
+}
