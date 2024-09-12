@@ -65,6 +65,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
@@ -394,6 +395,11 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
+		}
+	case "sqlite":
+		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
+		if err != nil {
+			return nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)

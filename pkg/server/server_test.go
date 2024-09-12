@@ -38,6 +38,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -56,7 +57,7 @@ func init() {
 }
 
 func ExampleNewServerWithOpts() {
-	datastore := memory.New() // other supported datastores include Postgres and MySQL
+	datastore := memory.New() // other supported datastores include Postgres, MySQL and SQLite
 	defer datastore.Close()
 
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
@@ -184,6 +185,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
+	// skipping sqlite here because the lowest supported schema revision is 4
 	engines := []string{"postgres", "mysql"}
 
 	for _, engine := range engines {
@@ -335,6 +337,15 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithSQLiteDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
 
 	test.RunAllTests(t, ds)
 }
@@ -703,6 +714,16 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
+		require.NoError(b, err)
+		b.Cleanup(ds.Close)
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkSQLiteDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
+
+		uri := testDatastore.GetConnectionURI(true)
+		ds, err := sqlite.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
