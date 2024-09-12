@@ -115,6 +115,7 @@ type Server struct {
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
+	checkDatastore                   storage.OpenFGADatastore
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
@@ -136,6 +137,8 @@ type Server struct {
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
+
+	cache storage.InMemoryCache[any]
 
 	checkQueryCacheEnabled bool
 	checkQueryCacheLimit   uint32
@@ -623,15 +626,25 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
+	checkCacheOptions := []graph.CachedCheckResolverOpt{}
+	if s.checkQueryCacheEnabled {
+		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(s.checkQueryCacheLimit)),
+		}...)
+
+		checkCacheOptions = append(checkCacheOptions,
+			graph.WithExistingCache(s.cache),
+			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		)
+	}
+
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		}...),
-		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, []graph.CachedCheckResolverOpt{
-			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		}...),
+		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
 	}...).Build()
@@ -645,6 +658,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
+	if s.checkQueryCacheEnabled {
+		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int64(100), s.checkQueryCacheTTL)
+	} else {
+		s.checkDatastore = s.datastore
+	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
@@ -662,6 +680,9 @@ func (s *Server) Close() {
 
 	s.checkResolverCloser()
 	s.datastore.Close()
+	if s.checkQueryCacheEnabled {
+		s.checkDatastore.Close()
+	}
 	s.typesystemResolverStop()
 }
 
@@ -985,7 +1006,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	ctx = storage.ContextWithRelationshipTupleReader(ctx,
 		storagewrappers.NewBoundedConcurrencyTupleReader(
 			storagewrappers.NewCombinedTupleReader(
-				s.datastore,
+				s.checkDatastore,
 				req.GetContextualTuples().GetTupleKeys(),
 			),
 			s.maxConcurrentReadsForCheck,
