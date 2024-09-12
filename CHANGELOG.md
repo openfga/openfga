@@ -7,15 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
-### Changed
-- Support context in assertions (#1907)
 
-## Added
+## [1.6.1] - 2024-09-12
+
+### Changed
+
+* Support context in assertions [#1907](https://github.com/openfga/openfga/pull/1907)
+
+### Added
 
 * Stack trace when logging panics [#1904](https://github.com/openfga/openfga/pull/1904)
 * Throttling metric `throttled_requests_count` for observing the number of throttled requests for a given throttling configuration [#1863](https://github.com/openfga/openfga/pull/1863)
 * New metric on number of allowed vs. non-allowed Check responses [#1911](https://github.com/openfga/openfga/pull/1911)
-* SQLite support (beta) [#1615](https://github.com/openfga/openfga/pull/1615)
+
+#### New datastore engine: SQLite (beta) [#1615](https://github.com/openfga/openfga/pull/1615)
+
+```
+openfga migrate --datastore-engine sqlite --datastore-uri openfga.sqlite
+openfga run --datastore-engine sqlite --datastore-uri openfga.sqlite
+```
 
 ## Fixed
 
@@ -1191,7 +1201,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/openfga/openfga/releases/tag/v1.6.1
 [1.6.0]: https://github.com/openfga/openfga/releases/tag/v1.6.0
 [1.5.9]: https://github.com/openfga/openfga/releases/tag/v1.5.9
 [1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
