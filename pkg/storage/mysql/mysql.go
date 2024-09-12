@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -92,7 +91,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*MySQL, error) {
 	err := backoff.Retry(func() error {
 		err := db.PingContext(context.Background())
 		if err != nil {
-			cfg.Logger.Info("waiting for mysql", zap.Int("attempt", attempt))
+			cfg.Logger.Info("waiting for mysql", logger.Int("attempt", attempt))
 			attempt++
 			return err
 		}

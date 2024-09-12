@@ -7,8 +7,39 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
+
+func TestNewLogger(t *testing.T) {
+	t.Run("no options", func(t *testing.T) {
+		logger, err := NewLogger()
+		require.NoError(t, err)
+		require.NotNil(t, logger)
+	})
+
+	t.Run("with JSON format", func(t *testing.T) {
+		logger, err := NewLogger(WithFormat("json"))
+		require.NoError(t, err)
+		require.NotNil(t, logger)
+	})
+
+	t.Run("with Text format", func(t *testing.T) {
+		logger, err := NewLogger(WithFormat("text"))
+		require.NoError(t, err)
+		require.NotNil(t, logger)
+	})
+
+	t.Run("with unknown logging level", func(t *testing.T) {
+		logger, err := NewLogger(WithLevel("unknown"))
+		require.Error(t, err)
+		require.Nil(t, logger)
+	})
+
+	t.Run("with unknown logging format", func(t *testing.T) {
+		logger, err := NewLogger(WithFormat("unknown"))
+		require.Error(t, err)
+		require.Nil(t, logger)
+	})
+}
 
 func TestWithoutContext(t *testing.T) {
 	for _, tc := range []struct {
@@ -32,8 +63,7 @@ func TestWithoutContext(t *testing.T) {
 			expectedLevel: zapcore.ErrorLevel,
 		},
 	} {
-		observerLogger, logs := observer.New(zap.DebugLevel)
-		dut := ZapLogger{zap.New(observerLogger)}
+		dut, logs := NewObserverLogger("debug")
 		const testMessage = "ABC"
 		switch tc.name {
 		case "Info":
@@ -81,8 +111,7 @@ func TestWithContext(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			observerLogger, logs := observer.New(zap.DebugLevel)
-			dut := ZapLogger{zap.New(observerLogger)}
+			dut, logs := NewObserverLogger("debug")
 			const testMessage = "ABC"
 			switch tc.name {
 			case "InfoWithContext":
@@ -109,8 +138,7 @@ func TestWithContext(t *testing.T) {
 }
 
 func TestWithFields(t *testing.T) {
-	observerLogger, logs := observer.New(zap.DebugLevel)
-	logger := ZapLogger{zap.New(observerLogger)}
+	logger, logs := NewObserverLogger("debug")
 
 	const testMessage = "ABC"
 

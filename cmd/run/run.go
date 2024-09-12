@@ -32,7 +32,6 @@ import (
 	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace/noop"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -569,7 +568,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 			if err := profilerServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
-					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
+					s.Logger.Fatal("failed to start pprof profiler", logger.Error(err))
 				}
 			}
 			s.Logger.Info("profiler shut down.")
@@ -587,7 +586,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 			if err := metricsServer.ListenAndServe(); err != nil {
 				if err != http.ErrServerClosed {
-					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
+					s.Logger.Fatal("failed to start prometheus metrics server", logger.Error(err))
 				}
 			}
 			s.Logger.Info("metrics server shut down.")
@@ -636,11 +635,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	s.Logger.Info(
 		"starting openfga service...",
-		zap.String("version", build.Version),
-		zap.String("date", build.Date),
-		zap.String("commit", build.Commit),
-		zap.String("go-version", goruntime.Version()),
-		zap.Any("config", config),
+		logger.String("version", build.Version),
+		logger.String("date", build.Date),
+		logger.String("commit", build.Commit),
+		logger.String("go-version", goruntime.Version()),
+		logger.Any("config", config),
 	)
 
 	// nosemgrep: grpc-server-insecure-connection
@@ -659,7 +658,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", config.GRPC.Addr))
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
-				s.Logger.Fatal("failed to start gRPC server", zap.Error(err))
+				s.Logger.Fatal("failed to start gRPC server", logger.Error(err))
 			}
 		}
 		s.Logger.Info("gRPC server shut down.")
@@ -679,7 +678,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
-				s.Logger.Fatal("", zap.Error(err))
+				s.Logger.Fatal("", logger.Error(err))
 			}
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 		} else {
@@ -692,7 +691,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
-			s.Logger.Fatal("", zap.Error(err))
+			s.Logger.Fatal("", logger.Error(err))
 		}
 		defer conn.Close()
 
@@ -744,7 +743,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				err = httpServer.ListenAndServe()
 			}
 			if err != http.ErrServerClosed {
-				s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+				s.Logger.Fatal("HTTP server closed with unexpected error", logger.Error(err))
 			}
 			s.Logger.Info("HTTP server shut down.")
 		}()
@@ -804,7 +803,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 					})
 					if err != nil {
 						w.WriteHeader(http.StatusInternalServerError)
-						s.Logger.Error("failed to execute/render the playground web template", zap.Error(err))
+						s.Logger.Error("failed to execute/render the playground web template", logger.Error(err))
 					}
 
 					return
@@ -822,7 +821,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		go func() {
 			err = playground.ListenAndServe()
 			if err != http.ErrServerClosed {
-				s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
+				s.Logger.Fatal("failed to start the openfga playground server", logger.Error(err))
 			}
 			s.Logger.Info("playground shut down.")
 		}()
@@ -837,25 +836,25 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	if playground != nil {
 		if err := playground.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the playground", zap.Error(err))
+			s.Logger.Info("failed to shutdown the playground", logger.Error(err))
 		}
 	}
 
 	if httpServer != nil {
 		if err := httpServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the http server", zap.Error(err))
+			s.Logger.Info("failed to shutdown the http server", logger.Error(err))
 		}
 	}
 
 	if profilerServer != nil {
 		if err := profilerServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the profiler", zap.Error(err))
+			s.Logger.Info("failed to shutdown the profiler", logger.Error(err))
 		}
 	}
 
 	if metricsServer != nil {
 		if err := metricsServer.Shutdown(ctx); err != nil {
-			s.Logger.Info("failed to shutdown the prometheus metrics server", zap.Error(err))
+			s.Logger.Info("failed to shutdown the prometheus metrics server", logger.Error(err))
 		}
 	}
 
@@ -866,7 +865,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	authenticator.Close()
 
 	if err := tracerProviderCloser(); err != nil {
-		s.Logger.Error("failed to shutdown tracing", zap.Error(err))
+		s.Logger.Error("failed to shutdown tracing", logger.Error(err))
 	}
 
 	s.Logger.Info("server exited. goodbye 👋")
