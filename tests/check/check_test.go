@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -50,6 +51,8 @@ func testRunTestMatrix(t *testing.T, engine string) {
 		cfg.Datastore.Engine = engine
 		cfg.ListUsersDeadline = 0   // no deadline
 		cfg.ListObjectsDeadline = 0 // no deadline
+		// extend the timeout for the tests, coverage makes them slower
+		cfg.RequestTimeout = 10 * time.Second
 
 		tests.StartServer(t, cfg)
 
@@ -328,6 +331,8 @@ func testRunAll(t *testing.T, engine string) {
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
+	// extend the timeout for the tests, coverage makes them slower
+	cfg.RequestTimeout = 10 * time.Second
 
 	tests.StartServer(t, cfg)
 
@@ -398,6 +403,8 @@ func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceCl
 	cfg := config.MustDefaultConfig()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
+	// extend the timeout for the tests, coverage makes them slower
+	cfg.RequestTimeout = 10 * time.Second
 
 	tests.StartServer(b, cfg)
 
