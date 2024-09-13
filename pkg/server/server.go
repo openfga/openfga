@@ -1546,7 +1546,7 @@ func (s *Server) validateAccessControlEnabled() error {
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
 	if s.authorizer != nil && !authclaims.SkipAuthzCheckFromContext(ctx) {
-		err := s.authorizer.Authorize(ctx, storeID, apiMethod)
+		err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
 		if err != nil {
 			return err
 		}

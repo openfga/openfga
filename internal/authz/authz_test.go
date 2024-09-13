@@ -122,7 +122,10 @@ func TestAuthorize(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		err := authorizer.Authorize(context.Background(), "client-id", "store-id", Write, modules...)
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+
+		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
+
 		require.Error(t, err)
 		require.Equal(t, errorMessage.Error(), err.Error())
 	})
@@ -161,7 +164,10 @@ func TestAuthorize(t *testing.T) {
 		modules := []string{"module1", "module2", "module3"}
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(3).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		err := authorizer.Authorize(context.Background(), "client-id", "store-id", Write, modules...)
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+
+		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
+
 		require.NoError(t, err)
 	})
 }
