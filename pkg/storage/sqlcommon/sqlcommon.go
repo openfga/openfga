@@ -174,10 +174,13 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
-	rows     *sql.Rows
-	resultCh chan *storage.TupleRecord
-	errCh    chan error
-	firstRow *storage.TupleRecord
+	rows *sql.Rows // GUARDED_BY(mu)
+
+	// firstRow is used as a temporary storage place if head is called.
+	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
+	// the iterator. Thus, we will need to store this first item so that future Head() and Next()
+	// will use this item instead. Otherwise, the first item will be lost.
+	firstRow *storage.TupleRecord // GUARDED_BY(mu)
 	mu       sync.Mutex
 }
 
@@ -187,14 +190,9 @@ var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 // NewSQLTupleIterator returns a SQL tuple iterator.
 func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		rows:     rows, // GUARDED_BY(mu)
-		resultCh: make(chan *storage.TupleRecord, 1),
-		errCh:    make(chan error, 1),
-		firstRow: nil, // GUARDED_BY(mu). The firstRow is used as a temporary storage place if head is called.
-		// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
-		// the iterator. Thus, we will need to store this first item so that future Head() and Next()
-		// will use this item instead. Otherwise, the first item will be lost.
-		mu: sync.Mutex{},
+		rows:     rows,
+		firstRow: nil,
+		mu:       sync.Mutex{},
 	}
 }
 
@@ -405,6 +403,13 @@ func HandleSQLError(err error, args ...interface{}) error {
 			}
 		}
 		return storage.ErrCollision
+	} else if strings.Contains(err.Error(), "UNIQUE constraint failed:") { // Sqlite.
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+			}
+		}
+		return storage.ErrCollision
 	}
 
 	return fmt.Errorf("sql error: %w", err)
@@ -503,7 +508,7 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
+		conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
 			return err
 		}
