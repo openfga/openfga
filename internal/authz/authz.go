@@ -278,10 +278,8 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 
 // moduleAuthorize checks if the user has access to each of the modules, and exits if an error is encountered.
 func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, storeID string, modules []string) error {
-	var err error
 	var wg sync.WaitGroup
 	errorChannel := make(chan error, len(modules))
-	done := make(chan struct{})
 
 	for _, module := range modules {
 		wg.Add(1)
@@ -305,18 +303,16 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 		}(module)
 	}
 
-	go func() {
-		wg.Wait()
-		close(done)
-		close(errorChannel)
-	}()
+	wg.Wait()
+	close(errorChannel)
 
-	select {
-	case err = <-errorChannel:
-		return err
-	case <-done:
-		return nil
+	for err := range errorChannel {
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 // checkAuthClaims checks the auth claims in the context.
