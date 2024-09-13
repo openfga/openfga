@@ -1,4 +1,4 @@
-package authcontext
+package authclaims
 
 import (
 	"context"

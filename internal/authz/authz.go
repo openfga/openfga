@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -10,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -60,8 +61,29 @@ const (
 )
 
 var (
-	ErrorResponse = &openfgav1.ForbiddenResponse{Code: 403, Message: "the principal is not authorized to perform the action"}
+	ErrUnauthorizedResponse = &openfgav1.ForbiddenResponse{Code: 403, Message: "the principal is not authorized to perform the action"}
+	ErrUnknownAPIMethod     = errors.New("unknown API method")
+
+	System = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
 )
+
+type StoreIDType string
+
+func (s StoreIDType) String() string {
+	return fmt.Sprintf("%s:%s", StoreType, string(s))
+}
+
+type ClientIDType string
+
+func (c ClientIDType) String() string {
+	return fmt.Sprintf("%s:%s", ApplicationType, string(c))
+}
+
+type ModuleIDType string
+
+func (m ModuleIDType) String(module string) string {
+	return fmt.Sprintf(`%s:%s|%s`, ModuleType, string(m), module)
+}
 
 type Config struct {
 	StoreID string
@@ -74,13 +96,24 @@ type Authorizer struct {
 	logger logger.Logger
 }
 
-// NewAuthorizer creates a new authorizer.
 func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger) *Authorizer {
 	return &Authorizer{
 		config: config,
 		server: server,
 		logger: logger,
 	}
+}
+
+type AuthorizationError struct {
+	Err error
+}
+
+func (e *AuthorizationError) Error() string {
+	return fmt.Sprintf("error authorizing request: %s", e.Err)
+}
+
+func (e *AuthorizationError) Unwrap() error {
+	return e.Err
 }
 
 func (a *Authorizer) getRelation(apiMethod string) (string, error) {
@@ -114,53 +147,48 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	case ReadChanges:
 		return CanCallReadChanges, nil
 	default:
-		return "", fmt.Errorf("unknown api method: %s", apiMethod)
+		return "", AuthorizationError{Err: ErrUnknownAPIMethod}.Err
 	}
 }
 
 // Authorize checks if the user has access to the resource.
-func (a *Authorizer) Authorize(ctx context.Context, clientID, storeID, apiMethod string, modules ...string) error {
+func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
+	claims, err := checkAuthClaims(ctx)
+	if err != nil {
+		return err
+	}
+
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
 		return err
 	}
 
 	// Check if there is top-level authorization first, before checking modules
-	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getStore(storeID), &openfgav1.ContextualTupleKeys{})
-	if err != nil {
-		return err
-	}
-	if authorized {
+	err = a.individualAuthorize(ctx, claims.ClientID, relation, StoreIDType(storeID).String(), &openfgav1.ContextualTupleKeys{})
+	if err == nil {
 		return nil
 	}
 
 	if len(modules) > 0 {
-		return a.moduleAuthorize(ctx, clientID, relation, storeID, modules)
+		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
 	}
 	// If there are no modules to check, return the top-level authorization error
-	if !authorized {
-		return status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
-	}
-
-	return nil
+	return err
 }
 
 // AuthorizeCreateStore checks if the user has access to create a store.
-func (a *Authorizer) AuthorizeCreateStore(ctx context.Context, clientID string) error {
+func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
+	claims, err := checkAuthClaims(ctx)
+	if err != nil {
+		return err
+	}
+
 	relation, err := a.getRelation(CreateStore)
 	if err != nil {
 		return err
 	}
-	authorized, err := a.individualAuthorize(ctx, clientID, relation, a.getSystem(), &openfgav1.ContextualTupleKeys{})
-	if err != nil {
-		return err
-	}
 
-	if !authorized {
-		return status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
-	}
-
-	return nil
+	return a.individualAuthorize(ctx, claims.ClientID, relation, System, &openfgav1.ContextualTupleKeys{})
 }
 
 // GetModulesForWriteRequest returns the modules that should be checked for the write request.
@@ -222,12 +250,12 @@ func processTupleKeys[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.Ty
 	return modulesMap, false, nil
 }
 
-func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) (bool, error) {
+func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) error {
 	req := &openfgav1.CheckRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
 		TupleKey: &openfgav1.CheckRequestTupleKey{
-			User:     a.getApplication(clientID),
+			User:     ClientIDType(clientID).String(),
 			Relation: relation,
 			Object:   object,
 		},
@@ -235,18 +263,17 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	}
 
 	// Disable authz check for the check request.
-	ctx = authcontext.ContextWithSkipAuthzCheck(ctx, true)
+	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.Check(ctx, req)
 	if err != nil {
-		return false, err
+		return err
 	}
-	authcontext.ContextWithSkipAuthzCheck(ctx, false)
 
 	if !resp.GetAllowed() {
-		return false, nil
+		return status.Error(codes.Code(ErrUnauthorizedResponse.GetCode()), ErrUnauthorizedResponse.GetMessage())
 	}
 
-	return true, nil
+	return nil
 }
 
 // moduleAuthorize checks if the user has access to each of the modules, and exits if an error is encountered.
@@ -263,20 +290,17 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 			contextualTuples := openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
 					{
-						User:     a.getStore(storeID),
+						User:     StoreIDType(storeID).String(),
 						Relation: StoreType,
-						Object:   a.getModule(storeID, module),
+						Object:   ModuleIDType(storeID).String(module),
 					},
 				},
 			}
 
-			allowed, err := a.individualAuthorize(ctx, clientID, relation, a.getModule(storeID, module), &contextualTuples)
+			err := a.individualAuthorize(ctx, clientID, relation, ModuleIDType(storeID).String(module), &contextualTuples)
 
 			if err != nil {
 				errorChannel <- err
-			}
-			if !allowed {
-				errorChannel <- status.Error(codes.Code(ErrorResponse.GetCode()), ErrorResponse.GetMessage())
 			}
 		}(module)
 	}
@@ -295,18 +319,11 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 	}
 }
 
-func (a *Authorizer) getStore(storeID string) string {
-	return fmt.Sprintf(`%s:%s`, StoreType, storeID)
-}
-
-func (a *Authorizer) getModule(storeID, module string) string {
-	return fmt.Sprintf(`%s:%s|%s`, ModuleType, storeID, module)
-}
-
-func (a *Authorizer) getApplication(clientID string) string {
-	return fmt.Sprintf(`%s:%s`, ApplicationType, clientID)
-}
-
-func (a *Authorizer) getSystem() string {
-	return fmt.Sprintf(`%s:%s`, SystemType, RootSystemID)
+// checkAuthClaims checks the auth claims in the context.
+func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
+	claims, found := authclaims.AuthClaimsFromContext(ctx)
+	if !found || claims.ClientID == "" {
+		return nil, status.Error(codes.Internal, "client ID not found in context")
+	}
+	return claims, nil
 }

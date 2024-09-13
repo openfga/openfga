@@ -35,7 +35,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/authcontext"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -1543,24 +1543,10 @@ func (s *Server) validateAccessControlEnabled() error {
 	return nil
 }
 
-// checkAuthClaims checks the auth claims in the context.
-func (s *Server) checkAuthClaims(ctx context.Context) (*authcontext.AuthClaims, error) {
-	claims, found := authcontext.AuthClaimsFromContext(ctx)
-	if !found || claims.ClientID == "" {
-		return nil, status.Error(codes.Internal, "client ID not found in context")
-	}
-	return claims, nil
-}
-
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	if s.authorizer != nil && !authcontext.SkipAuthzCheckFromContext(ctx) {
-		claims, err := s.checkAuthClaims(ctx)
-		if err != nil {
-			return err
-		}
-
-		err = s.authorizer.Authorize(ctx, claims.ClientID, storeID, apiMethod, modules...)
+	if s.authorizer != nil && !authclaims.SkipAuthzCheckFromContext(ctx) {
+		err := s.authorizer.Authorize(ctx, storeID, apiMethod)
 		if err != nil {
 			return err
 		}
@@ -1571,12 +1557,7 @@ func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modu
 // checkCreateStoreAuthz checks the authorization for creating a store.
 func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 	if s.authorizer != nil {
-		claims, err := s.checkAuthClaims(ctx)
-		if err != nil {
-			return err
-		}
-
-		err = s.authorizer.AuthorizeCreateStore(ctx, claims.ClientID)
+		err := s.authorizer.AuthorizeCreateStore(ctx)
 		if err != nil {
 			return err
 		}
