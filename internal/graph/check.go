@@ -847,6 +847,9 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "consumeUsersets")
+	defer span.End()
+
 	var finalErr error
 	dbReads := req.GetRequestMetadata().DatastoreQueryCount
 
@@ -898,6 +901,9 @@ ConsumerLoop:
 }
 
 func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) {
+	ctx, span := tracer.Start(ctx, "produceUsersets")
+	defer span.End()
+
 	usersetsMap := make(usersetsMapType)
 	defer close(usersetsChan)
 	for {
