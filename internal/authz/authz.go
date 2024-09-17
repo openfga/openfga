@@ -197,13 +197,13 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
 	modulesMap := make(map[string]struct{})
 
-	modulesMap, shouldCheckOnStore, err := processTupleKeys(req.GetWrites().GetTupleKeys(), typesys, modulesMap)
+	modulesMap, shouldCheckOnStore, err := extractModulesFromTupleObjects(req.GetWrites().GetTupleKeys(), typesys, modulesMap)
 	if err != nil {
 		return nil, err
 	}
 
 	if !shouldCheckOnStore {
-		modulesMap, shouldCheckOnStore, err = processTupleKeys(req.GetDeletes().GetTupleKeys(), typesys, modulesMap)
+		modulesMap, shouldCheckOnStore, err = extractModulesFromTupleObjects(req.GetDeletes().GetTupleKeys(), typesys, modulesMap)
 		if err != nil {
 			return nil, err
 		}
@@ -213,9 +213,11 @@ func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, type
 		return []string{}, nil
 	}
 
-	modules := make([]string, 0, len(modulesMap))
+	modules := make([]string, len(modulesMap))
+	var i int
 	for module := range modulesMap {
-		modules = append(modules, module)
+		modules[i] = module
+		i++
 	}
 
 	return modules, nil
@@ -227,7 +229,7 @@ type TupleKeyInterface interface {
 	GetRelation() string
 }
 
-func processTupleKeys[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.TypeSystem, modulesMap map[string]struct{}) (map[string]struct{}, bool, error) {
+func extractModulesFromTupleObjects[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.TypeSystem, modulesMap map[string]struct{}) (map[string]struct{}, bool, error) {
 	for _, tupleKey := range tupleKeys {
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
 		objectType, ok := typesys.GetTypeDefinition(objType)

@@ -273,7 +273,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 		require.Empty(t, modules)
 	})
 
-	t.Run("error_when_write_tuples_errors", func(t *testing.T) {
+	t.Run("error_when_delete_tuples_errors", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
@@ -293,8 +293,8 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
 						{Object: "folder-with-module:2", Relation: "viewer", User: "user:jon"},
 						{Object: "folder:2", Relation: "viewer", User: "user:jon"},
 					},
