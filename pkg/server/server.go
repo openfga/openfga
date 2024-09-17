@@ -30,11 +30,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/authz"
+	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -702,7 +703,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	targetObjectType := req.GetType()
 
-	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.ListObjects, trace.WithAttributes(
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
@@ -722,6 +723,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		Service: s.serviceName,
 		Method:  methodName,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -811,7 +817,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	start := time.Now()
 
 	ctx := srv.Context()
-	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.StreamedListObjects, trace.WithAttributes(
 		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
@@ -831,6 +837,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Service: s.serviceName,
 		Method:  methodName,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
+	if err != nil {
+		return err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -906,7 +917,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.Read, trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -922,8 +933,13 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "Read",
+		Method:  authz.Read,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Read)
+	if err != nil {
+		return nil, err
+	}
 
 	q := commands.NewReadQuery(s.datastore,
 		commands.WithReadQueryLogger(s.logger),
@@ -939,7 +955,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	ctx, span := tracer.Start(ctx, "Write")
+	ctx, span := tracer.Start(ctx, authz.Write)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -950,8 +966,13 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "Write",
+		Method:  authz.Write,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Write)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -959,6 +980,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  authz.Write,
+	})
 
 	cmd := commands.NewWriteCommand(
 		s.datastore,
@@ -976,7 +1002,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	start := time.Now()
 
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.Check, trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
@@ -993,8 +1019,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "Check",
+		Method:  authz.Check,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1104,7 +1135,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.Expand, trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
@@ -1119,8 +1150,13 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "Expand",
+		Method:  authz.Expand,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1139,7 +1175,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModel, trace.WithAttributes(
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
@@ -1152,15 +1188,20 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "ReadAuthorizationModels",
+		Method:  authz.ReadAuthorizationModel,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
+	if err != nil {
+		return nil, err
+	}
 
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
+	ctx, span := tracer.Start(ctx, authz.WriteAuthorizationModel)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1171,8 +1212,13 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "WriteAuthorizationModel",
+		Method:  authz.WriteAuthorizationModel,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
+	if err != nil {
+		return nil, err
+	}
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
@@ -1189,7 +1235,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
+	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModels)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1200,8 +1246,13 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "ReadAuthorizationModels",
+		Method:  authz.ReadAuthorizationModels,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
+	if err != nil {
+		return nil, err
+	}
 
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
 		commands.WithReadAuthModelsQueryLogger(s.logger),
@@ -1211,7 +1262,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, "WriteAssertions")
+	ctx, span := tracer.Start(ctx, authz.WriteAssertions)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1222,8 +1273,13 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "WriteAssertions",
+		Method:  authz.WriteAssertions,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAssertions)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1248,7 +1304,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadAssertions")
+	ctx, span := tracer.Start(ctx, authz.ReadAssertions)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1259,8 +1315,13 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "ReadAssertions",
+		Method:  authz.ReadAssertions,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAssertions)
+	if err != nil {
+		return nil, err
+	}
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -1272,7 +1333,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadChangesQuery", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, authz.ReadChanges, trace.WithAttributes(
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
 	defer span.End()
@@ -1285,8 +1346,13 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "ReadChanges",
+		Method:  authz.ReadChanges,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
+	if err != nil {
+		return nil, err
+	}
 
 	q := commands.NewReadChangesQuery(s.datastore,
 		commands.WithReadChangesQueryLogger(s.logger),
@@ -1297,7 +1363,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 }
 
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "CreateStore")
+	ctx, span := tracer.Start(ctx, authz.CreateStore)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1308,8 +1374,13 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "CreateStore",
+		Method:  authz.CreateStore,
 	})
+
+	err := s.checkCreateStoreAuthz(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	c := commands.NewCreateStoreCommand(s.datastore, commands.WithCreateStoreCmdLogger(s.logger))
 	res, err := c.Execute(ctx, req)
@@ -1323,7 +1394,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "DeleteStore")
+	ctx, span := tracer.Start(ctx, authz.DeleteStore)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1334,8 +1405,13 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "DeleteStore",
+		Method:  authz.DeleteStore,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.DeleteStore)
+	if err != nil {
+		return nil, err
+	}
 
 	cmd := commands.NewDeleteStoreCommand(s.datastore, commands.WithDeleteStoreCmdLogger(s.logger))
 	res, err := cmd.Execute(ctx, req)
@@ -1349,7 +1425,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "GetStore")
+	ctx, span := tracer.Start(ctx, authz.GetStore)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1360,15 +1436,21 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "GetStore",
+		Method:  authz.GetStore,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.GetStore)
+	if err != nil {
+		return nil, err
+	}
 
 	q := commands.NewGetStoreQuery(s.datastore, commands.WithGetStoreQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
-	ctx, span := tracer.Start(ctx, "ListStores")
+	method := "ListStores"
+	ctx, span := tracer.Start(ctx, method)
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1379,7 +1461,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  "ListStores",
+		Method:  method,
 	})
 
 	q := commands.NewListStoresQuery(s.datastore,
@@ -1456,6 +1538,28 @@ func (s *Server) validateAccessControlEnabled() error {
 		_, err = ulid.Parse(s.AccessControl.ModelID)
 		if err != nil {
 			return fmt.Errorf("config '--access-control-model-id' must be a valid ULID")
+		}
+	}
+	return nil
+}
+
+// checkAuthz checks the authorization for calling an API method.
+func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string) error {
+	if s.authorizer != nil && !authclaims.SkipAuthzCheckFromContext(ctx) {
+		err := s.authorizer.Authorize(ctx, storeID, apiMethod)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkCreateStoreAuthz checks the authorization for creating a store.
+func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
+	if s.authorizer != nil {
+		err := s.authorizer.AuthorizeCreateStore(ctx)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

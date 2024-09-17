@@ -1008,7 +1008,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		Type:                 "repo",
 		Relation:             "r1",
 		User:                 "user:anne",
-	}, NewMockStreamServer())
+	}, NewMockStreamServer(context.Background()))
 	require.Error(t, err)
 	e, ok = status.FromError(err)
 	require.True(t, ok)
@@ -1401,14 +1401,18 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 type mockStreamServer struct {
 	grpc.ServerStream
+
+	ctx context.Context
 }
 
-func NewMockStreamServer() *mockStreamServer {
-	return &mockStreamServer{}
+func NewMockStreamServer(ctx context.Context) *mockStreamServer {
+	return &mockStreamServer{
+		ctx: ctx,
+	}
 }
 
 func (m *mockStreamServer) Context() context.Context {
-	return context.Background()
+	return m.ctx
 }
 
 func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
@@ -1476,7 +1480,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			Type:                 "repo",
 			Relation:             "viewer",
 			User:                 "user:bob",
-		}, NewMockStreamServer())
+		}, NewMockStreamServer(context.Background()))
 
 		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 	}
@@ -1547,7 +1551,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				Type:                 "document",
 				Relation:             "viewer",
 				User:                 "user:bob",
-			}, NewMockStreamServer())
+			}, NewMockStreamServer(context.Background()))
 
 			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
@@ -1612,7 +1616,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				Type:                 "document",
 				Relation:             "viewer",
 				User:                 "user:jon",
-			}, NewMockStreamServer())
+			}, NewMockStreamServer(context.Background()))
 
 			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 		})
@@ -1692,7 +1696,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			Type:                 "team",
 			Relation:             "member",
 			User:                 "user:anne",
-		}, NewMockStreamServer())
+		}, NewMockStreamServer(context.Background()))
 		require.Error(t, err)
 		e, ok := status.FromError(err)
 		require.True(t, ok)
