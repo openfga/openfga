@@ -36,7 +36,6 @@ var tracer = otel.Tracer("openfga/pkg/storage/sqlite")
 type SQLite struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
-	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
@@ -109,12 +108,10 @@ func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("datetime('subsec')"))
 
 	return &SQLite{
 		stbl:                   stbl,
 		db:                     db,
-		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -202,7 +199,7 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return NewSQLTupleIterator(rows), nil
@@ -235,7 +232,7 @@ func (m *SQLite) write(
 		return err
 	})
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -284,12 +281,12 @@ func (m *SQLite) write(
 			return err
 		})
 		if err != nil {
-			return sqlcommon.HandleSQLError(err, tk)
+			return HandleSQLError(err, tk)
 		}
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			return sqlcommon.HandleSQLError(err)
+			return HandleSQLError(err)
 		}
 
 		if rowsAffected != 1 {
@@ -363,7 +360,7 @@ func (m *SQLite) write(
 			return err
 		})
 		if err != nil {
-			return sqlcommon.HandleSQLError(err, tk)
+			return HandleSQLError(err, tk)
 		}
 
 		changelogBuilder = changelogBuilder.Values(
@@ -388,7 +385,7 @@ func (m *SQLite) write(
 			return err
 		})
 		if err != nil {
-			return sqlcommon.HandleSQLError(err)
+			return HandleSQLError(err)
 		}
 	}
 
@@ -396,7 +393,7 @@ func (m *SQLite) write(
 		return txn.Commit()
 	})
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -443,7 +440,7 @@ func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 			&conditionContext,
 		)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	if conditionName.String != "" {
@@ -504,7 +501,7 @@ func (m *SQLite) ReadUsersetTuples(
 	}
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return NewSQLTupleIterator(rows), nil
@@ -552,7 +549,7 @@ func (m *SQLite) ReadStartingWithUser(
 
 	rows, err := builder.QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return NewSQLTupleIterator(rows), nil
@@ -571,7 +568,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 
 		err := rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
-			return nil, sqlcommon.HandleSQLError(err)
+			return nil, HandleSQLError(err)
 		}
 
 		var model openfgav1.AuthorizationModel
@@ -583,7 +580,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return nil, storage.ErrNotFound
@@ -603,7 +600,7 @@ func (m *SQLite) ReadAuthorizationModel(ctx context.Context, store string, model
 		}).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -638,7 +635,7 @@ func (m *SQLite) ReadAuthorizationModels(
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -652,7 +649,7 @@ func (m *SQLite) ReadAuthorizationModels(
 	for rows.Next() {
 		err = rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
-			return nil, nil, sqlcommon.HandleSQLError(err)
+			return nil, nil, HandleSQLError(err)
 		}
 
 		if options.Pagination.PageSize > 0 && len(models) >= options.Pagination.PageSize {
@@ -673,7 +670,7 @@ func (m *SQLite) ReadAuthorizationModels(
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 
 	return models, token, nil
@@ -692,7 +689,7 @@ func (m *SQLite) FindLatestAuthorizationModel(ctx context.Context, store string)
 		Limit(1).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -734,7 +731,7 @@ func (m *SQLite) WriteAuthorizationModel(ctx context.Context, store string, mode
 		return err
 	})
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -754,7 +751,7 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 		return err
 	})
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -770,7 +767,7 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 		return err
 	})
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	var createdAt time.Time
@@ -783,14 +780,14 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	err = busyRetry(func() error {
 		return txn.Commit()
 	})
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -822,7 +819,7 @@ func (m *SQLite) GetStore(ctx context.Context, id string) (*openfgav1.Store, err
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -857,7 +854,7 @@ func (m *SQLite) ListStores(ctx context.Context, options storage.ListStoresOptio
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -868,7 +865,7 @@ func (m *SQLite) ListStores(ctx context.Context, options storage.ListStoresOptio
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, nil, sqlcommon.HandleSQLError(err)
+			return nil, nil, HandleSQLError(err)
 		}
 
 		stores = append(stores, &openfgav1.Store{
@@ -880,7 +877,7 @@ func (m *SQLite) ListStores(ctx context.Context, options storage.ListStoresOptio
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 
 	if len(stores) > options.Pagination.PageSize {
@@ -905,7 +902,7 @@ func (m *SQLite) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -921,19 +918,20 @@ func (m *SQLite) WriteAssertions(ctx context.Context, store, modelID string, ass
 		return err
 	}
 
-	return busyRetry(func() error {
-		_, err = m.stbl.
+	err = busyRetry(func() error {
+		_, err := m.stbl.
 			Insert("assertion").
 			Columns("store", "authorization_model_id", "assertions").
 			Values(store, modelID, marshalledAssertions).
 			Suffix("ON CONFLICT(store,authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
 			ExecContext(ctx)
-		if err != nil {
-			return sqlcommon.HandleSQLError(err)
-		}
-
-		return nil
+		return err
 	})
+	if err != nil {
+		return HandleSQLError(err)
+	}
+
+	return nil
 }
 
 // ReadAssertions see [storage.AssertionsBackend].ReadAssertions.
@@ -955,7 +953,7 @@ func (m *SQLite) ReadAssertions(ctx context.Context, store, modelID string) ([]*
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgav1.Assertion{}, nil
 		}
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	var assertions openfgav1.Assertions
@@ -1007,7 +1005,7 @@ func (m *SQLite) ReadChanges(
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -1034,7 +1032,7 @@ func (m *SQLite) ReadChanges(
 			&insertedAt,
 		)
 		if err != nil {
-			return nil, nil, sqlcommon.HandleSQLError(err)
+			return nil, nil, HandleSQLError(err)
 		}
 
 		var conditionContextStruct structpb.Struct
@@ -1076,6 +1074,30 @@ func (m *SQLite) ReadChanges(
 // IsReady see [sqlcommon.IsReady].
 func (m *SQLite) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, m.db)
+}
+
+func HandleSQLError(err error, args ...interface{}) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+
+	if errors.Is(err, storage.ErrIteratorDone) {
+		return err
+	}
+
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		if sqliteErr.Code()&0xFF == sqlite3.SQLITE_CONSTRAINT {
+			if len(args) > 0 {
+				if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+					return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+				}
+			}
+			return storage.ErrCollision
+		}
+	}
+
+	return fmt.Errorf("sql error: %w", err)
 }
 
 // SQLite will return an SQLITE_BUSY error when the database is locked rather than waiting for the lock.
