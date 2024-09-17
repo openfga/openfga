@@ -504,14 +504,14 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkCreateStoreAuthz(context.Background())
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
+			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkCreateStoreAuthz(ctx)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
+			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
@@ -581,14 +581,14 @@ func TestCheckAuthz(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkAuthz(context.Background(), settings.testData.id, authz.Check)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
+			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Internal desc = client ID not found in context", err.Error())
+			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {

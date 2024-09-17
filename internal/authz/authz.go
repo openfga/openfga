@@ -199,7 +199,7 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
 	claims, found := authclaims.AuthClaimsFromContext(ctx)
 	if !found || claims.ClientID == "" {
-		return nil, status.Error(codes.Internal, "client ID not found in context")
+		return nil, status.Error(codes.InvalidArgument, "client ID not found in context")
 	}
 	return claims, nil
 }
