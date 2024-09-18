@@ -169,12 +169,9 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 		return nil
 	}
 
-	// If there is no top-level authorization, check the modules
-	err = a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
-	if err != nil {
-		return err
+	if len(modules) > 0 {
+		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
 	}
-
 	// If there are no modules to check, return the top-level authorization error
 	return err
 }
