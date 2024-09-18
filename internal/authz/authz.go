@@ -169,9 +169,12 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 		return nil
 	}
 
-	if len(modules) > 0 {
-		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
+	// If there is no top-level authorization, check the modules
+	err = a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
+	if err != nil {
+		return err
 	}
+
 	// If there are no modules to check, return the top-level authorization error
 	return err
 }
@@ -197,20 +200,21 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
 	modulesMap := make(map[string]struct{})
 
-	modulesMap, shouldCheckOnStore, err := extractModulesFromTupleObjects(req.GetWrites().GetTupleKeys(), typesys, modulesMap)
+	tuples := make([]TupleKeyInterface, len(req.GetWrites().GetTupleKeys())+len(req.GetDeletes().GetTupleKeys()))
+	var index int
+	for _, tuple := range req.GetWrites().GetTupleKeys() {
+		tuples[index] = tuple
+		index++
+	}
+	index = 0
+	for _, tuple := range req.GetDeletes().GetTupleKeys() {
+		tuples[index] = tuple
+		index++
+	}
+
+	modulesMap, err := extractModulesFromTupleObjects(tuples, typesys, modulesMap)
 	if err != nil {
 		return nil, err
-	}
-
-	if !shouldCheckOnStore {
-		modulesMap, shouldCheckOnStore, err = extractModulesFromTupleObjects(req.GetDeletes().GetTupleKeys(), typesys, modulesMap)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if shouldCheckOnStore {
-		return []string{}, nil
 	}
 
 	modules := make([]string, len(modulesMap))
@@ -229,27 +233,26 @@ type TupleKeyInterface interface {
 	GetRelation() string
 }
 
-func extractModulesFromTupleObjects[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.TypeSystem, modulesMap map[string]struct{}) (map[string]struct{}, bool, error) {
+// extractModulesFromTupleObjects extracts the modules from the tuple objects. If a type has no module, we
+// return an empty map so that the caller can handle authorization for tuples without modules.
+func extractModulesFromTupleObjects[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.TypeSystem, modulesMap map[string]struct{}) (map[string]struct{}, error) {
 	for _, tupleKey := range tupleKeys {
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
 		objectType, ok := typesys.GetTypeDefinition(objType)
 		if !ok {
-			return nil, false, serverErrors.TypeNotFound(objType)
+			return nil, serverErrors.TypeNotFound(objType)
 		}
 		module, err := parser.GetModuleForObjectTypeRelation(objectType, tupleKey.GetRelation())
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		if module == "" {
-			// If we encounter a type with no module,
-			// we should return no modules and set the shouldCheckOnStore flag
-			// to true so that the authz check will be against the store
-			return nil, true, nil
+			return nil, nil
 		}
 		modulesMap[module] = struct{}{}
 	}
 
-	return modulesMap, false, nil
+	return modulesMap, nil
 }
 
 func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) error {
