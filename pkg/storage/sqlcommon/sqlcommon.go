@@ -6,12 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/pressly/goose/v3"
@@ -382,45 +380,23 @@ func (t *SQLTupleIterator) Stop() {
 	t.rows.Close()
 }
 
-// HandleSQLError processes an SQL error and converts it into a more
-// specific error type based on the nature of the SQL error.
-func HandleSQLError(err error, args ...interface{}) error {
-	if errors.Is(err, sql.ErrNoRows) {
-		return storage.ErrNotFound
-	} else if errors.Is(err, storage.ErrIteratorDone) {
-		return err
-	} else if strings.Contains(err.Error(), "duplicate key value") { // Postgres.
-		if len(args) > 0 {
-			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
-				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
-			}
-		}
-		return storage.ErrCollision
-	} else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
-		if len(args) > 0 {
-			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
-				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
-			}
-		}
-		return storage.ErrCollision
-	}
-
-	return fmt.Errorf("sql error: %w", err)
-}
-
 // DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {
-	db      *sql.DB
-	stbl    sq.StatementBuilderType
-	sqlTime interface{}
+	db             *sql.DB
+	stbl           sq.StatementBuilderType
+	sqlTime        interface{}
+	HandleSQLError errorHandlerFn
 }
 
+type errorHandlerFn func(error, ...interface{}) error
+
 // NewDBInfo constructs a [DBInfo] object.
-func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *DBInfo {
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}, errorHandler errorHandlerFn) *DBInfo {
 	return &DBInfo{
-		db:      db,
-		stbl:    stbl,
-		sqlTime: sqlTime,
+		db:             db,
+		stbl:           stbl,
+		sqlTime:        sqlTime,
+		HandleSQLError: errorHandler,
 	}
 }
 
@@ -435,7 +411,7 @@ func Write(
 ) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
-		return HandleSQLError(err)
+		return dbInfo.HandleSQLError(err)
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -466,12 +442,12 @@ func Write(
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
-			return HandleSQLError(err, tk)
+			return dbInfo.HandleSQLError(err, tk)
 		}
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			return HandleSQLError(err)
+			return dbInfo.HandleSQLError(err)
 		}
 
 		if rowsAffected != 1 {
@@ -522,7 +498,7 @@ func Write(
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
-			return HandleSQLError(err, tk)
+			return dbInfo.HandleSQLError(err, tk)
 		}
 
 		changelogBuilder = changelogBuilder.Values(
@@ -542,12 +518,12 @@ func Write(
 	if len(writes) > 0 || len(deletes) > 0 {
 		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
-			return HandleSQLError(err)
+			return dbInfo.HandleSQLError(err)
 		}
 	}
 
 	if err := txn.Commit(); err != nil {
-		return HandleSQLError(err)
+		return dbInfo.HandleSQLError(err)
 	}
 
 	return nil
@@ -578,7 +554,7 @@ func WriteAuthorizationModel(
 		Values(store, model.GetId(), schemaVersion, "", nil, pbdata).
 		ExecContext(ctx)
 	if err != nil {
-		return HandleSQLError(err)
+		return dbInfo.HandleSQLError(err)
 	}
 
 	return nil
@@ -594,7 +570,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 		var marshalledModel []byte
 		err := rows.Scan(&modelID, &schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
 		if err != nil {
-			return nil, HandleSQLError(err)
+			return nil, err
 		}
 
 		if len(marshalledModel) > 0 {
@@ -616,7 +592,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, HandleSQLError(err)
+		return nil, err
 	}
 
 	if len(typeDefs) == 0 {
@@ -644,10 +620,15 @@ func FindLatestAuthorizationModel(
 		Limit(1).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, dbInfo.HandleSQLError(err)
 	}
 	defer rows.Close()
-	return constructAuthorizationModelFromSQLRows(rows)
+	ret, err := constructAuthorizationModelFromSQLRows(rows)
+	if err != nil {
+		return nil, dbInfo.HandleSQLError(err)
+	}
+
+	return ret, nil
 }
 
 // ReadAuthorizationModel reads the model corresponding to store and model ID.
@@ -665,10 +646,15 @@ func ReadAuthorizationModel(
 		}).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, HandleSQLError(err)
+		return nil, dbInfo.HandleSQLError(err)
 	}
 	defer rows.Close()
-	return constructAuthorizationModelFromSQLRows(rows)
+	ret, err := constructAuthorizationModelFromSQLRows(rows)
+	if err != nil {
+		return nil, dbInfo.HandleSQLError(err)
+	}
+
+	return ret, nil
 }
 
 // IsReady returns true if the connection to the datastore is successful
