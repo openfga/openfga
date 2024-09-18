@@ -1081,10 +1081,6 @@ func HandleSQLError(err error, args ...interface{}) error {
 		return storage.ErrNotFound
 	}
 
-	if errors.Is(err, storage.ErrIteratorDone) {
-		return err
-	}
-
 	var sqliteErr *sqlite.Error
 	if errors.As(err, &sqliteErr) {
 		if sqliteErr.Code()&0xFF == sqlite3.SQLITE_CONSTRAINT {
