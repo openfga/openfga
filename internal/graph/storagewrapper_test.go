@@ -124,6 +124,41 @@ func TestReadUsersetTuples(t *testing.T) {
 
 		require.Equal(t, tuples, actual)
 	})
+
+	t.Run("higher consistency", func(t *testing.T) {
+		opts := storage.ReadUsersetTuplesOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}
+
+		gomock.InOrder(
+			mockDatastore.EXPECT().
+				ReadUsersetTuples(gomock.Any(), storeID, filter, opts).
+				Return(storage.NewStaticTupleIterator(tuples), nil),
+		)
+
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, opts)
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		var actual []*openfgav1.Tuple
+
+		for {
+			tuple, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+				break
+			}
+
+			actual = append(actual, tuple)
+		}
+
+		require.Equal(t, tuples, actual)
+	})
 }
 
 func TestRead(t *testing.T) {
@@ -222,6 +257,42 @@ func TestRead(t *testing.T) {
 
 		require.Equal(t, tuples, actual)
 	})
+
+	t.Run("higher consistency", func(t *testing.T) {
+		opts := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}
+
+		gomock.InOrder(
+			mockDatastore.EXPECT().
+				Read(gomock.Any(), storeID, tk, opts).
+				Return(storage.NewStaticTupleIterator(tuples), nil),
+		)
+
+		iter, err := ds.Read(ctx, storeID, tk, opts)
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		var actual []*openfgav1.Tuple
+
+		for {
+			tuple, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+				break
+			}
+
+			actual = append(actual, tuple)
+		}
+
+		require.Equal(t, tuples, actual)
+	})
+
 }
 
 func TestCachedIterator(t *testing.T) {

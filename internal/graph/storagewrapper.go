@@ -74,6 +74,10 @@ func (c *cachedDatastore) ReadUsersetTuples(ctx context.Context, store string, f
 		return c.OpenFGADatastore.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return iter(ctx)
+	}
+
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%s/%s#%s", store, filter.Object, filter.Relation))
 
@@ -106,6 +110,10 @@ func (c *cachedDatastore) Read(ctx context.Context, store string, tupleKey *open
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
 		return c.OpenFGADatastore.Read(ctx, store, tupleKey, options)
+	}
+
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return iter(ctx)
 	}
 
 	var b strings.Builder
