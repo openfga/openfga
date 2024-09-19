@@ -140,6 +140,7 @@ type Server struct {
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 	AccessControl                    serverconfig.AccessControlConfig
+	AuthnMethod                      string
 	serviceName                      string
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
@@ -364,9 +365,10 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 }
 
 // WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
-func WithAccessControlParams(accessControl serverconfig.AccessControlConfig) OpenFGAServiceV1Option {
+func WithAccessControlParams(accessControl serverconfig.AccessControlConfig, authnMethod string) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.AccessControl = accessControl
+		s.AuthnMethod = authnMethod
 	}
 }
 
@@ -1532,6 +1534,9 @@ func (s *Server) validateAccessControlEnabled() error {
 	if s.IsAccessControlEnabled() {
 		if (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
 			return fmt.Errorf("access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
+		}
+		if s.AuthnMethod != "oidc" {
+			return fmt.Errorf("access control is enabled, but the authentication method is not OIDC. Access control is only supported with OIDC authentication")
 		}
 		_, err := ulid.Parse(s.AccessControl.StoreID)
 		if err != nil {

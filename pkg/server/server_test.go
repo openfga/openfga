@@ -190,7 +190,20 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true}),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true}, ""),
+			)
+		})
+	})
+
+	t.Run("errors_when_oidc_is_not_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control is enabled, but the authentication method is not OIDC. Access control is only supported with OIDC authentication", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: ulid.Make().String()}, ""),
 			)
 		})
 	})
@@ -203,7 +216,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: "not-a-valid-ulid", ModelID: ulid.Make().String()}),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: "not-a-valid-ulid", ModelID: ulid.Make().String()}, "oidc"),
 			)
 		})
 	})
@@ -216,7 +229,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: "not-a-valid-ulid"}),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: "not-a-valid-ulid"}, "oidc"),
 			)
 		})
 	})
@@ -2082,7 +2095,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}, ""),
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsAccessControlEnabled())
@@ -2092,7 +2105,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}, ""),
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsAccessControlEnabled())
@@ -2102,7 +2115,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: ulid.Make().String(), StoreID: ulid.Make().String()}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: ulid.Make().String(), StoreID: ulid.Make().String()}, "oidc"),
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAccessControlEnabled())
