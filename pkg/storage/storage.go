@@ -83,6 +83,7 @@ type ReadAuthorizationModelsOptions struct {
 // ListStoresOptions represents the options that can
 // be used with the ListStores method.
 type ListStoresOptions struct {
+	IDs        *[]string
 	Pagination PaginationOptions
 }
 

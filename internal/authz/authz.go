@@ -26,6 +26,7 @@ const (
 	WriteAssertions         = "WriteAssertions"
 	ReadAssertions          = "ReadAssertions"
 	WriteAuthorizationModel = "WriteAuthorizationModel"
+	ListStores              = "ListStores"
 	CreateStore             = "CreateStore"
 	GetStore                = "GetStore"
 	DeleteStore             = "DeleteStore"
@@ -42,6 +43,7 @@ const (
 	CanCallWriteAssertions          = "can_call_write_assertions"
 	CanCallReadAssertions           = "can_call_read_assertions"
 	CanCallWriteAuthorizationModels = "can_call_write_authorization_models"
+	CanCallListStores               = "can_call_list_stores"
 	CanCallCreateStore              = "can_call_create_stores"
 	CanCallGetStore                 = "can_call_get_store"
 	CanCallDeleteStore              = "can_call_delete_store"
@@ -58,7 +60,7 @@ var (
 	ErrUnauthorizedResponse = &openfgav1.ForbiddenResponse{Code: 403, Message: "the principal is not authorized to perform the action"}
 	ErrUnknownAPIMethod     = errors.New("unknown API method")
 
-	System = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
+	SystemIDType = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
 )
 
 type StoreIDType string
@@ -166,7 +168,47 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 		return err
 	}
 
-	return a.individualAuthorize(ctx, claims.ClientID, relation, System, &openfgav1.ContextualTupleKeys{})
+	return a.individualAuthorize(ctx, claims.ClientID, relation, SystemIDType, &openfgav1.ContextualTupleKeys{})
+}
+
+// AuthorizeListStores checks if the user has access to list stores.
+func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
+	claims, err := checkAuthClaims(ctx)
+	if err != nil {
+		return err
+	}
+
+	relation, err := a.getRelation(ListStores)
+	if err != nil {
+		return err
+	}
+
+	return a.individualAuthorize(ctx, claims.ClientID, relation, SystemIDType, &openfgav1.ContextualTupleKeys{})
+}
+
+// ListAuthorizedStores returns the list of stores that the user has access to.
+func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
+	claims, err := checkAuthClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &openfgav1.ListObjectsRequest{
+		StoreId:              a.config.StoreID,
+		AuthorizationModelId: a.config.ModelID,
+		User:                 ClientIDType(claims.ClientID).String(),
+		Relation:             CanCallGetStore,
+		Type:                 StoreType,
+	}
+
+	// Disable authz check for the list objects request.
+	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
+	resp, err := a.server.ListObjects(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetObjects(), nil
 }
 
 func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) error {

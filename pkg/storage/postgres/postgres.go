@@ -537,10 +537,17 @@ func (p *Postgres) ListStores(ctx context.Context, options storage.ListStoresOpt
 	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
+	var whereClause sq.Eq
+	if len(*options.IDs) > 0 {
+		whereClause = sq.Eq{"id": *options.IDs}
+	} else {
+		whereClause = sq.Eq{"deleted_at": nil}
+	}
+
 	sb := p.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
-		Where(sq.Eq{"deleted_at": nil}).
+		Where(whereClause).
 		OrderBy("id")
 
 	if options.Pagination.From != "" {
