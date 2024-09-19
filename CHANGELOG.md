@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+
+* Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
+
 ## [1.6.1] - 2024-09-12
 
 ### Changed
