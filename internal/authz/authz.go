@@ -78,6 +78,33 @@ type Config struct {
 	ModelID string
 }
 
+type AuthorizerInterface interface {
+	Authorize(ctx context.Context, storeID, apiMethod string) error
+	AuthorizeCreateStore(ctx context.Context) error
+}
+
+type NoopAuthorizer struct {
+	config *Config
+	server ServerInterface
+	logger logger.Logger
+}
+
+func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Logger) *NoopAuthorizer {
+	return &NoopAuthorizer{
+		config: config,
+		server: server,
+		logger: logger,
+	}
+}
+
+func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod string) error {
+	return nil
+}
+
+func (a *NoopAuthorizer) AuthorizeCreateStore(ctx context.Context) error {
+	return nil
+}
+
 type Authorizer struct {
 	config *Config
 	server ServerInterface
