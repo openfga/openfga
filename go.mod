@@ -25,7 +25,7 @@ require (
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20240906203051-102620ef2a66
-	github.com/openfga/language/pkg/go v0.2.0-beta.2
+	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20240918205720-9b4b2742d552
 	github.com/pressly/goose/v3 v3.22.0
 	github.com/prometheus/client_golang v1.20.3
 	github.com/rs/cors v1.11.1
@@ -121,6 +121,7 @@ require (
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
+	gonum.org/v1/gonum v0.15.1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

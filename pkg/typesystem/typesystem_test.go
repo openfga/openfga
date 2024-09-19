@@ -4411,6 +4411,164 @@ func TestHasTypeInfo(t *testing.T) {
 	}
 }
 
+func TestRecursiveUsersetCanFastPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		model              string
+		objectTypeRelation string
+		userType           string
+		expected           bool
+	}{
+		{
+			name: "object_typerelation_not_found",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member]
+`,
+			objectTypeRelation: "group#undefined",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "simple_recursive",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_other_types",
+			model: `
+model
+	schema 1.1
+type person
+type user
+type group
+	relations
+		define member: [person, user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_recursive_due_to_type_not_found",
+			model: `
+model
+	schema 1.1
+type person
+type user
+type group
+	relations
+		define member: [person, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] and allowed
+		define allowed: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_exclusion",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] but not blocked
+		define blocked: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_other_directly_assigned_userset",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member, group#owner]
+		define owner: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_other_directly_assigned_userset_other_type",
+			model: `
+model
+	schema 1.1
+type user
+type team
+	relations
+		define member: [user]
+type group
+	relations
+		define member: [user, group#member, team#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			result := typesys.RecursiveUsersetCanFastPath(test.objectTypeRelation, test.userType)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
 func BenchmarkNewAndValidate(b *testing.B) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
