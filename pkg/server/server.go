@@ -174,7 +174,7 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
-	authorizer *authz.Authorizer
+	authorizer authz.AuthorizerInterface
 
 	ctx                 context.Context
 	checkTrackerEnabled bool
@@ -679,6 +679,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
+	} else {
+		s.authorizer = authz.NewAuthorizerNoop(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
 	}
 
 	return s, nil
@@ -1545,22 +1547,22 @@ func (s *Server) validateAccessControlEnabled() error {
 
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string) error {
-	if s.authorizer != nil && !authclaims.SkipAuthzCheckFromContext(ctx) {
+	if !authclaims.SkipAuthzCheckFromContext(ctx) {
 		err := s.authorizer.Authorize(ctx, storeID, apiMethod)
 		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
 func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
-	if s.authorizer != nil {
-		err := s.authorizer.AuthorizeCreateStore(ctx)
-		if err != nil {
-			return err
-		}
+	err := s.authorizer.AuthorizeCreateStore(ctx)
+	if err != nil {
+		return err
 	}
+
 	return nil
 }
