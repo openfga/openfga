@@ -4430,7 +4430,7 @@ func TestRecursiveUsersetCanFastPath(t *testing.T) {
 		expected           bool
 	}{
 		{
-			name: "object_typerelation_not_found",
+			name: "object_type_relation_not_found",
 			model: `
 model
 	schema 1.1

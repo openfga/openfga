@@ -398,7 +398,7 @@ func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *
 		curNode := childrenNodes.Node()
 		curChildAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
 		if !ok {
-			// Strange, I would have expected to be able to cast to AuthorizationModelNode
+			// Note: this should not happen, but adding the guard nonetheless
 			return false
 		}
 		childNodeObjectType, childNodeRelation := tuple.SplitObjectRelation(curChildAuthorizationModelNode.Label())
@@ -407,7 +407,7 @@ func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *
 			if childNodeObjectType == userType {
 				hasCorrectTerminalType = true
 			} else if childNodeObjectType == "union" || childNodeObjectType == "intersection" || childNodeObjectType == "exclusion" {
-				// they are not terminal type and are not allowed
+				// childNode is a set operator
 				return false
 			}
 		} else {
