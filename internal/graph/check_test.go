@@ -117,9 +117,11 @@ func TestCheck_CorrectContext(t *testing.T) {
 			type document
 				relations
 					define viewer: [user]`)
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+		ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
-		_, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		_, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
@@ -821,9 +823,12 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 					define viewer: [user] but not restricted
 					define restricted: [user, document#viewer]`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -862,9 +867,12 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 					define restrictedb: [user, document#viewer]
 			`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -918,9 +926,12 @@ func TestResolveCheckDeterministic(t *testing.T) {
 					define viewer: [group#member] or editor
 					define editor: [group#member] and allowed`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -971,9 +982,12 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
@@ -1018,9 +1032,12 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
@@ -1073,9 +1090,12 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 			relations
 				define viewer: [group#member]`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
@@ -1143,9 +1163,12 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 				define parent: [org]
 		`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 
 	tests := []struct {
@@ -2158,9 +2181,12 @@ func TestCycleDetection(t *testing.T) {
 					define x: y
 					define y: x`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -2700,7 +2726,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
 
-			ts := typesystem.New(tt.model)
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
 			ctx := context.Background()
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -3040,7 +3067,8 @@ func TestConsumeUsersets(t *testing.T) {
 					storage.NewStaticTupleIterator(curTuples.tuples), curTuples.err)
 			}
 
-			ts := typesystem.New(model)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
 			var ctx context.Context
 			var cancel context.CancelFunc
 			ctx = context.Background()
@@ -3144,7 +3172,8 @@ func TestProduceUsersetDispatches(t *testing.T) {
 				condition condX(x: int) {
 					x < 100
 				}`)
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
@@ -3290,7 +3319,8 @@ func TestProduceTTUDispatches(t *testing.T) {
 					x < 100
 				}`)
 
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
@@ -3861,7 +3891,8 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 				condition condX(x: int) {
 					x < 100
 				}`)
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
 	const initialDSCount = 20
@@ -3959,7 +3990,8 @@ func TestCheckTTUSlowPath(t *testing.T) {
 					x < 100
 				}`)
 
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	const initialDSCount = 20
 

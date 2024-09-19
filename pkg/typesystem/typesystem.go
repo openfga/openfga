@@ -174,17 +174,7 @@ type TypeSystem struct {
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
-func New(model *openfgav1.AuthorizationModel) *TypeSystem {
-	ts, err := newTypesystem(model)
-	if err != nil {
-		panic(err)
-	}
-	return ts
-}
-
-// newTypesystem creates a *TypeSystem from an *openfgav1.AuthorizationModel.
-// It will return error if we cannot create an authorizationModelGraph.
-func newTypesystem(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
+func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 	tds := make(map[string]*openfgav1.TypeDefinition, len(model.GetTypeDefinitions()))
 	relations := make(map[string]map[string]*openfgav1.Relation, len(model.GetTypeDefinitions()))
 	ttuRelations := make(map[string]map[string][]*openfgav1.TupleToUserset, len(model.GetTypeDefinitions()))
@@ -877,7 +867,7 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
 	defer span.End()
 
-	t, err := newTypesystem(model)
+	t, err := New(model)
 	if err != nil {
 		return nil, err
 	}

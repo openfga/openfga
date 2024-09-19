@@ -903,7 +903,8 @@ func TestHasEntrypoints(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			ts := New(model)
+			ts, err := New(model)
+			require.NoError(t, err)
 			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
 
 			rewrite := inputRelation.GetRewrite()
@@ -1115,7 +1116,8 @@ func TestHasCycle(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(model)
+			typesys, err := New(model)
+			require.NoError(t, err)
 
 			hasCycle, err := typesys.HasCycle(test.objectType, test.relation)
 			require.Equal(t, test.expected, hasCycle)
@@ -2618,7 +2620,8 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(model)
+			typesys, err := New(model)
+			require.NoError(t, err)
 
 			objectType := test.rr.GetType()
 			relationStr := test.rr.GetRelation()
@@ -2782,7 +2785,8 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(model)
+			typesys, err := New(model)
+			require.NoError(t, err)
 
 			objectType := test.rr.GetType()
 			relationStr := test.rr.GetRelation()
@@ -2982,7 +2986,8 @@ func TestIsTuplesetRelation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := New(test.model)
+			typesys, err := New(test.model)
+			require.NoError(t, err)
 
 			actual, err := typesys.IsTuplesetRelation(test.objectType, test.relation)
 			require.ErrorIs(t, err, test.expectedError)
@@ -3092,7 +3097,8 @@ func TestIsDirectlyRelated(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys := New(model)
+			typesys, err := New(model)
+			require.NoError(t, err)
 
 			ok, err := typesys.IsDirectlyRelated(test.target, test.source)
 			require.NoError(t, err)
@@ -3196,7 +3202,8 @@ func TestIsPubliclyAssignable(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			typesys := New(model)
+			typesys, err := New(model)
+			require.NoError(t, err)
 
 			actualResult, err := typesys.IsPubliclyAssignable(test.target, test.objectType)
 			if test.expectedError != "" {
@@ -3297,7 +3304,8 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			typesys := New(model)
+			typesys, err := New(model)
+			require.NoError(t, err)
 			result, err := typesys.DirectlyRelatedUsersets(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
