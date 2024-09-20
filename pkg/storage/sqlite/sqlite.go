@@ -1106,8 +1106,7 @@ func busyRetry(fn func() error) error {
 			return nil
 		}
 
-		var sqliteErr *sqlite.Error
-		if (errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_BUSY) || strings.Contains(err.Error(), "SQLITE_BUSY") {
+		if isBusyError(err) {
 			if retries < maxRetries {
 				continue
 			}
@@ -1117,4 +1116,23 @@ func busyRetry(fn func() error) error {
 
 		return err
 	}
+}
+
+var busyErrors = map[int]struct{}{
+	sqlite3.SQLITE_BUSY_RECOVERY:      {},
+	sqlite3.SQLITE_BUSY_SNAPSHOT:      {},
+	sqlite3.SQLITE_BUSY_TIMEOUT:       {},
+	sqlite3.SQLITE_BUSY:               {},
+	sqlite3.SQLITE_LOCKED_SHAREDCACHE: {},
+	sqlite3.SQLITE_LOCKED:             {},
+}
+
+func isBusyError(err error) bool {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+
+	_, ok := busyErrors[sqliteErr.Code()]
+	return ok
 }
