@@ -25,7 +25,7 @@ require (
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20240906203051-102620ef2a66
-	github.com/openfga/language/pkg/go v0.2.0-beta.2
+	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20240920201511-a36f3c71a0fe
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/prometheus/client_golang v1.20.4
 	github.com/rs/cors v1.11.1
@@ -48,6 +48,7 @@ require (
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	golang.org/x/sync v0.8.0
 	golang.org/x/time v0.6.0
+	gonum.org/v1/gonum v0.15.1
 	google.golang.org/grpc v1.66.1
 	google.golang.org/protobuf v1.34.2
 	modernc.org/sqlite v1.33.0
