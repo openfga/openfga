@@ -537,9 +537,12 @@ func (p *Postgres) ListStores(ctx context.Context, options storage.ListStoresOpt
 	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
-	var whereClause sq.Eq
+	var whereClause sq.Sqlizer
 	if len(*options.IDs) > 0 {
-		whereClause = sq.Eq{"id": *options.IDs}
+		whereClause = sq.And{
+			sq.Eq{"deleted_at": nil},
+			sq.Eq{"id": *options.IDs},
+		}
 	} else {
 		whereClause = sq.Eq{"deleted_at": nil}
 	}

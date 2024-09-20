@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
@@ -208,7 +209,14 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 		return nil, err
 	}
 
-	return resp.GetObjects(), nil
+	storeIDs := make([]string, len(resp.GetObjects()))
+	re := regexp.MustCompile(`^.*:(.*)`)
+	for i, store := range resp.GetObjects() {
+		id := re.FindStringSubmatch(store)
+		storeIDs[i] = id[1]
+	}
+
+	return storeIDs, nil
 }
 
 func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) error {
