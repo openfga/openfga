@@ -292,7 +292,6 @@ func TestRead(t *testing.T) {
 
 		require.Equal(t, tuples, actual)
 	})
-
 }
 
 func TestCachedIterator(t *testing.T) {
