@@ -12,7 +12,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
-	"gonum.org/v1/gonum/graph/multi"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"
@@ -171,23 +170,6 @@ type TypeSystem struct {
 	modelID                 string
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
-	authorizationModelNodes map[string]*graph.AuthorizationModelNode
-}
-
-// getAllAuthorizationModelNodes is a helper function to get all authorization model nodes from the authorization model graph.
-func getAllAuthorizationModelNodes(g *multi.DirectedGraph) (map[string]*graph.AuthorizationModelNode, error) {
-	authorizationModelNodes := make(map[string]*graph.AuthorizationModelNode)
-	nodes := g.Nodes()
-	for nodes.Next() {
-		curNode := nodes.Node()
-		curAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
-		if !ok {
-			// Strange, I should have expected to be able to cast to AuthorizationModelNode.
-			return nil, fmt.Errorf("unable to cast as graph.AuthorizationModelNode. node ID: %v", curNode.ID())
-		}
-		authorizationModelNodes[curAuthorizationModelNode.Label()] = curAuthorizationModelNode
-	}
-	return authorizationModelNodes, nil
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
@@ -233,9 +215,12 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		return nil, err
 	}
 
-	authorizationModelNodes, err := getAllAuthorizationModelNodes(authorizationModelGraph.DirectedGraph)
-	if err != nil {
-		return nil, err
+	if authorizationModelGraph.GetDrawingDirection() != graph.DrawingDirectionListObjects {
+		// by default, this should not happen.  However, this is here in case the default order is changed.
+		authorizationModelGraph, err = authorizationModelGraph.Reversed()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &TypeSystem{
@@ -246,7 +231,6 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		conditions:              uncompiledConditions,
 		ttuRelations:            ttuRelations,
 		authorizationModelGraph: authorizationModelGraph,
-		authorizationModelNodes: authorizationModelNodes,
 	}, nil
 }
 
@@ -456,8 +440,8 @@ func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *
 // RecursiveUsersetCanFastPath returns whether the specified object type and relation allows
 // for optimization.
 func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, userType string) bool {
-	curAuthorizationModelNode, ok := t.authorizationModelNodes[objectTypeRelation]
-	if !ok {
+	curAuthorizationModelNode, err := t.authorizationModelGraph.GetNodeByLabel(objectTypeRelation)
+	if err != nil {
 		// this means the node cannot be found. The safe thing to do is to use the slow path.
 		return false
 	}

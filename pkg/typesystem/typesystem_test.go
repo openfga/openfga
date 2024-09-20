@@ -3,17 +3,11 @@ package typesystem
 import (
 	"context"
 	"fmt"
-	"sort"
 	"testing"
 
-	"golang.org/x/exp/maps"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
-	"gonum.org/v1/gonum/graph/multi"
-	"gonum.org/v1/gonum/graph/simple"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -4423,34 +4417,6 @@ func TestHasTypeInfo(t *testing.T) {
 			require.Equal(t, test.expected, result)
 		})
 	}
-}
-
-func TestGetAllAuthorizationModelNodes(t *testing.T) {
-	t.Run("error_handling_for_non_AuthorizationModelNode", func(t *testing.T) {
-		dut := multi.NewDirectedGraph()
-		dut.AddNode(simple.Node(1))
-		dut.AddNode(simple.Node(2))
-		_, err := getAllAuthorizationModelNodes(dut)
-		require.Error(t, err)
-	})
-	t.Run("correct_model", func(t *testing.T) {
-		model := `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member]
-`
-		transformedModel := testutils.MustTransformDSLToProtoWithID(model)
-		authorizationModelGraph, err := graph.NewAuthorizationModelGraph(transformedModel)
-		require.NoError(t, err)
-		nodes, err := getAllAuthorizationModelNodes(authorizationModelGraph.DirectedGraph)
-		require.NoError(t, err)
-		keys := maps.Keys(nodes)
-		sort.Strings(keys)
-		require.Equal(t, []string{"group", "group#member", "user"}, keys)
-	})
 }
 
 func TestRecursiveUsersetCanFastPath(t *testing.T) {
