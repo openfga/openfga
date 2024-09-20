@@ -25,7 +25,7 @@ require (
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20240906203051-102620ef2a66
-	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20240920201511-a36f3c71a0fe
+	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20240920211227-a5276040c542
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/prometheus/client_golang v1.20.4
 	github.com/rs/cors v1.11.1
