@@ -49,15 +49,15 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 
 1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
-```shell
-curl -LO https://openfga.dev/docker-compose.yaml
-```
+    ```shell
+    curl -LO https://openfga.dev/docker-compose.yaml
+    ```
 
 2. Then, run the following command:
 
-```shell
-docker compose up
-```
+    ```shell
+    docker compose up
+    ```
 
 ### Package Managers
 
@@ -88,21 +88,21 @@ You can install from source using Go modules:
 
 1. First, make sure `$GOBIN` is on your shell `$PATH`:
 
-```shell
-export PATH=$PATH:$(go env GOBIN)
-```
+    ```shell
+    export PATH=$PATH:$(go env GOBIN)
+    ```
 
 2. Then use the install command:
 
-```shell
-go install github.com/openfga/openfga/cmd/openfga
-```
+    ```shell
+    go install github.com/openfga/openfga/cmd/openfga
+    ```
 
 3. Run the server with:
 
-```shell
-./openfga run
-```
+    ```shell
+    ./openfga run
+    ```
 
 #### Building from source with `go build`
 
@@ -110,21 +110,21 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 
 1. Clone the repo to a local directory, and navigate to that directory:
 
-```shell
-git clone https://github.com/openfga/openfga.git && cd openfga
-```
+    ```shell
+    git clone https://github.com/openfga/openfga.git && cd openfga
+    ```
 
 2. Then use the build command:
 
-```shell
-go build -o ./openfga ./cmd/openfga
-```
+    ```shell
+    go build -o ./openfga ./cmd/openfga
+    ```
 
 3. Run the server with:
 
-```shell
-./openfga run
-```
+    ```shell
+    ./openfga run
+    ```
 
 ### Verifying the Installation
 
