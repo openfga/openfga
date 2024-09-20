@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+
+* Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
+
 ## [1.6.1] - 2024-09-12
 
 ### Changed
@@ -30,13 +34,13 @@ openfga run --datastore-engine sqlite --datastore-uri openfga.sqlite
 
 Thanks @DanCech!
 
-## Fixed
+### Fixed
 
 * When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
 * Makes the `pkg.logger.Logger.With` immutable by creating a child logger instead of mutating the delegate one to prevent side effects [1906](https://github.com/openfga/openfga/pull/1906)
 * Extend request timeout to 10s for slow tests [1926](https://github.com/openfga/openfga/pull/1926)
 
-## Performance
+### Performance
 
 * Improve performance of Check API in the case that the query involves resolving a tuple to userset and/or a userset, by streaming intermediate results. [#1888](https://github.com/openfga/openfga/pull/1888)
 
@@ -51,12 +55,12 @@ Thanks @DanCech!
 * Add a "query_duration_ms" field on each log [#1807](https://github.com/openfga/openfga/pull/1831). Thanks @lalalalatt
 * Default logging to stdout instead of stderr [#1830](https://github.com/openfga/openfga/pull/1830)
 
-## Fixed
+### Fixed
 
 * Check API: internal fixes [#1843](https://github.com/openfga/openfga/pull/1843)
 * Correct docker file syntax [#1852](https://github.com/openfga/openfga/pull/1852)
 
-## Performance
+### Performance
 
 * Performance improvements for Check API:
   - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
@@ -72,7 +76,7 @@ Thanks @DanCech!
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
 
-## Security
+### Security
 
 * Address [CVE-2024-42473](https://github.com/openfga/openfga/security/advisories/GHSA-3f6g-m4hr-59h8) - a critical issue where Check API can return incorrect responses. Please see the CVE report for more details.
 
@@ -714,42 +718,42 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.1...v1.1.0)
 
-## Added
+### Added
 * Streaming ListObjects has no limit in number of results returned ([#733](https://github.com/openfga/openfga/pull/733))
 * Add Homebrew release stage to goreleaser's release process ([#716](https://github.com/openfga/openfga/pull/716))
 
-## Fixed
+### Fixed
 * Avoid DB connection churning in unoptimized ListObjects ([#711](https://github.com/openfga/openfga/pull/711))
 * Ensure ListObjects respects configurable ListObjectsDeadline ([#704](https://github.com/openfga/openfga/pull/704))
 * In Write, throw 400 instead of 500 error if auth model ID not found ([#725](https://github.com/openfga/openfga/pull/725))
 * Performance improvements when loading the authorization model ([#726](https://github.com/openfga/openfga/pull/726))
 * Ensure Check evaluates deterministically on the eval boundary case ([#732](https://github.com/openfga/openfga/pull/732))
 
-## Changed
+### Changed
 * [BREAKING] The flags to turn on writing and evaluation of `v1.0` models have been dropped ([#763](https://github.com/openfga/openfga/pull/763))
 
 ## [1.0.1] - 2023-04-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.0...v1.0.1)
 
-## Fixed
+### Fixed
 * Correct permission and location for gRPC health probe in Docker image (#697)
 
 ## [1.0.0] - 2023-04-14
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
 
-## Ready for Production with Postgres
+### Ready for Production with Postgres
 OpenFGA with Postgres is now considered stable and ready for production usage.
 
-## Fixed
+### Fixed
 * MySQL migration script errors during downgrade (#664)
 
 ## [0.4.3] - 2023-04-12
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.2...v0.4.3)
 
-## Added
+### Added
 * Release artifacts are now signed and include a Software Bill of Materials (SBOM) ([#683](https://github.com/openfga/openfga/pull/683))
 
   The SBOM (Software Bill of Materials) is included in each GitHub release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
@@ -790,13 +794,13 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
 
 * The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces ([#652](https://github.com/openfga/openfga/pull/652)) - thanks @jmiettinen
 
-## Fixed
+### Fixed
 * Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This can improve read query performance on larger OpenFGA stores ([#677](https://github.com/openfga/openfga/pull/677))
 * Synchronize concurrent access to in-memory storage iterators ([#587](https://github.com/openfga/openfga/pull/587))
 * Improve error logging in the `openfga migrate` command ([#663](https://github.com/openfga/openfga/pull/663))
 * Fix middleware ordering so that `requestid` middleware is registered earlier ([#662](https://github.com/openfga/openfga/pull/662))
 
-## Changed
+### Changed
 * Bumped up to Go version 1.20 ([#664](https://github.com/openfga/openfga/pull/664))
 * Default model schema versions to 1.1 ([#669](https://github.com/openfga/openfga/pull/669))
 
