@@ -4507,6 +4507,102 @@ type group
 			expected:           true,
 		},
 		{
+			name: "simple_recursive_condition",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_wildcard",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user:*, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_wildcard_condition",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user:* with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_multi_direct_assignment_wildcard",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, user:*, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user:*, user with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, user:*, user with cond, user:* with cond, group#member]
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
 			name: "complex_recursive_due_to_type_not_found",
 			model: `
 model

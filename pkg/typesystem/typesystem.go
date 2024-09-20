@@ -414,29 +414,36 @@ func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.Relation
 // recursiveUsersetNodeCanFastpath is a helper function to determine whether the node (object#relation) has
 // - one edge back to itself
 // - other edges lead directly to terminal types (not union/intersection/exclusion).
+// - Note that user:* is considered as terminal node.
 func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *graph.AuthorizationModelNode, userType string) bool {
 	hasNodeBackToItself := false
 	hasCorrectTerminalType := false
 
-	// TODO: Optimize by memorizing the list of childrenNodes
-	childrenNodes := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
-	for childrenNodes.Next() {
-		curNode := childrenNodes.Node()
-		curChildAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
+	// TODO: Optimize by memorizing the list of neighbourNodes
+	neighbourNodes := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
+	for neighbourNodes.Next() {
+		curNode := neighbourNodes.Node()
+		curNeighbourAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
 		if !ok {
 			// Note: this should not happen, but adding the guard nonetheless
 			return false
 		}
-		childNodeObjectType, childNodeRelation := tuple.SplitObjectRelation(curChildAuthorizationModelNode.Label())
-		if childNodeRelation == "" {
-			switch childNodeObjectType {
-			case userType:
+		switch curNeighbourAuthorizationModelNode.NodeType() {
+		case graph.SpecificType:
+			// TODO wildcard?? should we add a new NodeType to handle this more explicitly?'
+			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
+			if curNeighbourAuthorizationModelNodeLabel == userType {
 				hasCorrectTerminalType = true
-			case "union", "intersection", "exclusion":
-				return false
+			} else if tuple.IsTypedWildcard(curNeighbourAuthorizationModelNodeLabel) {
+				curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
+				if curNeighbourAuthorizationModelNodeType == userType {
+					hasCorrectTerminalType = true
+				}
 			}
-		} else {
-			if curAuthorizationModelNode == curChildAuthorizationModelNode {
+		case graph.OperatorNode:
+			return false
+		case graph.SpecificTypeAndRelation:
+			if curAuthorizationModelNode == curNeighbourAuthorizationModelNode {
 				hasNodeBackToItself = true
 			} else {
 				return false
