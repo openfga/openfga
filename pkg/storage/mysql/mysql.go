@@ -111,7 +111,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*MySQL, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"))
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, sq.Expr("NOW()"), HandleSQLError)
 
 	return &MySQL{
 		stbl:                   stbl,
@@ -194,7 +194,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return sqlcommon.NewSQLTupleIterator(rows), nil
@@ -249,7 +249,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 			&conditionContext,
 		)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	if conditionName.String != "" {
@@ -310,7 +310,7 @@ func (m *MySQL) ReadUsersetTuples(
 	}
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return sqlcommon.NewSQLTupleIterator(rows), nil
@@ -354,7 +354,7 @@ func (m *MySQL) ReadStartingWithUser(
 
 	rows, err := builder.QueryContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return sqlcommon.NewSQLTupleIterator(rows), nil
@@ -397,7 +397,7 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, optio
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -407,14 +407,14 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, optio
 	for rows.Next() {
 		err = rows.Scan(&modelID)
 		if err != nil {
-			return nil, nil, sqlcommon.HandleSQLError(err)
+			return nil, nil, HandleSQLError(err)
 		}
 
 		modelIDs = append(modelIDs, modelID)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 
 	var token []byte
@@ -476,7 +476,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 
 	txn, err := m.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -489,7 +489,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	var createdAt time.Time
@@ -502,12 +502,12 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openf
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	err = txn.Commit()
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -539,7 +539,7 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, erro
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -574,7 +574,7 @@ func (m *MySQL) ListStores(ctx context.Context, options storage.ListStoresOption
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -585,7 +585,7 @@ func (m *MySQL) ListStores(ctx context.Context, options storage.ListStoresOption
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, nil, sqlcommon.HandleSQLError(err)
+			return nil, nil, HandleSQLError(err)
 		}
 
 		stores = append(stores, &openfgav1.Store{
@@ -597,7 +597,7 @@ func (m *MySQL) ListStores(ctx context.Context, options storage.ListStoresOption
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 
 	if len(stores) > options.Pagination.PageSize {
@@ -622,7 +622,7 @@ func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -645,7 +645,7 @@ func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, asse
 		Suffix("ON DUPLICATE KEY UPDATE assertions = ?", marshalledAssertions).
 		ExecContext(ctx)
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -670,7 +670,7 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgav1.Assertion{}, nil
 		}
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	var assertions openfgav1.Assertions
@@ -717,7 +717,7 @@ func (m *MySQL) ReadChanges(ctx context.Context, store, objectTypeFilter string,
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, sqlcommon.HandleSQLError(err)
+		return nil, nil, HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -742,7 +742,7 @@ func (m *MySQL) ReadChanges(ctx context.Context, store, objectTypeFilter string,
 			&insertedAt,
 		)
 		if err != nil {
-			return nil, nil, sqlcommon.HandleSQLError(err)
+			return nil, nil, HandleSQLError(err)
 		}
 
 		var conditionContextStruct structpb.Struct
@@ -784,4 +784,23 @@ func (m *MySQL) ReadChanges(ctx context.Context, store, objectTypeFilter string,
 // IsReady see [sqlcommon.IsReady].
 func (m *MySQL) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, m.db)
+}
+
+// HandleSQLError processes an SQL error and converts it into a more
+// specific error type based on the nature of the SQL error.
+func HandleSQLError(err error, args ...interface{}) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+
+	if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+			}
+		}
+		return storage.ErrCollision
+	}
+
+	return fmt.Errorf("sql error: %w", err)
 }
