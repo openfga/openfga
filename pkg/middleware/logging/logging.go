@@ -9,6 +9,7 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
+	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -142,6 +143,19 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 
 		if userAgent, ok := userAgentFromContext(ctx); ok {
 			fields = append(fields, zap.String(userAgentKey, userAgent))
+		}
+
+		if c.Service == "grpc.health.v1.Health" {
+			silentHealthChecks := viper.GetBool("silent-healthchecks")
+			if silentHealthChecks {
+				return &reporter{
+					ctx:            ctxzap.ToContext(ctx, l.(*logger.ZapLogger).Logger),
+					logger:         l,
+					fields:         fields,
+					protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
+				}, ctx
+			}
+			fields = append(fields, zap.String("log_level", "debug"))
 		}
 
 		zapLogger := l.(*logger.ZapLogger)

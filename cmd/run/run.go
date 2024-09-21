@@ -163,6 +163,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("log-timestamp-format", defaultConfig.Log.TimestampFormat, "the timestamp format to use for log messages")
 
+	flags.Bool("silent-healthchecks", false, "Suppress logs for health checks")
+
 	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
