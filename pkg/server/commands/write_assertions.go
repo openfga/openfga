@@ -66,7 +66,10 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.New(model)
+	if err != nil {
+		return nil, serverErrors.HandleError("", err)
+	}
 
 	assertionSizeInBytes := 0
 	for _, assertion := range assertions {

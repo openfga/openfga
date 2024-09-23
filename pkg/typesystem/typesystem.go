@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"sort"
 
+	"github.com/openfga/language/pkg/go/graph"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 
@@ -165,13 +167,14 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
-	modelID       string
-	schemaVersion string
+	modelID                 string
+	schemaVersion           string
+	authorizationModelGraph *graph.AuthorizationModelGraph
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
-func New(model *openfgav1.AuthorizationModel) *TypeSystem {
+func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 	tds := make(map[string]*openfgav1.TypeDefinition, len(model.GetTypeDefinitions()))
 	relations := make(map[string]map[string]*openfgav1.Relation, len(model.GetTypeDefinitions()))
 	ttuRelations := make(map[string]map[string][]*openfgav1.TupleToUserset, len(model.GetTypeDefinitions()))
@@ -207,15 +210,28 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			WithMaxEvaluationCost(config.MaxConditionEvaluationCost()).
 			WithInterruptCheckFrequency(config.DefaultInterruptCheckFrequency)
 	}
+	authorizationModelGraph, err := graph.NewAuthorizationModelGraph(model)
+	if err != nil {
+		return nil, err
+	}
+
+	if authorizationModelGraph.GetDrawingDirection() != graph.DrawingDirectionListObjects {
+		// by default, this should not happen.  However, this is here in case the default order is changed.
+		authorizationModelGraph, err = authorizationModelGraph.Reversed()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return &TypeSystem{
-		modelID:         model.GetId(),
-		schemaVersion:   model.GetSchemaVersion(),
-		typeDefinitions: tds,
-		relations:       relations,
-		conditions:      uncompiledConditions,
-		ttuRelations:    ttuRelations,
-	}
+		modelID:                 model.GetId(),
+		schemaVersion:           model.GetSchemaVersion(),
+		typeDefinitions:         tds,
+		relations:               relations,
+		conditions:              uncompiledConditions,
+		ttuRelations:            ttuRelations,
+		authorizationModelGraph: authorizationModelGraph,
+	}, nil
 }
 
 // GetAuthorizationModelID returns the ID for the authorization
@@ -377,6 +393,59 @@ func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.Relation
 		}
 	}
 	return true
+}
+
+// recursiveUsersetNodeCanFastpath is a helper function to determine whether the node (object#relation) has
+// - one edge back to itself
+// - other edges lead directly to terminal types (not union/intersection/exclusion).
+// - Note that user:* is considered as terminal node.
+func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *graph.AuthorizationModelNode, userType string) bool {
+	hasNodeBackToItself := false
+	hasCorrectTerminalType := false
+
+	// TODO: Optimize by memorizing the list of neighbourNodes
+	neighbourNodes := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
+	for neighbourNodes.Next() {
+		curNode := neighbourNodes.Node()
+		curNeighbourAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
+		if !ok {
+			// Note: this should not happen, but adding the guard nonetheless
+			return false
+		}
+		switch curNeighbourAuthorizationModelNode.NodeType() {
+		case graph.SpecificType:
+			// TODO wildcard?? should we add a new NodeType to handle this more explicitly?'
+			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
+			if curNeighbourAuthorizationModelNodeLabel == userType {
+				hasCorrectTerminalType = true
+			} else if tuple.IsTypedWildcard(curNeighbourAuthorizationModelNodeLabel) {
+				curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
+				if curNeighbourAuthorizationModelNodeType == userType {
+					hasCorrectTerminalType = true
+				}
+			}
+		case graph.OperatorNode:
+			return false
+		case graph.SpecificTypeAndRelation:
+			if curAuthorizationModelNode == curNeighbourAuthorizationModelNode {
+				hasNodeBackToItself = true
+			} else {
+				return false
+			}
+		}
+	}
+	return hasNodeBackToItself && hasCorrectTerminalType
+}
+
+// RecursiveUsersetCanFastPath returns whether the specified object type and relation allows
+// for optimization.
+func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, userType string) bool {
+	curAuthorizationModelNode, err := t.authorizationModelGraph.GetNodeByLabel(objectTypeRelation)
+	if err != nil {
+		// this means the node cannot be found. The safe thing to do is to use the slow path.
+		return false
+	}
+	return t.recursiveUsersetNodeCanFastpath(curAuthorizationModelNode, userType)
 }
 
 func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReference) bool {
@@ -806,7 +875,10 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
 	defer span.End()
 
-	t := New(model)
+	t, err := New(model)
+	if err != nil {
+		return nil, err
+	}
 	schemaVersion := t.GetSchemaVersion()
 
 	if !IsSchemaVersionSupported(schemaVersion) {

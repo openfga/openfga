@@ -651,9 +651,11 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 				define ttu: member from parent
 				define parent: [org]`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)

@@ -492,7 +492,10 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
-			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
@@ -638,7 +641,9 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	store := ulid.Make().String()
 
 	model, modelID, numberObjectsAccessible := setupListObjectsBenchmark(b, ds, store)
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+	ts, err := typesystem.New(model)
+	require.NoError(b, err)
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 	req := &openfgav1.ListObjectsRequest{
 		StoreId:              store,

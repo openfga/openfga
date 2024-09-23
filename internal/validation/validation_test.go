@@ -754,7 +754,9 @@ func TestValidateTuple(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := ValidateTuple(typesystem.New(test.model), test.tuple)
+			ts, err := typesystem.New(test.model)
+			require.NoError(t, err)
+			err = ValidateTuple(ts, test.tuple)
 			if test.expectedError != nil {
 				require.ErrorIs(t, err, test.expectedError)
 				require.Equal(t, err.Error(), test.expectedError.Error())
@@ -804,7 +806,8 @@ func BenchmarkValidateTuple(b *testing.B) {
 		},
 	}
 
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(b, err)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := ValidateTuple(ts, tuple.NewTupleKey("folder:x", "viewer", fmt.Sprintf("user:%v", i)))
