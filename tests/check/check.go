@@ -1368,6 +1368,6 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 	}
 }
 
-func runTestMatrixSuite(t *testing.T, client ClientInterface) {
+func RunTestMatrixSuite(t *testing.T, client ClientInterface) {
 	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 }

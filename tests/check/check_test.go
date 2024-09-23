@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -38,13 +37,8 @@ var tuples = []*openfgav1.TupleKey{
 	tuple.NewTupleKey("team:openfga", "member", "user:github|iaco@openfga"),
 }
 
-func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory", false)
-	testRunTestMatrix(t, "memory", true)
-}
-
-func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
-	t.Run("test_matrix_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
+func testRunTestMatrix(t *testing.T, engine string) {
+	t.Run("test_matrix_"+engine, func(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
@@ -60,7 +54,7 @@ func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
 
 		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
-		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
+		RunTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
 	})
 }
 
@@ -68,16 +62,32 @@ func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
 }
 
+func TestMatrixMemory(t *testing.T) {
+	testRunTestMatrix(t, "memory")
+}
+
 func TestCheckPostgres(t *testing.T) {
 	testRunAll(t, "postgres")
+}
+
+func TestMatrixPostgres(t *testing.T) {
+	testRunTestMatrix(t, "postgres")
 }
 
 func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
+func TestMatrixMySQL(t *testing.T) {
+	testRunTestMatrix(t, "mysql")
+}
+
 func TestCheckSQLite(t *testing.T) {
 	testRunAll(t, "sqlite")
+}
+
+func TestMatrixSQLite(t *testing.T) {
+	testRunTestMatrix(t, "sqlite")
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.
