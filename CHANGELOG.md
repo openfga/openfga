@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Removed
+
+* Removed deprecated opentelemetry-connector `memory_ballast` extension.
+
 ### Fixed
 
 * Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
