@@ -472,22 +472,19 @@ func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, user
 }
 
 // recursiveTTUNodeCanFastpath is a helper function to determine whether the node (object#relation) has
-// - there is only one edge to curAuthorizationModelNode (which is the union node)
+// - there is only one incoming edge to curAuthorizationModelNode and it is the union node
 // - the union node has
 //   - one edge linking back to the original curAuthorizationNode
 //   - other edges must be to terminal types with one edge having the userType
 func (t *TypeSystem) recursiveTTUNodeCanFastpath(curAuthorizationModelNode *graph.AuthorizationModelNode, userType string) bool {
-	var childrenNodes []gonumgraph.Node
-	childrenNodesIter := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
-	for childrenNodesIter.Next() {
-		childrenNodes = append(childrenNodes, childrenNodesIter.Node())
-	}
-
-	if len(childrenNodes) != 1 {
+	neighborNodesIter := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
+	if neighborNodesIter.Len() != 1 {
 		return false
 	}
+	
+	neighborNodesIter.Next()
 
-	unionNode, ok := childrenNodes[0].(*graph.AuthorizationModelNode)
+	unionNode, ok := neighborNodesIter.Node().(*graph.AuthorizationModelNode)
 	if !ok || unionNode.Label() != "union" {
 		return false
 	}
