@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+
 	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -110,6 +112,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgav1.UnimplementedOpenFGAServiceServer
+	authzenv1.UnimplementedAuthZenServiceServer
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
@@ -1314,6 +1317,40 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		commands.WithListStoresQueryEncoder(s.encoder),
 	)
 	return q.Execute(ctx, req)
+}
+
+func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
+	ctx, span := tracer.Start(ctx, "authzen.Evaluation")
+	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "authzen.Evaluation",
+	})
+
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: req.GetAuthorizationModelId(),
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			User:     fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId()),
+			Relation: req.GetAction().GetName(),
+			Object:   fmt.Sprintf("%s:%s", req.GetResource().GetType(), req.GetResource().GetId()),
+		},
+		Context: req.GetContext(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &authzenv1.EvaluationResponse{
+		Decision: checkResponse.GetAllowed(),
+	}, nil
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
