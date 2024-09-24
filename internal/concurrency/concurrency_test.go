@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTrySendCheckOutcome(t *testing.T) {
+func TestTrySendThroughChannel(t *testing.T) {
 	var testcases = map[string]struct {
 		ctxCancelled bool
 		message      struct{}
