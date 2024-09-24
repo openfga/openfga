@@ -258,8 +258,5 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
-
-		util.MustBindPFlag("checkTrackerEnabled", flags.Lookup("check-tracker-enabled"))
-		util.MustBindEnv("checkTrackerEnabled", "OPENFGA_CHECK_TRACKER_ENABLED")
 	}
 }
