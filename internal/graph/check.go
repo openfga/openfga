@@ -645,23 +645,24 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 					return
 				}
 				if msg.err != nil {
-					outcomes <- checkOutcome{err: msg.err}
+					trySendCheckOutcome(ctx, checkOutcome{err: msg.err}, outcomes)
 					break // continue
 				}
 				if msg.shortCircuit {
-					outcomes <- checkOutcome{resp: &ResolveCheckResponse{
+					resp := &ResolveCheckResponse{
 						Allowed: true,
 						ResolutionMetadata: &ResolveCheckResponseMetadata{
 							DatastoreQueryCount: 0,
 						},
-					}}
+					}
+					trySendCheckOutcome(ctx, checkOutcome{resp: resp}, outcomes)
 					return
 				}
 
 				if msg.dispatchParams != nil {
 					dispatchPool.Go(func(ctx context.Context) error {
 						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-						outcomes <- checkOutcome{resp: resp, err: err}
+						trySendCheckOutcome(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						return nil
 					})
 				}
@@ -670,6 +671,13 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 	}()
 
 	return outcomes
+}
+
+func trySendCheckOutcome(ctx context.Context, msg checkOutcome, checkOutcome chan checkOutcome) {
+	select {
+	case <-ctx.Done():
+	case checkOutcome <- msg:
+	}
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {

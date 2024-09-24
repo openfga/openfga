@@ -3462,6 +3462,48 @@ func helperReceivedOutcome(outcomes chan checkOutcome) []checkOutcome {
 	return checkOutcome
 }
 
+func TestTrySendCheckOutcome(t *testing.T) {
+	var testcases = map[string]struct {
+		ctxCancelled bool
+		message      checkOutcome
+	}{
+		`ctx_cancel`: {
+			ctxCancelled: true,
+			message:      checkOutcome{err: fmt.Errorf("blah")},
+		},
+		`no_ctx_cancel`: {
+			ctxCancelled: false,
+			message:      checkOutcome{err: fmt.Errorf("blah")},
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			var channel chan checkOutcome
+			ctx := context.Background()
+
+			var cancelFunc context.CancelFunc
+			if tc.ctxCancelled {
+				channel = make(chan checkOutcome)
+				ctx, cancelFunc = context.WithCancel(ctx)
+				cancelFunc()
+			} else {
+				channel = make(chan checkOutcome, 1)
+			}
+			trySendCheckOutcome(ctx, tc.message, channel)
+			if tc.ctxCancelled {
+				close(channel)
+				_, ok := <-channel
+				require.False(t, ok)
+			} else {
+				element, ok := <-channel
+				require.True(t, ok)
+				require.NotNil(t, element)
+			}
+		})
+	}
+}
+
 func TestProcessDispatch(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
