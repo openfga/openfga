@@ -424,11 +424,12 @@ func (t *TypeSystem) verifyNodeEdgesOptimizable(originalNode *graph.Authorizatio
 			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
 			if curNeighbourAuthorizationModelNodeLabel == mustHaveTerminalType {
 				hasCorrectTerminalType = true
-			} else if tuple.IsTypedWildcard(curNeighbourAuthorizationModelNodeLabel) {
-				curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
-				if curNeighbourAuthorizationModelNodeType == mustHaveTerminalType {
-					hasCorrectTerminalType = true
-				}
+			}
+		case graph.SpecificTypeWildcard:
+			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
+			curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
+			if curNeighbourAuthorizationModelNodeType == mustHaveTerminalType {
+				hasCorrectTerminalType = true
 			}
 		case graph.OperatorNode:
 			return false
