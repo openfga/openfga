@@ -582,13 +582,6 @@ type dispatchMsg struct {
 	dispatchParams *dispatchParams
 }
 
-func trySendDispatchChan(ctx context.Context, msg dispatchMsg, dispatchChan chan dispatchMsg) {
-	select {
-	case <-ctx.Done():
-	case dispatchChan <- msg:
-	}
-}
-
 func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
@@ -600,7 +593,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 			if storage.IterIsDoneOrCancelled(err) {
 				break
 			}
-			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{err: err}, dispatches)
 			break
 		}
 
@@ -612,14 +605,14 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 			wildcardType := tuple.GetType(usersetObject)
 
 			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-				trySendDispatchChan(ctx, dispatchMsg{shortCircuit: true}, dispatches)
+				concurrency.TrySendThroughChannel(ctx, dispatchMsg{shortCircuit: true}, dispatches)
 				break
 			}
 		}
 
 		if usersetRelation != "" {
 			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			trySendDispatchChan(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
 		}
 	}
 }
@@ -645,7 +638,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 					return
 				}
 				if msg.err != nil {
-					trySendCheckOutcome(ctx, checkOutcome{err: msg.err}, outcomes)
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
 					break // continue
 				}
 				if msg.shortCircuit {
@@ -655,14 +648,14 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 							DatastoreQueryCount: 0,
 						},
 					}
-					trySendCheckOutcome(ctx, checkOutcome{resp: resp}, outcomes)
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
 					return
 				}
 
 				if msg.dispatchParams != nil {
 					dispatchPool.Go(func(ctx context.Context) error {
 						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-						trySendCheckOutcome(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						return nil
 					})
 				}
@@ -671,13 +664,6 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 	}()
 
 	return outcomes
-}
-
-func trySendCheckOutcome(ctx context.Context, msg checkOutcome, checkOutcome chan checkOutcome) {
-	select {
-	case <-ctx.Done():
-	case checkOutcome <- msg:
-	}
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
@@ -919,7 +905,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
 			if !storage.IterIsDoneOrCancelled(err) {
-				trySendUsersetsError(ctx, err, usersetsChan)
+				concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
 			}
 			break
 		}
@@ -929,7 +915,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 			if errors.Is(err, typesystem.ErrRelationUndefined) {
 				continue
 			}
-			trySendUsersetsError(ctx, err, usersetsChan)
+			concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
 			break
 		}
 
@@ -950,13 +936,6 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 	}
 
 	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
-}
-
-func trySendUsersetsError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
-	select {
-	case <-ctx.Done():
-	case errorChan <- usersetsChannelType{err: err}:
-	}
 }
 
 func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
@@ -1141,7 +1120,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 			if storage.IterIsDoneOrCancelled(err) {
 				break
 			}
-			trySendDispatchChan(ctx, dispatchMsg{err: err}, dispatches)
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{err: err}, dispatches)
 			break
 		}
 
@@ -1158,7 +1137,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 			User:     reqTupleKey.GetUser(),
 		}
 
-		trySendDispatchChan(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
 	}
 }
 
