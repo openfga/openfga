@@ -32,7 +32,7 @@ type CachedResult[T any] struct {
 type InMemoryLRUCache[T any] struct {
 	ccache      *ccache.Cache[T]
 	maxElements int64
-	closeOnce   sync.Once
+	closeOnce   *sync.Once
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -55,6 +55,7 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 	}
 
 	t.ccache = ccache.New(ccache.Configure[T]().MaxSize(t.maxElements))
+	t.closeOnce = &sync.Once{}
 	return t
 }
 
