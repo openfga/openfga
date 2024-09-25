@@ -686,6 +686,9 @@ func (s *Server) Close() {
 
 	s.checkResolverCloser()
 
+	if s.cache != nil {
+		s.cache.Stop()
+	}
 	s.datastore.Close()
 	s.checkDatastore.Close()
 
