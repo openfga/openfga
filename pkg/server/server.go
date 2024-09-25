@@ -1380,6 +1380,8 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 			return nil, serverErrors.ValidationError(err)
 		}
 
+		parentSpan := trace.SpanFromContext(ctx)
+		telemetry.TraceError(parentSpan, err)
 		err = serverErrors.HandleError("", err)
 		return nil, err
 	}
