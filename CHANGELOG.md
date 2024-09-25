@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Removed
 
 * Removed deprecated opentelemetry-connector `memory_ballast` extension.
+* Removed experimental logging of cache hits for each subproblem in `Check` API calls. [#1960](https://github.com/openfga/openfga/pull/1960)
 
 ### Fixed
 

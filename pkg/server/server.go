@@ -171,8 +171,7 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
-	ctx                 context.Context
-	checkTrackerEnabled bool
+	ctx context.Context
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -189,13 +188,6 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.ctx = ctx
-	}
-}
-
-// WithCheckTrackerEnabled enables/disables tracker Check results.
-func WithCheckTrackerEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.checkTrackerEnabled = enabled
 	}
 }
 
@@ -576,8 +568,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkIteratorCacheEnabled:    serverconfig.DefaultCheckIteratorCacheEnabled,
 		checkIteratorCacheMaxResults: serverconfig.DefaultCheckIteratorCacheMaxResults,
 
-		checkResolver:       nil,
-		checkTrackerEnabled: serverconfig.DefaultCheckTrackerEnabled,
+		checkResolver: nil,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -640,14 +631,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
-	checkTrackerOptions := []graph.TrackerCheckResolverOpt{}
-	if s.checkTrackerEnabled {
-		checkTrackerOptions = []graph.TrackerCheckResolverOpt{
-			graph.WithTrackerContext(s.ctx),
-			graph.WithTrackerLogger(s.logger),
-		}
-	}
-
 	var checkCacheOptions []graph.CachedCheckResolverOpt
 	if s.checkQueryCacheLimit > 0 {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
@@ -670,7 +653,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}...),
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
 	}...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {

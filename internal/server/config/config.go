@@ -61,8 +61,6 @@ const (
 
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
-
-	DefaultCheckTrackerEnabled = false
 )
 
 type DatastoreMetricsConfig struct {
@@ -298,8 +296,6 @@ type Config struct {
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
-
-	CheckTrackerEnabled bool
 }
 
 func (cfg *Config) Verify() error {
@@ -626,8 +622,7 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout:      DefaultRequestTimeout,
-		CheckTrackerEnabled: DefaultCheckTrackerEnabled,
+		RequestTimeout: DefaultRequestTimeout,
 	}
 }
 
