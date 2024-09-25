@@ -686,12 +686,8 @@ func (s *Server) Close() {
 
 	s.checkResolverCloser()
 
-	if s.checkQueryCacheEnabled {
-		// Closing checkDatastore will close the parent datastore
-		s.checkDatastore.Close()
-	} else {
-		s.datastore.Close()
-	}
+	// Closing checkDatastore will close the parent datastore
+	s.checkDatastore.Close()
 
 	s.typesystemResolverStop()
 }
