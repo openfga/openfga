@@ -1366,9 +1366,6 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 // resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and
 // it sets some response metadata based on the model resolution.
 func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-	ctx, span := tracer.Start(ctx, "resolveTypesystem")
-	defer span.End()
-
 	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrModelNotFound) {
@@ -1384,7 +1381,6 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 		}
 
 		err = serverErrors.HandleError("", err)
-		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
