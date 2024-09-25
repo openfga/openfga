@@ -672,6 +672,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	localCheckResolver := NewLocalChecker(
 		WithMaxConcurrentReads(1),
+		WithOptimizations(true),
 	)
 	defer localCheckResolver.Close()
 

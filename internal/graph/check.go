@@ -40,11 +40,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate           CheckResolver
-	concurrencyLimit   uint32
-	maxConcurrentReads uint32
-	usersetBatchSize   uint32
-	logger             logger.Logger
+	delegate             CheckResolver
+	concurrencyLimit     uint32
+	maxConcurrentReads   uint32
+	usersetBatchSize     uint32
+	logger               logger.Logger
+	optimizationsEnabled bool
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -53,6 +54,12 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
+	}
+}
+
+func WithOptimizations(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -1240,7 +1247,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
-				} else if /* TODO: Add experimental flag */ typesys.RecursiveUsersetCanFastPath(
+				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
 					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
 					tuple.GetType(reqTupleKey.GetUser())) {
 					return nestedUsersetFastpath(ctx, typesys, ds, req)

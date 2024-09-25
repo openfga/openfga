@@ -17,6 +17,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
 * Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962)
 
+### Performance
+* Improve check performance in the case that the query involves resolving nested userset. Enable via experimental flag `enable-check-optimizations`. [#1945](https://github.com/openfga/openfga/issues/1945)
+
 ## [1.6.1] - 2024-09-12
 
 ### Changed
