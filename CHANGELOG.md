@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+
+* Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
+
 ### Removed
 
 * Removed deprecated opentelemetry-connector `memory_ballast` extension.
