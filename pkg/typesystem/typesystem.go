@@ -11,7 +11,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 	"go.opentelemetry.io/otel"
-	gonumgraph "gonum.org/v1/gonum/graph"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"
@@ -481,7 +480,7 @@ func (t *TypeSystem) recursiveTTUNodeCanFastpath(curAuthorizationModelNode *grap
 	if neighborNodesIter.Len() != 1 {
 		return false
 	}
-	
+
 	neighborNodesIter.Next()
 
 	unionNode, ok := neighborNodesIter.Node().(*graph.AuthorizationModelNode)
