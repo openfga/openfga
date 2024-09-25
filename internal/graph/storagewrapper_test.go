@@ -33,7 +33,7 @@ func TestReadUsersetTuples(t *testing.T) {
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-	maxSize := int64(10)
+	maxSize := 10
 	ttl := 5 * time.Hour
 	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
 
@@ -47,7 +47,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		tuple.NewTupleKey("company:1", "viewer", "user:5"),
 		tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
 	}
-	tuples := []*openfgav1.Tuple{}
+	var tuples []*openfgav1.Tuple
 	for _, tk := range tks {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk})
 	}
@@ -67,7 +67,7 @@ func TestReadUsersetTuples(t *testing.T) {
 	err := ds.Write(ctx, storeID, nil, tks)
 	require.NoError(t, err)
 
-	t.Run("cache miss", func(t *testing.T) {
+	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()),
 			mockDatastore.EXPECT().
@@ -78,7 +78,6 @@ func TestReadUsersetTuples(t *testing.T) {
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		defer iter.Stop()
 
 		var actual []*openfgav1.Tuple
 
@@ -95,10 +94,12 @@ func TestReadUsersetTuples(t *testing.T) {
 			actual = append(actual, tuple)
 		}
 
+		iter.Stop() // has to be sync otherwise the assertion fails
+
 		require.Equal(t, tuples, actual)
 	})
 
-	t.Run("cache hit", func(t *testing.T) {
+	t.Run("cache_hit", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: tuples}),
 		)
@@ -125,7 +126,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		require.Equal(t, tuples, actual)
 	})
 
-	t.Run("higher consistency", func(t *testing.T) {
+	t.Run("higher_consistency", func(t *testing.T) {
 		opts := storage.ReadUsersetTuplesOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
@@ -173,7 +174,7 @@ func TestRead(t *testing.T) {
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-	maxSize := int64(10)
+	maxSize := 10
 	ttl := 5 * time.Hour
 	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
 
@@ -313,7 +314,7 @@ func TestCachedIterator(t *testing.T) {
 		protocmp.Transform(),
 	}
 
-	t.Run("next", func(t *testing.T) {
+	t.Run("not_calling_stop_doesnt_cache", func(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
@@ -322,12 +323,12 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 
 		iter := &cachedIterator{
-			iter:         storage.NewStaticTupleIterator(tuples),
-			tuples:       make([]*openfgav1.Tuple, maxCacheSize),
-			cacheKey:     cacheKey,
-			cache:        cache,
-			maxCacheSize: int64(maxCacheSize),
-			ttl:          ttl,
+			iter:          storage.NewStaticTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
 		}
 
 		var actual []*openfgav1.Tuple
@@ -351,8 +352,8 @@ func TestCachedIterator(t *testing.T) {
 		require.Nil(t, cachedResults)
 	})
 
-	t.Run("next capacity", func(t *testing.T) {
-		maxCacheSize := 2
+	t.Run("calling_stop_doesnt_cache_due_to_size_foreground", func(t *testing.T) {
+		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
 		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
@@ -360,12 +361,75 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 
 		iter := &cachedIterator{
-			iter:         storage.NewStaticTupleIterator(tuples),
-			tuples:       make([]*openfgav1.Tuple, maxCacheSize),
-			cacheKey:     cacheKey,
-			cache:        cache,
-			maxCacheSize: int64(maxCacheSize),
-			ttl:          ttl,
+			iter:          storage.NewStaticTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
+		}
+
+		var actual []*openfgav1.Tuple
+
+		for {
+			tk, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+				break
+			}
+
+			actual = append(actual, tk)
+		}
+
+		iter.Stop()
+
+		require.Equal(t, tuples, actual)
+
+		cachedResults := cache.Get(cacheKey)
+		require.Nil(t, cachedResults)
+	})
+
+	t.Run("calling_stop_doesnt_cache_due_to_size_background", func(t *testing.T) {
+		maxCacheSize := 1
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+
+		iter := &cachedIterator{
+			iter:          storage.NewStaticTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
+		}
+
+		iter.Stop()
+
+		cachedResults := cache.Get(cacheKey)
+		require.Nil(t, cachedResults)
+	})
+
+	t.Run("calling_stop_caches_in_foreground", func(t *testing.T) {
+		maxCacheSize := 10
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+
+		iter := &cachedIterator{
+			iter:          storage.NewStaticTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
 		}
 
 		var actual []*openfgav1.Tuple
@@ -384,27 +448,6 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		require.Equal(t, tuples, actual)
-
-		cachedResults := cache.Get(cacheKey)
-		require.Nil(t, cachedResults)
-	})
-
-	t.Run("stop", func(t *testing.T) {
-		maxCacheSize := 10
-		cacheKey := "cache-key"
-		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](int64(100)),
-		}...)
-
-		iter := &cachedIterator{
-			iter:         storage.NewStaticTupleIterator(tuples),
-			tuples:       make([]*openfgav1.Tuple, maxCacheSize),
-			cacheKey:     cacheKey,
-			cache:        cache,
-			maxCacheSize: int64(maxCacheSize),
-			ttl:          ttl,
-		}
 
 		iter.Stop()
 		cachedResults := cache.Get(cacheKey)
@@ -415,8 +458,8 @@ func TestCachedIterator(t *testing.T) {
 		}
 	})
 
-	t.Run("stop capacity", func(t *testing.T) {
-		maxCacheSize := 2
+	t.Run("calling_stop_caches_in_background", func(t *testing.T) {
+		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
 		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
@@ -424,16 +467,20 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 
 		iter := &cachedIterator{
-			iter:         storage.NewStaticTupleIterator(tuples),
-			tuples:       make([]*openfgav1.Tuple, maxCacheSize),
-			cacheKey:     cacheKey,
-			cache:        cache,
-			maxCacheSize: int64(maxCacheSize),
-			ttl:          ttl,
+			iter:          storage.NewStaticTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
 		}
 
 		iter.Stop()
 		cachedResults := cache.Get(cacheKey)
-		require.Nil(t, cachedResults)
+		require.NotNil(t, cachedResults)
+
+		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
