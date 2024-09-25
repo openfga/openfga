@@ -144,6 +144,9 @@ type Server struct {
 	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
 
+	checkIteratorCacheEnabled    bool
+	checkIteratorCacheMaxResults uint32
+
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
 
@@ -355,7 +358,7 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
-// WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
+// WithCheckQueryCacheEnabled enables caching of Check results for the Check and List Objects APIs.
 // This cache is shared for all requests.
 // See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL.
 func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -377,6 +380,21 @@ func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheTTL = ttl
+	}
+}
+
+// WithCheckIteratorCacheEnabled enables caching of iterators produced within Check for subsequent requests.
+func WithCheckIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkIteratorCacheEnabled = enabled
+	}
+}
+
+// WithCheckIteratorCacheMaxResults sets the limit of an iterator size to cache (in items)
+// Needs WithCheckIteratorCacheEnabled set to true.
+func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkIteratorCacheMaxResults = limit
 	}
 }
 
@@ -551,11 +569,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
-		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
+		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnabled,
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
-		checkResolver:          nil,
-		checkTrackerEnabled:    serverconfig.DefaultCheckTrackerEnabled,
+
+		checkIteratorCacheEnabled:    serverconfig.DefaultCheckIteratorCacheEnabled,
+		checkIteratorCacheMaxResults: serverconfig.DefaultCheckIteratorCacheMaxResults,
+
+		checkResolver:       nil,
+		checkTrackerEnabled: serverconfig.DefaultCheckTrackerEnabled,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -603,7 +625,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
-	// below this point, don't throw errors or we may leak resources in tests
+	// below this point, don't throw errors, or we may leak resources in tests
 
 	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
 	if s.checkDispatchThrottlingEnabled {
@@ -626,12 +648,14 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
-	checkCacheOptions := []graph.CachedCheckResolverOpt{}
-	if s.checkQueryCacheEnabled {
+	var checkCacheOptions []graph.CachedCheckResolverOpt
+	if s.checkQueryCacheLimit > 0 {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(s.checkQueryCacheLimit)),
 		}...)
+	}
 
+	if s.checkQueryCacheEnabled {
 		checkCacheOptions = append(checkCacheOptions,
 			graph.WithExistingCache(s.cache),
 			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
@@ -658,10 +682,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
-	if s.checkQueryCacheEnabled {
-		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int(s.checkQueryCacheLimit), s.checkQueryCacheTTL)
-	} else {
-		s.checkDatastore = s.datastore
+	s.checkDatastore = s.datastore
+
+	if s.checkIteratorCacheEnabled {
+		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
 	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)

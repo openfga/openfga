@@ -32,10 +32,13 @@ const (
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 
-	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
-	DefaultCheckQueryCacheLimit  = 10000
-	DefaultCheckQueryCacheTTL    = 10 * time.Second
-	DefaultCheckQueryCacheEnable = false
+	DefaultWriteContextByteLimit  = 32 * 1_024 // 32KB
+	DefaultCheckQueryCacheLimit   = 10000
+	DefaultCheckQueryCacheTTL     = 10 * time.Second
+	DefaultCheckQueryCacheEnabled = false
+
+	DefaultCheckIteratorCacheEnabled    = false
+	DefaultCheckIteratorCacheMaxResults = 10000
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -595,7 +598,7 @@ func DefaultConfig() *Config {
 			EnableRPCHistograms: false,
 		},
 		CheckQueryCache: CheckQueryCache{
-			Enabled: DefaultCheckQueryCacheEnable,
+			Enabled: DefaultCheckQueryCacheEnabled,
 			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
