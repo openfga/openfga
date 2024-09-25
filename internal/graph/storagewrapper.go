@@ -174,15 +174,14 @@ type cachedIterator struct {
 	ttl           time.Duration
 	maxResultSize int
 	closeOnce     sync.Once
+	isClosed      bool
 }
 
 func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	if c.tuples == nil {
 		return false
 	}
-	fmt.Println("adding to buffer", len(c.tuples))
 	c.tuples = append(c.tuples, t)
-	fmt.Println("buffer", len(c.tuples))
 	if len(c.tuples) >= c.maxResultSize {
 		c.tuples = nil
 	}
@@ -193,6 +192,9 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
+		if !errors.Is(err, storage.ErrIteratorDone) {
+			c.tuples = nil // don't store results that are incomplete
+		}
 		return nil, err
 	}
 
@@ -204,28 +206,40 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // Stop see [Iterator.Stop].
 func (c *cachedIterator) Stop() {
 	c.closeOnce.Do(func() {
-		defer c.iter.Stop()
-
 		if c.tuples == nil {
+			c.iter.Stop()
+			c.isClosed = true
+			return
+		}
+		// prevent goroutine if iterator was already consumed
+		ctx := context.Background()
+		if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
+			c.flush()
+			c.iter.Stop()
+			c.isClosed = true
 			return
 		}
 
-		ctx := context.Background()
-
-		for {
-			// attempt to drain the iterator to have it ready for subsequent calls
-			t, err := c.iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					c.flush()
+		go func() {
+			defer c.iter.Stop()
+			defer func() {
+				c.isClosed = true
+			}()
+			for {
+				// attempt to drain the iterator to have it ready for subsequent calls
+				t, err := c.iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						c.flush()
+					}
+					return
 				}
-				return
+				// if the size is exceeded we don't add anymore and exit
+				if !c.addToBuffer(t) {
+					return
+				}
 			}
-			// if the size is exceeded we don't add anymore and exit
-			if !c.addToBuffer(t) {
-				return
-			}
-		}
+		}()
 	})
 }
 
@@ -238,9 +252,10 @@ func (c *cachedIterator) flush() {
 	if c.tuples == nil {
 		return
 	}
-	fmt.Println("flushing buffer", len(c.tuples))
-	c.cache.Set(c.cacheKey, c.tuples, c.ttl)
-	tuplesCacheSizeHistogram.Observe(float64(len(c.tuples)))
+	tuples := make([]*openfgav1.Tuple, len(c.tuples))
+	copy(tuples, c.tuples)
+	c.cache.Set(c.cacheKey, tuples, c.ttl)
+	tuplesCacheSizeHistogram.Observe(float64(len(tuples)))
 }
 
 func cacheKeyFor(s string) string {

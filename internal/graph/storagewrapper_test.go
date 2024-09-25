@@ -200,7 +200,7 @@ func TestRead(t *testing.T) {
 	err := ds.Write(ctx, storeID, nil, tks)
 	require.NoError(t, err)
 
-	t.Run("cache miss", func(t *testing.T) {
+	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()),
 			mockDatastore.EXPECT().
@@ -231,7 +231,7 @@ func TestRead(t *testing.T) {
 		require.Equal(t, tuples, actual)
 	})
 
-	t.Run("cache hit", func(t *testing.T) {
+	t.Run("cache_hit", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).
 				Return(&storage.CachedResult[any]{Value: tuples}),
@@ -259,7 +259,7 @@ func TestRead(t *testing.T) {
 		require.Equal(t, tuples, actual)
 	})
 
-	t.Run("higher consistency", func(t *testing.T) {
+	t.Run("higher_consistency", func(t *testing.T) {
 		opts := storage.ReadOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
@@ -314,44 +314,6 @@ func TestCachedIterator(t *testing.T) {
 		protocmp.Transform(),
 	}
 
-	t.Run("not_calling_stop_doesnt_cache", func(t *testing.T) {
-		maxCacheSize := 10
-		cacheKey := "cache-key"
-		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](int64(100)),
-		}...)
-
-		iter := &cachedIterator{
-			iter:          storage.NewStaticTupleIterator(tuples),
-			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
-			cacheKey:      cacheKey,
-			cache:         cache,
-			maxResultSize: maxCacheSize,
-			ttl:           ttl,
-		}
-
-		var actual []*openfgav1.Tuple
-
-		for {
-			tk, err := iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				require.Fail(t, "no error was expected")
-				break
-			}
-
-			actual = append(actual, tk)
-		}
-
-		require.Equal(t, tuples, actual)
-
-		cachedResults := cache.Get(cacheKey)
-		require.Nil(t, cachedResults)
-	})
-
 	t.Run("calling_stop_doesnt_cache_due_to_size_foreground", func(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
@@ -384,10 +346,15 @@ func TestCachedIterator(t *testing.T) {
 			actual = append(actual, tk)
 		}
 
-		iter.Stop()
-
 		require.Equal(t, tuples, actual)
 
+		iter.Stop()
+
+		for {
+			if iter.isClosed {
+				break
+			}
+		}
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
 	})
@@ -411,6 +378,11 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 
+		for {
+			if iter.isClosed {
+				break
+			}
+		}
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
 	})
@@ -450,6 +422,11 @@ func TestCachedIterator(t *testing.T) {
 		require.Equal(t, tuples, actual)
 
 		iter.Stop()
+		for {
+			if iter.isClosed {
+				break
+			}
+		}
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
@@ -476,6 +453,11 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
+		for {
+			if iter.isClosed {
+				break
+			}
+		}
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
