@@ -953,8 +953,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	span.SetAttributes(attribute.String("authorization_model_id", typesys.GetAuthorizationModelID()))
-
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
@@ -1366,6 +1364,7 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 // resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and
 // it sets some response metadata based on the model resolution.
 func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
+	parentSpan := trace.SpanFromContext(ctx)
 	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrModelNotFound) {
@@ -1380,7 +1379,6 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		parentSpan := trace.SpanFromContext(ctx)
 		telemetry.TraceError(parentSpan, err)
 		err = serverErrors.HandleError("", err)
 		return nil, err
@@ -1388,6 +1386,7 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 
 	resolvedModelID := typesys.GetAuthorizationModelID()
 
+	parentSpan.SetAttributes(attribute.String(authorizationModelIDKey, resolvedModelID))
 	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
