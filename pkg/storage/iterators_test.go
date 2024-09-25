@@ -887,3 +887,46 @@ func TestIterIsDoneOrCancelled(t *testing.T) {
 		require.Equal(t, tt.expected, output)
 	}
 }
+
+func TestGetAllObjects(t *testing.T) {
+	tests := []struct {
+		name              string
+		tuples            []*openfgav1.TupleKey
+		expectedItemInSet []string
+	}{
+		{
+			name:              "empty_set",
+			tuples:            []*openfgav1.TupleKey{},
+			expectedItemInSet: []string{},
+		},
+		{
+			name: "non_duplicate",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:doc1", "viewer", "user:charlie"),
+				tuple.NewTupleKey("document:abc", "viewer", "user:bob"),
+				tuple.NewTupleKey("document:team_doc", "viewer", "user:daniel"),
+				tuple.NewTupleKey("group:b", "member", "group:a#member"),
+			},
+			expectedItemInSet: []string{"document:abc", "document:doc1", "document:team_doc", "group:b"},
+		},
+		{
+			name: "duplicate",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:duplicate", "viewer", "user:charlie"),
+				tuple.NewTupleKey("document:abc", "viewer", "user:bob"),
+				tuple.NewTupleKey("document:duplicate", "viewer", "user:daniel"),
+				tuple.NewTupleKey("group:abc", "parent", "group:a"),
+			},
+			expectedItemInSet: []string{"document:abc", "document:duplicate", "group:abc"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			iter := NewStaticTupleKeyIterator(tt.tuples)
+			out, err := GetAllObjects(context.Background(), iter)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedItemInSet, out.Values())
+		})
+	}
+}

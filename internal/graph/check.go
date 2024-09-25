@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -952,6 +953,185 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 	}
 }
 
+// recursiveMatchUserUsersetInfo groups common parameters needed
+// for recursiveMatchUserUserset for convenience purpose.
+type recursiveMatchUserUsersetInfo struct {
+	typesys                     *typesystem.TypeSystem
+	ds                          storage.RelationshipTupleReader
+	allowedUserTypeRestrictions []*openfgav1.RelationReference
+	userToUsersetMapping        storage.SortedSet
+
+	// The following member are atomic/sync in anticipation
+	// that the algorithm will parallelize the lookup.
+	dsCount        *atomic.Uint32
+	visitedUserset *sync.Map
+}
+
+func recursiveMatchUserUserset(ctx context.Context,
+	req *ResolveCheckRequest,
+	info *recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
+	defer span.End()
+	info.dsCount.Add(1)
+
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
+
+	opts := storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+	iter, err := info.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+		Object:                      reqTupleKey.GetObject(),
+		Relation:                    reqTupleKey.GetRelation(),
+		AllowedUserTypeRestrictions: info.allowedUserTypeRestrictions,
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(info.typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), info.typesys),
+	)
+	defer filteredIter.Stop()
+
+	// First, we will want to check if there are any intersection with the userToUsersetMapping.
+	// If so, we do not need to recursively lookup further.
+	var usersetItems []string
+	for {
+		t, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			return nil, err
+		}
+		usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
+		if relation == "" {
+			// This should not be possible given we have put in the type restriction.
+			return nil, fmt.Errorf("expect user %s to have form objection relation", t.GetUser())
+		}
+		if info.userToUsersetMapping.Exists(usersetName) {
+			return &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + info.dsCount.Load(),
+				},
+			}, nil
+		}
+		usersetItems = append(usersetItems, usersetName)
+	}
+
+	// when we get here, it means that we are not able to find intersection with the current sortedUsersetSlices.
+	// We will recursively check whether recursiveMatchUserUserset to find out whether there are intersections.
+	// TODO: parallelize the lookup.
+	for _, user := range usersetItems {
+		_, visited := info.visitedUserset.LoadOrStore(user, struct{}{})
+		if !visited {
+			newReq := req.clone()
+			newReq.TupleKey.Object = user
+			result, err := recursiveMatchUserUserset(ctx, newReq, info)
+			if err != nil {
+				return nil, err
+			}
+			if result.GetAllowed() {
+				return result, nil
+			}
+		}
+		// Note that visited does not necessary means that there are cycles.  For the following model,
+		// type user
+		// type group
+		//   relations
+		//     define member: [user, group#member]
+		// We have something like
+		// group:1#member@group:2#member
+		// group:1#member@group:3#member
+		// group:2#member@group:a#member
+		// group:3#member@group:a#member
+		// Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
+	}
+
+	// There are no intersections and recursive matching shows there are no intersections.
+	return &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + info.dsCount.Load(),
+		},
+	}, nil
+}
+
+func nestedUsersetFastpath(ctx context.Context,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader,
+	req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "nestedUsersetFastpath")
+	defer span.End()
+
+	// Note that this will take care of the publicly assignable case as well.
+	iter, err := checkutil.IteratorReadStartingFromUser(ctx,
+		typesys, ds, req,
+		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
+		nil)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+	)
+	defer filteredIter.Stop()
+
+	group, err := storage.GetAllObjects(ctx, filteredIter)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if group.Size() == 0 {
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			},
+		}, nil
+	}
+
+	if group.Exists(req.GetTupleKey().GetObject()) {
+		return &ResolveCheckResponse{
+			Allowed: true,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			},
+		}, nil
+	}
+
+	reqTupleKey := req.GetTupleKey()
+	objectType := tuple.GetType(reqTupleKey.GetObject())
+	relation := reqTupleKey.GetRelation()
+
+	dsCount := &atomic.Uint32{}
+	dsCount.Store(1)
+	return recursiveMatchUserUserset(ctx, req, &recursiveMatchUserUsersetInfo{
+		typesys:              typesys,
+		ds:                   ds,
+		dsCount:              dsCount,
+		userToUsersetMapping: group,
+		visitedUserset:       &sync.Map{},
+		allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+			typesystem.DirectRelationReference(objectType, relation),
+		},
+	})
+}
+
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
@@ -1060,8 +1240,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
+				} else if /* TODO: Add experimental flag */ typesys.RecursiveUsersetCanFastPath(
+					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
+					tuple.GetType(reqTupleKey.GetUser())) {
+					return nestedUsersetFastpath(ctx, typesys, ds, req)
 				}
 			}
+
 			return resolver(ctx, req, filteredIter)
 		}
 
