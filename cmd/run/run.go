@@ -260,8 +260,6 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
-	flags.Bool("check-tracker-enabled", defaultConfig.CheckTrackerEnabled, "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.")
-
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -632,7 +630,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
 		server.WithContext(ctx),
-		server.WithCheckTrackerEnabled(config.CheckTrackerEnabled),
 	)
 
 	s.Logger.Info(
