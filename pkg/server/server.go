@@ -1464,16 +1464,17 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		Method:  method,
 	})
 
-	storeIDs, err := s.checkAuthzListStores(ctx)
+	storeIDs, err := s.getAccessibleStores(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// even though we have the list of store IDs, we need to call ListStoresQuery to fetch the entire metadata of the store.
 	q := commands.NewListStoresQuery(s.datastore,
 		commands.WithListStoresQueryLogger(s.logger),
 		commands.WithListStoresQueryEncoder(s.encoder),
 	)
-	return q.Execute(ctx, req, &storeIDs)
+	return q.Execute(ctx, req, storeIDs)
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
@@ -1570,8 +1571,9 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 	return nil
 }
 
-// checkAuthzListStores checks the authorization for listing stores.
-func (s *Server) checkAuthzListStores(ctx context.Context) ([]string, error) {
+// getAccessibleStores checks whether the caller has permission to list stores and if so,
+// returns the list of stores that the user has access to.
+func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 	err := s.authorizer.AuthorizeListStores(ctx)
 	if err != nil {
 		return nil, err

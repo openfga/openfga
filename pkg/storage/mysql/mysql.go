@@ -555,10 +555,20 @@ func (m *MySQL) ListStores(ctx context.Context, options storage.ListStoresOption
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
 
+	var whereClause sq.Sqlizer
+	if len(options.IDs) > 0 {
+		whereClause = sq.And{
+			sq.Eq{"deleted_at": nil},
+			sq.Eq{"id": options.IDs},
+		}
+	} else {
+		whereClause = sq.Eq{"deleted_at": nil}
+	}
+
 	sb := m.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
-		Where(sq.Eq{"deleted_at": nil}).
+		Where(whereClause).
 		OrderBy("id")
 
 	if options.Pagination.From != "" {

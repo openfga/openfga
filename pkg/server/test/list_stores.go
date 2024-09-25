@@ -23,7 +23,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	for ok := true; ok; ok = deleteContinuationToken != "" {
 		listStoresResponse, err := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 			ContinuationToken: deleteContinuationToken,
-		})
+		}, nil)
 		require.NoError(t, err)
 		for _, store := range listStoresResponse.GetStores() {
 			_, err := deleteCmd.Execute(ctx, &openfgav1.DeleteStoreRequest{
@@ -35,7 +35,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	// ensure there are actually no stores
-	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{})
+	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{}, nil)
 	require.NoError(t, actualError)
 	require.Empty(t, listStoresResponse.GetStores())
 
@@ -52,7 +52,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	listStoresResponse, actualError = getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: "",
-	})
+	}, nil)
 	require.NoError(t, actualError)
 	require.Len(t, listStoresResponse.GetStores(), 1)
 	require.Equal(t, firstStoreName, listStoresResponse.GetStores()[0].GetName())
@@ -62,7 +62,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: listStoresResponse.GetContinuationToken(),
-	})
+	}, nil)
 	require.NoError(t, actualError)
 	require.Len(t, secondListStoresResponse.GetStores(), 1)
 	require.Equal(t, secondStoreName, secondListStoresResponse.GetStores()[0].GetName())

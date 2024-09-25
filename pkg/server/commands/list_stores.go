@@ -44,7 +44,7 @@ func NewListStoresQuery(storesBackend storage.StoresBackend, opts ...ListStoresQ
 	return q
 }
 
-func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStoresRequest, storeIDs *[]string) (*openfgav1.ListStoresResponse, error) {
+func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStoresRequest, storeIDs []string) (*openfgav1.ListStoresResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken

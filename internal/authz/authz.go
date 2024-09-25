@@ -187,7 +187,7 @@ func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
 	return a.individualAuthorize(ctx, claims.ClientID, relation, SystemIDType, &openfgav1.ContextualTupleKeys{})
 }
 
-// ListAuthorizedStores returns the list of stores that the user has access to.
+// ListAuthorizedStores returns the list of store IDs that the user has access to.
 func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {

@@ -538,10 +538,10 @@ func (p *Postgres) ListStores(ctx context.Context, options storage.ListStoresOpt
 	defer span.End()
 
 	var whereClause sq.Sqlizer
-	if len(*options.IDs) > 0 {
+	if len(options.IDs) > 0 {
 		whereClause = sq.And{
 			sq.Eq{"deleted_at": nil},
-			sq.Eq{"id": *options.IDs},
+			sq.Eq{"id": options.IDs},
 		}
 	} else {
 		whereClause = sq.Eq{"deleted_at": nil}
