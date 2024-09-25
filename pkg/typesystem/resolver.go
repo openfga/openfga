@@ -45,7 +45,6 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		var err error
 
 		if modelID != "" {
-
 			if _, err := ulid.Parse(modelID); err != nil {
 				return nil, ErrModelNotFound
 			}
