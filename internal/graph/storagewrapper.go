@@ -37,6 +37,12 @@ var (
 		Help:      "The total number of cache hits from cached iterator instances.",
 	})
 
+	tuplesCacheDiscardCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "tuples_cache_discard_count",
+		Help:      "The total number of discards from cached iterator instances.",
+	})
+
 	tuplesCacheSizeHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            "tuples_cache_size",
@@ -182,6 +188,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	}
 	c.tuples = append(c.tuples, t)
 	if len(c.tuples) >= c.maxResultSize {
+		tuplesCacheDiscardCounter.Inc()
 		c.tuples = nil
 	}
 	return true
@@ -220,9 +227,7 @@ func (c *cachedIterator) Stop() {
 		c.wg.Add(1)
 		go func() {
 			defer c.iter.Stop()
-			defer func() {
-				c.wg.Done()
-			}()
+			defer c.wg.Done()
 			for {
 				// attempt to drain the iterator to have it ready for subsequent calls
 				t, err := c.iter.Next(ctx)
