@@ -686,7 +686,7 @@ func (s *Server) Close() {
 
 	s.checkResolverCloser()
 
-	// Closing checkDatastore will close the parent datastore
+	s.datastore.Close()
 	s.checkDatastore.Close()
 
 	s.typesystemResolverStop()
