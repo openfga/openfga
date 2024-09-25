@@ -369,18 +369,3 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 func IterIsDoneOrCancelled(err error) bool {
 	return errors.Is(err, ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
-
-// GetAllObjects will go through all tuples in the iterator and returned a sorted set of the tuple's object.
-func GetAllObjects(ctx context.Context, iter TupleKeyIterator) (SortedSet, error) {
-	sortedSet := NewSortedSet()
-	for {
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, ErrIteratorDone) {
-				return sortedSet, nil
-			}
-			return nil, err
-		}
-		sortedSet.Add(t.GetObject())
-	}
-}

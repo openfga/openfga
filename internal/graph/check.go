@@ -976,10 +976,10 @@ type recursiveMatchUserUsersetInfo struct {
 
 func recursiveMatchUserUserset(ctx context.Context,
 	req *ResolveCheckRequest,
-	info *recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error) {
+	commonParameters *recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
 	defer span.End()
-	info.dsCount.Add(1)
+	commonParameters.dsCount.Add(1)
 
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
@@ -989,10 +989,10 @@ func recursiveMatchUserUserset(ctx context.Context,
 			Preference: req.GetConsistency(),
 		},
 	}
-	iter, err := info.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+	iter, err := commonParameters.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 		Object:                      reqTupleKey.GetObject(),
 		Relation:                    reqTupleKey.GetRelation(),
-		AllowedUserTypeRestrictions: info.allowedUserTypeRestrictions,
+		AllowedUserTypeRestrictions: commonParameters.allowedUserTypeRestrictions,
 	}, opts)
 	if err != nil {
 		return nil, err
@@ -1001,9 +1001,9 @@ func recursiveMatchUserUserset(ctx context.Context,
 	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(info.typesys),
+			validation.FilterInvalidTuples(commonParameters.typesys),
 		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), info.typesys),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), commonParameters.typesys),
 	)
 	defer filteredIter.Stop()
 
@@ -1023,11 +1023,11 @@ func recursiveMatchUserUserset(ctx context.Context,
 			// This should not be possible given we have put in the type restriction.
 			return nil, fmt.Errorf("expect user %s to have form objection relation", t.GetUser())
 		}
-		if info.userToUsersetMapping.Exists(usersetName) {
+		if commonParameters.userToUsersetMapping.Exists(usersetName) {
 			return &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + info.dsCount.Load(),
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + commonParameters.dsCount.Load(),
 				},
 			}, nil
 		}
@@ -1038,11 +1038,11 @@ func recursiveMatchUserUserset(ctx context.Context,
 	// We will recursively check whether recursiveMatchUserUserset to find out whether there are intersections.
 	// TODO: parallelize the lookup.
 	for _, user := range usersetItems {
-		_, visited := info.visitedUserset.LoadOrStore(user, struct{}{})
+		_, visited := commonParameters.visitedUserset.LoadOrStore(user, struct{}{})
 		if !visited {
 			newReq := req.clone()
 			newReq.TupleKey.Object = user
-			result, err := recursiveMatchUserUserset(ctx, newReq, info)
+			result, err := recursiveMatchUserUserset(ctx, newReq, commonParameters)
 			if err != nil {
 				return nil, err
 			}
@@ -1067,7 +1067,7 @@ func recursiveMatchUserUserset(ctx context.Context,
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + info.dsCount.Load(),
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + commonParameters.dsCount.Load(),
 		},
 	}, nil
 }
@@ -1097,24 +1097,33 @@ func nestedUsersetFastpath(ctx context.Context,
 	)
 	defer filteredIter.Stop()
 
-	group, err := storage.GetAllObjects(ctx, filteredIter)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
+	group := storage.NewSortedSet()
+	for {
+		t, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			span.RecordError(err)
+			return nil, err
+		}
+
+		if t.GetObject() == req.GetTupleKey().GetObject() {
+			return &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+				},
+			}, nil
+		}
+		group.Add(t.GetObject())
 	}
 
+	// Quick optimization - if the group has no members, we don't have to check
+	// further as there will be no relations with the userset.
 	if group.Size() == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
-		}, nil
-	}
-
-	if group.Exists(req.GetTupleKey().GetObject()) {
-		return &ResolveCheckResponse{
-			Allowed: true,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
 				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 			},
