@@ -690,7 +690,6 @@ func (s *Server) Close() {
 		s.cache.Stop()
 	}
 	s.datastore.Close()
-	s.checkDatastore.Close()
 
 	s.typesystemResolverStop()
 }
