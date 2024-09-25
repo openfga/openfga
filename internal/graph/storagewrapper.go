@@ -162,7 +162,6 @@ func (c *CachedDatastore) newCachedIterator(ctx context.Context, dsIterFunc iter
 
 // Close closes the datastore and cleans up any residual resources.
 func (c *CachedDatastore) Close() {
-	c.cache.Stop()
 	c.OpenFGADatastore.Close()
 }
 

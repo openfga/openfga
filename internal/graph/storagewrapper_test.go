@@ -321,6 +321,7 @@ func TestCachedIterator(t *testing.T) {
 		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		defer cache.Stop()
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
@@ -362,6 +363,7 @@ func TestCachedIterator(t *testing.T) {
 		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		defer cache.Stop()
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
@@ -386,6 +388,7 @@ func TestCachedIterator(t *testing.T) {
 		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		defer cache.Stop()
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
@@ -430,6 +433,7 @@ func TestCachedIterator(t *testing.T) {
 		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		defer cache.Stop()
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
