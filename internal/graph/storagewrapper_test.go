@@ -350,11 +350,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 
-		for {
-			if iter.isClosed {
-				break
-			}
-		}
+		iter.wg.Wait()
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
 	})
@@ -378,11 +374,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 
-		for {
-			if iter.isClosed {
-				break
-			}
-		}
+		iter.wg.Wait()
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
 	})
@@ -422,11 +414,7 @@ func TestCachedIterator(t *testing.T) {
 		require.Equal(t, tuples, actual)
 
 		iter.Stop()
-		for {
-			if iter.isClosed {
-				break
-			}
-		}
+		iter.wg.Wait()
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
@@ -453,11 +441,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
-		for {
-			if iter.isClosed {
-				break
-			}
-		}
+		iter.wg.Wait()
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 

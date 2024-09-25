@@ -174,7 +174,7 @@ type cachedIterator struct {
 	ttl           time.Duration
 	maxResultSize int
 	closeOnce     sync.Once
-	isClosed      bool
+	wg            sync.WaitGroup
 }
 
 func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
@@ -208,7 +208,6 @@ func (c *cachedIterator) Stop() {
 	c.closeOnce.Do(func() {
 		if c.tuples == nil {
 			c.iter.Stop()
-			c.isClosed = true
 			return
 		}
 		// prevent goroutine if iterator was already consumed
@@ -216,14 +215,14 @@ func (c *cachedIterator) Stop() {
 		if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
 			c.flush()
 			c.iter.Stop()
-			c.isClosed = true
 			return
 		}
 
+		c.wg.Add(1)
 		go func() {
 			defer c.iter.Stop()
 			defer func() {
-				c.isClosed = true
+				c.wg.Done()
 			}()
 			for {
 				// attempt to drain the iterator to have it ready for subsequent calls
