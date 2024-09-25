@@ -953,6 +953,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
+	span.SetAttributes(attribute.String("authorization_model_id", typesys.GetAuthorizationModelID()))
+
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
@@ -1009,6 +1011,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, serverErrors.HandleError("", err)
 	}
 
+	span.SetAttributes(
+		attribute.Bool("cycle_detected", resp.GetCycleDetected()),
+		attribute.Bool("allowed", resp.GetAllowed()))
+
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
@@ -1033,8 +1039,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
-
-	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,

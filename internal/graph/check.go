@@ -453,6 +453,17 @@ func (c *LocalChecker) ResolveCheck(
 	))
 	defer span.End()
 
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+	span.SetAttributes(attribute.String("authorization_model_id", typesys.GetAuthorizationModelID()))
+
+	_, ok = storage.RelationshipTupleReaderFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: relationship tuple reader datastore missing in context", openfgaErrors.ErrUnknown)
+	}
+
 	if req.GetRequestMetadata().Depth == 0 {
 		return nil, ErrResolutionDepthExceeded
 	}
@@ -482,15 +493,6 @@ func (c *LocalChecker) ResolveCheck(
 				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
 			},
 		}, nil
-	}
-
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-	}
-	_, ok = storage.RelationshipTupleReaderFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("%w: relationship tuple reader datastore missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	objectType, _ := tuple.SplitObject(object)
