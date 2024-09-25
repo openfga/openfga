@@ -39,13 +39,13 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
 		ctx, span := tracer.Start(ctx, "MemoizedTypesystemResolverFunc", trace.WithAttributes(
 			attribute.String("store_id", storeID),
-			attribute.String("authorization_model_id", modelID),
 		))
 		defer span.End()
 
 		var err error
 
 		if modelID != "" {
+
 			if _, err := ulid.Parse(modelID); err != nil {
 				return nil, ErrModelNotFound
 			}
@@ -68,6 +68,8 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			model = v.(*openfgav1.AuthorizationModel)
 			modelID = model.GetId()
 		}
+
+		span.SetAttributes(attribute.String("authorization_model_id", modelID))
 
 		key = fmt.Sprintf("%s/%s", storeID, modelID)
 		item := cache.Get(key)

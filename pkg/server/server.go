@@ -1390,7 +1390,6 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 
 	resolvedModelID := typesys.GetAuthorizationModelID()
 
-	span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
 	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
