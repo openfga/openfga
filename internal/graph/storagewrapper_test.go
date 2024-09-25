@@ -296,6 +296,9 @@ func TestRead(t *testing.T) {
 }
 
 func TestCachedIterator(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ctx := context.Background()
 
 	tuples := []*openfgav1.Tuple{
