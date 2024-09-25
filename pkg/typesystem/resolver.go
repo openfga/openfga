@@ -37,7 +37,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 	cache := storage.NewInMemoryLRUCache[*TypeSystem]()
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
-		ctx, span := tracer.Start(ctx, "MemoizedTypesystemResolverFunc", trace.WithAttributes(
+		ctx, span := tracer.Start(ctx, "resolveTypesystem", trace.WithAttributes(
 			attribute.String("store_id", storeID),
 		))
 		defer func() {
