@@ -1230,7 +1230,6 @@ func tupleKeyExists(ctx context.Context,
 	}
 	cond := checkutil.BuildTupleKeyConditionFilter(ctx, reqContext, typesys)
 	return cond(t.GetKey())
-
 }
 
 func (c *LocalChecker) checkTTUFastPathSparse(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, usersetType string) (*ResolveCheckResponse, error) {
