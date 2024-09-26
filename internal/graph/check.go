@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	"google.golang.org/protobuf/types/known/structpb"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -1203,6 +1205,119 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 	return c.checkMembership(ctx, req, iter, usersetDetails)
 }
 
+func (c *LocalChecker) onlyOneDirectlyRelatedUserType(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (bool, string) {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	reqTupleKey := req.GetTupleKey()
+	objectType := tuple.GetType(reqTupleKey.GetObject())
+	directlRelatedUserTypes, _ := typesys.GetDirectlyRelatedUserTypes(objectType, rewrite.GetTupleToUserset().GetTupleset().GetRelation())
+	if len(directlRelatedUserTypes) != 1 {
+		return false, ""
+	}
+	return true, directlRelatedUserTypes[0].GetType()
+}
+
+func tupleKeyExists(ctx context.Context,
+	ds storage.RelationshipTupleReader,
+	typesys *typesystem.TypeSystem,
+	storeID string,
+	tupleKey *openfgav1.TupleKey, opts storage.ReadOptions, reqContext *structpb.Struct) (bool, error) {
+	usersetIter, err := ds.Read(ctx, storeID, tupleKey, opts)
+	if err != nil {
+		return false, err
+	}
+	filteredUsersetIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(usersetIter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, reqContext, typesys),
+	)
+	defer filteredUsersetIter.Stop()
+	_, err = filteredUsersetIter.Next(ctx)
+	if err != nil {
+		if storage.IterIsDoneOrCancelled(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	// there exists a match
+	return true, nil
+}
+
+func (c *LocalChecker) checkTTUFastPathSparse(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, usersetType string) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkTTUFastPathSparse")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+
+	objectRel := tuple.ToObjectRelationString(usersetType, rewrite.GetTupleToUserset().GetComputedUserset().GetRelation())
+
+	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, nil)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+	reqContext := req.GetContext()
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(i),
+			validation.FilterInvalidTuples(typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, reqContext, typesys),
+	)
+	defer filteredIter.Stop()
+
+	var userAssignedMembers []string
+
+	for {
+		t, err := filteredIter.Next(ctx)
+		if err != nil {
+			if storage.IterIsDoneOrCancelled(err) {
+				break
+			}
+			return nil, err
+		}
+		userAssignedMembers = append(userAssignedMembers, t.GetObject())
+	}
+
+	// Ideally, ReadUsersetTuples allows filtering on userset.  In the POC, we will do the exact query to
+	// avoid having to look up all parents fo TTU.
+	storeID := req.GetStoreID()
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+	numLookup := uint32(1)
+	for _, member := range userAssignedMembers {
+		numLookup++
+		exist, err := tupleKeyExists(ctx, ds, typesys, storeID, tuple.NewTupleKey(req.GetTupleKey().GetObject(),
+			rewrite.GetTupleToUserset().GetTupleset().GetRelation(),
+			member), opts, reqContext)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if exist {
+			return &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + numLookup,
+				},
+			}, nil
+		}
+	}
+
+	return &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + numLookup,
+		},
+	}, nil
+}
+
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
@@ -1231,6 +1346,18 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)),
 			attribute.String("computed_relation", computedRelation),
 		)
+
+		if !tuple.IsObjectRelation(tk.GetUser()) {
+			if canFastPath := typesys.TTUCanFastPath(
+				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
+				// TODO: this is a hack assuming a single type assignable to TTU parent.
+				// Ideally, we will need loop through all the assignable type to TTU parent.
+				onlySingleAssignableType, usersetType := c.onlyOneDirectlyRelatedUserType(ctx, req, rewrite)
+				if onlySingleAssignableType {
+					return c.checkTTUFastPathSparse(ctx, req, rewrite, usersetType)
+				}
+			}
+		}
 
 		opts := storage.ReadOptions{
 			Consistency: storage.ConsistencyOptions{
