@@ -5,7 +5,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func marshalRelationshipCondition(
+func MarshalRelationshipCondition(
 	rel *openfgav1.RelationshipCondition,
 ) (name string, context []byte, err error) {
 	if rel != nil {

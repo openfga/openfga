@@ -371,7 +371,8 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 			}
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
 			_, _ = IteratorReadStartingFromUser(context.Background(), ts, ds, &req, "group#member", objectIDs)
 		})
 	}
@@ -470,7 +471,8 @@ func TestGetComputedRelation(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
 			output, err := getComputedRelation(ts, tt.objectType, tt.relation)
 			if tt.expectedError {
 				require.Error(t, err)
@@ -571,7 +573,8 @@ func TestBuildUsersetDetailsUserset(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
 			usersetFunc := BuildUsersetDetailsUserset(ts)
 			rel, obj, err := usersetFunc(tt.tuple)
 			if tt.expectedHasError {
@@ -684,7 +687,8 @@ func TestBuildUsersetDetailsTTU(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ts := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
 			usersetFunc := BuildUsersetDetailsTTU(ts, tt.computedRelation)
 			rel, obj, err := usersetFunc(tt.tuple)
 			if tt.expectedHasError {
