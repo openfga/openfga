@@ -1221,15 +1221,15 @@ func tupleKeyExists(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	storeID string,
 	tupleKey *openfgav1.TupleKey, opts storage.ReadUserTupleOptions, reqContext *structpb.Struct) (bool, error) {
-	_, err := ds.ReadUserTuple(ctx, storeID, tupleKey, opts)
+	t, err := ds.ReadUserTuple(ctx, storeID, tupleKey, opts)
 	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	// FIXME - check for condition
-	return true, nil
+	cond := checkutil.BuildTupleKeyConditionFilter(ctx, reqContext, typesys)
+	return cond(t.GetKey())
 
 }
 
