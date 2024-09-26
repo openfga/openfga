@@ -90,6 +90,38 @@ type Config struct {
 	ModelID string
 }
 
+type AuthorizerInterface interface {
+	Authorize(ctx context.Context, storeID, apiMethod string) error
+	AuthorizeCreateStore(ctx context.Context) error
+	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
+}
+
+type NoopAuthorizer struct {
+	config *Config
+	server ServerInterface
+	logger logger.Logger
+}
+
+func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Logger) *NoopAuthorizer {
+	return &NoopAuthorizer{
+		config: config,
+		server: server,
+		logger: logger,
+	}
+}
+
+func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod string) error {
+	return nil
+}
+
+func (a *NoopAuthorizer) AuthorizeCreateStore(ctx context.Context) error {
+	return nil
+}
+
+func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+	return nil, nil
+}
+
 type Authorizer struct {
 	config *Config
 	server ServerInterface
@@ -321,7 +353,7 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
 	claims, found := authclaims.AuthClaimsFromContext(ctx)
 	if !found || claims.ClientID == "" {
-		return nil, status.Error(codes.Internal, "client ID not found in context")
+		return nil, status.Error(codes.InvalidArgument, "client ID not found in context")
 	}
 	return claims, nil
 }

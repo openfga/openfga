@@ -140,6 +140,7 @@ type Server struct {
 	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 	AccessControl                    serverconfig.AccessControlConfig
+	AuthnMethod                      string
 	serviceName                      string
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
@@ -174,7 +175,7 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
-	authorizer *authz.Authorizer
+	authorizer authz.AuthorizerInterface
 
 	ctx                 context.Context
 	checkTrackerEnabled bool
@@ -364,9 +365,10 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 }
 
 // WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
-func WithAccessControlParams(accessControl serverconfig.AccessControlConfig) OpenFGAServiceV1Option {
+func WithAccessControlParams(accessControl serverconfig.AccessControlConfig, authnMethod string) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.AccessControl = accessControl
+		s.AuthnMethod = authnMethod
 	}
 }
 
@@ -679,6 +681,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
+	} else {
+		s.authorizer = authz.NewAuthorizerNoop(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
 	}
 
 	return s, nil
@@ -968,6 +972,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Service: s.serviceName,
 		Method:  authz.Write,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Write)
+	if err != nil {
+		return nil, err
+	}
 
 	storeID := req.GetStoreId()
 
@@ -1531,6 +1540,9 @@ func (s *Server) validateAccessControlEnabled() error {
 		if (s.AccessControl == serverconfig.AccessControlConfig{} || s.AccessControl.StoreID == "" || s.AccessControl.ModelID == "") {
 			return fmt.Errorf("access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty")
 		}
+		if s.AuthnMethod != "oidc" {
+			return fmt.Errorf("access control is enabled, but the authentication method is not OIDC. Access control is only supported with OIDC authentication")
+		}
 		_, err := ulid.Parse(s.AccessControl.StoreID)
 		if err != nil {
 			return fmt.Errorf("config '--access-control-store-id' must be a valid ULID")
@@ -1545,7 +1557,7 @@ func (s *Server) validateAccessControlEnabled() error {
 
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	if s.authorizer != nil && !authclaims.SkipAuthzCheckFromContext(ctx) {
+	if !authclaims.SkipAuthzCheckFromContext(ctx) {
 		err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
 		if err != nil {
 			return err
@@ -1556,27 +1568,24 @@ func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modu
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
 func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
-	if s.authorizer != nil {
-		err := s.authorizer.AuthorizeCreateStore(ctx)
-		if err != nil {
-			return err
-		}
+	err := s.authorizer.AuthorizeCreateStore(ctx)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
 func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
-	if s.authorizer != nil {
-		modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
-		if err != nil {
-			return err
-		}
-
-		err = s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
-		if err != nil {
-			return err
-		}
+	modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
+	if err != nil {
+		return err
 	}
+
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
