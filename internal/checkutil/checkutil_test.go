@@ -473,7 +473,7 @@ func TestGetComputedRelation(t *testing.T) {
 			t.Parallel()
 			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
 			require.NoError(t, err)
-			output, err := getComputedRelation(ts, tt.objectType, tt.relation)
+			output, err := GetComputedRelation(ts, tt.objectType, tt.relation)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {

@@ -1220,28 +1220,17 @@ func tupleKeyExists(ctx context.Context,
 	ds storage.RelationshipTupleReader,
 	typesys *typesystem.TypeSystem,
 	storeID string,
-	tupleKey *openfgav1.TupleKey, opts storage.ReadOptions, reqContext *structpb.Struct) (bool, error) {
-	usersetIter, err := ds.Read(ctx, storeID, tupleKey, opts)
+	tupleKey *openfgav1.TupleKey, opts storage.ReadUserTupleOptions, reqContext *structpb.Struct) (bool, error) {
+	_, err := ds.ReadUserTuple(ctx, storeID, tupleKey, opts)
+	if errors.Is(err, storage.ErrNotFound) {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}
-	filteredUsersetIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(usersetIter),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, reqContext, typesys),
-	)
-	defer filteredUsersetIter.Stop()
-	_, err = filteredUsersetIter.Next(ctx)
-	if err != nil {
-		if storage.IterIsDoneOrCancelled(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	// there exists a match
+	// FIXME - check for condition
 	return true, nil
+
 }
 
 func (c *LocalChecker) checkTTUFastPathSparse(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, usersetType string) (*ResolveCheckResponse, error) {
@@ -1251,7 +1240,11 @@ func (c *LocalChecker) checkTTUFastPathSparse(ctx context.Context, req *ResolveC
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectRel := tuple.ToObjectRelationString(usersetType, rewrite.GetTupleToUserset().GetComputedUserset().GetRelation())
+	computedRelation, err := checkutil.GetComputedRelation(typesys, usersetType, rewrite.GetTupleToUserset().GetComputedUserset().GetRelation())
+	if err != nil {
+		return nil, err
+	}
+	objectRel := tuple.ToObjectRelationString(usersetType, computedRelation)
 
 	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, nil)
 	if err != nil {
@@ -1285,7 +1278,7 @@ func (c *LocalChecker) checkTTUFastPathSparse(ctx context.Context, req *ResolveC
 	// Ideally, ReadUsersetTuples allows filtering on userset.  In the POC, we will do the exact query to
 	// avoid having to look up all parents fo TTU.
 	storeID := req.GetStoreID()
-	opts := storage.ReadOptions{
+	opts := storage.ReadUserTupleOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},

@@ -619,7 +619,7 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
+		RequestTimeout: 0 * time.Second,
 	}
 }
 

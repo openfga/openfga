@@ -113,7 +113,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 		}, opts)
 }
 
-func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
+func GetComputedRelation(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
 	rel, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
 		return "", err
@@ -121,7 +121,7 @@ func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation st
 	rewrite := rel.GetRewrite()
 	switch rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_ComputedUserset:
-		return getComputedRelation(typesys, objectType, rewrite.GetComputedUserset().GetRelation())
+		return GetComputedRelation(typesys, objectType, rewrite.GetComputedUserset().GetRelation())
 	case *openfgav1.Userset_This:
 		return relation, nil
 	default:
@@ -130,7 +130,7 @@ func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation st
 }
 
 func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
-	cr, err := getComputedRelation(typesys, objectType, relation)
+	cr, err := GetComputedRelation(typesys, objectType, relation)
 	if err != nil {
 		return "", err
 	}
