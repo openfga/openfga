@@ -1248,7 +1248,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		if err != nil {
 			return nil, err
 		}
-		defer iter.Stop()
 
 		// filter out invalid tuples yielded by the database iterator
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(

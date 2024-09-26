@@ -218,8 +218,8 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
-		if !errors.Is(err, storage.ErrIteratorDone) {
-			c.logger.Info(fmt.Sprintf("CACHE intermediate error for key: %s, %s", c.cacheKey, err))
+		if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			c.logger.Info(fmt.Sprintf("CACHE intermediate error for key: %s, %v", c.cacheKey, err))
 			c.tuples = nil // don't store results that are incomplete
 		}
 		return nil, err

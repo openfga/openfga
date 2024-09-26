@@ -457,4 +457,46 @@ func TestCachedIterator(t *testing.T) {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
+
+	t.Run("parent_context_cancelled_still_caches_in_background", func(t *testing.T) {
+		maxCacheSize := 10
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+		defer cache.Stop()
+
+		iter := &cachedIterator{
+			logger:        logger.NewNoopLogger(),
+			iter:          storage.NewStaticTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
+		}
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		for {
+			_, err := iter.Next(cancelledCtx)
+
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					break
+				}
+				require.Fail(t, "cancellation error was expected")
+				break
+			}
+		}
+
+		iter.Stop()
+		iter.wg.Wait()
+		cachedResults := cache.Get(cacheKey)
+		require.NotNil(t, cachedResults)
+
+		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
 }
