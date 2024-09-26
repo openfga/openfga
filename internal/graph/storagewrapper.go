@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/pkg/logger"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/cespare/xxhash/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -43,6 +46,12 @@ var (
 		Help:      "The total number of discards from cached iterator instances.",
 	})
 
+	tuplesCacheDeduplicationCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "tuples_cache_deduplication_count",
+		Help:      "The total number of deduplication from cached iterator instances.",
+	})
+
 	tuplesCacheSizeHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            "tuples_cache_size",
@@ -61,14 +70,16 @@ const (
 type CachedDatastore struct {
 	storage.OpenFGADatastore
 
+	logger        logger.Logger
 	cache         storage.InMemoryCache[any]
 	maxResultSize int
 	ttl           time.Duration
 }
 
 // NewCachedDatastore returns a wrapper over a datastore...
-func NewCachedDatastore(inner storage.OpenFGADatastore, cache storage.InMemoryCache[any], maxSize int, ttl time.Duration) *CachedDatastore {
+func NewCachedDatastore(inner storage.OpenFGADatastore, cache storage.InMemoryCache[any], maxSize int, ttl time.Duration, logger logger.Logger) *CachedDatastore {
 	return &CachedDatastore{
+		logger:           logger,
 		OpenFGADatastore: inner,
 		cache:            cache,
 		maxResultSize:    maxSize,
@@ -138,7 +149,10 @@ func (c *CachedDatastore) newCachedIterator(ctx context.Context, dsIterFunc iter
 	tuplesCacheTotalCounter.Inc()
 
 	cacheKey := cacheKeyFor(key)
+
+	c.logger.Info(fmt.Sprintf("CACHE looking for key: %s", cacheKey))
 	if cacheKey == "" {
+		c.logger.Info(fmt.Sprintf("CACHE invalid key"))
 		return dsIterFunc(ctx)
 	}
 
@@ -146,10 +160,12 @@ func (c *CachedDatastore) newCachedIterator(ctx context.Context, dsIterFunc iter
 	isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
 
 	if isCached {
+		c.logger.Info(fmt.Sprintf("CACHE hit for key: %s", cacheKey))
 		tuplesCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 		return storage.NewStaticTupleIterator(cachedResp.Value.([]*openfgav1.Tuple)), nil
 	}
+	c.logger.Info(fmt.Sprintf("CACHE miss for key: %s", cacheKey))
 
 	iter, err := dsIterFunc(ctx)
 	if err != nil {
@@ -157,6 +173,7 @@ func (c *CachedDatastore) newCachedIterator(ctx context.Context, dsIterFunc iter
 	}
 
 	return &cachedIterator{
+		logger:        c.logger,
 		iter:          iter,
 		tuples:        make([]*openfgav1.Tuple, 0, c.maxResultSize),
 		cacheKey:      cacheKey,
@@ -172,6 +189,7 @@ func (c *CachedDatastore) Close() {
 }
 
 type cachedIterator struct {
+	logger        logger.Logger
 	iter          storage.TupleIterator
 	tuples        []*openfgav1.Tuple
 	cacheKey      string
@@ -180,6 +198,7 @@ type cachedIterator struct {
 	maxResultSize int
 	closeOnce     sync.Once
 	wg            sync.WaitGroup
+	sf            singleflight.Group
 }
 
 func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
@@ -188,6 +207,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	}
 	c.tuples = append(c.tuples, t)
 	if len(c.tuples) >= c.maxResultSize {
+		c.logger.Info(fmt.Sprintf("CACHE too many tuples for key: %s", c.cacheKey))
 		tuplesCacheDiscardCounter.Inc()
 		c.tuples = nil
 	}
@@ -199,6 +219,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
 		if !errors.Is(err, storage.ErrIteratorDone) {
+			c.logger.Info(fmt.Sprintf("CACHE intermediate error for key: %s, %s", c.cacheKey, err))
 			c.tuples = nil // don't store results that are incomplete
 		}
 		return nil, err
@@ -211,6 +232,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 
 // Stop see [Iterator.Stop].
 func (c *cachedIterator) Stop() {
+	c.logger.Info(fmt.Sprintf("CACHE closing for key: %s", c.cacheKey))
 	c.closeOnce.Do(func() {
 		if c.tuples == nil {
 			c.iter.Stop()
@@ -219,6 +241,7 @@ func (c *cachedIterator) Stop() {
 		// prevent goroutine if iterator was already consumed
 		ctx := context.Background()
 		if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
+			c.logger.Info(fmt.Sprintf("CACHE flushing thanks to head for key: %s", c.cacheKey))
 			c.flush()
 			c.iter.Stop()
 			return
@@ -228,19 +251,28 @@ func (c *cachedIterator) Stop() {
 		go func() {
 			defer c.iter.Stop()
 			defer c.wg.Done()
-			for {
-				// attempt to drain the iterator to have it ready for subsequent calls
-				t, err := c.iter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						c.flush()
+			// prevent draining on the same iterator across multiple requests
+			_, _, shared := c.sf.Do(c.cacheKey, func() (interface{}, error) {
+				for {
+					// attempt to drain the iterator to have it ready for subsequent calls
+					t, err := c.iter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							c.logger.Info(fmt.Sprintf("CACHE flushing for key: %s", c.cacheKey))
+							c.flush()
+						}
+						break
 					}
-					return
+					// if the size is exceeded we don't add anymore and exit
+					if !c.addToBuffer(t) {
+						break
+					}
 				}
-				// if the size is exceeded we don't add anymore and exit
-				if !c.addToBuffer(t) {
-					return
-				}
+				return nil, nil
+			})
+			if shared {
+				c.logger.Info(fmt.Sprintf("CACHE single flight hit for key: %s", c.cacheKey))
+				tuplesCacheDeduplicationCounter.Inc()
 			}
 		}()
 	})
