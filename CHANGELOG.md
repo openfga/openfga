@@ -8,6 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+* Added RELEASES.md file documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+
 ### Removed
 
 * Removed deprecated opentelemetry-connector `memory_ballast` extension.
