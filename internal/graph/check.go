@@ -1072,6 +1072,191 @@ func recursiveMatchUserUserset(ctx context.Context,
 	}, nil
 }
 
+type usersetMessage struct {
+	userset string
+	err     error
+	resp    *ResolveCheckResponse
+}
+
+func nestedUsersetLookupUsersetForUser(ctx context.Context,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader,
+	req *ResolveCheckRequest,
+	usersetMessageChan chan *usersetMessage) {
+	ctx, span := tracer.Start(ctx, "nestedUsersetLookupUsersetForUser")
+	defer span.End()
+
+	// Note that this will take care of the publicly assignable case as well.
+	iter, err := checkutil.IteratorReadStartingFromUser(ctx,
+		typesys, ds, req,
+		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
+		nil)
+	if err != nil {
+		span.RecordError(err)
+		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			userset: "",
+			err:     err,
+			resp:    nil,
+		}, usersetMessageChan)
+	}
+
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+	)
+	defer filteredIter.Stop()
+
+	numItem := 0
+
+	for {
+		t, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+
+			// error encountered.  No need to process further
+			span.RecordError(err)
+			concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+				userset: "",
+				err:     err,
+				resp:    nil,
+			}, usersetMessageChan)
+			return
+		}
+		numItem++
+		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			userset: t.GetObject(),
+			err:     nil,
+			resp:    nil,
+		}, usersetMessageChan)
+	}
+
+	// special optimization where if the user is not assigned to any group, we don't even
+	// need to look at the other side because there can never be a match
+	if numItem == 0 {
+		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			userset: "",
+			err:     nil,
+			resp: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					// It probably is +1.  However, we have no control on whether
+					// the userset member lookup for the first level has started DS query.
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
+				},
+			},
+		}, usersetMessageChan)
+	}
+}
+
+func nestedUsersetFirstLevelLookupObject(ctx context.Context,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader,
+	req *ResolveCheckRequest,
+	allowedUserTypeRestrictions []*openfgav1.RelationReference,
+	usersetMessageChan chan *usersetMessage) {
+	ctx, span := tracer.Start(ctx, "nestedUsersetFirstLevelLookupObject")
+	defer span.End()
+
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
+
+	opts := storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+		Object:                      reqTupleKey.GetObject(),
+		Relation:                    reqTupleKey.GetRelation(),
+		AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
+	}, opts)
+	if err != nil {
+		span.RecordError(err)
+		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			userset: "",
+			err:     err,
+			resp:    nil,
+		}, usersetMessageChan)
+	}
+
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+	)
+	defer filteredIter.Stop()
+
+	numItem := 0
+
+	for {
+		t, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+
+			// error encountered.  No need to process further
+			span.RecordError(err)
+			concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+				userset: "",
+				err:     err,
+				resp:    nil,
+			}, usersetMessageChan)
+			return
+		}
+		numItem++
+		usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
+		if relation == "" {
+			err = fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
+			span.RecordError(err)
+			concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+				userset: "",
+				err:     err,
+				resp:    nil,
+			}, usersetMessageChan)
+			return
+		}
+		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			userset: usersetName,
+			err:     nil,
+			resp:    nil,
+		}, usersetMessageChan)
+	}
+
+	// special optimization where if the user is not assigned to any group, we don't even
+	// need to look at the other side because there can never be a match
+	if numItem == 0 {
+		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			userset: "",
+			err:     nil,
+			resp: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					// It probably is +1.  However, we have no control on whether
+					// the userset member lookup for the first level has started DS query.
+					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
+				},
+			},
+		}, usersetMessageChan)
+	}
+
+}
+
+func nextedUsersetFirstLevel(ctx context.Context,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader,
+	req *ResolveCheckRequest) (*ResolveCheckResponse, storage.SortedSet, storage.SortedSet, error) {
+	return nil, nil, nil, fmt.Errorf("implement me")
+}
+
 func nestedUsersetFastpath(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
