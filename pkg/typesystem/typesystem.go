@@ -484,7 +484,7 @@ func (t *TypeSystem) recursiveTTUNodeCanFastpath(curAuthorizationModelNode *grap
 	neighborNodesIter.Next()
 
 	unionNode, ok := neighborNodesIter.Node().(*graph.AuthorizationModelNode)
-	if !ok || unionNode.Label() != "union" {
+	if !ok || unionNode.Label() != graph.UnionOperator {
 		return false
 	}
 
