@@ -31,6 +31,7 @@ Release dates for all releases (not including release candidates)
 
 | Version | Release Date |
 |---------| ------------ |
+| v1.6.1 | Sep 12, 2024 |
 | v1.6.0 | Aug 30, 2024 |
 | v1.5.9 | Aug 13, 2024 |
 | v1.5.8 | Aug 8, 2024 |
