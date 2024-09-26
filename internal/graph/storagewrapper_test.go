@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"github.com/openfga/openfga/pkg/logger"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func TestReadUsersetTuples(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, logger.NewNoopLogger())
 
 	storeID := ulid.Make().String()
 
@@ -176,7 +177,7 @@ func TestRead(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, logger.NewNoopLogger())
 
 	storeID := ulid.Make().String()
 
