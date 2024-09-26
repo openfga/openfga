@@ -171,7 +171,8 @@ type doc
 	relations
 		define viewer: [user]
 `)
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)

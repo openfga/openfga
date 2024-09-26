@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -72,7 +74,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -81,7 +83,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -89,7 +91,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			require.NoError(t, err)
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -173,7 +175,7 @@ func TestCtxCancel(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -182,7 +184,7 @@ func TestCtxCancel(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -190,7 +192,7 @@ func TestCtxCancel(t *testing.T) {
 			require.NoError(t, err)
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -232,7 +234,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
@@ -241,7 +243,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()", HandleSQLError),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
@@ -424,4 +426,26 @@ func TestMarshalledAssertions(t *testing.T) {
 		},
 	}
 	require.Equal(t, expectedAssertions, assertions)
+}
+
+func TestHandleSQLError(t *testing.T) {
+	t.Run("duplicate_key_value_error_with_tuple_key_wraps_ErrInvalidWriteInput", func(t *testing.T) {
+		err := HandleSQLError(errors.New("duplicate key value"), &openfgav1.TupleKey{
+			Object:   "object",
+			Relation: "relation",
+			User:     "user",
+		})
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+	})
+
+	t.Run("duplicate_key_value_error_without_tuple_key_returns_collision", func(t *testing.T) {
+		duplicateKeyError := errors.New("duplicate key value")
+		err := HandleSQLError(duplicateKeyError)
+		require.ErrorIs(t, err, storage.ErrCollision)
+	})
+
+	t.Run("sql.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
+		err := HandleSQLError(sql.ErrNoRows)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
 }

@@ -163,8 +163,7 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
-	ctx                 context.Context
-	checkTrackerEnabled bool
+	ctx context.Context
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -181,13 +180,6 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 func WithContext(ctx context.Context) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.ctx = ctx
-	}
-}
-
-// WithCheckTrackerEnabled enables/disables tracker Check results.
-func WithCheckTrackerEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.checkTrackerEnabled = enabled
 	}
 }
 
@@ -550,7 +542,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkResolver:          nil,
-		checkTrackerEnabled:    serverconfig.DefaultCheckTrackerEnabled,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -613,14 +604,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
-	checkTrackerOptions := []graph.TrackerCheckResolverOpt{}
-	if s.checkTrackerEnabled {
-		checkTrackerOptions = []graph.TrackerCheckResolverOpt{
-			graph.WithTrackerContext(s.ctx),
-			graph.WithTrackerLogger(s.logger),
-		}
-	}
-
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -631,7 +614,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		}...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-		graph.WithTrackerCheckResolverOpts(s.checkTrackerEnabled, checkTrackerOptions...),
 	}...).Build()
 
 	if s.listObjectsDispatchThrottlingEnabled {

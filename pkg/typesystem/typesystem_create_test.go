@@ -653,7 +653,8 @@ func TestNewTypeSystem(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(tc.model)
-			ts := New(model)
+			ts, err := New(model)
+			require.NoError(t, err)
 			tc.output.modelID = ts.modelID
 			typeSystemEquals(t, &tc.output, ts)
 		})
