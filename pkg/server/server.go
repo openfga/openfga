@@ -973,11 +973,6 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		Method:  authz.Write,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Write)
-	if err != nil {
-		return nil, err
-	}
-
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())

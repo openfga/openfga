@@ -153,7 +153,7 @@ func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string)
 }
 
 func (s *authzSettings) writeHelper(ctx context.Context, t *testing.T, storeID, modelID string, tuple *openfgav1.TupleKey) {
-	_, err := s.openfga.Write(ctx, &openfgav1.WriteRequest{
+	req := &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		Writes: &openfgav1.WriteRequestWrites{
@@ -161,7 +161,8 @@ func (s *authzSettings) writeHelper(ctx context.Context, t *testing.T, storeID, 
 				tuple,
 			},
 		},
-	})
+	}
+	_, err := s.openfga.Write(ctx, req)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -596,7 +597,6 @@ func TestCheckAuthz(t *testing.T) {
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
-			fmt.Printf("%v", openfga.authorizer)
 			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
 
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
@@ -817,10 +817,6 @@ func TestExpand(t *testing.T) {
 		t.Cleanup(openfga.Close)
 
 		clientID := "validclientid"
-<<<<<<< HEAD
-=======
-
->>>>>>> feat/access-control
 		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 
 		expandResponse, err := openfga.Expand(context.Background(), &openfgav1.ExpandRequest{

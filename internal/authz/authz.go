@@ -91,7 +91,7 @@ type Config struct {
 }
 
 type AuthorizerInterface interface {
-	Authorize(ctx context.Context, storeID, apiMethod string) error
+	Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error
 	AuthorizeCreateStore(ctx context.Context) error
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
 }
@@ -110,7 +110,7 @@ func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Log
 	}
 }
 
-func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod string) error {
+func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
 	return nil
 }
 
