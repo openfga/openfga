@@ -1574,15 +1574,18 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 // getAccessibleStores checks whether the caller has permission to list stores and if so,
 // returns the list of stores that the user has access to.
 func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
-	err := s.authorizer.AuthorizeListStores(ctx)
-	if err != nil {
-		return nil, err
-	}
+	if s.authorizer != nil {
+		err := s.authorizer.AuthorizeListStores(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-	list, err := s.authorizer.ListAuthorizedStores(ctx)
-	if err != nil {
-		return nil, err
-	}
+		list, err := s.authorizer.ListAuthorizedStores(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-	return list, nil
+		return list, nil
+	}
+	return nil, nil
 }
