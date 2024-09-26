@@ -127,6 +127,8 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return CanCallReadAssertions, nil
 	case WriteAuthorizationModel:
 		return CanCallWriteAuthorizationModels, nil
+	case ListStores:
+		return CanCallListStores, nil
 	case CreateStore:
 		return CanCallCreateStore, nil
 	case GetStore:
