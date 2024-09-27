@@ -235,13 +235,12 @@ func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, type
 		tuples[index] = tuple
 		index++
 	}
-	index = 0
 	for _, tuple := range req.GetDeletes().GetTupleKeys() {
 		tuples[index] = tuple
 		index++
 	}
 
-	modulesMap, err := extractModulesFromTupleObjects(tuples, typesys, modulesMap)
+	modulesMap, err := extractModulesFromTuples(tuples, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -262,9 +261,10 @@ type TupleKeyInterface interface {
 	GetRelation() string
 }
 
-// extractModulesFromTupleObjects extracts the modules from the tuple objects. If a type has no module, we
+// extractModulesFromTuples extracts the modules from the tuples. If a type has no module, we
 // return an empty map so that the caller can handle authorization for tuples without modules.
-func extractModulesFromTupleObjects[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.TypeSystem, modulesMap map[string]struct{}) (map[string]struct{}, error) {
+func extractModulesFromTuples[T TupleKeyInterface](tupleKeys []T, typesys *typesystem.TypeSystem) (map[string]struct{}, error) {
+	modulesMap := make(map[string]struct{})
 	for _, tupleKey := range tupleKeys {
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
 		objectType, ok := typesys.GetTypeDefinition(objType)
