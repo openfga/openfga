@@ -67,16 +67,16 @@ var (
 	}
 )
 
-func makeMocks(t *testing.T) (*gomock.Controller, *mocks.MockRelationshipTupleReader) {
+func makeMocks(t *testing.T) *mocks.MockRelationshipTupleReader {
 	controller := gomock.NewController(t)
 
 	mockRelationshipTupleReader := mocks.NewMockRelationshipTupleReader(controller)
 
-	return controller, mockRelationshipTupleReader
+	return mockRelationshipTupleReader
 }
 
 func TestNewCombinedTupleReader(t *testing.T) {
-	_, reader := makeMocks(t)
+	reader := makeMocks(t)
 
 	tuples := []*openfgav1.TupleKey{
 		testTuples["user:11#member#group:1"].GetKey(),
@@ -88,7 +88,7 @@ func TestNewCombinedTupleReader(t *testing.T) {
 }
 
 func Test_combinedTupleReader_Read(t *testing.T) {
-	_, mockRelationshipTupleReader := makeMocks(t)
+	mockRelationshipTupleReader := makeMocks(t)
 
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
@@ -224,7 +224,7 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 }
 
 func Test_combinedTupleReader_ReadPage(t *testing.T) {
-	_, mockRelationshipTupleReader := makeMocks(t)
+	mockRelationshipTupleReader := makeMocks(t)
 
 	c := &combinedTupleReader{
 		RelationshipTupleReader: mockRelationshipTupleReader,
@@ -249,7 +249,7 @@ func Test_combinedTupleReader_ReadPage(t *testing.T) {
 }
 
 func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
-	_, mockRelationshipTupleReader := makeMocks(t)
+	mockRelationshipTupleReader := makeMocks(t)
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
 		contextualTuples        []*openfgav1.TupleKey
@@ -605,7 +605,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 }
 
 func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
-	_, mockRelationshipTupleReader := makeMocks(t)
+	mockRelationshipTupleReader := makeMocks(t)
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
 		contextualTuples        []*openfgav1.TupleKey
