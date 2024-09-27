@@ -1408,3 +1408,70 @@ func TestGetStore(t *testing.T) {
 		})
 	})
 }
+
+func TestListStores(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("listStores_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		_, err := openfga.ListStores(context.Background(), &openfgav1.ListStoresRequest{
+			PageSize:          wrapperspb.Int32(1),
+			ContinuationToken: "",
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("listStores_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_getAccessibleStores_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.ListStores(ctx, &openfgav1.ListStoresRequest{
+				PageSize:          wrapperspb.Int32(1),
+				ContinuationToken: "",
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		})
+
+		t.Run("successfully_call_listStores", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.rootData.id,
+				AuthorizationModelId: settings.rootData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("system:fga", authz.CanCallListStores, fmt.Sprintf("application:%s", settings.clientID)),
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			_, err = openfga.ListStores(ctx, &openfgav1.ListStoresRequest{
+				PageSize:          wrapperspb.Int32(1),
+				ContinuationToken: "",
+			})
+			require.NoError(t, err)
+		})
+	})
+}
