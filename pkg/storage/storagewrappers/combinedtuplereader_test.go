@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"errors"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -48,25 +49,46 @@ var (
 				Object:   "group:2",
 			},
 		},
+		"user:11#member#group:3": {
+			Key: &openfgav1.TupleKey{
+				User:     "user:11",
+				Relation: "member",
+				Object:   "group:3",
+			},
+		},
+		// userset tuples
+		"group:1#member#viewer#folder:backlog": {
+			Key: &openfgav1.TupleKey{
+				User:     "group:1#member",
+				Relation: "viewer",
+				Object:   "folder:backlog",
+			},
+		},
 	}
 )
 
-func TestNewCombinedTupleReader(t *testing.T) {
-	controller := &gomock.Controller{T: t}
-	reader := mocks.NewMockRelationshipTupleReader(controller)
-	tuples := []*openfgav1.TupleKey{
-		testTuples["user:11#member#group:1"].Key,
-	}
-	assert.Equal(t, NewCombinedTupleReader(reader, tuples), &combinedTupleReader{
-		RelationshipTupleReader: reader,
-		contextualTuples:        tuples,
-	})
-}
-
-func Test_combinedTupleReader_Read(t *testing.T) {
+func makeMocks(t *testing.T) (*gomock.Controller, *mocks.MockRelationshipTupleReader) {
 	controller := gomock.NewController(t)
 
 	mockRelationshipTupleReader := mocks.NewMockRelationshipTupleReader(controller)
+
+	return controller, mockRelationshipTupleReader
+}
+
+func TestNewCombinedTupleReader(t *testing.T) {
+	_, reader := makeMocks(t)
+
+	tuples := []*openfgav1.TupleKey{
+		testTuples["user:11#member#group:1"].GetKey(),
+	}
+	assert.Equal(t, &combinedTupleReader{
+		RelationshipTupleReader: reader,
+		contextualTuples:        tuples,
+	}, NewCombinedTupleReader(reader, tuples))
+}
+
+func Test_combinedTupleReader_Read(t *testing.T) {
+	_, mockRelationshipTupleReader := makeMocks(t)
 
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
@@ -92,9 +114,9 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 			fields: fields{
 				RelationshipTupleReader: mockRelationshipTupleReader,
 				contextualTuples: []*openfgav1.TupleKey{
-					testTuples["user:11#member#group:1"].Key,
-					testTuples["user:12#member#group:1"].Key,
-					testTuples["user:21#member#group:2"].Key,
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
 				},
 			},
 			args: args{
@@ -148,9 +170,9 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 			fields: fields{
 				RelationshipTupleReader: mockRelationshipTupleReader,
 				contextualTuples: []*openfgav1.TupleKey{
-					testTuples["user:11#member#group:1"].Key,
-					testTuples["user:12#member#group:1"].Key,
-					testTuples["user:21#member#group:2"].Key,
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
 				},
 			},
 			args: args{
@@ -202,47 +224,32 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 }
 
 func Test_combinedTupleReader_ReadPage(t *testing.T) {
-	controller := gomock.NewController(t)
-
-	mockRelationshipTupleReader := mocks.NewMockRelationshipTupleReader(controller)
+	_, mockRelationshipTupleReader := makeMocks(t)
 
 	c := &combinedTupleReader{
 		RelationshipTupleReader: mockRelationshipTupleReader,
 		contextualTuples: []*openfgav1.TupleKey{
-			testTuples["user:11#member#group:1"].Key,
-			testTuples["user:12#member#group:1"].Key,
+			testTuples["user:11#member#group:1"].GetKey(),
+			testTuples["user:12#member#group:1"].GetKey(),
 		},
 	}
 
 	mockRelationshipTupleReader.EXPECT().
-		ReadPage(context.Background(), "1", testTuples["user:11#member#group:1"].Key, storage.ReadPageOptions{}).
-		Return([]*openfgav1.Tuple{
-			{
-				Key: &openfgav1.TupleKey{
-					Relation: "member",
-					Object:   "group:1",
-				},
-			},
-		}, nil, nil)
+		ReadPage(context.Background(), "1", testTuples["user:11#member#group:1"].GetKey(), storage.ReadPageOptions{}).
+		Return([]*openfgav1.Tuple{testTuples["user:11#member#group:1"]}, nil, nil)
 
-	got, _, err := c.ReadPage(context.Background(), "1", testTuples["user:11#member#group:1"].Key, storage.ReadPageOptions{})
+	got, _, err := c.ReadPage(context.Background(), "1", testTuples["user:11#member#group:1"].GetKey(), storage.ReadPageOptions{})
 	if (err != nil) != false {
 		t.Errorf("ReadPage() error = %v", err)
 		return
 	}
-	if !reflect.DeepEqual(got, []*openfgav1.Tuple{
-		{
-			Key: &openfgav1.TupleKey{
-				Relation: "member",
-				Object:   "group:1",
-			},
-		},
-	}) {
+	if !reflect.DeepEqual(got, []*openfgav1.Tuple{testTuples["user:11#member#group:1"]}) {
 		t.Errorf("ReadPage() got = %v", got)
 	}
 }
 
 func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
+	_, mockRelationshipTupleReader := makeMocks(t)
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
 		contextualTuples        []*openfgav1.TupleKey
@@ -257,30 +264,252 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 		name    string
 		fields  fields
 		args    args
-		want    storage.TupleIterator
-		wantErr bool
+		setups  func()
+		want    []*openfgav1.Tuple
+		wantErr error
 	}{
-		// TODO: Add test cases.
+		{
+			name: "Test combinedTupleReader ReadStartingWithUser OK",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
+					testTuples["user:22#member#group:2"].GetKey(),
+					testTuples["user:23#member#group:2"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object: "user:11",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["user:11#member#group:3"]}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["user:11#member#group:1"],
+				testTuples["user:11#member#group:3"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "Test combinedTupleReader ReadStartingWithUser OK - no contextual tuples",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples:        []*openfgav1.TupleKey{},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object: "user:11",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["user:11#member#group:3"]}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["user:11#member#group:3"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "Test combinedTupleReader ReadStartingWithUser OK - no relationship tuples",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
+					testTuples["user:22#member#group:2"].GetKey(),
+					testTuples["user:23#member#group:2"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object: "user:11",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["user:11#member#group:1"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "Test combinedTupleReader ReadStartingWithUser OK - type mismatch",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
+					testTuples["user:22#member#group:2"].GetKey(),
+					testTuples["user:23#member#group:2"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "folder",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object: "user:11",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+		{
+			name: "Test combinedTupleReader ReadStartingWithUser OK - relation mismatch",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
+					testTuples["user:22#member#group:2"].GetKey(),
+					testTuples["user:23#member#group:2"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "owner",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object:   "user:11",
+							Relation: "owner",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+
+		{
+			name: "Test combinedTupleReader ReadStartingWithUser error - relationship tuple reader error",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+					testTuples["user:21#member#group:2"].GetKey(),
+					testTuples["user:22#member#group:2"].GetKey(),
+					testTuples["user:23#member#group:2"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object:   "user:11",
+							Relation: "member",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("test read error"))
+			},
+			want:    nil,
+			wantErr: errors.New("test read error"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.setups != nil {
+				tt.setups()
+			}
 			c := &combinedTupleReader{
 				RelationshipTupleReader: tt.fields.RelationshipTupleReader,
 				contextualTuples:        tt.fields.contextualTuples,
 			}
 			got, err := c.ReadStartingWithUser(tt.args.ctx, tt.args.store, tt.args.filter, tt.args.options)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ReadStartingWithUser() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr != nil {
+				assert.EqualErrorf(t, tt.wantErr, err.Error(), "ReadStartingWithUser() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ReadStartingWithUser() got = %v, want %v", got, tt.want)
+			gotArr := make([]*openfgav1.Tuple, 0)
+			for {
+				if tuple, err := got.Next(tt.args.ctx); err == nil {
+					gotArr = append(gotArr, tuple)
+				} else {
+					break
+				}
+			}
+			if !reflect.DeepEqual(gotArr, tt.want) {
+				t.Errorf("ReadStartingWithUser() got = %v, want %v", gotArr, tt.want)
 			}
 		})
 	}
 }
 
 func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
+	controller := gomock.NewController(t)
+	mockRelationshipTupleReader := mocks.NewMockRelationshipTupleReader(controller)
+
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
 		contextualTuples        []*openfgav1.TupleKey
@@ -295,17 +524,74 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 		name    string
 		fields  fields
 		args    args
+		setups  func()
 		want    *openfgav1.Tuple
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "Test combinedTupleReader ReadUserTuple OK - contextual tuple found",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+				},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Times(0)
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				tk: &openfgav1.TupleKey{
+					User:     "user:11",
+					Relation: "member",
+					Object:   "group:1",
+				},
+				options: storage.ReadUserTupleOptions{},
+			},
+			want:    testTuples["user:11#member#group:1"],
+			wantErr: false,
+		},
+		{
+			name: "Test combinedTupleReader ReadUserTuple OK - contextual tuple not found",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+					testTuples["user:12#member#group:1"].GetKey(),
+				},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUserTuple(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(testTuples["user:13#member#group:1"], nil)
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				tk: &openfgav1.TupleKey{
+					User:     "user:13",
+					Relation: "member",
+					Object:   "group:1",
+				},
+				options: storage.ReadUserTupleOptions{},
+			},
+			want:    testTuples["user:13#member#group:1"],
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &combinedTupleReader{
-				RelationshipTupleReader: tt.fields.RelationshipTupleReader,
-				contextualTuples:        tt.fields.contextualTuples,
+			if tt.setups != nil {
+				tt.setups()
 			}
+			c := NewCombinedTupleReader(tt.fields.RelationshipTupleReader, tt.fields.contextualTuples)
+
 			got, err := c.ReadUserTuple(tt.args.ctx, tt.args.store, tt.args.tk, tt.args.options)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReadUserTuple() error = %v, wantErr %v", err, tt.wantErr)
@@ -319,6 +605,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 }
 
 func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
+	_, mockRelationshipTupleReader := makeMocks(t)
 	type fields struct {
 		RelationshipTupleReader storage.RelationshipTupleReader
 		contextualTuples        []*openfgav1.TupleKey
@@ -333,24 +620,112 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 		name    string
 		fields  fields
 		args    args
-		want    storage.TupleIterator
-		wantErr bool
+		setup   func()
+		want    []*openfgav1.Tuple
+		wantErr error
 	}{
-		// TODO: Add test cases.
+		{
+			name: "Test combinedTupleReader ReadUsersetTuples OK - no userset",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["user:11#member#group:1"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:     context.Background(),
+				store:   "1",
+				filter:  storage.ReadUsersetTuplesFilter{},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["user:12#member#group:1"]}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["user:12#member#group:1"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "Test combinedTupleReader ReadUsersetTuples OK - userset",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["group:1#member#viewer#folder:backlog"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{testTuples["user:12#member#group:1"]}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["group:1#member#viewer#folder:backlog"],
+				testTuples["user:12#member#group:1"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "Test combinedTupleReader ReadUsersetTuples error - relationship tuple reader error",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["group:1#member#viewer#folder:backlog"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("test read error"))
+			},
+			want:    nil,
+			wantErr: errors.New("test read error"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &combinedTupleReader{
-				RelationshipTupleReader: tt.fields.RelationshipTupleReader,
-				contextualTuples:        tt.fields.contextualTuples,
+			c := NewCombinedTupleReader(tt.fields.RelationshipTupleReader, tt.fields.contextualTuples)
+			if tt.setup != nil {
+				tt.setup()
 			}
 			got, err := c.ReadUsersetTuples(tt.args.ctx, tt.args.store, tt.args.filter, tt.args.options)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ReadUsersetTuples() error = %v, wantErr %v", err, tt.wantErr)
+			if err != nil {
+				assert.EqualErrorf(t, tt.wantErr, err.Error(), "ReadUsersetTuples() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ReadUsersetTuples() got = %v, want %v", got, tt.want)
+			gotArr := make([]*openfgav1.Tuple, 0)
+			for {
+				if tuple, err := got.Next(tt.args.ctx); err == nil {
+					gotArr = append(gotArr, tuple)
+				} else {
+					break
+				}
+			}
+			if !reflect.DeepEqual(gotArr, tt.want) {
+				t.Errorf("ReadUsersetTuples() got = %v, want %v", gotArr, tt.want)
 			}
 		})
 	}
