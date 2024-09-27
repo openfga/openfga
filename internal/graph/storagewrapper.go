@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/pkg/logger"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/openfga/openfga/pkg/logger"
 
 	"golang.org/x/sync/singleflight"
 
@@ -152,7 +153,7 @@ func (c *CachedDatastore) newCachedIterator(ctx context.Context, dsIterFunc iter
 
 	c.logger.Info(fmt.Sprintf("CACHE looking for key: %s", cacheKey))
 	if cacheKey == "" {
-		c.logger.Info(fmt.Sprintf("CACHE invalid key"))
+		c.logger.Info("CACHE invalid key")
 		return dsIterFunc(ctx)
 	}
 

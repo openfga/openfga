@@ -103,7 +103,13 @@ func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
 // and combines them into a single iterator that yields all the
 // values from all iterators. Duplicates can be returned.
 func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
-	return &combinedIterator[T]{pending: iters, done: make([]Iterator[T], 0, len(iters))}
+	pending := make([]Iterator[T], 0, len(iters))
+	for _, iter := range iters {
+		if iter != nil {
+			pending = append(pending, iter)
+		}
+	}
+	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending))}
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.

@@ -3,9 +3,10 @@ package graph
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/pkg/logger"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/pkg/logger"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
