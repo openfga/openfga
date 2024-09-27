@@ -329,6 +329,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -371,6 +372,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -396,6 +398,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -441,6 +444,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
