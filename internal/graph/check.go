@@ -1110,6 +1110,7 @@ func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheck
 		),
 		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 	)
+	defer filteredIter.Stop()
 
 	for {
 		t, err := filteredIter.Next(ctx)
