@@ -3,6 +3,7 @@ package typesystem
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -2994,6 +2995,124 @@ func TestIsTuplesetRelation(t *testing.T) {
 			require.Equal(t, test.expected, actual)
 		})
 	}
+}
+
+func TestIsSimpleRecursiveUserset(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		model  string
+		input  string
+		result bool
+	}{
+		{
+			name: "recursive_userset_1",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]`,
+			input:  "group#member",
+			result: true,
+		},
+		{
+			name: "recursive_userset_2",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user2, group#member]`,
+			input:  "group#member",
+			result: true,
+		},
+		{
+			name: "not_recursive_userset_because_wildcard_not_supported",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user:*, group#member]`,
+			input:  "group#member",
+			result: false, // wildcards not handled for now
+		},
+		{
+			name: "does_not_have_edge_to_self_1",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]`,
+			input:  "group#member",
+			result: false,
+		},
+		{
+			name: "does_not_have_edge_to_self_2",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#another]
+						define another: [user]`,
+			input:  "group#member",
+			result: false,
+		},
+		{
+			name: "one_edge_does_not_lead_to_a_type",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member, group#another]
+						define another: [user]`,
+			input:  "group#member",
+			result: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := New(model)
+			require.NoError(t, err)
+
+			data := strings.SplitN(test.input, "#", 2)
+			objectType, relation := data[0], data[1]
+
+			res, err := typesys.IsSimpleRecursiveUserset(objectType, relation)
+			require.NoError(t, err)
+			require.Equal(t, test.result, res)
+		})
+	}
+
+	t.Run("reverses_graph_correctly", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+					schema 1.1
+			type user
+			type group
+				relations
+					define member: [user, group#member]`)
+		typesys, err := New(model)
+		require.NoError(t, err)
+		typesys.authorizationModelGraph, err = typesys.authorizationModelGraph.Reversed()
+		require.NoError(t, err)
+		res, err := typesys.IsSimpleRecursiveUserset("group", "member")
+		require.NoError(t, err)
+		require.True(t, res)
+	})
 }
 
 func TestIsDirectlyRelated(t *testing.T) {

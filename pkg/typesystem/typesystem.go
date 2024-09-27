@@ -523,6 +523,51 @@ func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReferen
 	return a.GetRelation() != "" && b.GetRelation() != "" && a.GetRelation() == b.GetRelation()
 }
 
+// IsSimpleRecursiveUserset returns true if a given objectType-relation node in the graph hasat least two incoming edges:
+// - one edge back to itself, and
+// - all the other incoming edges are coming from a terminal type node.
+func (t *TypeSystem) IsSimpleRecursiveUserset(objectType, relation string) (bool, error) {
+	authModel := t.authorizationModelGraph
+	if authModel.GetDrawingDirection() != graph.DrawingDirectionListObjects {
+		// should never happen, but if it does, we fix it
+		var err error
+		authModel, err = authModel.Reversed()
+		if err != nil {
+			return false, err
+		}
+	}
+	thisNode, err := authModel.GetNodeByLabel(objectType + "#" + relation)
+	if err != nil {
+		return false, err
+	}
+
+	neighborNodes := authModel.To(thisNode.ID())
+	if neighborNodes.Len() < 2 {
+		return false, nil
+	}
+
+	hasSelfEdge, everyOtherEdgeIsToATerminalType := false, true
+
+NeighborsLoop:
+	for neighborNodes.Next() {
+		neighborNode, ok := neighborNodes.Node().(*graph.AuthorizationModelNode)
+		if !ok {
+			return false, fmt.Errorf("could not cast to AuthorizationModelNode")
+		}
+		switch neighborNode == thisNode {
+		case true:
+			hasSelfEdge = true
+		case false:
+			if neighborNode.NodeType() != graph.SpecificType {
+				everyOtherEdgeIsToATerminalType = false
+				break NeighborsLoop
+			}
+		}
+	}
+
+	return hasSelfEdge && everyOtherEdgeIsToATerminalType, nil
+}
+
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, source *openfgav1.RelationReference) (bool, error) {
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())

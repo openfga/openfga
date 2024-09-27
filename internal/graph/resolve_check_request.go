@@ -4,6 +4,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type ResolveCheckRequest struct {
@@ -32,7 +34,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	return &ResolveCheckRequest{
 		StoreID:              r.GetStoreID(),
 		AuthorizationModelID: r.GetAuthorizationModelID(),
-		TupleKey:             r.GetTupleKey(),
+		TupleKey:             tuple.NewTupleKey(r.GetTupleKey().GetObject(), r.GetTupleKey().GetRelation(), r.GetTupleKey().GetUser()),
 		ContextualTuples:     r.GetContextualTuples(),
 		Context:              r.GetContext(),
 		RequestMetadata:      requestMetadata,

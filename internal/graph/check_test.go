@@ -949,8 +949,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			TupleKey:        tuple.NewTupleKey("document:2", "editor", "user:x"),
 			RequestMetadata: NewCheckRequestMetadata(2),
 		})
-		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-		require.Nil(t, resp)
+		require.NoError(t, err)
+		require.False(t, resp.Allowed)
 	})
 
 	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
@@ -1595,7 +1595,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(2))
+		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(1))
 		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(4))
 
 		checkRequestMetadata = NewCheckRequestMetadata(5)
@@ -1609,7 +1609,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
 
-		require.Equal(t, uint32(4), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 	})
 
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
@@ -4090,6 +4090,157 @@ func TestCheckTTUSlowPath(t *testing.T) {
 			resp, err := checker.checkTTUSlowPath(ctx, req, tt.rewrite, iter)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
+		})
+	}
+}
+
+func TestCheckSimpleRecursiveUserset(t *testing.T) {
+	var testcases = map[string]struct {
+		inputModel     string
+		inputTuples    []*openfgav1.TupleKey
+		inputRequest   *openfgav1.TupleKey
+		expectedOutput *ResolveCheckResponse
+	}{
+		`happy_case_direct`: { // group:1 contains user
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+			},
+			inputRequest: tuple.NewTupleKey("group:1", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+		},
+		`happy_case_linear_list`: { // group:3 contains group:2 contains group:1 contains user
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKey("group:2", "member", "group:1#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+		},
+		`happy_case_linear_tree_of_hierarchies`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKey("group:1a", "member", "group:1#member"),
+				tuple.NewTupleKey("group:2a", "member", "group:1a#member"),
+				tuple.NewTupleKey("group:2b", "member", "group:1b#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2a#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2b#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 4,
+				},
+			},
+		},
+		`user_is_not_part_of_any_group`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:2", "member", "group:1#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+		},
+		`no_nested_groups`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKey("group:4", "member", "group:3#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:4", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+		},
+	}
+
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			// arrange
+			storeID := ulid.Make().String()
+			// using memory store for testing because mocking this would be too complicated
+			ds := memory.New()
+			err := ds.Write(context.Background(), storeID, nil, tc.inputTuples)
+			require.NoError(t, err)
+			model := parser.MustTransformDSLToProto(tc.inputModel)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+			ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			// act
+			inputReq := &ResolveCheckRequest{
+				StoreID:         storeID,
+				TupleKey:        tc.inputRequest,
+				Consistency:     0,
+				RequestMetadata: NewCheckRequestMetadata(25),
+			}
+			resp, err := checker.checkSimpleRecursiveUsersetInner(ctx, inputReq)
+
+			// assert
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedOutput, resp)
 		})
 	}
 }
