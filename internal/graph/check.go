@@ -981,10 +981,11 @@ func (c *LocalChecker) checkSimpleRecursiveUsersetInner(ctx context.Context, req
 		_ = pool.Wait()
 	}()
 	channel := make(chan groupResult, 100)
+	visitedGroups := make(map[string]struct{})
 	pool.Go(func(ctx context.Context) error {
 		defer close(channel)
 		concurrency.TrySendThroughChannel(ctx, groupResult{group: req.GetTupleKey().GetObject()}, channel)
-		c.getGroupsRecursive(ctx, req, channel)
+		c.getGroupsRecursive(ctx, req, channel, visitedGroups)
 		return nil
 	})
 
@@ -1068,7 +1069,7 @@ type groupResult struct {
 	dbReads uint32
 }
 
-func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, channel chan groupResult) {
+func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, channel chan groupResult, visitedGroups map[string]struct{}) {
 	ctx, span := tracer.Start(ctx, "getGroupsRecursive",
 		trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey()))),
 	)
@@ -1082,6 +1083,7 @@ func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheck
 	}
 
 	recursiveType, recursiveRelation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
+	visitedGroups[req.GetTupleKey().GetObject()] = struct{}{}
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	filter := storage.ReadUsersetTuplesFilter{
@@ -1119,13 +1121,17 @@ func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheck
 		}
 
 		userType, userID, _ := tuple.ToUserParts(t.GetUser())
-		objectWithoutRelation := tuple.BuildObject(userType, userID)
+		nestedGroup := tuple.BuildObject(userType, userID)
 
-		concurrency.TrySendThroughChannel(ctx, groupResult{group: objectWithoutRelation}, channel)
+		concurrency.TrySendThroughChannel(ctx, groupResult{group: nestedGroup}, channel)
+
+		if _, ok := visitedGroups[nestedGroup]; ok {
+			continue
+		}
 
 		clonedReq := req.clone()
-		clonedReq.TupleKey.Object = objectWithoutRelation
-		c.getGroupsRecursive(ctx, clonedReq, channel)
+		clonedReq.TupleKey.Object = nestedGroup
+		c.getGroupsRecursive(ctx, clonedReq, channel, visitedGroups)
 	}
 }
 

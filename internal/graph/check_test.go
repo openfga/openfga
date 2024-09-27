@@ -4095,10 +4095,17 @@ func TestCheckTTUSlowPath(t *testing.T) {
 }
 
 func TestCheckSimpleRecursiveUserset(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tkContext := testutils.MustNewStruct(t, map[string]interface{}{"x": 1})
+
 	var testcases = map[string]struct {
 		inputModel     string
 		inputTuples    []*openfgav1.TupleKey
 		inputRequest   *openfgav1.TupleKey
+		inputContext   *structpb.Struct
 		expectedOutput *ResolveCheckResponse
 	}{
 		`happy_case_direct`: { // group:1 contains user
@@ -4168,6 +4175,31 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 				},
 			},
 		},
+		`happy_path_with_conditions`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member with cond]
+	
+				condition cond(x: int) {
+					x > 0
+          	}`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKeyWithCondition("group:2", "member", "group:1#member", "cond", tkContext),
+			},
+			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
+			inputContext: tkContext,
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+				},
+			},
+		},
 		`user_is_not_part_of_any_group`: {
 			inputModel: `
 				model
@@ -4210,6 +4242,28 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 				},
 			},
 		},
+		`cycle_in_groups`: { // group 2 contains group 1 contains group 2
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:2", "member", "group:1#member"),
+				tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				tuple.NewTupleKey("group:N", "member", "user:maria"),
+			},
+			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+				},
+			},
+		},
 	}
 
 	checker := NewLocalChecker()
@@ -4233,7 +4287,7 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 			inputReq := &ResolveCheckRequest{
 				StoreID:         storeID,
 				TupleKey:        tc.inputRequest,
-				Consistency:     0,
+				Context:         tkContext,
 				RequestMetadata: NewCheckRequestMetadata(25),
 			}
 			resp, err := checker.checkSimpleRecursiveUsersetInner(ctx, inputReq)
