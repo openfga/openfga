@@ -227,8 +227,6 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 // If we encounter a type with no attached module, we should break and return no modules so that the authz check will be against the store
 // Otherwise we return a list of unique modules encountered so that FGA on FGA can check them after.
 func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
-	modulesMap := make(map[string]struct{})
-
 	tuples := make([]TupleKeyInterface, len(req.GetWrites().GetTupleKeys())+len(req.GetDeletes().GetTupleKeys()))
 	var index int
 	for _, tuple := range req.GetWrites().GetTupleKeys() {
