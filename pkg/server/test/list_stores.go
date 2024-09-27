@@ -87,7 +87,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	filterListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(2),
 		ContinuationToken: "",
-	}, []string{firstStoreResponse.Id, thirdStoreResponse.Id})
+	}, []string{firstStoreResponse.GetId(), thirdStoreResponse.GetId()})
 	require.NoError(t, actualError)
 	require.Len(t, filterListStoresResponse.GetStores(), 2)
 	require.Equal(t, firstStoreName, filterListStoresResponse.GetStores()[0].GetName())
