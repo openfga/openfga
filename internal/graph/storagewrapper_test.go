@@ -478,17 +478,10 @@ func TestCachedIterator(t *testing.T) {
 		}
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
-		for {
-			_, err := iter.Next(cancelledCtx)
 
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					break
-				}
-				require.Fail(t, "cancellation error was expected")
-				break
-			}
-		}
+		_, err := iter.Next(cancelledCtx)
+
+		require.ErrorIs(t, err, context.Canceled)
 
 		iter.Stop()
 		iter.wg.Wait()

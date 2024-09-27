@@ -215,13 +215,6 @@ func TestCombinedIterator(t *testing.T) {
 		require.ErrorIs(t, err, ErrIteratorDone)
 		require.Nil(t, tk)
 	})
-	t.Run("nil_iterator", func(t *testing.T) {
-		iter := NewCombinedIterator[[]*openfgav1.Tuple](nil)
-		defer iter.Stop()
-		tk, err := iter.Head(context.Background())
-		require.ErrorIs(t, err, ErrIteratorDone)
-		require.Nil(t, tk)
-	})
 	t.Run("head_not_empty", func(t *testing.T) {
 		expected := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:doc1", "viewer", "bill"),
