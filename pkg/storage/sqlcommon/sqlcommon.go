@@ -384,18 +384,16 @@ func (t *SQLTupleIterator) Stop() {
 type DBInfo struct {
 	db             *sql.DB
 	stbl           sq.StatementBuilderType
-	sqlTime        interface{}
 	HandleSQLError errorHandlerFn
 }
 
 type errorHandlerFn func(error, ...interface{}) error
 
 // NewDBInfo constructs a [DBInfo] object.
-func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}, errorHandler errorHandlerFn) *DBInfo {
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn) *DBInfo {
 	return &DBInfo{
 		db:             db,
 		stbl:           stbl,
-		sqlTime:        sqlTime,
 		HandleSQLError: errorHandler,
 	}
 }
@@ -462,7 +460,7 @@ func Write(
 			tk.GetRelation(), tk.GetUser(),
 			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id, dbInfo.sqlTime,
+			id, sq.Expr("NOW()"),
 		)
 	}
 
@@ -493,7 +491,7 @@ func Write(
 				conditionName,
 				conditionContext,
 				id,
-				dbInfo.sqlTime,
+				sq.Expr("NOW()"),
 			).
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
@@ -511,7 +509,7 @@ func Write(
 			conditionContext,
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
-			dbInfo.sqlTime,
+			sq.Expr("NOW()"),
 		)
 	}
 
