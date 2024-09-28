@@ -4343,11 +4343,18 @@ func TestNestedUsersetFastpath(t *testing.T) {
 		{
 			name:                       "no_user_assigned_to_group",
 			readStartingWithUserTuples: []*openfgav1.Tuple{},
-			readUsersetTuples:          [][]*openfgav1.Tuple{}, // should not lookup group#member as user:1 is not assigned to any group
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+					},
+				},
+				{},
+			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
+					DatastoreQueryCount: 2,
 					CycleDetected:       false,
 				},
 			},
@@ -4362,7 +4369,9 @@ func TestNestedUsersetFastpath(t *testing.T) {
 					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
 				},
 			},
-			readUsersetTuples: [][]*openfgav1.Tuple{},
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{},
+			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{

@@ -1082,7 +1082,7 @@ func nestedUsersetLookupUsersetForUser(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
 	req *ResolveCheckRequest,
-	usersetMessageChan chan *usersetMessage) {
+	usersetMessageChan chan usersetMessage) {
 	ctx, span := tracer.Start(ctx, "nestedUsersetLookupUsersetForUser")
 	defer span.End()
 
@@ -1093,7 +1093,7 @@ func nestedUsersetLookupUsersetForUser(ctx context.Context,
 		nil)
 	if err != nil {
 		span.RecordError(err)
-		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+		concurrency.TrySendThroughChannel(ctx, usersetMessage{
 			userset: "",
 			err:     err,
 			resp:    nil,
@@ -1112,6 +1112,11 @@ func nestedUsersetLookupUsersetForUser(ctx context.Context,
 	numItem := 0
 
 	for {
+		if ctx.Err() != nil {
+			span.RecordError(ctx.Err())
+			return
+		}
+
 		t, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
@@ -1120,15 +1125,16 @@ func nestedUsersetLookupUsersetForUser(ctx context.Context,
 
 			// error encountered.  No need to process further
 			span.RecordError(err)
-			concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{
 				userset: "",
 				err:     err,
 				resp:    nil,
 			}, usersetMessageChan)
 			return
 		}
+		// FIXME: short cut if user is assigned to userset
 		numItem++
-		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+		concurrency.TrySendThroughChannel(ctx, usersetMessage{
 			userset: t.GetObject(),
 			err:     nil,
 			resp:    nil,
@@ -1138,7 +1144,7 @@ func nestedUsersetLookupUsersetForUser(ctx context.Context,
 	// special optimization where if the user is not assigned to any group, we don't even
 	// need to look at the other side because there can never be a match
 	if numItem == 0 {
-		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+		concurrency.TrySendThroughChannel(ctx, usersetMessage{
 			userset: "",
 			err:     nil,
 			resp: &ResolveCheckResponse{
@@ -1158,7 +1164,7 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 	ds storage.RelationshipTupleReader,
 	req *ResolveCheckRequest,
 	allowedUserTypeRestrictions []*openfgav1.RelationReference,
-	usersetMessageChan chan *usersetMessage) {
+	usersetMessageChan chan usersetMessage) {
 	ctx, span := tracer.Start(ctx, "nestedUsersetFirstLevelLookupObject")
 	defer span.End()
 
@@ -1178,7 +1184,7 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 	}, opts)
 	if err != nil {
 		span.RecordError(err)
-		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+		concurrency.TrySendThroughChannel(ctx, usersetMessage{
 			userset: "",
 			err:     err,
 			resp:    nil,
@@ -1197,6 +1203,10 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 	numItem := 0
 
 	for {
+		if ctx.Err() != nil {
+			span.RecordError(ctx.Err())
+			return
+		}
 		t, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
@@ -1205,7 +1215,7 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 
 			// error encountered.  No need to process further
 			span.RecordError(err)
-			concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{
 				userset: "",
 				err:     err,
 				resp:    nil,
@@ -1217,14 +1227,14 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 		if relation == "" {
 			err = fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
 			span.RecordError(err)
-			concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{
 				userset: "",
 				err:     err,
 				resp:    nil,
 			}, usersetMessageChan)
 			return
 		}
-		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+		concurrency.TrySendThroughChannel(ctx, usersetMessage{
 			userset: usersetName,
 			err:     nil,
 			resp:    nil,
@@ -1234,7 +1244,7 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 	// special optimization where if the user is not assigned to any group, we don't even
 	// need to look at the other side because there can never be a match
 	if numItem == 0 {
-		concurrency.TrySendThroughChannel(ctx, &usersetMessage{
+		concurrency.TrySendThroughChannel(ctx, usersetMessage{
 			userset: "",
 			err:     nil,
 			resp: &ResolveCheckResponse{
@@ -1247,14 +1257,121 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 			},
 		}, usersetMessageChan)
 	}
-
 }
 
-func nextedUsersetFirstLevel(ctx context.Context,
+func processUsersetMessage(message usersetMessage,
+	req *ResolveCheckRequest,
+	primarySortedSet storage.SortedSet,
+	secondarySortedSet storage.SortedSet) (bool, *ResolveCheckResponse, error) {
+	if message.err != nil {
+		return true, nil, message.err
+	}
+	if message.resp != nil {
+		return true, nil, nil
+	}
+	primarySortedSet.Add(message.userset)
+	if secondarySortedSet.Exists(message.userset) {
+		return true, &ResolveCheckResponse{
+			Allowed: true,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				// It probably is +1.  However, we have no control on whether
+				// the userset member lookup for the first level has started DS query.
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
+			},
+		}, nil
+	}
+	return false, nil, nil
+}
+
+func processNestedUsersetFirstLevelMessage(ctx context.Context,
+	req *ResolveCheckRequest,
+	userToUsersetMessageChan,
+	objectToUsersetMessageChan chan usersetMessage) (*ResolveCheckResponse, storage.SortedSet, storage.SortedSet, error) {
+	usersetFromUser := storage.NewSortedSet()
+	usersetFromObject := storage.NewSortedSet()
+
+	userToUsersetDone := false
+	objectToUsersetDone := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, nil, nil, ctx.Err()
+		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
+			if !ok {
+				userToUsersetDone = true
+				if objectToUsersetDone {
+					// both side are done
+					return nil, usersetFromUser, usersetFromObject, nil
+				}
+			} else {
+				done, resp, err := processUsersetMessage(userToUsersetMessage, req, usersetFromUser, usersetFromObject)
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				if resp != nil {
+					return resp, nil, nil, nil
+				}
+				if done {
+					return nil, usersetFromUser, usersetFromObject, nil
+				}
+			}
+		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
+			if !ok {
+				objectToUsersetDone = true
+				if userToUsersetDone {
+					// both side are done
+					return nil, usersetFromUser, usersetFromObject, nil
+				}
+			} else {
+				done, resp, err := processUsersetMessage(objectToUsersetMessage, req, usersetFromObject, usersetFromUser)
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				if resp != nil {
+					return resp, nil, nil, nil
+				}
+				if done {
+					return nil, usersetFromUser, usersetFromObject, nil
+				}
+			}
+		}
+	}
+}
+
+func nestedUsersetFirstLevel(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
-	req *ResolveCheckRequest) (*ResolveCheckResponse, storage.SortedSet, storage.SortedSet, error) {
-	return nil, nil, nil, fmt.Errorf("implement me")
+	req *ResolveCheckRequest,
+	allowedUserTypeRestrictions []*openfgav1.RelationReference) (*ResolveCheckResponse, storage.SortedSet, storage.SortedSet, error) {
+	ctx, span := tracer.Start(ctx, "nestedUsersetFirstLevel")
+	defer span.End()
+
+	userToUsersetMessageChan := make(chan usersetMessage, 100)
+	objectToUsersetMessageChan := make(chan usersetMessage, 100)
+
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	pool := concurrency.NewPool(cancellableCtx, 2)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+
+	pool.Go(func(ctx context.Context) error {
+		nestedUsersetLookupUsersetForUser(cancellableCtx, typesys, ds, req, userToUsersetMessageChan)
+		close(userToUsersetMessageChan)
+
+		return nil
+	})
+
+	pool.Go(func(ctx context.Context) error {
+		nestedUsersetFirstLevelLookupObject(cancellableCtx, typesys, ds, req, allowedUserTypeRestrictions, objectToUsersetMessageChan)
+		close(objectToUsersetMessageChan)
+
+		return nil
+	})
+	return processNestedUsersetFirstLevelMessage(cancellableCtx, req, userToUsersetMessageChan, objectToUsersetMessageChan)
 }
 
 func nestedUsersetFastpath(ctx context.Context,
@@ -1264,73 +1381,56 @@ func nestedUsersetFastpath(ctx context.Context,
 	ctx, span := tracer.Start(ctx, "nestedUsersetFastpath")
 	defer span.End()
 
-	// Note that this will take care of the publicly assignable case as well.
-	iter, err := checkutil.IteratorReadStartingFromUser(ctx,
-		typesys, ds, req,
-		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
-		nil)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	)
-	defer filteredIter.Stop()
-
-	group := storage.NewSortedSet()
-	for {
-		t, err := filteredIter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			span.RecordError(err)
-			return nil, err
-		}
-
-		if t.GetObject() == req.GetTupleKey().GetObject() {
-			return &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
-			}, nil
-		}
-		group.Add(t.GetObject())
-	}
-
-	// Quick optimization - if the group has no members, we don't have to check
-	// further as there will be no relations with the userset.
-	if group.Size() == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
-		}, nil
-	}
-
 	reqTupleKey := req.GetTupleKey()
 	objectType := tuple.GetType(reqTupleKey.GetObject())
 	relation := reqTupleKey.GetRelation()
 
-	dsCount := &atomic.Uint32{}
-	dsCount.Store(1)
-	return recursiveMatchUserUserset(ctx, req, &recursiveMatchUserUsersetInfo{
-		typesys:              typesys,
-		ds:                   ds,
-		dsCount:              dsCount,
-		userToUsersetMapping: group,
-		visitedUserset:       &sync.Map{},
-		allowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			typesystem.DirectRelationReference(objectType, relation),
-		},
+	resp, usersetFromUser, usersetFromObject, err := nestedUsersetFirstLevel(ctx, typesys, ds, req, []*openfgav1.RelationReference{
+		typesystem.DirectRelationReference(objectType, relation),
 	})
+
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if resp != nil {
+		return resp, nil
+	}
+
+	dsCount := &atomic.Uint32{}
+	dsCount.Store(2)
+
+	for _, obj := range usersetFromObject.Values() {
+		newReq := req.clone()
+		newReq.TupleKey.Object = obj
+		resp, err := recursiveMatchUserUserset(ctx, newReq, &recursiveMatchUserUsersetInfo{
+			typesys:              typesys,
+			ds:                   ds,
+			dsCount:              dsCount,
+			userToUsersetMapping: usersetFromUser,
+			visitedUserset:       &sync.Map{},
+			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				typesystem.DirectRelationReference(objectType, relation),
+			},
+		})
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		if resp != nil && resp.GetAllowed() {
+			return resp, nil
+		}
+	}
+
+	return &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			// It probably is +1.  However, we have no control on whether
+			// the userset member lookup for the first level has started DS query.
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + dsCount.Load(),
+		},
+	}, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
