@@ -57,18 +57,29 @@ func ObjectIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFi
 // userFilter returns the ObjectRelation where the object is the specified user.
 // If the specified type is publicly assigned type, the object will also include
 // publicly wildcard.
-func userFilter(hasPubliclyAssignedType bool,
-	user,
-	userType string) []*openfgav1.ObjectRelation {
-	if !hasPubliclyAssignedType || user == tuple.TypedPublicWildcard(userType) {
+func userFilter(isPublicAssignable bool, user string) []*openfgav1.ObjectRelation {
+	userObjType, userObjID, userObjRelation := tuple.ToUserParts(user)
+
+	if userObjID == "*" && userObjRelation == "" {
 		return []*openfgav1.ObjectRelation{{
 			Object: user,
+		}}
+	}
+	if !isPublicAssignable {
+		if userObjRelation == "" {
+			return []*openfgav1.ObjectRelation{{
+				Object: user,
+			}}
+		}
+		return []*openfgav1.ObjectRelation{{
+			Object:   tuple.BuildObject(userObjType, userObjID),
+			Relation: userObjRelation,
 		}}
 	}
 
 	return []*openfgav1.ObjectRelation{
 		{Object: user},
-		{Object: tuple.TypedPublicWildcard(userType)},
+		{Object: tuple.TypedPublicWildcard(userObjType)},
 	}
 }
 
@@ -108,7 +119,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
-			UserFilter: userFilter(hasPubliclyAssignedType, user, userType),
+			UserFilter: userFilter(hasPubliclyAssignedType, user),
 			ObjectIDs:  objectIDs,
 		}, opts)
 }

@@ -219,38 +219,42 @@ func TestObjectIDInSortedSet(t *testing.T) {
 
 func TestUserFilter(t *testing.T) {
 	tests := []struct {
-		name                    string
-		hasPubliclyAssignedType bool
-		user                    string
-		userType                string
-		expected                []*openfgav1.ObjectRelation
+		name                 string
+		isPubliclyAssignable bool
+		user                 string
+		expected             []*openfgav1.ObjectRelation
 	}{
 		{
-			name:                    "non_public",
-			hasPubliclyAssignedType: false,
-			user:                    "user:1",
-			userType:                "user",
+			name:                 "non_public",
+			isPubliclyAssignable: false,
+			user:                 "user:1",
 			expected: []*openfgav1.ObjectRelation{{
 				Object: "user:1",
 			}},
 		},
 		{
-			name:                    "public",
-			hasPubliclyAssignedType: true,
-			user:                    "user:1",
-			userType:                "user",
+			name:                 "public",
+			isPubliclyAssignable: true,
+			user:                 "user:1",
 			expected: []*openfgav1.ObjectRelation{
 				{Object: "user:1"},
 				{Object: "user:*"},
 			},
 		},
 		{
-			name:                    "user_wildcard",
-			hasPubliclyAssignedType: true,
-			user:                    "user:*",
-			userType:                "user",
+			name:                 "user_wildcard",
+			isPubliclyAssignable: true,
+			user:                 "user:*",
 			expected: []*openfgav1.ObjectRelation{
 				{Object: "user:*"},
+			},
+		},
+		{
+			name:                 "userset",
+			isPubliclyAssignable: false,
+			user:                 "group:fga#member",
+			expected: []*openfgav1.ObjectRelation{
+				{Object: "group:fga", Relation: "member"},
 			},
 		},
 	}
@@ -258,7 +262,7 @@ func TestUserFilter(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := userFilter(tt.hasPubliclyAssignedType, tt.user, tt.userType)
+			result := userFilter(tt.isPubliclyAssignable, tt.user)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -361,7 +365,7 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 			expectedFilter := storage.ReadStartingWithUserFilter{
 				ObjectType: "group",
 				Relation:   "member",
-				UserFilter: userFilter(tt.expectedIsPublic, "user:maria", "user"),
+				UserFilter: userFilter(tt.expectedIsPublic, "user:maria"),
 				ObjectIDs:  objectIDs,
 			}
 			expectedOpts := storage.ReadStartingWithUserOptions{

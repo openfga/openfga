@@ -1518,7 +1518,6 @@ func (c *LocalChecker) checkRewrite(
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
-
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
