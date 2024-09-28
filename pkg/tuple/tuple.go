@@ -414,3 +414,10 @@ func FromUserParts(userObjectType, userObjectID, userRelation string) string {
 	}
 	return user
 }
+
+// IsSelfDefining returns true for document:1#viewer@document:1#viewer.
+// See https://github.com/openfga/rfcs/blob/main/20240328-queries-with-usersets.md
+func IsSelfDefining(tuple *openfgav1.TupleKey) bool {
+	userObject, userRelation := SplitObjectRelation(tuple.GetUser())
+	return tuple.GetRelation() == userRelation && tuple.GetObject() == userObject
+}

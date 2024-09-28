@@ -472,10 +472,8 @@ func (c *LocalChecker) ResolveCheck(
 	object := tupleKey.GetObject()
 	relation := tupleKey.GetRelation()
 
-	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
-
-	// Check(document:1#viewer@document:1#viewer) will always return true
-	if relation == userRelation && object == userObject {
+	yes := tuple.IsSelfDefining(req.GetTupleKey())
+	if yes {
 		return &ResolveCheckResponse{
 			Allowed: true,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
@@ -952,9 +950,29 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 	}
 }
 
+func (c *LocalChecker) checkSimpleRecursiveUserset(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		return c.checkSimpleRecursiveUsersetInner(ctx, req)
+	}
+}
+
 func (c *LocalChecker) checkSimpleRecursiveUsersetInner(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkSimpleRecursiveUserset")
 	defer span.End()
+
+	resp := &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+		},
+	}
+	defer span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
+
+	yes := tuple.IsSelfDefining(req.GetTupleKey())
+	if yes {
+		resp.Allowed = true
+		return resp, nil
+	}
 
 	groupsToCheckAgainst, err := c.getGroupsToCheckAgainst(ctx, req)
 	if err != nil {
@@ -962,13 +980,7 @@ func (c *LocalChecker) checkSimpleRecursiveUsersetInner(ctx context.Context, req
 		return nil, err
 	}
 
-	resp := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-		},
-	}
-	defer span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
+	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	if len(groupsToCheckAgainst) == 0 {
 		return resp, nil
@@ -1001,7 +1013,6 @@ ConsumerLoop:
 			if groupResult.err != nil {
 				return nil, groupResult.err
 			}
-			// this channel will never be closed
 			resp.GetResolutionMetadata().DatastoreQueryCount += groupResult.dbReads
 
 			if _, ok := groupsToCheckAgainst[groupResult.group]; ok {
@@ -1012,12 +1023,6 @@ ConsumerLoop:
 	}
 
 	return resp, nil
-}
-
-func (c *LocalChecker) checkSimpleRecursiveUserset(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		return c.checkSimpleRecursiveUsersetInner(ctx, req)
-	}
 }
 
 func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *ResolveCheckRequest) (map[string]struct{}, error) {
@@ -1513,10 +1518,11 @@ func (c *LocalChecker) checkRewrite(
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
 		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
 		if yes, err := typesys.IsSimpleRecursiveUserset(objectType, relation); err == nil && yes {
 			return c.checkSimpleRecursiveUserset(ctx, req)
 		}

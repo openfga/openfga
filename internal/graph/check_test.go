@@ -4108,7 +4108,70 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 		inputContext   *structpb.Struct
 		expectedOutput *ResolveCheckResponse
 	}{
-		`happy_case_direct`: { // group:1 contains user
+		`happy_case_userset_request_group_2`: { // group:3 contains group:2 contains group:1
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:2", "member", "group:1#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+				},
+			},
+		},
+		`happy_case_userset_request_group_1`: { // group:3 contains group:2 contains group:1
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:2", "member", "group:1#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "group:1#member"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+				},
+			},
+		},
+		`happy_case_userset_request_group_3`: { // group:3 contains group:2 contains group:1
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+		`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:2", "member", "group:1#member"),
+				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "group:3#member"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 0,
+				},
+			},
+		},
+		`happy_case_user`: { // group:1 contains user
 			inputModel: `
 				model
 					schema 1.1
