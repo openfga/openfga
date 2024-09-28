@@ -651,6 +651,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
@@ -760,6 +761,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
@@ -855,6 +857,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -887,7 +890,9 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	ctx, span := tracer.Start(ctx, "Write")
+	ctx, span := tracer.Start(ctx, "Write", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -964,6 +969,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
+	span.SetAttributes(
+		attribute.Bool("cycle_detected", resp.GetCycleDetected()),
+		attribute.Bool("allowed", resp.GetAllowed()))
+
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
@@ -989,8 +998,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
 
-	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
-
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
@@ -1010,6 +1017,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
+		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
@@ -1045,6 +1053,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
@@ -1065,7 +1074,9 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
+	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1094,7 +1105,9 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
+	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1116,7 +1129,9 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, "WriteAssertions")
+	ctx, span := tracer.Start(ctx, "WriteAssertions", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1153,7 +1168,9 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadAssertions")
+	ctx, span := tracer.Start(ctx, "ReadAssertions", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1178,6 +1195,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadChangesQuery", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
 	defer span.End()
@@ -1228,7 +1246,9 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "DeleteStore")
+	ctx, span := tracer.Start(ctx, "DeleteStore", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1254,7 +1274,9 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "GetStore")
+	ctx, span := tracer.Start(ctx, "GetStore", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -1317,9 +1339,7 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 // resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and
 // it sets some response metadata based on the model resolution.
 func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-	ctx, span := tracer.Start(ctx, "resolveTypesystem")
-	defer span.End()
-
+	parentSpan := trace.SpanFromContext(ctx)
 	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrModelNotFound) {
@@ -1334,14 +1354,14 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 			return nil, serverErrors.ValidationError(err)
 		}
 
+		telemetry.TraceError(parentSpan, err)
 		err = serverErrors.HandleError("", err)
-		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
 	resolvedModelID := typesys.GetAuthorizationModelID()
 
-	span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
+	parentSpan.SetAttributes(attribute.String(authorizationModelIDKey, resolvedModelID))
 	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
