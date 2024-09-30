@@ -921,6 +921,112 @@ func TestHasEntrypoints(t *testing.T) {
 	}
 }
 
+func TestGetComputedRelation(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		objectType       string
+		relation         string
+		expectedError    bool
+		expectedRelation string
+	}{
+		{
+			name: "direct_assignment",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`,
+			objectType:       "group",
+			relation:         "member",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
+			name: "computed_relation",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: viewable_member1`,
+			objectType:       "group",
+			relation:         "viewable_member2",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
+			name: "deep_computed_relation",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: viewable_member1
+					define viewable_member3: viewable_member2
+					define viewable_member4: viewable_member3`,
+
+			objectType:       "group",
+			relation:         "viewable_member4",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
+			name: "unexpected_rel",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: [user] and viewable_member1`,
+			objectType:       "group",
+			relation:         "viewable_member2",
+			expectedRelation: "",
+			expectedError:    true,
+		},
+		{
+			name: "rel_not_found",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`,
+			objectType:       "group",
+			relation:         "not_found",
+			expectedRelation: "",
+			expectedError:    true,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts, err := New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
+			output, err := ts.ResolveComputedRelation(tt.objectType, tt.relation)
+			if tt.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectedRelation, output)
+		})
+	}
+}
+
 func TestHasCycle(t *testing.T) {
 	tests := []struct {
 		name       string
