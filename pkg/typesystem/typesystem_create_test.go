@@ -401,7 +401,7 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 func TestNewTypeSystem(t *testing.T) {
 	tests := map[string]struct {
 		model  string
-		output TypeSystem
+		output *TypeSystem
 	}{
 		// test a direct relationship between two types
 		"basic_example": {
@@ -412,7 +412,7 @@ func TestNewTypeSystem(t *testing.T) {
 				type document
 					relations
 						define viewer: [user]`,
-			output: TypeSystem{
+			output: &TypeSystem{
 				schemaVersion: SchemaVersion1_1,
 				ttuRelations: map[string]map[string][]*openfgav1.TupleToUserset{
 					"user": {},
@@ -479,7 +479,7 @@ func TestNewTypeSystem(t *testing.T) {
 						define criteria1: [user]
 						define criteria2: [user]
 						define criteria3: [user]`,
-			output: TypeSystem{
+			output: &TypeSystem{
 				schemaVersion: SchemaVersion1_1,
 				ttuRelations: map[string]map[string][]*openfgav1.TupleToUserset{
 					"user": {},
@@ -656,7 +656,7 @@ func TestNewTypeSystem(t *testing.T) {
 			ts, err := New(model)
 			require.NoError(t, err)
 			tc.output.modelID = ts.modelID
-			typeSystemEquals(t, &tc.output, ts)
+			typeSystemEquals(t, tc.output, ts)
 		})
 	}
 }

@@ -108,12 +108,13 @@ func (c *CachedDatastore) ReadUsersetTuples(ctx context.Context, store string, f
 
 	for _, userset := range filter.AllowedUserTypeRestrictions {
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-			rb.WriteString(fmt.Sprintf("/%s:%%#%s", userset.GetType(), userset.GetRelation()))
+			rb.WriteString(fmt.Sprintf("/%s#%s", userset.GetType(), userset.GetRelation()))
 		}
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
 			wb.WriteString(fmt.Sprintf("/%s:*", userset.GetType()))
 		}
 	}
+
 	// wildcard should have precedence
 	if wb.Len() > 0 {
 		b.WriteString(wb.String())

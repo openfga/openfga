@@ -7,6 +7,7 @@ import (
 	"maps"
 	"reflect"
 	"sort"
+	"sync"
 
 	"github.com/openfga/language/pkg/go/graph"
 
@@ -167,7 +168,7 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
-	computedRelations map[string]string
+	computedRelations sync.Map
 
 	modelID                 string
 	schemaVersion           string
@@ -232,7 +233,7 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		relations:               relations,
 		conditions:              uncompiledConditions,
 		ttuRelations:            ttuRelations,
-		computedRelations:       make(map[string]string),
+		computedRelations:       sync.Map{},
 		authorizationModelGraph: authorizationModelGraph,
 	}, nil
 }
@@ -269,8 +270,8 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 
 func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
 	memoizeKey := fmt.Sprintf("%s-%s", objectType, relation)
-	if val, ok := t.computedRelations[memoizeKey]; ok {
-		return val, nil
+	if val, ok := t.computedRelations.Load(memoizeKey); ok {
+		return val.(string), nil
 	}
 	rel, err := t.GetRelation(objectType, relation)
 	if err != nil {
@@ -281,7 +282,7 @@ func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (strin
 	case *openfgav1.Userset_ComputedUserset:
 		return t.ResolveComputedRelation(objectType, rewrite.GetComputedUserset().GetRelation())
 	case *openfgav1.Userset_This:
-		t.computedRelations[memoizeKey] = relation
+		t.computedRelations.Store(memoizeKey, relation)
 		return relation, nil
 	default:
 		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
