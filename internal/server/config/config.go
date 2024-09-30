@@ -203,6 +203,10 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
+type CacheConfig struct {
+	Limit uint32
+}
+
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
 	Enabled      bool
@@ -289,6 +293,7 @@ type Config struct {
 	Playground                    PlaygroundConfig
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
+	Cache                         CacheConfig
 	CheckQueryCache               CheckQueryCache
 	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
@@ -597,6 +602,9 @@ func DefaultConfig() *Config {
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,
 			TTL:     DefaultCheckQueryCacheTTL,
+		},
+		Cache: CacheConfig{
+			Limit: DefaultCacheLimit,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
