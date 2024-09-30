@@ -167,6 +167,8 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
+	computedRelations map[string]string
+
 	modelID                 string
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
@@ -230,6 +232,7 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		relations:               relations,
 		conditions:              uncompiledConditions,
 		ttuRelations:            ttuRelations,
+		computedRelations:       make(map[string]string),
 		authorizationModelGraph: authorizationModelGraph,
 	}, nil
 }
@@ -262,6 +265,27 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 		return typeDefinition, true
 	}
 	return nil, false
+}
+
+func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
+	memoizeKey := fmt.Sprintf("%s-%s", objectType, relation)
+	if val, ok := t.computedRelations[memoizeKey]; ok {
+		return val, nil
+	}
+	rel, err := t.GetRelation(objectType, relation)
+	if err != nil {
+		return "", err
+	}
+	rewrite := rel.GetRewrite()
+	switch rewrite.GetUserset().(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return t.ResolveComputedRelation(objectType, rewrite.GetComputedUserset().GetRelation())
+	case *openfgav1.Userset_This:
+		t.computedRelations[memoizeKey] = relation
+		return relation, nil
+	default:
+		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+	}
 }
 
 // GetRelations returns all relations in the TypeSystem for a given type.
