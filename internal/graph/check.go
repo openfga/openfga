@@ -42,7 +42,7 @@ type LocalChecker struct {
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
-	usersetBatchSize   uint32
+	usersetBatchSize   int
 	logger             logger.Logger
 }
 
@@ -58,7 +58,7 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 // WithUsersetBatchSize see server.WithUsersetBatchSize.
 func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.usersetBatchSize = usersetBatchSize
+		d.usersetBatchSize = int(usersetBatchSize)
 	}
 }
 
@@ -809,9 +809,8 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
-	// since this is an unbuffered channel, producer will be blocked until consumer catches up
-	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
-	usersetsChan := make(chan usersetsChannelType)
+	// all at least 1 message to queue up
+	usersetsChan := make(chan usersetsChannelType, 2)
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
@@ -930,7 +929,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		usersetsMap[objectRel].Add(objectID)
 
-		if usersetsMap[objectRel].Size() >= int(c.usersetBatchSize) {
+		if usersetsMap[objectRel].Size() >= c.usersetBatchSize {
 			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 		}
 	}
@@ -940,15 +939,8 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
 	for k, v := range usersetsMap {
-		select {
-		case <-ctx.Done():
-			return
-		case usersetsChan <- usersetsChannelType{
-			objectRelation: k,
-			objectIDs:      v,
-		}:
-			delete(usersetsMap, k)
-		}
+		concurrency.TrySendThroughChannel(ctx, usersetsChannelType{objectRelation: k, objectIDs: v}, usersetsChan)
+		delete(usersetsMap, k)
 	}
 }
 
