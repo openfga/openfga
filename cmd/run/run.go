@@ -610,6 +610,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
 		server.WithMaxConcurrentReadsForListUsers(config.MaxConcurrentReadsForListUsers),
+		server.WithCacheLimit(config.Cache.Limit),
 		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),

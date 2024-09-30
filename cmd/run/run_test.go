@@ -1160,6 +1160,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
 
+	val = res.Get("properties.checkQueryCache.properties.limit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Cache.Limit)
+
 	val = res.Get("properties.checkQueryCache.properties.ttl.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
@@ -1304,6 +1308,7 @@ requestDurationDispatchCountBuckets: [32,42]
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
 	require.True(t, cfg.CheckQueryCache.Enabled)
+	require.Equal(t, uint32(100), cfg.Cache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
