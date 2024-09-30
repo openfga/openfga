@@ -811,7 +811,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 
 	// since this is an unbuffered channel, producer will be blocked until consumer catches up
 	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
-	usersetsChan := make(chan usersetsChannelType)
+	usersetsChan := make(chan usersetsChannelType, 2)
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
