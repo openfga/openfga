@@ -41,7 +41,6 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate           CheckResolver
 	concurrencyLimit   uint32
-	maxConcurrentReads uint32
 	usersetBatchSize   uint32
 	logger             logger.Logger
 }
@@ -62,13 +61,6 @@ func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	}
 }
 
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck.
-func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.maxConcurrentReads = limit
-	}
-}
-
 func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.logger = logger
@@ -83,7 +75,6 @@ func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
-		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		logger:             logger.NewNoopLogger(),
 	}
