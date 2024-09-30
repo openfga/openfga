@@ -138,10 +138,10 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
-	cache storage.InMemoryCache[any]
+	cacheLimit uint32
+	cache      storage.InMemoryCache[any]
 
 	checkQueryCacheEnabled bool
-	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
 
 	checkIteratorCacheEnabled    bool
@@ -561,8 +561,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
+		cacheLimit: serverconfig.DefaultCacheLimit,
+
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnabled,
-		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 
 		checkIteratorCacheEnabled:    serverconfig.DefaultCheckIteratorCacheEnabled,
@@ -632,16 +633,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	var checkCacheOptions []graph.CachedCheckResolverOpt
-	if s.checkQueryCacheLimit > 0 {
+	if s.cacheLimit > 0 {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](int64(s.checkQueryCacheLimit)),
+			storage.WithMaxCacheSize[any](int64(s.cacheLimit)),
 		}...)
 	}
 
 	if s.checkQueryCacheEnabled {
 		checkCacheOptions = append(checkCacheOptions,
 			graph.WithExistingCache(s.cache),
-			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		)

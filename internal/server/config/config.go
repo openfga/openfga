@@ -32,10 +32,12 @@ const (
 	DefaultListUsersMaxResults              = 1000
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 
-	DefaultWriteContextByteLimit  = 32 * 1_024 // 32KB
-	DefaultCheckQueryCacheLimit   = 10000
-	DefaultCheckQueryCacheTTL     = 10 * time.Second
+	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
+
+	DefaultCacheLimit = 10000
+
 	DefaultCheckQueryCacheEnabled = false
+	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
@@ -198,7 +200,6 @@ type MetricConfig struct {
 // CheckQueryCache defines configuration for caching when resolving check.
 type CheckQueryCache struct {
 	Enabled bool
-	Limit   uint32 // (in items)
 	TTL     time.Duration
 }
 
@@ -595,7 +596,6 @@ func DefaultConfig() *Config {
 		},
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,
-			Limit:   DefaultCheckQueryCacheLimit,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
