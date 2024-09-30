@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/logger"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -37,7 +35,7 @@ func TestReadUsersetTuples(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, logger.NewNoopLogger())
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
 
 	storeID := ulid.Make().String()
 
@@ -178,7 +176,7 @@ func TestRead(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, logger.NewNoopLogger())
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
 
 	storeID := ulid.Make().String()
 
@@ -329,7 +327,6 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
-			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -372,7 +369,6 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
-			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -398,7 +394,6 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
-			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -444,7 +439,6 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
-			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
@@ -473,7 +467,6 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
-			logger:        logger.NewNoopLogger(),
 			iter:          storage.NewStaticTupleIterator(tuples),
 			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:      cacheKey,
