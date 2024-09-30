@@ -232,7 +232,6 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		relations:               relations,
 		conditions:              uncompiledConditions,
 		ttuRelations:            ttuRelations,
-		computedRelations:       sync.Map{},
 		authorizationModelGraph: authorizationModelGraph,
 	}, nil
 }
