@@ -1143,7 +1143,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCheckQueryCacheEnabled(true),
-		WithCheckQueryCacheLimit(10),
+		WithCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
 	t.Cleanup(func() {
