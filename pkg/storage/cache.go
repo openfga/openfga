@@ -56,7 +56,6 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 	}
 
 	t.ccache = ccache.New(ccache.Configure[T]().MaxSize(t.maxElements))
-	t.closeOnce = &sync.Once{}
 	return t
 }
 
