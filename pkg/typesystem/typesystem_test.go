@@ -921,7 +921,7 @@ func TestHasEntrypoints(t *testing.T) {
 	}
 }
 
-func TestGetComputedRelation(t *testing.T) {
+func TestResolveComputedRelation(t *testing.T) {
 	tests := []struct {
 		name             string
 		model            string
