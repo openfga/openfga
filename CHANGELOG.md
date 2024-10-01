@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
 * Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
+* `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976)
 
 ### Removed
 
