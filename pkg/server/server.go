@@ -177,7 +177,7 @@ type Server struct {
 
 	authorizer authz.AuthorizerInterface
 
-	ctx                 context.Context
+	ctx context.Context
 }
 
 type OpenFGAServiceV1Option func(s *Server)

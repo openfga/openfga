@@ -203,7 +203,8 @@ func TestExtractModulesFromTuples(t *testing.T) {
 			td.Metadata.Module = module2
 		}
 	}
-	ts := typesystem.New(authModel)
+	ts, err := typesystem.New(authModel)
+	require.NoError(t, err)
 
 	t.Run("return_empty_map_when_no_tuples", func(t *testing.T) {
 		tuples := []TupleKeyInterface{}
@@ -417,7 +418,8 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 			},
 		},
 	}
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
 
 	t.Run("error_when_write_tuples_errors", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(

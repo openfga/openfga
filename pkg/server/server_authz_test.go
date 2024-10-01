@@ -711,7 +711,8 @@ func TestCheckWriteAuthz(t *testing.T) {
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: testStoreModelWithModule(),
 	}
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
 
 	t.Run("checkWriteAuthz_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
