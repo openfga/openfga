@@ -384,7 +384,7 @@ func TestAllowNullCondition(t *testing.T) {
 	readChangesOpts := storage.ReadChangesOptions{
 		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 	}
-	changes, _, err := ds.ReadChanges(ctx, "store", "folder", readChangesOpts, 0)
+	changes, _, err := ds.ReadChanges(ctx, "store", storage.ReadChangesFilter{ObjectType: "folder"}, readChangesOpts)
 	require.NoError(t, err)
 	require.Len(t, changes, 2)
 	require.Equal(t, tk, changes[0].GetTupleKey())
