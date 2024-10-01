@@ -890,7 +890,7 @@ ConsumerLoop:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			break ConsumerLoop
 		case outcome, channelOpen := <-outcomeChan:
 			if !channelOpen {
 				break ConsumerLoop
