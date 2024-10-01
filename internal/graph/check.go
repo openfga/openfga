@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openfga/openfga/internal/checkutil"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/validation"
@@ -43,7 +42,7 @@ type LocalChecker struct {
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
-	usersetBatchSize   uint32
+	usersetBatchSize   int
 	logger             logger.Logger
 }
 
@@ -59,7 +58,7 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 // WithUsersetBatchSize see server.WithUsersetBatchSize.
 func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.usersetBatchSize = usersetBatchSize
+		d.usersetBatchSize = int(usersetBatchSize)
 	}
 }
 
@@ -572,34 +571,33 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	}, nil
 }
 
-// checkUsersetSlowPath will check userset or public wildcard path.
-// This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
-	defer span.End()
-	var handlers []CheckHandlerFunc
+type dispatchParams struct {
+	parentReq *ResolveCheckRequest
+	tk        *openfgav1.TupleKey
+}
 
+type dispatchMsg struct {
+	err            error
+	shortCircuit   bool
+	dispatchParams *dispatchParams
+}
+
+func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
+	defer close(dispatches)
+	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	response := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-		},
-	}
-
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
+			// cancelled doesn't need to flush nor send errors back to main routine
+			if storage.IterIsDoneOrCancelled(err) {
 				break
 			}
-			telemetry.TraceError(span, err)
-			return nil, err
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{err: err}, dispatches)
+			break
 		}
 
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-		reqTupleKey := req.GetTupleKey()
 
 		// if the user value is a typed wildcard and the type of the wildcard
 		// matches the target user objectType, then we're done searching
@@ -607,27 +605,148 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 			wildcardType := tuple.GetType(usersetObject)
 
 			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				response.Allowed = true
-				return response, nil
+				concurrency.TrySendThroughChannel(ctx, dispatchMsg{shortCircuit: true}, dispatches)
+				break
 			}
-
-			continue
 		}
 
 		if usersetRelation != "" {
 			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
 		}
 	}
+}
 
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+// processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) chan checkOutcome {
+	outcomes := make(chan checkOutcome, limit)
+	dispatchPool := concurrency.NewPool(ctx, int(limit))
+
+	go func() {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			_ = dispatchPool.Wait()
+			close(outcomes)
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-dispatchChan:
+				if !ok {
+					return
+				}
+				if msg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
+					break // continue
+				}
+				if msg.shortCircuit {
+					resp := &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 0,
+						},
+					}
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
+					return
+				}
+
+				if msg.dispatchParams != nil {
+					dispatchPool.Go(func(ctx context.Context) error {
+						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						return nil
+					})
+				}
+			}
+		}
+	}()
+
+	return outcomes
+}
+
+func (c *LocalChecker) consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
+
+	var finalErr error
+	finalResult := &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+		},
+	}
+
+ConsumerLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			break ConsumerLoop
+		case outcome, ok := <-outcomeChannel:
+			if !ok {
+				break ConsumerLoop
+			}
+			if outcome.err != nil {
+				finalErr = outcome.err
+				break // continue
+			}
+
+			if outcome.resp.GetResolutionMetadata().CycleDetected {
+				finalResult.ResolutionMetadata.CycleDetected = true
+			}
+
+			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
+
+			if outcome.resp.Allowed {
+				finalErr = nil
+				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
+				finalResult = outcome.resp
+				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
+				break ConsumerLoop
+			}
+		}
+	}
+	cancel() // prevent further processing of other checks
+	// context cancellation from upstream (e.g. client)
+	if ctx.Err() != nil {
+		finalErr = ctx.Err()
+	}
+	if finalErr != nil {
+		return nil, finalErr
+	}
+
+	return finalResult, nil
+}
+
+// checkUsersetSlowPath will check userset or public wildcard path.
+// This is the slow path as it requires dispatch on all its children.
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
+	defer span.End()
+
+	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
+
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+	pool.Go(func(ctx context.Context) error {
+		c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+		return nil
+	})
+
+	resp, err := c.consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount += response.GetResolutionMetadata().DatastoreQueryCount
+	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
 }
@@ -690,9 +809,8 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
-	// since this is an unbuffered channel, producer will be blocked until consumer catches up
-	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
-	usersetsChan := make(chan usersetsChannelType)
+	// all at least 1 message to queue up
+	usersetsChan := make(chan usersetsChannelType, 2)
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
@@ -722,6 +840,9 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "consumeUsersets")
+	defer span.End()
+
 	var finalErr error
 	dbReads := req.GetRequestMetadata().DatastoreQueryCount
 
@@ -773,14 +894,17 @@ ConsumerLoop:
 }
 
 func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) {
+	ctx, span := tracer.Start(ctx, "produceUsersets")
+	defer span.End()
+
 	usersetsMap := make(usersetsMapType)
 	defer close(usersetsChan)
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
 			// cancelled doesn't need to flush nor send errors back to main routine
-			if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) {
-				trySendUsersetsError(ctx, err, usersetsChan)
+			if !storage.IterIsDoneOrCancelled(err) {
+				concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
 			}
 			break
 		}
@@ -790,7 +914,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 			if errors.Is(err, typesystem.ErrRelationUndefined) {
 				continue
 			}
-			trySendUsersetsError(ctx, err, usersetsChan)
+			concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
 			break
 		}
 
@@ -805,7 +929,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		usersetsMap[objectRel].Add(objectID)
 
-		if usersetsMap[objectRel].Size() >= int(c.usersetBatchSize) {
+		if usersetsMap[objectRel].Size() >= c.usersetBatchSize {
 			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 		}
 	}
@@ -813,24 +937,10 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 }
 
-func trySendUsersetsError(ctx context.Context, err error, errorChan chan usersetsChannelType) {
-	select {
-	case <-ctx.Done():
-	case errorChan <- usersetsChannelType{err: err}:
-	}
-}
-
 func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
 	for k, v := range usersetsMap {
-		select {
-		case <-ctx.Done():
-			return
-		case usersetsChan <- usersetsChannelType{
-			objectRelation: k,
-			objectIDs:      v,
-		}:
-			delete(usersetsMap, k)
-		}
+		concurrency.TrySendThroughChannel(ctx, usersetsChannelType{objectRelation: k, objectIDs: v}, usersetsChan)
+		delete(usersetsMap, k)
 	}
 }
 
@@ -991,47 +1101,62 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	}
 }
 
-// checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
-// resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
-	defer span.End()
-
-	var handlers []CheckHandlerFunc
-
+func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
+	defer close(dispatches)
+	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-	tk := req.GetTupleKey()
 
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
+			if storage.IterIsDoneOrCancelled(err) {
 				break
 			}
-			telemetry.TraceError(span, err)
-			return nil, err
+			concurrency.TrySendThroughChannel(ctx, dispatchMsg{err: err}, dispatches)
+			break
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		tupleKey := &openfgav1.TupleKey{
-			Object:   userObj,
-			Relation: computedRelation,
-			User:     tk.GetUser(),
-		}
-
 		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
 			if errors.Is(err, typesystem.ErrRelationUndefined) {
 				continue // skip computed relations on tupleset relationships if they are undefined
 			}
 		}
 
-		// Note: we add TTU read below
-		handlers = append(handlers, c.dispatch(ctx, req, tupleKey))
-	}
+		tupleKey := &openfgav1.TupleKey{
+			Object:   userObj,
+			Relation: computedRelation,
+			User:     reqTupleKey.GetUser(),
+		}
 
-	resp, err := union(ctx, c.concurrencyLimit, handlers...)
+		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
+	}
+}
+
+// checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
+// resort to dispatch check on its children.
+func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
+	defer span.End()
+
+	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+
+	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
+
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		_ = pool.Wait()
+	}()
+	pool.Go(func(ctx context.Context) error {
+		c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+		return nil
+	})
+
+	resp, err := c.consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err

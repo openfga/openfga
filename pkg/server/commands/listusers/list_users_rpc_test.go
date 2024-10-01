@@ -2561,7 +2561,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 			relations
 				define viewer: [user]
 		`)
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 	t.Run("enters_loop_detection", func(t *testing.T) {
@@ -2921,7 +2922,8 @@ func TestListUsersStorageErrors(t *testing.T) {
 						define union: a or b
 						define exclusion: a but not b
 						define intersection: a and b`)
-			typesys := typesystem.New(model)
+			typesys, err := typesystem.New(model)
+			require.NoError(t, err)
 
 			l := NewListUsersQuery(mockDatastore)
 
@@ -3137,9 +3139,11 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 				define parent: [org]
 		`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 
 	tests := []struct {
@@ -3765,7 +3769,8 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 		channelWithResults := make(chan foundUser)
 		channelWithError := make(chan error, 1)
 
-		typesys := typesystem.New(model)
+		typesys, err := typesystem.New(model)
+		require.NoError(t, err)
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 		relation, err := typesys.GetRelation("document", "viewer")

@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
 const (
@@ -107,6 +108,15 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 		// Replace CLI uri with the one we just updated.
 		uri = dbURI.String()
+	case "sqlite":
+		driver = "sqlite"
+		migrationsPath = assets.SqliteMigrationDir
+
+		var err error
+		uri, err = sqlite.PrepareDSN(uri)
+		if err != nil {
+			return err
+		}
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:

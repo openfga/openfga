@@ -28,7 +28,6 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -38,6 +37,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -56,7 +56,7 @@ func init() {
 }
 
 func ExampleNewServerWithOpts() {
-	datastore := memory.New() // other supported datastores include Postgres and MySQL
+	datastore := memory.New() // other supported datastores include Postgres, MySQL and SQLite
 	defer datastore.Close()
 
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
@@ -190,7 +190,20 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true}),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true}, ""),
+			)
+		})
+	})
+
+	t.Run("errors_when_oidc_is_not_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control is enabled, but the authentication method is not OIDC. Access control is only supported with OIDC authentication", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: ulid.Make().String()}, ""),
 			)
 		})
 	})
@@ -203,7 +216,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: "not-a-valid-ulid", ModelID: ulid.Make().String()}),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: "not-a-valid-ulid", ModelID: ulid.Make().String()}, "oidc"),
 			)
 		})
 	})
@@ -216,13 +229,14 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: "not-a-valid-ulid"}),
+				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: "not-a-valid-ulid"}, "oidc"),
 			)
 		})
 	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
+	// skipping sqlite here because the lowest supported schema revision is 4
 	engines := []string{"postgres", "mysql"}
 
 	for _, engine := range engines {
@@ -374,6 +388,15 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithSQLiteDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
 
 	test.RunAllTests(t, ds)
 }
@@ -742,6 +765,16 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
+		require.NoError(b, err)
+		b.Cleanup(ds.Close)
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkSQLiteDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
+
+		uri := testDatastore.GetConnectionURI(true)
+		ds, err := sqlite.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -1808,41 +1841,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, ok)
 	})
 
-	t.Run("tracker_check_resolver", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		cfg := serverconfig.DefaultConfig()
-		cfg.CheckTrackerEnabled = true
-
-		require.False(t, cfg.CheckDispatchThrottling.Enabled)
-		require.False(t, cfg.DispatchThrottling.Enabled)
-		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
-		require.True(t, cfg.CheckTrackerEnabled)
-
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithCheckTrackerEnabled(true),
-			WithContext(ctx),
-			WithLogger(logger.NewNoopLogger()),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.checkDispatchThrottlingEnabled)
-		require.False(t, s.checkQueryCacheEnabled)
-
-		require.NotNil(t, s.checkResolver)
-
-		trackCheckResolver, ok := s.checkResolver.(*graph.TrackerCheckResolver)
-		require.True(t, ok)
-
-		localCheckResolver, ok := trackCheckResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
-		require.True(t, ok)
-	})
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -2082,7 +2080,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}, ""),
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsAccessControlEnabled())
@@ -2092,7 +2090,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}, ""),
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsAccessControlEnabled())
@@ -2102,7 +2100,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: ulid.Make().String(), StoreID: ulid.Make().String()}),
+			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: ulid.Make().String(), StoreID: ulid.Make().String()}, "oidc"),
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAccessControlEnabled())
