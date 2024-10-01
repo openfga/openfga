@@ -207,6 +207,11 @@ type CacheConfig struct {
 	Limit uint32
 }
 
+type CheckIteratorCacheConfig struct {
+	Enabled    bool
+	MaxResults uint32
+}
+
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
 	Enabled      bool
@@ -294,6 +299,7 @@ type Config struct {
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
 	Cache                         CacheConfig
+	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
@@ -598,6 +604,10 @@ func DefaultConfig() *Config {
 			Enabled:             true,
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
+		},
+		CheckIteratorCache: CheckIteratorCacheConfig{
+			Enabled:    DefaultCheckIteratorCacheEnabled,
+			MaxResults: DefaultCheckIteratorCacheMaxResults,
 		},
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,

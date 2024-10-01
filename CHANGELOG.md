@@ -12,6 +12,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
 * Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
+* Add a cache for datastore iterators on Check API. [#1924](https://github.com/openfga/openfga/pull/1924)
+  Can be configured via `OPENFGA_CHECK_ITERATOR_CACHE_ENABLED` and `OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS`.
 
 ### Removed
 
