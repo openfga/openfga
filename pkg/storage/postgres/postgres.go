@@ -710,12 +710,20 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
 func (s *Datastore) ReadChanges(
 	ctx context.Context,
-	store, objectTypeFilter string,
+	store string,
+	filter storage.ReadChangesFilter,
 	options storage.ReadChangesOptions,
-	horizonOffset time.Duration,
 ) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := startTrace(ctx, "ReadChanges")
 	defer span.End()
+
+	objectTypeFilter := filter.ObjectType
+	horizonOffset := filter.HorizonOffset
+
+	orderBy := "ulid asc"
+	if options.SortDesc {
+		orderBy = "ulid desc"
+	}
 
 	sb := s.stbl.
 		Select(
@@ -727,7 +735,7 @@ func (s *Datastore) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
-		OrderBy("ulid asc")
+		OrderBy(orderBy)
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
@@ -741,7 +749,11 @@ func (s *Datastore) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
+		if options.SortDesc {
+			sb = sb.Where(sq.Lt{"ulid": token.Ulid})
+		} else {
+			sb = sb.Where(sq.Gt{"ulid": token.Ulid})
+		}
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
