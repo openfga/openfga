@@ -172,14 +172,14 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		opts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		_, token, err := datastore.ReadChanges(ctx, storeID, "", opts, 0)
+		_, token, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 
 		opts = storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		_, token, err = datastore.ReadChanges(ctx, storeID, "somefilter", opts, 0)
+		_, token, err = datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{ObjectType: "somefilter"}, opts)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 	})
@@ -204,7 +204,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		opts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		_, token, err := datastore.ReadChanges(ctx, storeID, "", opts, 1*time.Minute)
+		_, token, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{HorizonOffset: 1 * time.Minute}, opts)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 		require.Empty(t, token)
 	})
@@ -270,7 +270,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			opts := storage.ReadChangesOptions{
 				Pagination: storage.NewPaginationOptions(10, string(continuationToken)),
 			}
-			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", opts, 1*time.Millisecond)
+			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{HorizonOffset: 1 * time.Millisecond}, opts)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					break
@@ -478,15 +478,118 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		opts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(1, ""),
 		}
-		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, "folder", opts, 0)
+		changesFolder, tokenFolder, _ := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
 		require.Len(t, changesFolder, 1)
 
 		opts = storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(1, string(tokenFolder)),
 		}
-		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, "document", opts, 0)
+		changesDocument, _, err := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "document"}, opts)
 		require.Empty(t, changesDocument)
 		require.ErrorIs(t, err, storage.ErrMismatchObjectType)
+	})
+
+	t.Run("sort_desc_returns_most_recent_changes", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("folder", "1"),
+			Relation: "viewer",
+			User:     "bob",
+		}
+		tk2 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("document", "1"),
+			Relation: "viewer",
+			User:     "bill",
+		}
+		tk3 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("document", "1"),
+			Relation: "viewer",
+			User:     "josh",
+		}
+
+		var err error
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+		time.Sleep(1 * time.Second)
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2})
+		require.NoError(t, err)
+		time.Sleep(1 * time.Second)
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk3})
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(1, ""),
+			SortDesc:   true,
+		}
+		docs, token, _ := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+		require.Len(t, docs, 1)
+		require.Equal(t, tk3.User, docs[0].TupleKey.User)
+
+		opts = storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(1, string(token)),
+			SortDesc:   true,
+		}
+		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+
+		require.Len(t, docs, 1)
+		require.Equal(t, tk2.User, docs[0].TupleKey.User)
+
+		opts.Pagination = storage.NewPaginationOptions(1, string(token))
+		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+		require.Len(t, docs, 1)
+		require.Equal(t, tk1.User, docs[0].TupleKey.User)
+	})
+
+	t.Run("sort_desc_returns_most_recent_changes_with_object_type_filter", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("folder", "1"),
+			Relation: "viewer",
+			User:     "bob",
+		}
+		tk2 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("document", "1"),
+			Relation: "viewer",
+			User:     "bill",
+		}
+		tk3 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("folder", "1"),
+			Relation: "viewer",
+			User:     "josh",
+		}
+
+		var err error
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+		time.Sleep(1 * time.Second)
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2})
+		require.NoError(t, err)
+		time.Sleep(1 * time.Second)
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk3})
+		require.NoError(t, err)
+
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(1, ""),
+			SortDesc:   true,
+		}
+		docs, token, _ := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+		require.Len(t, docs, 1)
+		require.Equal(t, tk3.User, docs[0].TupleKey.User)
+
+		opts = storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(1, string(token)),
+			SortDesc:   true,
+		}
+		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+
+		require.Len(t, docs, 1)
+		require.Equal(t, tk1.User, docs[0].TupleKey.User)
+
+		opts.Pagination = storage.NewPaginationOptions(1, string(token))
+		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+		require.Len(t, docs, 0)
 	})
 }
 
@@ -1052,7 +1155,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		readChangesOpts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", readChangesOpts, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.Nil(t, changes[0].GetTupleKey().GetCondition())
@@ -1141,7 +1244,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		readChangesOpts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		changes, _, err := datastore.ReadChanges(ctx, storeID, "", readChangesOpts, 0)
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
 		require.NoError(t, err)
 		require.Len(t, changes, 2)
 		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
@@ -1547,7 +1650,7 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 				From:     string(continuationToken),
 			},
 		}
-		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, objectTypeFilter, opts, time.Duration(0))
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: objectTypeFilter}, opts)
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break
