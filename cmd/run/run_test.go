@@ -1289,7 +1289,6 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 func TestParseConfig(t *testing.T) {
 	config := `checkQueryCache:
     enabled: true
-    limit: 100
     TTL: 5s
 requestDurationDatastoreQueryCountBuckets: [33,44]
 requestDurationDispatchCountBuckets: [32,42]
@@ -1308,7 +1307,6 @@ requestDurationDispatchCountBuckets: [32,42]
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
 	require.True(t, cfg.CheckQueryCache.Enabled)
-	require.Equal(t, uint32(100), cfg.Cache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
