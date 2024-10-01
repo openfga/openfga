@@ -1,4 +1,4 @@
-//go:generate mockgen -source interface.go -destination ./mock_check_resolver_test.go -package graph CheckResolver
+//go:generate mockgen -source interface.go -destination ./mock_check_resolver.go -package graph CheckResolver
 
 package graph
 
