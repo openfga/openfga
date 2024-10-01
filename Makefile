@@ -113,7 +113,7 @@ test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
 	@case "${DATASTORE}" in \
 		"in-memory") \
@@ -135,6 +135,12 @@ dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server wit
 			sleep 2; \
 			openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \
 			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres"; \
+			break; \
+			;; \
+		"sqlite") \
+			echo "==> Running OpenFGA with SQLite data storage"; \
+			openfga migrate --datastore-engine sqlite --datastore-uri '/tmp/openfga.sqlite'; \
+			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine sqlite --datastore-uri /tmp/openfga.sqlite"; \
 			break; \
 			;; \
 		*) \

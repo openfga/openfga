@@ -21,56 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestEmptyIterator(t *testing.T) {
-	t.Run("next", func(t *testing.T) {
-		iter := emptyTupleIterator{}
-		defer iter.Stop()
-
-		tk, err := iter.Next(context.Background())
-		require.ErrorIs(t, err, ErrIteratorDone)
-		require.Nil(t, tk)
-	})
-	t.Run("head", func(t *testing.T) {
-		iter := emptyTupleIterator{}
-		defer iter.Stop()
-
-		tk, err := iter.Head(context.Background())
-		require.ErrorIs(t, err, ErrIteratorDone)
-		require.Nil(t, tk)
-	})
-	t.Run("cancelled", func(t *testing.T) {
-		tests := []struct {
-			name  string
-			mixed bool
-		}{
-			{
-				name:  "next_only",
-				mixed: false,
-			},
-			{
-				name:  "mixed",
-				mixed: true,
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				iter := emptyTupleIterator{}
-				defer iter.Stop()
-				ctx, cancel := context.WithCancel(context.Background())
-
-				cancel()
-				var err error
-				if tt.mixed {
-					_, err = iter.Next(ctx)
-				} else {
-					_, err = iter.Head(ctx)
-				}
-				require.ErrorIs(t, err, context.Canceled)
-			})
-		}
-	})
-}
-
 func TestStaticTupleKeyIterator(t *testing.T) {
 	t.Run("next", func(t *testing.T) {
 		expected := []*openfgav1.TupleKey{
@@ -904,4 +854,36 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestIterIsDoneOrCancelled(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+	}{
+		{
+			err:      ErrIteratorDone,
+			expected: true,
+		},
+		{
+			err:      context.Canceled,
+			expected: true,
+		},
+		{
+			err:      context.DeadlineExceeded,
+			expected: true,
+		},
+		{
+			err:      fmt.Errorf("some error"),
+			expected: false,
+		},
+		{
+			err:      nil,
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		output := IterIsDoneOrCancelled(tt.err)
+		require.Equal(t, tt.expected, output)
+	}
 }

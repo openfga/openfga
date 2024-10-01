@@ -568,3 +568,44 @@ func TestParseTupleString(t *testing.T) {
 		})
 	}
 }
+
+func TestFromUserParts(t *testing.T) {
+	require.Equal(t, "jon", FromUserParts("", "jon", ""))
+	require.Equal(t, "user:jon", FromUserParts("user", "jon", ""))
+	require.Equal(t, "user:*", FromUserParts("user", "*", ""))
+	require.Equal(t, "group:eng#member", FromUserParts("group", "eng", "member"))
+}
+
+func TestToUserParts(t *testing.T) {
+	userObjectType, userObjectID, userRelation := ToUserParts("jon")
+	require.Equal(t, "", userObjectType)
+	require.Equal(t, "jon", userObjectID)
+	require.Equal(t, "", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserParts("user:jon")
+	require.Equal(t, "user", userObjectType)
+	require.Equal(t, "jon", userObjectID)
+	require.Equal(t, "", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserParts("user:*")
+	require.Equal(t, "user", userObjectType)
+	require.Equal(t, "*", userObjectID)
+	require.Equal(t, "", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserParts("group:eng#member")
+	require.Equal(t, "group", userObjectType)
+	require.Equal(t, "eng", userObjectID)
+	require.Equal(t, "member", userRelation)
+}
+
+func TestToUserPartsFromObjectRelation(t *testing.T) {
+	userObjectType, userObjectID, userRelation := ToUserPartsFromObjectRelation(&openfgav1.ObjectRelation{Object: "group:eng", Relation: "member"})
+	require.Equal(t, "group", userObjectType)
+	require.Equal(t, "eng", userObjectID)
+	require.Equal(t, "member", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserPartsFromObjectRelation(&openfgav1.ObjectRelation{Object: "user:*"})
+	require.Equal(t, "user", userObjectType)
+	require.Equal(t, "*", userObjectID)
+	require.Equal(t, "", userRelation)
+}

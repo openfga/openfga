@@ -7,8 +7,6 @@ type CheckResolverOrderedBuilder struct {
 	cachedCheckResolverOptions             []CachedCheckResolverOpt
 	dispatchThrottlingCheckResolverEnabled bool
 	dispatchThrottlingCheckResolverOptions []DispatchThrottlingCheckResolverOpt
-	trackerCheckResolverEnabled            bool
-	trackerCheckResolverOptions            []TrackerCheckResolverOpt
 }
 
 type CheckResolverOrderedBuilderOpt func(checkResolver *CheckResolverOrderedBuilder)
@@ -36,14 +34,6 @@ func WithDispatchThrottlingCheckResolverOpts(enabled bool, opts ...DispatchThrot
 	}
 }
 
-// WithTrackerCheckResolverOpts sets the opts to be used to build TrackerCheckResolver.
-func WithTrackerCheckResolverOpts(enabled bool, opts ...TrackerCheckResolverOpt) CheckResolverOrderedBuilderOpt {
-	return func(r *CheckResolverOrderedBuilder) {
-		r.trackerCheckResolverEnabled = enabled
-		r.trackerCheckResolverOptions = opts
-	}
-}
-
 func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckResolverOrderedBuilder {
 	checkResolverBuilder := &CheckResolverOrderedBuilder{}
 	for _, opt := range opts {
@@ -68,10 +58,6 @@ func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverClose
 
 	if c.dispatchThrottlingCheckResolverEnabled {
 		c.resolvers = append(c.resolvers, NewDispatchThrottlingCheckResolver(c.dispatchThrottlingCheckResolverOptions...))
-	}
-
-	if c.trackerCheckResolverEnabled {
-		c.resolvers = append(c.resolvers, NewTrackCheckResolver(c.trackerCheckResolverOptions...))
 	}
 
 	c.resolvers = append(c.resolvers, NewLocalChecker(c.localCheckerOptions...))

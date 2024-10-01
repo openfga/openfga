@@ -144,17 +144,6 @@
                 }
             }
         },
-        "checkTrackerEnabled": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
-                }
-            }
-        },
         "playground": {
             "type": "object",
             "properties": {
@@ -195,7 +184,7 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres", "mysql"],
+                    "enum": ["memory", "postgres", "mysql", "sqlite"],
                     "default": "memory",
                     "x-env-variable": "OPENFGA_DATASTORE_ENGINE"
                 },
@@ -204,7 +193,8 @@
                     "type": "string",
                     "examples": [
                         "postgres://user:pass@host:port/datastore?opts",
-                        "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts"
+                        "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts",
+                        "file:/path/to/sqlite.db"
                     ],
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
