@@ -4,8 +4,9 @@ package storage
 
 import (
 	"context"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"time"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type ctxKey string

@@ -524,21 +524,22 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 		docs, token, _ := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
 		require.Len(t, docs, 1)
-		require.Equal(t, tk3.User, docs[0].TupleKey.User)
+		require.Equal(t, tk3.GetUser(), docs[0].GetTupleKey().GetUser())
 
 		opts = storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(1, string(token)),
 			SortDesc:   true,
 		}
 		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
-
+		require.NoError(t, err)
 		require.Len(t, docs, 1)
-		require.Equal(t, tk2.User, docs[0].TupleKey.User)
+		require.Equal(t, tk2.GetUser(), docs[0].GetTupleKey().GetUser())
 
 		opts.Pagination = storage.NewPaginationOptions(1, string(token))
-		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+		docs, _, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+		require.NoError(t, err)
 		require.Len(t, docs, 1)
-		require.Equal(t, tk1.User, docs[0].TupleKey.User)
+		require.Equal(t, tk1.GetUser(), docs[0].GetTupleKey().GetUser())
 	})
 
 	t.Run("sort_desc_returns_most_recent_changes_with_object_type_filter", func(t *testing.T) {
@@ -574,22 +575,24 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			Pagination: storage.NewPaginationOptions(1, ""),
 			SortDesc:   true,
 		}
-		docs, token, _ := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+		docs, token, err := datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+		require.NoError(t, err)
 		require.Len(t, docs, 1)
-		require.Equal(t, tk3.User, docs[0].TupleKey.User)
+		require.Equal(t, tk3.GetUser(), docs[0].GetTupleKey().GetUser())
 
 		opts = storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(1, string(token)),
 			SortDesc:   true,
 		}
 		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
-
+		require.NoError(t, err)
 		require.Len(t, docs, 1)
-		require.Equal(t, tk1.User, docs[0].TupleKey.User)
+		require.Equal(t, tk1.GetUser(), docs[0].GetTupleKey().GetUser())
 
 		opts.Pagination = storage.NewPaginationOptions(1, string(token))
-		docs, token, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
-		require.Len(t, docs, 0)
+		docs, _, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+		require.NoError(t, err)
+		require.Empty(t, docs)
 	})
 }
 
