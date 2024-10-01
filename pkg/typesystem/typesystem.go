@@ -523,10 +523,13 @@ func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReferen
 	return a.GetRelation() != "" && b.GetRelation() != "" && a.GetRelation() == b.GetRelation()
 }
 
-// IsSimpleRecursiveUserset returns true if a given objectType-relation node in the graph hasat least two incoming edges:
-// - one edge back to itself, and
-// - all the other incoming edges are coming from a terminal type node.
-func (t *TypeSystem) IsSimpleRecursiveUserset(objectType, relation string) (bool, error) {
+// IsSimpleRecursiveTTU returns true if a given objectType#relation node in the graph has:
+// - 1. Only one outgoing edge
+// - 2. That edge leads to a union node
+// - 3. The union node has an outgoing edge going back to objectType#relation, and
+// - 4. The union node has an incoming edge from a terminal type, and
+// - 5. The TTU relation has only one incoming edge from a terminal type.
+func (t *TypeSystem) IsSimpleRecursiveTTU(objectType, relation string) (bool, error) {
 	authModel := t.authorizationModelGraph
 	if authModel.GetDrawingDirection() != graph.DrawingDirectionListObjects {
 		// should never happen, but if it does, we fix it
@@ -536,36 +539,110 @@ func (t *TypeSystem) IsSimpleRecursiveUserset(objectType, relation string) (bool
 			return false, err
 		}
 	}
-	thisNode, err := authModel.GetNodeByLabel(objectType + "#" + relation)
+	thisNode, err := authModel.GetNodeByLabel(tuple.ToObjectRelationString(objectType, relation))
 	if err != nil {
 		return false, err
 	}
 
-	neighborNodes := authModel.To(thisNode.ID())
-	if neighborNodes.Len() < 2 {
+	unionNode, unionHasIncomingEdgeFromTerminalType, err := checkUnionHasIncomingEdgeFromTerminalType(authModel, thisNode)
+	if err != nil {
+		return false, err
+	}
+	if !unionHasIncomingEdgeFromTerminalType {
 		return false, nil
 	}
 
-	hasSelfEdge, everyOtherEdgeIsToATerminalType := false, true
-
-NeighborsLoop:
-	for neighborNodes.Next() {
-		neighborNode, ok := neighborNodes.Node().(*graph.AuthorizationModelNode)
-		if !ok {
-			return false, fmt.Errorf("could not cast to AuthorizationModelNode")
-		}
-		switch neighborNode == thisNode {
-		case true:
-			hasSelfEdge = true
-		case false:
-			if neighborNode.NodeType() != graph.SpecificType {
-				everyOtherEdgeIsToATerminalType = false
-				break NeighborsLoop
-			}
-		}
+	ttuNode, err := getTtuNode(authModel, thisNode, unionNode)
+	if err != nil {
+		return false, err
+	}
+	if ttuNode == nil {
+		return false, nil
 	}
 
-	return hasSelfEdge && everyOtherEdgeIsToATerminalType, nil
+	return checkTtuHasOnlyOneIncomingEdge(authModel, ttuNode)
+}
+
+func checkTtuHasOnlyOneIncomingEdge(authModel *graph.AuthorizationModelGraph, ttuNode *graph.AuthorizationModelNode) (bool, error) {
+	neighborNodesOfTtu := authModel.To(ttuNode.ID())
+	// (5)
+	if neighborNodesOfTtu.Len() != 1 {
+		return false, nil
+	}
+
+	neighborNodesOfTtu.Next()
+	neighborNode, ok := neighborNodesOfTtu.Node().(*graph.AuthorizationModelNode)
+	if !ok {
+		return false, fmt.Errorf("could not cast to AuthorizationModelNode")
+	}
+
+	if neighborNode.NodeType() != graph.SpecificType {
+		return false, nil
+	}
+	return true, nil
+}
+
+func getTtuNode(authModel *graph.AuthorizationModelGraph, thisNode *graph.AuthorizationModelNode, unionNode *graph.AuthorizationModelNode) (*graph.AuthorizationModelNode, error) {
+	ttuEdges := authModel.Lines(thisNode.ID(), unionNode.ID())
+	if ttuEdges.Len() != 1 {
+		// should never happen
+		return nil, nil
+	}
+
+	ttuEdges.Next()
+	ttuEdge, ok := ttuEdges.Line().(*graph.AuthorizationModelEdge)
+	if !ok {
+		return nil, fmt.Errorf("could not cast to AuthorizationModelNode")
+	}
+
+	// (3)
+	if ttuEdge.EdgeType() != graph.TTUEdge {
+		return nil, nil
+	}
+
+	ttuNode, err := authModel.GetNodeByLabel(ttuEdge.ConditionedOn())
+	if err != nil {
+		return nil, fmt.Errorf("could not find node with label %s", ttuEdge.ConditionedOn())
+	}
+	return ttuNode, nil
+}
+
+func checkUnionHasIncomingEdgeFromTerminalType(authModel *graph.AuthorizationModelGraph, thisNode *graph.AuthorizationModelNode) (*graph.AuthorizationModelNode, bool, error) {
+	neighborNodes := authModel.From(thisNode.ID())
+	if neighborNodes.Len() != 1 { // (1)
+		return nil, false, nil
+	}
+
+	neighborNodes.Next()
+
+	unionNode, ok := neighborNodes.Node().(*graph.AuthorizationModelNode)
+	if !ok {
+		return nil, false, fmt.Errorf("could not cast to AuthorizationModelNode")
+	}
+
+	// (2)
+	if unionNode.NodeType() != graph.OperatorNode || unionNode.Label() != graph.UnionOperator {
+		return nil, false, nil
+	}
+
+	neighborNodesOfUnion := authModel.To(unionNode.ID())
+	if neighborNodesOfUnion.Len() < 1 {
+		return nil, false, nil
+	}
+
+	incomingEdgeFromTerminalType := false
+	for neighborNodesOfUnion.Next() {
+		neighborNode, ok := neighborNodesOfUnion.Node().(*graph.AuthorizationModelNode)
+		if !ok {
+			return nil, false, fmt.Errorf("could not cast to AuthorizationModelNode")
+		}
+		// (4)
+		if neighborNode.NodeType() == graph.SpecificType {
+			incomingEdgeFromTerminalType = true
+			break
+		}
+	}
+	return unionNode, incomingEdgeFromTerminalType, nil
 }
 
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -950,14 +951,14 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 	}
 }
 
-func (c *LocalChecker) checkSimpleRecursiveUserset(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) checkTTUWhenSimpleRecursive(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		return c.checkSimpleRecursiveUsersetInner(ctx, req)
+		return c.checkSimpleRecursiveTTUInner(ctx, req, rewrite)
 	}
 }
 
-func (c *LocalChecker) checkSimpleRecursiveUsersetInner(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkSimpleRecursiveUserset")
+func (c *LocalChecker) checkSimpleRecursiveTTUInner(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkSimpleRecursiveTTUInner")
 	defer span.End()
 
 	resp := &ResolveCheckResponse{
@@ -968,19 +969,13 @@ func (c *LocalChecker) checkSimpleRecursiveUsersetInner(ctx context.Context, req
 	}
 	defer span.SetAttributes(attribute.Bool("allowed", resp.GetAllowed()))
 
-	yes := tuple.IsSelfDefining(req.GetTupleKey())
-	if yes {
-		resp.Allowed = true
-		return resp, nil
-	}
-
-	groupsToCheckAgainst, err := c.getGroupsToCheckAgainst(ctx, req)
+	groupsToCheckAgainst, dbReads, err := c.getGroupsToCheckAgainst(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount++
+	resp.GetResolutionMetadata().DatastoreQueryCount += dbReads
 
 	if len(groupsToCheckAgainst) == 0 {
 		return resp, nil
@@ -997,7 +992,7 @@ func (c *LocalChecker) checkSimpleRecursiveUsersetInner(ctx context.Context, req
 	pool.Go(func(ctx context.Context) error {
 		defer close(channel)
 		concurrency.TrySendThroughChannel(ctx, groupResult{group: req.GetTupleKey().GetObject()}, channel)
-		c.getGroupsRecursive(ctx, req, channel, visitedGroups)
+		c.getParentGroupsRecursive(ctx, req, rewrite, channel, visitedGroups)
 		return nil
 	})
 
@@ -1014,7 +1009,6 @@ ConsumerLoop:
 				return nil, groupResult.err
 			}
 			resp.GetResolutionMetadata().DatastoreQueryCount += groupResult.dbReads
-
 			if _, ok := groupsToCheckAgainst[groupResult.group]; ok {
 				resp.Allowed = true
 				break ConsumerLoop
@@ -1025,9 +1019,20 @@ ConsumerLoop:
 	return resp, nil
 }
 
-func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *ResolveCheckRequest) (map[string]struct{}, error) {
+func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *ResolveCheckRequest) (map[string]struct{}, uint32, error) {
 	ctx, span := tracer.Start(ctx, "getGroupsToCheckAgainst")
 	defer span.End()
+
+	mapOfGroups := make(map[string]struct{})
+
+	dbreads := uint32(0)
+
+	if strings.Contains(req.GetTupleKey().GetUser(), "#") {
+		// TODO detect userset more cleanly
+		group := strings.SplitN(req.GetTupleKey().GetUser(), "#", 2)[0]
+		mapOfGroups[group] = struct{}{}
+		return mapOfGroups, dbreads, nil
+	}
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
@@ -1035,9 +1040,10 @@ func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *Resolve
 	objectType, _, _ := tuple.ToUserParts(req.GetTupleKey().GetObject())
 	objectRel := tuple.ToObjectRelationString(objectType, req.GetTupleKey().GetRelation())
 	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, nil)
+	dbreads++
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return nil, dbreads, err
 	}
 
 	reqContext := req.GetContext()
@@ -1051,7 +1057,6 @@ func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *Resolve
 	)
 	defer filteredIter.Stop()
 
-	mapOfGroups := make(map[string]struct{})
 	for {
 		t, err := filteredIter.Next(ctx)
 		if err != nil {
@@ -1059,13 +1064,13 @@ func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *Resolve
 				break
 			}
 			telemetry.TraceError(span, err)
-			return nil, err
+			return nil, dbreads, err
 		}
 
 		mapOfGroups[t.GetObject()] = struct{}{}
 	}
 
-	return mapOfGroups, nil
+	return mapOfGroups, dbreads, nil
 }
 
 type groupResult struct {
@@ -1074,8 +1079,8 @@ type groupResult struct {
 	dbReads uint32
 }
 
-func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, channel chan groupResult, visitedGroups map[string]struct{}) {
-	ctx, span := tracer.Start(ctx, "getGroupsRecursive",
+func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, channel chan groupResult, visitedGroups map[string]struct{}) {
+	ctx, span := tracer.Start(ctx, "getParentGroupsRecursive",
 		trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey()))),
 	)
 	defer span.End()
@@ -1087,16 +1092,13 @@ func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheck
 		return
 	}
 
-	recursiveType, recursiveRelation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	visitedGroups[req.GetTupleKey().GetObject()] = struct{}{}
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-	filter := storage.ReadUsersetTuplesFilter{
-		Object:                      req.GetTupleKey().GetObject(),
-		Relation:                    recursiveRelation,
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{Type: recursiveType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: recursiveRelation}}},
-	}
-	iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), filter, storage.ReadUsersetTuplesOptions{
+
+	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
+	readRequest := tuple.NewTupleKey(req.GetTupleKey().GetObject(), tuplesetRelation, "")
+	iter, err := ds.Read(ctx, req.GetStoreID(), readRequest, storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
@@ -1137,7 +1139,7 @@ func (c *LocalChecker) getGroupsRecursive(ctx context.Context, req *ResolveCheck
 
 		clonedReq := req.clone()
 		clonedReq.TupleKey.Object = nestedGroup
-		c.getGroupsRecursive(ctx, clonedReq, channel, visitedGroups)
+		c.getParentGroupsRecursive(ctx, clonedReq, rewrite, channel, visitedGroups)
 	}
 }
 
@@ -1520,15 +1522,15 @@ func (c *LocalChecker) checkRewrite(
 ) CheckHandlerFunc {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
-		typesys, _ := typesystem.TypesystemFromContext(ctx)
-		if yes, err := typesys.IsSimpleRecursiveUserset(objectType, relation); err == nil && yes {
-			return c.checkSimpleRecursiveUserset(ctx, req)
-		}
 		return c.checkDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:
 		return c.checkComputedUserset(ctx, req, rewrite)
 	case *openfgav1.Userset_TupleToUserset:
+		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
+		if yes, err := typesys.IsSimpleRecursiveTTU(objectType, relation); err == nil && yes {
+			return c.checkTTUWhenSimpleRecursive(ctx, req, rewrite)
+		}
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
 		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)

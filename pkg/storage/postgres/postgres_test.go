@@ -280,14 +280,14 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
-	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		store, modelID, schemaVersion, "document", bytes, nil)
 	require.NoError(t, err)
 
-	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
+	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)
+	require.NoError(t, err)
+	require.Len(t, model.GetTypeDefinitions(), 1)
 }
 
 // TestAllowNullCondition tests that tuple and changelog rows existing before

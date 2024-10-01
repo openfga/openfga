@@ -2997,7 +2997,7 @@ func TestIsTuplesetRelation(t *testing.T) {
 	}
 }
 
-func TestIsSimpleRecursiveUserset(t *testing.T) {
+func TestIsSimpleRecursiveTTU(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -3005,78 +3005,152 @@ func TestIsSimpleRecursiveUserset(t *testing.T) {
 		input  string
 		result bool
 	}{
+
 		{
-			name: "recursive_userset_1",
+			name: "recursive_ttu_1",
 			model: `
 				model
 					schema 1.1
 				type user
-				type group
+				type document
 					relations
-						define member: [user, group#member]`,
-			input:  "group#member",
+						define viewer: [user] or viewer from parent
+						define parent: [document]`,
+			input:  "document#viewer",
 			result: true,
 		},
 		{
-			name: "recursive_userset_2",
+			name: "recursive_ttu_2",
 			model: `
 				model
 					schema 1.1
 				type user
-				type group
+				type user2
+				type document
 					relations
-						define member: [user, user2, group#member]`,
-			input:  "group#member",
+						define viewer: [user, user2] or viewer from parent
+						define parent: [document]`,
+			input:  "document#viewer",
 			result: true,
 		},
 		{
-			name: "not_recursive_userset_because_wildcard_not_supported",
+			name: `not_recursive_ttu`,
 			model: `
 				model
-					schema 1.1
+				  schema 1.1
+				  
 				type user
-				type group
-					relations
-						define member: [user:*, group#member]`,
-			input:  "group#member",
-			result: false, // wildcards not handled for now
-		},
-		{
-			name: "does_not_have_edge_to_self_1",
-			model: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user]`,
-			input:  "group#member",
+				
+				type folder
+				  relations
+					define viewer: [user]
+					
+				type document
+				  relations
+					define parent: [folder]
+					define viewer: viewer from parent`,
+			input:  "document#viewer",
 			result: false,
 		},
 		{
-			name: "does_not_have_edge_to_self_2",
+			name: "not_recursive_ttu_because_wildcard_not_supported",
 			model: `
 				model
 					schema 1.1
 				type user
-				type group
+				type document
 					relations
-						define member: [user, group#another]
-						define another: [user]`,
-			input:  "group#member",
+						define viewer: [user:*] or viewer from parent
+						define parent: [document]`,
+			input:  "document#viewer",
 			result: false,
 		},
 		{
-			name: "one_edge_does_not_lead_to_a_type",
+			name: "does_not_have_TTU_edge_1",
 			model: `
 				model
 					schema 1.1
 				type user
-				type group
+				type document
 					relations
-						define member: [user, group#member, group#another]
-						define another: [user]`,
-			input:  "group#member",
+						define viewer: [user, document#viewer] or b
+						define b: [user]`,
+			input:  "document#viewer",
+			result: false,
+		},
+		{
+			name: "does_not_have_TTU_edge_2",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: [document#viewer] or b
+						define b: [user]`,
+			input:  "document#viewer",
+			result: false,
+		},
+		{
+			name: "missing_union",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: viewer from parent
+						define parent: [document]`,
+			input:  "document#viewer",
+			result: false,
+		},
+		{
+			name: "tupleset_component_of_ttu_has_more_than_two_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+				type document
+					relations
+						define viewer: [user] or viewer from parent
+						define parent: [document, folder]`,
+			input:  "document#viewer",
+			result: false,
+		},
+		{
+			name: "tupleset_component_of_ttu_does_not_lead_to_terminal_type", // this model is actually invalid
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+				type document
+					relations
+						define another: [user]
+						define viewer: [user] or viewer from parent
+						define parent: [document#another]`,
+			input:  "document#viewer",
+			result: false,
+		},
+		{
+			name: "intersection_in_TTU",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type state
+					relations
+						define can_view: [user]
+
+				type transition
+					relations
+						define start: [state]
+						define end: [state]
+						define can_apply: [user] and can_view from start and can_view from end`,
+			input:  "transition#can_apply",
 			result: false,
 		},
 	}
@@ -3091,7 +3165,7 @@ func TestIsSimpleRecursiveUserset(t *testing.T) {
 			data := strings.SplitN(test.input, "#", 2)
 			objectType, relation := data[0], data[1]
 
-			res, err := typesys.IsSimpleRecursiveUserset(objectType, relation)
+			res, err := typesys.IsSimpleRecursiveTTU(objectType, relation)
 			require.NoError(t, err)
 			require.Equal(t, test.result, res)
 		})
@@ -3102,14 +3176,15 @@ func TestIsSimpleRecursiveUserset(t *testing.T) {
 			model
 					schema 1.1
 			type user
-			type group
+			type document
 				relations
-					define member: [user, group#member]`)
+					define viewer: [user] or viewer from parent
+					define parent: [document]`)
 		typesys, err := New(model)
 		require.NoError(t, err)
 		typesys.authorizationModelGraph, err = typesys.authorizationModelGraph.Reversed()
 		require.NoError(t, err)
-		res, err := typesys.IsSimpleRecursiveUserset("group", "member")
+		res, err := typesys.IsSimpleRecursiveTTU("document", "viewer")
 		require.NoError(t, err)
 		require.True(t, res)
 	})

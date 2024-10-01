@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/openfga/openfga/internal/checkutil"
 
 	"github.com/openfga/openfga/internal/mocks"
@@ -949,8 +951,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			TupleKey:        tuple.NewTupleKey("document:2", "editor", "user:x"),
 			RequestMetadata: NewCheckRequestMetadata(2),
 		})
-		require.NoError(t, err)
-		require.False(t, resp.Allowed)
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
 	})
 
 	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
@@ -1609,7 +1611,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
 
-		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(4), checkRequestMetadata.DispatchCounter.Load())
 	})
 
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
@@ -4094,7 +4096,7 @@ func TestCheckTTUSlowPath(t *testing.T) {
 	}
 }
 
-func TestCheckSimpleRecursiveUserset(t *testing.T) {
+func TestCheckSimpleRecursiveTTU(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -4107,19 +4109,21 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 		inputRequest   *openfgav1.TupleKey
 		inputContext   *structpb.Struct
 		expectedOutput *ResolveCheckResponse
+		expectedError  error
 	}{
-		`happy_case_userset_request_group_2`: { // group:3 contains group:2 contains group:1
+		`happy_case_ask_for_userset_recurse_once`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member]
+						define member: [user] or member from parent
+						define parent: [group]
 		`,
 			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:2", "member", "group:1#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+				tuple.NewTupleKey("group:2", "parent", "group:1"),
+				tuple.NewTupleKey("group:3", "parent", "group:2"),
 			},
 			inputRequest: tuple.NewTupleKey("group:3", "member", "group:2#member"),
 			expectedOutput: &ResolveCheckResponse{
@@ -4129,18 +4133,19 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 				},
 			},
 		},
-		`happy_case_userset_request_group_1`: { // group:3 contains group:2 contains group:1
+		`happy_case_ask_for_userset_recurse_multiple_times`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member]
+						define member: [user] or member from parent
+						define parent: [group]
 		`,
 			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:2", "member", "group:1#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+				tuple.NewTupleKey("group:2", "parent", "group:1"),
+				tuple.NewTupleKey("group:3", "parent", "group:2"),
 			},
 			inputRequest: tuple.NewTupleKey("group:3", "member", "group:1#member"),
 			expectedOutput: &ResolveCheckResponse{
@@ -4150,62 +4155,21 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 				},
 			},
 		},
-		`happy_case_userset_request_group_3`: { // group:3 contains group:2 contains group:1
+		`happy_case_ask_for_user_recurse_once`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member]
-		`,
-			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:2", "member", "group:1#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2#member"),
-			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "group:3#member"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 0,
-				},
-			},
-		},
-		`happy_case_user`: { // group:1 contains user
-			inputModel: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user, group#member]
+						define member: [user] or member from parent
+						define parent: [group]
 		`,
 			inputTuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKey("group:2", "parent", "group:1"),
 			},
-			inputRequest: tuple.NewTupleKey("group:1", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
-			},
-		},
-		`happy_case_linear_list`: { // group:3 contains group:2 contains group:1 contains user
-			inputModel: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user, group#member]
-		`,
-			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:1", "member", "user:maria"),
-				tuple.NewTupleKey("group:2", "member", "group:1#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2#member"),
-			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
 			expectedOutput: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
@@ -4213,111 +4177,114 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 				},
 			},
 		},
-		`happy_case_linear_tree_of_hierarchies`: {
+		`happy_case_for_user_recurse_multiple_times`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member]
+						define member: [user] or member from parent
+						define parent: [group]
 		`,
 			inputTuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "member", "user:maria"),
-				tuple.NewTupleKey("group:1a", "member", "group:1#member"),
-				tuple.NewTupleKey("group:2a", "member", "group:1a#member"),
-				tuple.NewTupleKey("group:2b", "member", "group:1b#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2a#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2b#member"),
+				tuple.NewTupleKey("group:2a", "parent", "group:1"),
+				tuple.NewTupleKey("group:2b", "parent", "group:1"),
+				tuple.NewTupleKey("group:3", "parent", "group:2b"),
+				tuple.NewTupleKey("group:4", "parent", "group:3"),
 			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			inputRequest: tuple.NewTupleKey("group:4", "member", "user:maria"),
 			expectedOutput: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 4,
+					DatastoreQueryCount: 5,
 				},
 			},
 		},
-		`happy_path_with_conditions`: {
+		`happy_path_ask_for_user__with_condition_on_tupleset`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member with cond]
+						define member: [user] or member from parent
+						define parent: [group with cond]
 	
 				condition cond(x: int) {
 					x > 0
-          	}`,
+				}`,
 			inputTuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "member", "user:maria"),
-				tuple.NewTupleKeyWithCondition("group:2", "member", "group:1#member", "cond", tkContext),
+				tuple.NewTupleKeyWithCondition("group:2", "parent", "group:1", "cond", tkContext),
 			},
 			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
 			inputContext: tkContext,
 			expectedOutput: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
+					DatastoreQueryCount: 3,
 				},
 			},
 		},
-		`user_is_not_part_of_any_group`: {
+		`happy_path_ask_for_user__with_condition_on_direct_relation`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member]
-		`,
+						define member: [user with cond] or member from parent
+						define parent: [group]
+	
+				condition cond(x: int) {
+					x > 0
+				}`,
 			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:2", "member", "group:1#member"),
-				tuple.NewTupleKey("group:3", "member", "group:2#member"),
+				tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "cond", tkContext),
+				tuple.NewTupleKey("group:2", "parent", "group:1"),
 			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
+			inputContext: tkContext,
 			expectedOutput: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
-			},
-		},
-		`no_nested_groups`: {
-			inputModel: `
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user, group#member]
-		`,
-			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:1", "member", "user:maria"),
-				tuple.NewTupleKey("group:4", "member", "group:3#member"),
-			},
-			inputRequest: tuple.NewTupleKey("group:4", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: false,
+				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: 3,
 				},
 			},
 		},
-		`cycle_in_groups`: { // group 2 contains group 1 contains group 2
+		`user_is_not_member_of_any_group`: {
 			inputModel: `
 				model
 					schema 1.1
 				type user
 				type group
 					relations
-						define member: [user, group#member]
-		`,
+						define member: [user ] or member from parent
+						define parent: [group]`,
 			inputTuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:2", "member", "group:1#member"),
-				tuple.NewTupleKey("group:1", "member", "group:2#member"),
-				tuple.NewTupleKey("group:N", "member", "user:maria"),
+				tuple.NewTupleKey("group:2", "parent", "group:1"),
+			},
+			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+				},
+			},
+		},
+		`group_has_no_members`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user] or member from parent
+						define parent: [group]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
 			},
 			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
 			expectedOutput: &ResolveCheckResponse{
@@ -4326,6 +4293,48 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 					DatastoreQueryCount: 3,
 				},
 			},
+		},
+		`cycle_in_groups_returns_false`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user] or member from parent
+						define parent: [group]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKey("group:3", "parent", "group:2"),
+				tuple.NewTupleKey("group:2", "parent", "group:3"),
+			},
+			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
+			expectedOutput: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 4,
+				},
+			},
+		},
+		`too_much_recursion_returns_error`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user] or member from parent
+						define parent: [group]`,
+			inputTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:maria"),
+				tuple.NewTupleKey("group:2", "parent", "group:1"),
+				tuple.NewTupleKey("group:3", "parent", "group:2"),
+				tuple.NewTupleKey("group:4", "parent", "group:3"),
+				tuple.NewTupleKey("group:5", "parent", "group:4"),
+				tuple.NewTupleKey("group:6", "parent", "group:5"),
+			},
+			inputRequest:  tuple.NewTupleKey("group:6", "member", "user:maria"),
+			expectedError: ErrResolutionDepthExceeded,
 		},
 	}
 
@@ -4351,13 +4360,20 @@ func TestCheckSimpleRecursiveUserset(t *testing.T) {
 				StoreID:         storeID,
 				TupleKey:        tc.inputRequest,
 				Context:         tkContext,
-				RequestMetadata: NewCheckRequestMetadata(25),
+				RequestMetadata: NewCheckRequestMetadata(5),
 			}
-			resp, err := checker.checkSimpleRecursiveUsersetInner(ctx, inputReq)
+
+			rel, err := ts.GetRelation("group", "member")
+			require.NoError(t, err)
+			resp, err := checker.checkRewrite(ctx, inputReq, rel.GetRewrite())(ctx)
 
 			// assert
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedOutput, resp)
+			if tc.expectedError != nil {
+				assert.ErrorIs(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedOutput, resp)
+			}
 		})
 	}
 }
