@@ -4326,6 +4326,589 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 	}
 }
 
+func TestNestedUsersetLookupUsersetForUser(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                            string
+		contextDone                     bool
+		readStartingWithUserTuples      []*openfgav1.Tuple
+		readStartingWithUserTuplesError error
+		expected                        []usersetMessage
+		poolSize                        uint32
+	}{
+		{
+			name:                            "iterator_error",
+			contextDone:                     false,
+			poolSize:                        1,
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: fmt.Errorf("mock_error"),
+			expected: []usersetMessage{
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
+			name:                            "empty_user",
+			contextDone:                     false,
+			poolSize:                        1,
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: nil,
+			expected:                        nil,
+		},
+		{
+			name:                            "ctx_cancel",
+			contextDone:                     true,
+			poolSize:                        1,
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: nil,
+			expected:                        nil,
+		},
+		{
+			name:        "has_users",
+			contextDone: false,
+			poolSize:    1,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:        "has_users_large_pool_size",
+			contextDone: false,
+			poolSize:    5,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			req := &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}
+
+			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
+			pool := concurrency.NewPool(context.Background(), 1)
+			if tt.contextDone {
+				cancelFunc()
+			} else {
+				defer cancelFunc()
+			}
+			userToUsersetMessageChan := make(chan usersetMessage, tt.poolSize)
+
+			pool.Go(func(ctx context.Context) error {
+				nestedUsersetLookupUsersetForUser(cancellableCtx, ts, ds, req, userToUsersetMessageChan)
+				close(userToUsersetMessageChan)
+				return nil
+			})
+
+			var userToUsersetMessages []usersetMessage
+
+			for userToUsersetMessage := range userToUsersetMessageChan {
+				userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
+			}
+
+			_ = pool.Wait()
+			require.Equal(t, tt.expected, userToUsersetMessages)
+		})
+	}
+}
+
+func TestNestedUsersetFirstLevelLookupObject(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                   string
+		contextDone            bool
+		readUsersetTuples      []*openfgav1.Tuple
+		readUsersetTuplesError error
+		expected               []usersetMessage
+		poolSize               uint32
+	}{
+		{
+			name:                   "iterator_error",
+			contextDone:            false,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: fmt.Errorf("mock_error"),
+			expected: []usersetMessage{
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
+			name:                   "empty_userset",
+			contextDone:            false,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: nil,
+			expected:               nil,
+		},
+		{
+			name:                   "ctx_cancel",
+			contextDone:            true,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: nil,
+			expected:               nil,
+		},
+		{
+			name:        "has_userset",
+			contextDone: false,
+			poolSize:    1,
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+				{
+					userset: "group:3",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:        "has_userset_large_pool_size",
+			contextDone: false,
+			poolSize:    5,
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+				{
+					userset: "group:3",
+					err:     nil,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			req := &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}
+
+			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
+			pool := concurrency.NewPool(context.Background(), 1)
+			if tt.contextDone {
+				cancelFunc()
+			} else {
+				defer cancelFunc()
+			}
+			userToUsersetMessageChan := make(chan usersetMessage, tt.poolSize)
+
+			pool.Go(func(ctx context.Context) error {
+				nestedUsersetFirstLevelLookupObject(cancellableCtx, ts, ds, req,
+					[]*openfgav1.RelationReference{
+						{
+							Type: "group",
+							RelationOrWildcard: &openfgav1.RelationReference_Relation{
+								Relation: "member",
+							},
+						},
+					},
+					userToUsersetMessageChan)
+				close(userToUsersetMessageChan)
+				return nil
+			})
+
+			var userToUsersetMessages []usersetMessage
+
+			for userToUsersetMessage := range userToUsersetMessageChan {
+				userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
+			}
+
+			_ = pool.Wait()
+			require.Equal(t, tt.expected, userToUsersetMessages)
+		})
+	}
+}
+
+func TestProcessUsersetMessage(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                 string
+		message              usersetMessage
+		matchingUserset      []string
+		expectedFound        bool
+		expectedError        error
+		expectedInputUserset []string
+	}{
+		{
+			name: "error_input",
+			message: usersetMessage{
+				userset: "",
+				err:     fmt.Errorf("mock_error"),
+			},
+			matchingUserset:      []string{"a", "b"},
+			expectedFound:        false,
+			expectedError:        fmt.Errorf("mock_error"),
+			expectedInputUserset: []string{},
+		},
+		{
+			name: "match",
+			message: usersetMessage{
+				userset: "b",
+				err:     nil,
+			},
+			matchingUserset:      []string{"a", "b"},
+			expectedFound:        true,
+			expectedError:        nil,
+			expectedInputUserset: []string{"b"},
+		},
+		{
+			name: "not_match",
+			message: usersetMessage{
+				userset: "c",
+				err:     nil,
+			},
+			matchingUserset:      []string{"a", "b"},
+			expectedFound:        false,
+			expectedError:        nil,
+			expectedInputUserset: []string{"c"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			inputSortedSet := storage.NewSortedSet()
+			matchingSortedSet := storage.NewSortedSet()
+			for _, match := range tt.matchingUserset {
+				matchingSortedSet.Add(match)
+			}
+			output, err := processUsersetMessage(tt.message, inputSortedSet, matchingSortedSet)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expectedFound, output)
+			require.Equal(t, tt.expectedInputUserset, inputSortedSet.Values())
+		})
+	}
+}
+
+func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("non_cancel_context", func(t *testing.T) {
+		tests := []struct {
+			name                         string
+			userToUsersetMessages        []usersetMessage
+			objectToUsersetMessages      []usersetMessage
+			expectedResolveCheckResponse *ResolveCheckResponse
+			expectedUserToUserset        []string
+			expectedObjectToUserset      []string
+			expectedError                error
+		}{
+			{
+				name:                         "empty_lists",
+				userToUsersetMessages:        []usersetMessage{},
+				objectToUsersetMessages:      []usersetMessage{},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        []string{},
+				expectedObjectToUserset:      []string{},
+				expectedError:                nil,
+			},
+			{
+				name: "userToUsersetMessages_not_nil_but_object_nil",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages:      []usersetMessage{},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        []string{"group:2"},
+				expectedObjectToUserset:      []string{},
+				expectedError:                nil,
+			},
+			{
+				name:                  "objectToUsersetMessages_not_nil_but_user_nil",
+				userToUsersetMessages: []usersetMessage{},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        []string{},
+				expectedObjectToUserset:      []string{"group:2"},
+				expectedError:                nil,
+			},
+			{
+				name: "userToUsersetMessages_error",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "",
+						err:     fmt.Errorf("mock_error"),
+					},
+				},
+				objectToUsersetMessages:      []usersetMessage{},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        nil,
+				expectedObjectToUserset:      nil,
+				expectedError:                fmt.Errorf("mock_error"),
+			},
+			{
+				name:                  "objectToUsersetMessages_error",
+				userToUsersetMessages: []usersetMessage{},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "",
+						err:     fmt.Errorf("mock_error"),
+					},
+				},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        nil,
+				expectedObjectToUserset:      nil,
+				expectedError:                fmt.Errorf("mock_error"),
+			},
+			{
+				name: "direct_assignment",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:1",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+			{
+				name: "items_not_match",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:3",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        []string{"group:2"},
+				expectedObjectToUserset:      []string{"group:3"},
+				expectedError:                nil,
+			},
+			{
+				name: "items_match",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				userToUsersetMessagesChan := make(chan usersetMessage)
+				objectToUsersetMessagesChan := make(chan usersetMessage)
+
+				pool := concurrency.NewPool(context.Background(), 2)
+				pool.Go(func(ctx context.Context) error {
+					time.Sleep(1 * time.Millisecond)
+
+					for _, userToUsersetMessage := range tt.userToUsersetMessages {
+						userToUsersetMessagesChan <- userToUsersetMessage
+					}
+					close(userToUsersetMessagesChan)
+					return nil
+				})
+
+				pool.Go(func(ctx context.Context) error {
+					time.Sleep(1 * time.Millisecond)
+
+					for _, objectToUsersetMessage := range tt.objectToUsersetMessages {
+						objectToUsersetMessagesChan <- objectToUsersetMessage
+					}
+					close(objectToUsersetMessagesChan)
+					return nil
+				})
+				ctx := context.Background()
+
+				req := &ResolveCheckRequest{
+					StoreID:              ulid.Make().String(),
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				}
+
+				resp, userToUserset, objectToUserset, err := processNestedUsersetFirstLevelMessage(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
+				_ = pool.Wait()
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expectedResolveCheckResponse, resp)
+				if tt.expectedUserToUserset != nil {
+					require.Equal(t, tt.expectedUserToUserset, userToUserset.Values())
+				} else {
+					require.Nil(t, userToUserset)
+				}
+				if tt.expectedObjectToUserset != nil {
+					require.Equal(t, tt.expectedObjectToUserset, objectToUserset.Values())
+				} else {
+					require.Nil(t, objectToUserset)
+				}
+			})
+		}
+	})
+	t.Run("cancel_context", func(t *testing.T) {
+		t.Parallel()
+		userToUsersetMessagesChan := make(chan usersetMessage)
+		objectToUsersetMessagesChan := make(chan usersetMessage)
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		req := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+
+		resp, userToUserset, objectToUserset, err := processNestedUsersetFirstLevelMessage(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
+		require.Nil(t, userToUserset)
+		require.Nil(t, objectToUserset)
+	})
+}
+
 func TestNestedUsersetFastpath(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -4375,13 +4958,13 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
+					DatastoreQueryCount: 2,
 					CycleDetected:       false,
 				},
 			},
 		},
 		{
-			name: "user_assigned_to_sub_group",
+			name: "user_assigned_to_first_level_sub_group",
 			readStartingWithUserTuples: []*openfgav1.Tuple{
 				{
 					Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
@@ -4401,6 +4984,36 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
 					DatastoreQueryCount: 2,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "user_assigned_to_second_level_sub_group",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+				},
+			},
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:6", "member", "group:5#member"),
+					},
+				},
+				{
+					{
+						Key: tuple.NewTupleKey("group:5", "member", "group:3#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
 					CycleDetected:       false,
 				},
 			},
@@ -4435,9 +5048,11 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			name:                            "error_getting_tuple",
 			readStartingWithUserTuples:      []*openfgav1.Tuple{},
 			readStartingWithUserTuplesError: fmt.Errorf("mock error"),
-			readUsersetTuples:               [][]*openfgav1.Tuple{},
-			expected:                        nil,
-			expectedError:                   fmt.Errorf("mock error"),
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{},
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("mock error"),
 		},
 	}
 	for _, tt := range tests {
@@ -4447,10 +5062,10 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readUsersetTuples {
-				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 			}
 			model := parser.MustTransformDSLToProto(`
 				model
@@ -4472,7 +5087,8 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			}
 			result, err := nestedUsersetFastpath(context.Background(), ts, ds, req)
 			require.Equal(t, tt.expectedError, err)
-			require.Equal(t, tt.expected, result)
+			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 		})
 	}
 }
