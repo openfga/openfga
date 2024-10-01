@@ -113,24 +113,8 @@ func IteratorReadStartingFromUser(ctx context.Context,
 		}, opts)
 }
 
-func getComputedRelation(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
-	rel, err := typesys.GetRelation(objectType, relation)
-	if err != nil {
-		return "", err
-	}
-	rewrite := rel.GetRewrite()
-	switch rewrite.GetUserset().(type) {
-	case *openfgav1.Userset_ComputedUserset:
-		return getComputedRelation(typesys, objectType, rewrite.GetComputedUserset().GetRelation())
-	case *openfgav1.Userset_This:
-		return relation, nil
-	default:
-		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
-	}
-}
-
 func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
-	cr, err := getComputedRelation(typesys, objectType, relation)
+	cr, err := typesys.ResolveComputedRelation(objectType, relation)
 	if err != nil {
 		return "", err
 	}
