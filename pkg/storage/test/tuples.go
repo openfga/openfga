@@ -590,9 +590,8 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.Equal(t, tk1.GetUser(), docs[0].GetTupleKey().GetUser())
 
 		opts.Pagination = storage.NewPaginationOptions(1, string(token))
-		docs, _, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
-		require.NoError(t, err)
-		require.Empty(t, docs)
+		_, _, err = datastore.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{ObjectType: "folder"}, opts)
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }
 
