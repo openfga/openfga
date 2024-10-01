@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -39,12 +38,11 @@ var tuples = []*openfgav1.TupleKey{
 }
 
 func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory", false)
-	testRunTestMatrix(t, "memory", true)
+	testRunTestMatrix(t, "memory")
 }
 
-func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
-	t.Run("test_matrix_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
+func testRunTestMatrix(t *testing.T, engine string) {
+	t.Run("test_matrix_"+engine, func(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})

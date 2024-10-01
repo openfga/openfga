@@ -7,6 +7,7 @@ import (
 	"maps"
 	"reflect"
 	"sort"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
@@ -166,6 +167,8 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
+	computedRelations sync.Map
+
 	modelID                 string
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
@@ -261,6 +264,29 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 		return typeDefinition, true
 	}
 	return nil, false
+}
+
+// ResolveComputedRelation traverses the typesystem until finding the final resolution of a computed relationship.
+// Subsequent calls to this method are resolved from a cache.
+func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
+	memoizeKey := fmt.Sprintf("%s-%s", objectType, relation)
+	if val, ok := t.computedRelations.Load(memoizeKey); ok {
+		return val.(string), nil
+	}
+	rel, err := t.GetRelation(objectType, relation)
+	if err != nil {
+		return "", err
+	}
+	rewrite := rel.GetRewrite()
+	switch rewrite.GetUserset().(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return t.ResolveComputedRelation(objectType, rewrite.GetComputedUserset().GetRelation())
+	case *openfgav1.Userset_This:
+		t.computedRelations.Store(memoizeKey, relation)
+		return relation, nil
+	default:
+		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+	}
 }
 
 // GetRelations returns all relations in the TypeSystem for a given type.
