@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -162,6 +163,24 @@ func TestStaticTupleIterator(t *testing.T) {
 	})
 }
 
+type mockStoppedIterator[T any] struct {
+	stopped bool
+}
+
+func (c *mockStoppedIterator[T]) Next(ctx context.Context) (T, error) {
+	var val T
+	return val, ErrIteratorDone
+}
+
+func (c *mockStoppedIterator[T]) Stop() {
+	c.stopped = true
+}
+
+func (c *mockStoppedIterator[T]) Head(ctx context.Context) (T, error) {
+	var val T
+	return val, nil
+}
+
 func TestCombinedIterator(t *testing.T) {
 	t.Run("next", func(t *testing.T) {
 		expected := []*openfgav1.TupleKey{
@@ -272,6 +291,23 @@ func TestCombinedIterator(t *testing.T) {
 
 		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		iter1 := &mockStoppedIterator[openfgav1.TupleKey]{}
+		iter2 := &mockStoppedIterator[openfgav1.TupleKey]{}
+
+		iter := NewCombinedIterator(iter1, iter2)
+
+		_, _ = iter.Next(context.Background())
+
+		iter.Stop()
+
+		require.True(t, iter1.stopped)
+		require.True(t, iter2.stopped)
 	})
 }
 
