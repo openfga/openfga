@@ -48,6 +48,7 @@ var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCache[T] {
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
+		closeOnce:   &sync.Once{},
 	}
 
 	for _, opt := range opts {
