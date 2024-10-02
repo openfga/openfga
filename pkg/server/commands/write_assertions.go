@@ -88,7 +88,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 
 		for _, ct := range assertion.GetContextualTuples() {
 			// but contextual tuples need to be validated the same as an input to a Write Tuple request
-			if err = validation.ValidateTuple(typesys, ct); err != nil {
+			if err = validation.ValidateTupleForWrite(typesys, ct); err != nil {
 				return nil, serverErrors.ValidationError(err)
 			}
 		}
