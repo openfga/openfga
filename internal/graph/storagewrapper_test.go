@@ -380,6 +380,39 @@ func TestCachedIterator(t *testing.T) {
 		protocmp.Transform(),
 	}
 
+	t.Run("next_yielding_error_discards_results", func(t *testing.T) {
+		maxCacheSize := 1
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+		defer cache.Stop()
+
+		iter := &cachedIterator{
+			iter:          mocks.NewErrorTupleIterator(tuples),
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         cache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
+		}
+
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+
+		_, err = iter.Next(ctx)
+		require.Error(t, err)
+
+		require.Nil(t, iter.tuples)
+
+		iter.Stop()
+
+		iter.wg.Wait()
+		cachedResults := cache.Get(cacheKey)
+		require.Nil(t, cachedResults)
+	})
+
 	t.Run("calling_stop_doesnt_cache_due_to_size_foreground", func(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
