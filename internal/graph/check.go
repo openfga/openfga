@@ -816,13 +816,13 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
-	producerPool := concurrency.NewPool(cancellableCtx, 1)
+	pool := concurrency.NewPool(cancellableCtx, 1)
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = producerPool.Wait()
+		_ = pool.Wait()
 	}()
-	producerPool.Go(func(ctx context.Context) error {
+	pool.Go(func(ctx context.Context) error {
 		c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
 		return nil
 	})
@@ -881,7 +881,7 @@ func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckReq
 	defer span.End()
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChan := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
+	outcomeChannel := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -896,7 +896,7 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
-		case outcome, channelOpen := <-outcomeChan:
+		case outcome, channelOpen := <-outcomeChannel:
 			if !channelOpen {
 				break ConsumerLoop
 			}

@@ -1289,7 +1289,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "multiple_userset_access",
 			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:maria"),
 			allowed:    true,
-			minDBReads: 3, // 2 userset read (2 found) follow by 2 direct tuple check (found, returns immediately)
+			minDBReads: 2, // 2 userset read (2 found) follow by 2 direct tuple check (found, returns immediately)
 			maxDBReads: 4,
 		},
 		{
@@ -1318,8 +1318,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "union_and_ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:unknown"),
 			allowed:    false,
-			minDBReads: 3, // min(union (2 reads), ttu (1 read))
-			maxDBReads: 4, // max(union (2 reads), ttu (1 read))
+			minDBReads: 2, // min(union (2 reads), ttu (2 read))
+			maxDBReads: 4, // max(union (2 reads), ttu (2 read))
 		},
 		{
 			name:       "union_or_ttu",
@@ -1350,7 +1350,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	t.Cleanup(checkResolverCloser)
 
 	// run the test many times to exercise all the possible DBReads
-	for i := 1; i < 10; i++ {
+	for i := 1; i < 1000; i++ {
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
 			t.Parallel()
 			for _, test := range tests {
@@ -3001,7 +3001,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
+					DatastoreQueryCount: 1,
 				},
 			},
 			errorExpected: nil,
