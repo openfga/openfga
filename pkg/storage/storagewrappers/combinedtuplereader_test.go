@@ -207,9 +207,8 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 			if tt.wantErr != nil {
 				assert.EqualErrorf(t, tt.wantErr, err.Error(), "Read() error = %v, wantErr %v", err, tt.wantErr)
 				return
-			} else {
-				assert.NoError(t, err)
 			}
+			require.NoError(t, err)
 
 			gotArr := make([]*openfgav1.Tuple, 0)
 			for {
@@ -482,17 +481,14 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 			if tt.setups != nil {
 				tt.setups()
 			}
-			c := &combinedTupleReader{
-				RelationshipTupleReader: tt.fields.RelationshipTupleReader,
-				contextualTuples:        tt.fields.contextualTuples,
-			}
+			c := NewCombinedTupleReader(tt.fields.RelationshipTupleReader, tt.fields.contextualTuples)
 			got, err := c.ReadStartingWithUser(tt.args.ctx, tt.args.store, tt.args.filter, tt.args.options)
 			if tt.wantErr != nil {
 				assert.EqualErrorf(t, tt.wantErr, err.Error(), "ReadStartingWithUser() error = %v, wantErr %v", err, tt.wantErr)
 				return
-			} else {
-				assert.NoError(t, err)
 			}
+			require.NoError(t, err)
+
 			gotArr := make([]*openfgav1.Tuple, 0)
 			for {
 				if tuple, err := got.Next(tt.args.ctx); err == nil {
@@ -523,12 +519,11 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 		options storage.ReadUserTupleOptions
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		setups  func()
-		want    *openfgav1.Tuple
-		wantErr bool
+		name   string
+		fields fields
+		args   args
+		setups func()
+		want   *openfgav1.Tuple
 	}{
 		{
 			name: "Test_combinedTupleReader_ReadUserTuple_OK_contextual_tuple_found",
@@ -555,8 +550,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 				},
 				options: storage.ReadUserTupleOptions{},
 			},
-			want:    testTuples["group:1#member@user:11"],
-			wantErr: false,
+			want: testTuples["group:1#member@user:11"],
 		},
 		{
 			name: "Test_combinedTupleReader_ReadUserTuple_OK_contextual_tuple_not_found",
@@ -583,8 +577,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 				},
 				options: storage.ReadUserTupleOptions{},
 			},
-			want:    testTuples["group:1#member@user:13"],
-			wantErr: false,
+			want: testTuples["group:1#member@user:13"],
 		},
 	}
 	for _, tt := range tests {
@@ -595,10 +588,7 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 			c := NewCombinedTupleReader(tt.fields.RelationshipTupleReader, tt.fields.contextualTuples)
 
 			got, err := c.ReadUserTuple(tt.args.ctx, tt.args.store, tt.args.tk, tt.args.options)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ReadUserTuple() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			require.NoError(t, err)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ReadUserTuple() got = %v, want %v", got, tt.want)
 			}
@@ -719,9 +709,9 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 			if tt.wantErr != nil {
 				assert.EqualErrorf(t, tt.wantErr, err.Error(), "ReadUsersetTuples() error = %v, wantErr %v", err, tt.wantErr)
 				return
-			} else {
-				assert.NoError(t, err)
 			}
+			require.NoError(t, err)
+
 			gotArr := make([]*openfgav1.Tuple, 0)
 			for {
 				if tuple, err := got.Next(tt.args.ctx); err == nil {
