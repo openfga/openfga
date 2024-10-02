@@ -636,7 +636,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}...)
 	}
 
-	if s.checkQueryCacheEnabled {
+	if s.cache != nil && s.checkQueryCacheEnabled {
 		checkCacheOptions = append(checkCacheOptions,
 			graph.WithExistingCache(s.cache),
 			graph.WithLogger(s.logger),
