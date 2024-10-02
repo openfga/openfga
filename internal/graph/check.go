@@ -747,8 +747,6 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		return nil, err
 	}
 
-	resp.GetResolutionMetadata().DatastoreQueryCount++
-
 	return resp, nil
 }
 
