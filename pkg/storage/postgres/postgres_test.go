@@ -9,9 +9,10 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/openfga/openfga/pkg/testutils"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -301,24 +302,43 @@ func TestFindLatestModel(t *testing.T) {
 
 	ctx := context.Background()
 	store := ulid.Make().String()
-	modelID := ulid.Make().String()
+
 	schemaVersion := typesystem.SchemaVersion1_1
 
-	t.Run("works_when_model_is_one_row", func(t *testing.T) {
-		model := parser.MustTransformDSLToProto(`
+	t.Run("works_when_first_model_is_one_row_and_second_model_is_split", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
 			model
 				schema 1.1
-			type user1
-			type user2`)
+			type user1`)
 		err := ds.WriteAuthorizationModel(ctx, store, model)
 		require.NoError(t, err)
 
 		latestModel, err := ds.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
+		require.Len(t, latestModel.GetTypeDefinitions(), 1)
+
+		modelID := ulid.Make().String()
+		// write type "document"
+		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
+		require.NoError(t, err)
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
+		require.NoError(t, err)
+
+		// write type "user"
+		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
+		require.NoError(t, err)
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+			store, modelID, schemaVersion, "user", bytesUserType, nil)
+		require.NoError(t, err)
+
+		latestModel, err = ds.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
 		require.Len(t, latestModel.GetTypeDefinitions(), 2)
 	})
 
-	t.Run("works_when_model_is_split_in_rows", func(t *testing.T) {
+	t.Run("works_when_first_model_is_split_and_second_model_is_one_row", func(t *testing.T) {
+		modelID := ulid.Make().String()
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
@@ -336,6 +356,17 @@ func TestFindLatestModel(t *testing.T) {
 		latestModel, err := ds.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
 		require.Len(t, latestModel.GetTypeDefinitions(), 2)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user1`)
+		err = ds.WriteAuthorizationModel(ctx, store, model)
+		require.NoError(t, err)
+
+		latestModel, err = ds.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
+		require.Len(t, latestModel.GetTypeDefinitions(), 1)
 	})
 }
 
