@@ -31,7 +31,7 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 
 // ValidateTupleForWrite returns nil if a tuple is well formed and valid according to the provided model.
 // It is a superset of ValidateUserObjectRelation and ValidateTupleForRead;
-// ONLY meant to be used in Write and contextual tuples (since these mimic being written in the datastore)
+// ONLY meant to be used in Write and contextual tuples (since these mimic being written in the datastore).
 func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
