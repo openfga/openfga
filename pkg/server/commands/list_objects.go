@@ -220,7 +220,7 @@ func (q *ListObjectsQuery) evaluate(
 	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
