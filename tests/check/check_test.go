@@ -39,12 +39,12 @@ var tuples = []*openfgav1.TupleKey{
 }
 
 func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory", false)
 	testRunTestMatrix(t, "memory", true)
+	testRunTestMatrix(t, "memory", false)
 }
 
 func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
-	t.Run("test_matrix_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})

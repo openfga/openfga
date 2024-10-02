@@ -7,10 +7,10 @@ import (
 	"maps"
 	"reflect"
 	"sort"
-
-	"github.com/openfga/language/pkg/go/graph"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/language/pkg/go/graph"
 	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/condition"
@@ -167,6 +167,8 @@ type TypeSystem struct {
 	// [objectType] => [relationName] => TTU relation.
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
 
+	computedRelations sync.Map
+
 	modelID                 string
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
@@ -262,6 +264,29 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 		return typeDefinition, true
 	}
 	return nil, false
+}
+
+// ResolveComputedRelation traverses the typesystem until finding the final resolution of a computed relationship.
+// Subsequent calls to this method are resolved from a cache.
+func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
+	memoizeKey := fmt.Sprintf("%s-%s", objectType, relation)
+	if val, ok := t.computedRelations.Load(memoizeKey); ok {
+		return val.(string), nil
+	}
+	rel, err := t.GetRelation(objectType, relation)
+	if err != nil {
+		return "", err
+	}
+	rewrite := rel.GetRewrite()
+	switch rewrite.GetUserset().(type) {
+	case *openfgav1.Userset_ComputedUserset:
+		return t.ResolveComputedRelation(objectType, rewrite.GetComputedUserset().GetRelation())
+	case *openfgav1.Userset_This:
+		t.computedRelations.Store(memoizeKey, relation)
+		return relation, nil
+	default:
+		return "", fmt.Errorf("unsupported rewrite %s", rewrite.String())
+	}
 }
 
 // GetRelations returns all relations in the TypeSystem for a given type.
@@ -395,16 +420,23 @@ func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.Relation
 	return true
 }
 
-// recursiveUsersetNodeCanFastpath is a helper function to determine whether the node (object#relation) has
-// - one edge back to itself
-// - other edges lead directly to terminal types (not union/intersection/exclusion).
+type expectedEdgeAndNodeType struct {
+	expectedNodeForObjectRel *graph.AuthorizationModelNode
+	expectedEdgeType         graph.EdgeType
+}
+
+// verifyNodeEdgesOptimizable returns whether the specified node has
+//   - only one edge to node with type#relation and that node is expectedNodeForObjectRel
+//   - all other edges are linked to node of terminal type. These nodes cannot be algebraic operation (i.e., union/intersection/exclusion) and one
+//     of these nodes must be of mustHaveTerminalType.
+//
 // - Note that user:* is considered as terminal node.
-func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *graph.AuthorizationModelNode, userType string) bool {
-	hasNodeBackToItself := false
+func (t *TypeSystem) verifyNodeEdgesOptimizable(originalNode *graph.AuthorizationModelNode, expectedEdgeAndNode expectedEdgeAndNodeType, mustHaveTerminalType string) bool {
+	hasEdgeBackToExpectedNode := false
 	hasCorrectTerminalType := false
 
 	// TODO: Optimize by memorizing the list of neighbourNodes
-	neighbourNodes := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
+	neighbourNodes := t.authorizationModelGraph.To(originalNode.ID())
 	for neighbourNodes.Next() {
 		curNode := neighbourNodes.Node()
 		curNeighbourAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
@@ -414,38 +446,89 @@ func (t *TypeSystem) recursiveUsersetNodeCanFastpath(curAuthorizationModelNode *
 		}
 		switch curNeighbourAuthorizationModelNode.NodeType() {
 		case graph.SpecificType:
-			// TODO wildcard?? should we add a new NodeType to handle this more explicitly?'
 			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
-			if curNeighbourAuthorizationModelNodeLabel == userType {
+			if curNeighbourAuthorizationModelNodeLabel == mustHaveTerminalType {
 				hasCorrectTerminalType = true
-			} else if tuple.IsTypedWildcard(curNeighbourAuthorizationModelNodeLabel) {
-				curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
-				if curNeighbourAuthorizationModelNodeType == userType {
-					hasCorrectTerminalType = true
-				}
+			}
+		case graph.SpecificTypeWildcard:
+			curNeighbourAuthorizationModelNodeLabel := curNeighbourAuthorizationModelNode.Label()
+			curNeighbourAuthorizationModelNodeType, _ := tuple.SplitObject(curNeighbourAuthorizationModelNodeLabel)
+			if curNeighbourAuthorizationModelNodeType == mustHaveTerminalType {
+				hasCorrectTerminalType = true
 			}
 		case graph.OperatorNode:
 			return false
 		case graph.SpecificTypeAndRelation:
-			if curAuthorizationModelNode == curNeighbourAuthorizationModelNode {
-				hasNodeBackToItself = true
+			if expectedEdgeAndNode.expectedNodeForObjectRel == curNeighbourAuthorizationModelNode {
+				lines := t.authorizationModelGraph.Lines(curNeighbourAuthorizationModelNode.ID(), originalNode.ID())
+				for lines.Next() {
+					edge, ok := lines.Line().(*graph.AuthorizationModelEdge)
+					if !ok {
+						// we expect all lines are graph.AuthorizationModelEdge.  Safe thing to do is not optimized.
+						return false
+					}
+					if edge.EdgeType() != expectedEdgeAndNode.expectedEdgeType {
+						return false
+					}
+				}
+				hasEdgeBackToExpectedNode = true
 			} else {
 				return false
 			}
 		}
 	}
-	return hasNodeBackToItself && hasCorrectTerminalType
+
+	return hasEdgeBackToExpectedNode && hasCorrectTerminalType
 }
 
 // RecursiveUsersetCanFastPath returns whether the specified object type and relation allows
-// for optimization.
+// for optimization.  This means the node must have
+// - one edge back to itself
+// - other edges lead directly to node with terminal types (not union/intersection/exclusion). One of the node must be the userType.
 func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, userType string) bool {
 	curAuthorizationModelNode, err := t.authorizationModelGraph.GetNodeByLabel(objectTypeRelation)
 	if err != nil {
 		// this means the node cannot be found. The safe thing to do is to use the slow path.
 		return false
 	}
-	return t.recursiveUsersetNodeCanFastpath(curAuthorizationModelNode, userType)
+	return t.verifyNodeEdgesOptimizable(curAuthorizationModelNode,
+		expectedEdgeAndNodeType{expectedNodeForObjectRel: curAuthorizationModelNode, expectedEdgeType: graph.DirectEdge},
+		userType)
+}
+
+// recursiveTTUNodeCanFastpath is a helper function to determine whether the node (object#relation) has
+// - there is only one incoming edge to curAuthorizationModelNode and it is the union node
+// - the union node has
+//   - one edge linking back to the original curAuthorizationNode
+//   - other edges must be to terminal types with one edge having the userType
+func (t *TypeSystem) recursiveTTUNodeCanFastpath(curAuthorizationModelNode *graph.AuthorizationModelNode, userType string) bool {
+	neighborNodesIter := t.authorizationModelGraph.To(curAuthorizationModelNode.ID())
+	if neighborNodesIter.Len() != 1 {
+		return false
+	}
+
+	neighborNodesIter.Next()
+
+	unionNode, ok := neighborNodesIter.Node().(*graph.AuthorizationModelNode)
+	if !ok || unionNode.Label() != graph.UnionOperator {
+		return false
+	}
+
+	return t.verifyNodeEdgesOptimizable(unionNode,
+		expectedEdgeAndNodeType{expectedNodeForObjectRel: curAuthorizationModelNode, expectedEdgeType: graph.TTUEdge},
+		userType)
+}
+
+// RecursiveTTUCanFastPath returns whether the specified object type and relation allows
+// for optimization.
+func (t *TypeSystem) RecursiveTTUCanFastPath(objectTypeRelation string, userType string) bool {
+	curAuthorizationModelNode, err := t.authorizationModelGraph.GetNodeByLabel(objectTypeRelation)
+	if err != nil {
+		// this means the node cannot be found. The safe thing to do is to use the slow path.
+		return false
+	}
+	// this means the node cannot be found. The safe thing to do is to use the slow path.
+	return t.recursiveTTUNodeCanFastpath(curAuthorizationModelNode, userType)
 }
 
 func RelationEquals(a *openfgav1.RelationReference, b *openfgav1.RelationReference) bool {

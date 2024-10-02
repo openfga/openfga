@@ -921,6 +921,112 @@ func TestHasEntrypoints(t *testing.T) {
 	}
 }
 
+func TestResolveComputedRelation(t *testing.T) {
+	tests := []struct {
+		name             string
+		model            string
+		objectType       string
+		relation         string
+		expectedError    bool
+		expectedRelation string
+	}{
+		{
+			name: "direct_assignment",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`,
+			objectType:       "group",
+			relation:         "member",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
+			name: "computed_relation",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: viewable_member1`,
+			objectType:       "group",
+			relation:         "viewable_member2",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
+			name: "deep_computed_relation",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: viewable_member1
+					define viewable_member3: viewable_member2
+					define viewable_member4: viewable_member3`,
+
+			objectType:       "group",
+			relation:         "viewable_member4",
+			expectedRelation: "member",
+			expectedError:    false,
+		},
+		{
+			name: "unexpected_rel",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define viewable_member1: member
+					define viewable_member2: [user] and viewable_member1`,
+			objectType:       "group",
+			relation:         "viewable_member2",
+			expectedRelation: "",
+			expectedError:    true,
+		},
+		{
+			name: "rel_not_found",
+			model: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`,
+			objectType:       "group",
+			relation:         "not_found",
+			expectedRelation: "",
+			expectedError:    true,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ts, err := New(testutils.MustTransformDSLToProtoWithID(tt.model))
+			require.NoError(t, err)
+			output, err := ts.ResolveComputedRelation(tt.objectType, tt.relation)
+			if tt.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectedRelation, output)
+		})
+	}
+}
+
 func TestHasCycle(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -4668,6 +4774,340 @@ type group
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 			result := typesys.RecursiveUsersetCanFastPath(test.objectTypeRelation, test.userType)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestRecursiveTTUCanFastPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		model              string
+		objectTypeRelation string
+		userType           string
+		expected           bool
+	}{
+		{
+			name: "object_type_relation_not_found",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define member: [user] or member from parent
+`,
+			objectTypeRelation: "group#undefined",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "non_ttu",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "simple_ttu",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define member: [user] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_multiple_types",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user, employee] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_multiple_types_wildcard",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user:*, employee] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_multiple_types_cond",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user with cond, employee] or member from parent
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_multiple_types_cond",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user with cond, employee] or member from parent
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_parent_cond",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group with cond]
+		define member: [user, employee] or member from parent
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_parent_multi_with_and_without_cond",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group, group with cond]
+		define member: [user, employee] or member from parent
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_multiple_types_wildcard_cond",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user, user:*, user with cond, employee] or member from parent
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "simple_ttu_multiple_user_types",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user, user:*, user with cond, employee] or member from parent
+condition cond(x: int) {
+	x < 100
+}
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           true,
+		},
+		{
+			name: "complex_ttu_multiple_types_type_not_found",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type employee
+type group
+	relations
+		define parent: [group]
+		define member: [user, employee] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "other",
+			expected:           false,
+		},
+		{
+			name: "complex_ttu_multiple_parent_types",
+			model: `
+model
+	schema 1.1
+type user
+type employee
+type team
+	relations
+		define parent: [team]
+		define member: [user]
+type group
+	relations
+		define parent: [group, team]
+		define member: [user] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_ttu_other_relation_union",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define otherRelation: [user]
+		define member: [user] or member from parent or otherRelation
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_ttu_directly_other_assigned_userset",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define otherRelation: [user]
+		define member: [user, group#otherRelation] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_ttu_directly_other_assigned_userset_2",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define member: [user, group#member] or member from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_non_recursive_userset_from_directly_assignable",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define owner: [user]
+		define member: [user] or owner from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_non_recursive_userset_from_computed",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define parent: [group]
+		define owner: [user]
+		define other_owner: owner
+		define member: [user] or other_owner from parent
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		// note that we cannot define something like
+		// define parent: [group]
+		// define member: [user] and member from parent
+		// as they are not valid model
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
 		})
 	}

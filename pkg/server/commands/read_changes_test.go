@@ -49,7 +49,13 @@ func TestReadChangesQuery(t *testing.T) {
 				From:     reqToken,
 			},
 		}
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, reqType, opts, horizonOffset).Times(1)
+
+		filter := storage.ReadChangesFilter{
+			ObjectType:    reqType,
+			HorizonOffset: horizonOffset,
+		}
+
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangeQueryHorizonOffset(int(horizonOffset.Minutes())))
 		_, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
@@ -81,7 +87,10 @@ func TestReadChangesQuery(t *testing.T) {
 				From:     "",
 			},
 		}
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", opts, 0*time.Minute).Times(1)
+
+		filter := storage.ReadChangesFilter{}
+
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
@@ -130,7 +139,10 @@ func TestReadChangesQuery(t *testing.T) {
 				From:     "",
 			},
 		}
-		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, "", opts, 0*time.Minute).Times(1).Return(nil, []byte{}, storage.ErrNotFound)
+
+		filter := storage.ReadChangesFilter{}
+
+		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1).Return(nil, []byte{}, storage.ErrNotFound)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{

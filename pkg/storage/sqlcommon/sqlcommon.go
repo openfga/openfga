@@ -384,18 +384,16 @@ func (t *SQLTupleIterator) Stop() {
 type DBInfo struct {
 	db             *sql.DB
 	stbl           sq.StatementBuilderType
-	sqlTime        interface{}
 	HandleSQLError errorHandlerFn
 }
 
 type errorHandlerFn func(error, ...interface{}) error
 
 // NewDBInfo constructs a [DBInfo] object.
-func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}, errorHandler errorHandlerFn) *DBInfo {
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn) *DBInfo {
 	return &DBInfo{
 		db:             db,
 		stbl:           stbl,
-		sqlTime:        sqlTime,
 		HandleSQLError: errorHandler,
 	}
 }
@@ -462,7 +460,7 @@ func Write(
 			tk.GetRelation(), tk.GetUser(),
 			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id, dbInfo.sqlTime,
+			id, sq.Expr("NOW()"),
 		)
 	}
 
@@ -493,7 +491,7 @@ func Write(
 				conditionName,
 				conditionContext,
 				id,
-				dbInfo.sqlTime,
+				sq.Expr("NOW()"),
 			).
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
@@ -511,7 +509,7 @@ func Write(
 			conditionContext,
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
-			dbInfo.sqlTime,
+			sq.Expr("NOW()"),
 		)
 	}
 
@@ -529,7 +527,7 @@ func Write(
 	return nil
 }
 
-// WriteAuthorizationModel writes an authorization model for the given store.
+// WriteAuthorizationModel writes an authorization model for the given store in one row.
 func WriteAuthorizationModel(
 	ctx context.Context,
 	dbInfo *DBInfo,
@@ -560,11 +558,13 @@ func WriteAuthorizationModel(
 	return nil
 }
 
+// constructAuthorizationModelFromSQLRows tries first to read and return a model that was written in one row (the new format).
+// If it can't find one, it will then look for a model that was written across multiple rows (the old format).
 func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
 	var modelID string
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
-	for rows.Next() {
+	if rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
 		var marshalledModel []byte
@@ -591,6 +591,27 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 		typeDefs = append(typeDefs, &typeDef)
 	}
 
+	for rows.Next() {
+		var scannedModelID string
+		var typeName string
+		var marshalledTypeDef []byte
+		var marshalledModel []byte
+		err := rows.Scan(&scannedModelID, &schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
+		if err != nil {
+			return nil, err
+		}
+		if scannedModelID != modelID {
+			break
+		}
+
+		var typeDef openfgav1.TypeDefinition
+		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
+			return nil, err
+		}
+
+		typeDefs = append(typeDefs, &typeDef)
+	}
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -603,6 +624,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
+		// Conditions don't exist in the old data format
 	}, nil
 }
 
@@ -617,7 +639,6 @@ func FindLatestAuthorizationModel(
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc").
-		Limit(1).
 		QueryContext(ctx)
 	if err != nil {
 		return nil, dbInfo.HandleSQLError(err)

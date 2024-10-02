@@ -43,7 +43,7 @@ type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     uint32
 	maxConcurrentReads   uint32
-	usersetBatchSize     uint32
+	usersetBatchSize     int
 	logger               logger.Logger
 	optimizationsEnabled bool
 }
@@ -66,11 +66,12 @@ func WithOptimizations(enabled bool) LocalCheckerOption {
 // WithUsersetBatchSize see server.WithUsersetBatchSize.
 func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.usersetBatchSize = usersetBatchSize
+		d.usersetBatchSize = int(usersetBatchSize)
 	}
 }
 
 // WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck.
+// TODO remove - unused.
 func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.maxConcurrentReads = limit
@@ -817,9 +818,8 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
-	// since this is an unbuffered channel, producer will be blocked until consumer catches up
-	// TODO: when implementing set math operators, change to buffered. consider using the number of sets as the concurrency limit
-	usersetsChan := make(chan usersetsChannelType)
+	// all at least 1 message to queue up
+	usersetsChan := make(chan usersetsChannelType, 2)
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
@@ -938,7 +938,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 		usersetsMap[objectRel].Add(objectID)
 
-		if usersetsMap[objectRel].Size() >= int(c.usersetBatchSize) {
+		if usersetsMap[objectRel].Size() >= c.usersetBatchSize {
 			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 		}
 	}
@@ -948,15 +948,8 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMapType, usersetsChan chan usersetsChannelType) {
 	for k, v := range usersetsMap {
-		select {
-		case <-ctx.Done():
-			return
-		case usersetsChan <- usersetsChannelType{
-			objectRelation: k,
-			objectIDs:      v,
-		}:
-			delete(usersetsMap, k)
-		}
+		concurrency.TrySendThroughChannel(ctx, usersetsChannelType{objectRelation: k, objectIDs: v}, usersetsChan)
+		delete(usersetsMap, k)
 	}
 }
 
@@ -975,7 +968,7 @@ type recursiveMatchUserUsersetInfo struct {
 	visitedUserset *sync.Map
 }
 
-// recursiveMatchUserUsersetFunc defines a function that recursively evaluates whether objects' matches userToUsersetMapping
+// recursiveMatchUserUsersetFunc defines a function that recursively evaluates whether objects' matches userToUsersetMapping.
 type recursiveMatchUserUsersetFunc func(ctx context.Context,
 	req *ResolveCheckRequest,
 	commonParameters *recursiveMatchUserUsersetInfo,
@@ -988,7 +981,6 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context,
 	recursiveFunc recursiveMatchUserUsersetFunc,
 	level int,
 ) (*ResolveCheckResponse, error) {
-
 	checkOutcomeChan := make(chan checkOutcome, commonParameters.maxConcurrentReads)
 
 	pool := concurrency.NewPool(ctx, commonParameters.maxConcurrentReads)
@@ -1137,7 +1129,6 @@ func recursiveMatchUserUserset(ctx context.Context,
 	}
 
 	return parallelizeRecursiveMatchUserUserset(ctx, usersetItems, req, commonParameters, recursiveMatchUserUserset, level+1)
-
 }
 
 type usersetMessage struct {
@@ -1509,7 +1500,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			// filter out invalid tuples yielded by the database query
 			tupleKey := t.GetKey()
-			err = validation.ValidateTuple(typesys, tupleKey)
+			err = validation.ValidateTupleForRead(typesys, tupleKey)
 			if err != nil {
 				return response, nil
 			}

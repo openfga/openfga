@@ -8,14 +8,22 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+
+* Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
+* Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
+* `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976)
+
 ### Removed
 
 * Removed deprecated opentelemetry-connector `memory_ballast` extension.
+* Removed experimental logging of cache hits for each subproblem in `Check` API calls. [#1960](https://github.com/openfga/openfga/pull/1960)
 
 ### Fixed
 
 * Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
 * Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962)
+* Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [1980](https://github.com/openfga/openfga/issues/1980) and [1986](https://github.com/openfga/openfga/issues/1986)
 
 ### Performance
 * Improve check performance in the case that the query involves resolving nested userset. Enable via experimental flag `enable-check-optimizations`. [#1945](https://github.com/openfga/openfga/issues/1945)

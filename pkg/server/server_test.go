@@ -29,7 +29,6 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -1787,41 +1786,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, ok)
 	})
 
-	t.Run("tracker_check_resolver", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		cfg := serverconfig.DefaultConfig()
-		cfg.CheckTrackerEnabled = true
-
-		require.False(t, cfg.CheckDispatchThrottling.Enabled)
-		require.False(t, cfg.DispatchThrottling.Enabled)
-		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
-		require.True(t, cfg.CheckTrackerEnabled)
-
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithCheckTrackerEnabled(true),
-			WithContext(ctx),
-			WithLogger(logger.NewNoopLogger()),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.checkDispatchThrottlingEnabled)
-		require.False(t, s.checkQueryCacheEnabled)
-
-		require.NotNil(t, s.checkResolver)
-
-		trackCheckResolver, ok := s.checkResolver.(*graph.TrackerCheckResolver)
-		require.True(t, ok)
-
-		localCheckResolver, ok := trackCheckResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
-		require.True(t, ok)
-	})
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
