@@ -317,9 +317,15 @@ func (c *cachedIterator) flush() {
 	if c.tuples == nil {
 		return
 	}
+
+	// Copy tuples buffer into new destination before storing into cache
+	// otherwise, the cache will be storing pointers. This should also help
+	// with garbage collection.
 	tuples := make([]*openfgav1.Tuple, len(c.tuples))
 	copy(tuples, c.tuples)
+
 	c.cache.Set(c.cacheKey, tuples, c.ttl)
+
 	tuplesCacheSizeHistogram.Observe(float64(len(tuples)))
 }
 
