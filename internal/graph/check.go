@@ -1037,7 +1037,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			// filter out invalid tuples yielded by the database query
 			tupleKey := t.GetKey()
-			err = validation.ValidateTuple(typesys, tupleKey)
+			err = validation.ValidateTupleForRead(typesys, tupleKey)
 			if err != nil {
 				return response, nil
 			}

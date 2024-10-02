@@ -426,7 +426,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					// NOTE this tuple is invalid
-					{Key: tuple.NewTupleKey("group:eng#member", "member", "group:fga#member")},
+					{Key: tuple.NewTupleKey("group:eng", "member", "fail:fga#member")},
 				}), nil
 			}),
 	},
