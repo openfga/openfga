@@ -562,7 +562,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 	var modelID string
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
-	for rows.Next() {
+	if rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
 		var marshalledModel []byte
@@ -571,14 +571,35 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 			return nil, err
 		}
 
+		// Prefer building an authorization model from the first row that has it available.
 		if len(marshalledModel) > 0 {
-			// Prefer building an authorization model from the first row that has it available.
 			var model openfgav1.AuthorizationModel
 			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
 				return nil, err
 			}
 
 			return &model, nil
+		}
+
+		var typeDef openfgav1.TypeDefinition
+		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
+			return nil, err
+		}
+
+		typeDefs = append(typeDefs, &typeDef)
+	}
+
+	for rows.Next() {
+		var scannedModelID string
+		var typeName string
+		var marshalledTypeDef []byte
+		var marshalledModel []byte
+		err := rows.Scan(&scannedModelID, &schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
+		if err != nil {
+			return nil, err
+		}
+		if scannedModelID != modelID {
+			break
 		}
 
 		var typeDef openfgav1.TypeDefinition
@@ -601,6 +622,7 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
+		// Conditions don't exist in the old data format
 	}, nil
 }
 
