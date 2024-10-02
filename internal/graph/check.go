@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -987,12 +988,13 @@ func (c *LocalChecker) checkSimpleRecursiveTTUInner(ctx context.Context, req *Re
 		cancelFunc()
 		_ = pool.Wait()
 	}()
-	channel := make(chan groupResult, 100)
+	channel := make(chan subResult, 100)
 	visitedGroups := make(map[string]struct{})
+
+	activeProducers := 0
+	concurrency.TrySendThroughChannel(ctx, subResult{producerCount: 1}, channel)
 	pool.Go(func(ctx context.Context) error {
-		defer close(channel)
-		concurrency.TrySendThroughChannel(ctx, groupResult{group: req.GetTupleKey().GetObject()}, channel)
-		c.getParentGroupsRecursive(ctx, req, rewrite, channel, visitedGroups)
+		c.getParentGroupsRecursive(ctx, req, rewrite, channel, visitedGroups, groupsToCheckAgainst, pool)
 		return nil
 	})
 
@@ -1001,16 +1003,17 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case groupResult, ok := <-channel:
-			if !ok {
+		case producerResult := <-channel:
+			if producerResult.err != nil {
+				return nil, producerResult.err
+			}
+			resp.GetResolutionMetadata().DatastoreQueryCount += producerResult.dbReads
+			if producerResult.allowed {
+				resp.Allowed = true
 				break ConsumerLoop
 			}
-			if groupResult.err != nil {
-				return nil, groupResult.err
-			}
-			resp.GetResolutionMetadata().DatastoreQueryCount += groupResult.dbReads
-			if _, ok := groupsToCheckAgainst[groupResult.group]; ok {
-				resp.Allowed = true
+			activeProducers += producerResult.producerCount
+			if activeProducers == 0 {
 				break ConsumerLoop
 			}
 		}
@@ -1073,22 +1076,29 @@ func (c *LocalChecker) getGroupsToCheckAgainst(ctx context.Context, req *Resolve
 	return mapOfGroups, dbreads, nil
 }
 
-type groupResult struct {
-	group   string
-	err     error
-	dbReads uint32
+type subResult struct {
+	allowed       bool
+	err           error
+	dbReads       uint32
+	producerCount int
 }
 
-func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, channel chan groupResult, visitedGroups map[string]struct{}) {
+func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, channel chan subResult, visitedGroups map[string]struct{}, groupsToCheckAgainst map[string]struct{}, pool *pool.ContextPool) {
 	ctx, span := tracer.Start(ctx, "getParentGroupsRecursive",
 		trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey()))),
 	)
 	defer span.End()
 
+	defer concurrency.TrySendThroughChannel(ctx, subResult{producerCount: -1}, channel)
+
 	req.GetRequestMetadata().Depth--
 
 	if req.GetRequestMetadata().Depth == 0 {
-		concurrency.TrySendThroughChannel(ctx, groupResult{err: ErrResolutionDepthExceeded}, channel)
+		concurrency.TrySendThroughChannel(ctx, subResult{err: ErrResolutionDepthExceeded}, channel)
+		return
+	}
+	if _, ok := groupsToCheckAgainst[req.GetTupleKey().GetObject()]; ok {
+		concurrency.TrySendThroughChannel(ctx, subResult{allowed: true}, channel)
 		return
 	}
 
@@ -1104,11 +1114,11 @@ func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *Resolv
 		},
 	})
 	if err != nil {
-		concurrency.TrySendThroughChannel(ctx, groupResult{err: err}, channel)
+		concurrency.TrySendThroughChannel(ctx, subResult{err: err}, channel)
 		return
 	}
 
-	concurrency.TrySendThroughChannel(ctx, groupResult{dbReads: 1}, channel)
+	concurrency.TrySendThroughChannel(ctx, subResult{dbReads: 1}, channel)
 
 	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
@@ -1123,23 +1133,25 @@ func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *Resolv
 		t, err := filteredIter.Next(ctx)
 		if err != nil {
 			if !storage.IterIsDoneOrCancelled(err) {
-				concurrency.TrySendThroughChannel(ctx, groupResult{err: err}, channel)
+				concurrency.TrySendThroughChannel(ctx, subResult{err: err}, channel)
 			}
-			return
+			break
 		}
 
 		userType, userID, _ := tuple.ToUserParts(t.GetUser())
 		nestedGroup := tuple.BuildObject(userType, userID)
 
-		concurrency.TrySendThroughChannel(ctx, groupResult{group: nestedGroup}, channel)
-
 		if _, ok := visitedGroups[nestedGroup]; ok {
 			continue
 		}
 
-		clonedReq := req.clone()
-		clonedReq.TupleKey.Object = nestedGroup
-		c.getParentGroupsRecursive(ctx, clonedReq, rewrite, channel, visitedGroups)
+		concurrency.TrySendThroughChannel(ctx, subResult{producerCount: 1}, channel)
+		pool.Go(func(ctx context.Context) error {
+			clonedReq := req.clone()
+			clonedReq.TupleKey.Object = nestedGroup
+			c.getParentGroupsRecursive(ctx, clonedReq, rewrite, channel, visitedGroups, groupsToCheckAgainst, pool)
+			return nil
+		})
 	}
 }
 

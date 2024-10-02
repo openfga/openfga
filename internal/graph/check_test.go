@@ -4372,7 +4372,7 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				assert.ErrorIs(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedOutput, resp)
+				assert.Equal(t, tc.expectedOutput, resp)
 			}
 		})
 	}
