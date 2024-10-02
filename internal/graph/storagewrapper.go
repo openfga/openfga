@@ -236,7 +236,9 @@ type cachedIterator struct {
 	wg sync.WaitGroup
 }
 
-// Next see [Iterator.Next].
+// Next will return the next available tuple from the underlying iterator and
+// will attempt to add to buffer if not yet full. To set buffered tuples in cache,
+// you must call .Stop().
 func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
@@ -253,7 +255,11 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	return t, nil
 }
 
-// Stop see [Iterator.Stop].
+// Stop terminates iteration over the underlying iterator.
+//   - If there are incomplete results, they will not cached.
+//   - If the iterator is already fully consumed, it will be cached in the foreground.
+//   - If the iterator is not fully consumed, it will be drained in the background,
+//     and attempt will be made to cache its results.
 func (c *cachedIterator) Stop() {
 	c.closeOnce.Do(func() {
 		if c.tuples == nil {
@@ -294,7 +300,7 @@ func (c *cachedIterator) Stop() {
 	})
 }
 
-// Head see [Iterator.Head].
+// Head see [storage.Iterator.Head].
 func (c *cachedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.iter.Head(ctx)
 }
