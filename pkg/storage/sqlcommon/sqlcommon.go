@@ -558,6 +558,8 @@ func WriteAuthorizationModel(
 	return nil
 }
 
+// constructAuthorizationModelFromSQLRows tries first to read and return a model that was written in one row (the new format).
+// If it can't find one, it will then look for a model that was written across multiple rows (the old format).
 func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
 	var modelID string
 	var schemaVersion string
@@ -571,8 +573,8 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 			return nil, err
 		}
 
-		// Prefer building an authorization model from the first row that has it available.
 		if len(marshalledModel) > 0 {
+			// Prefer building an authorization model from the first row that has it available.
 			var model openfgav1.AuthorizationModel
 			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
 				return nil, err
