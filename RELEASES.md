@@ -27,67 +27,7 @@ Changes in the major and minor version components of the triple indicate changes
 Releases which increment only the "patch" component of the version triple may introduce new functionality, performance enhancements, bugfixes, or preview features while remaining backwards compatible with the previous release.  
 
 ## Release History
-Release dates for all releases (not including release candidates)
-
-| Version | Release Date |
-|---------| ------------ |
-| v1.6.1 | Sep 12, 2024 |
-| v1.6.0 | Aug 30, 2024 |
-| v1.5.9 | Aug 13, 2024 |
-| v1.5.8 | Aug 8, 2024 |
-| v1.5.7 | Jul 26, 2024 |
-| v1.5.6 | Jul 17, 2024 |
-| v1.5.5 | Jun 18, 2024 |
-| v1.5.4 | May 30, 2024 |
-| v1.5.3 | Apr 16, 2024 |
-| v1.5.2 | Apr 3, 2024 |
-| v1.5.1 | Mar 20, 2024 |
-| v1.5.0 | Mar 4, 2024 |
-| v1.4.3 | Jan 26, 2024 |
-| v1.4.2 | Jan 10, 2024 |
-| v1.4.1 | Jan 4, 2024 |
-| v1.4.0 | Dec 11, 2023 |
-| v1.3.10 | Dec 8, 2023 |
-| v1.3.9 | Dec 5, 2023 |
-| v1.3.8 | Dec 4, 2023 |
-| v1.3.7 | Nov 7, 2023 |
-| v1.3.6 | Nov 6, 2023 |
-| v1.3.5 | Oct 26, 2023 |
-| v1.3.4 | Oct 17, 2023 |
-| v1.3.3 | Oct 5, 2023 |
-| v1.3.2 | Sep 26, 2023 |
-| v1.3.1 | Aug 25, 2023 |
-| v1.3.0 | Aug 1, 2023 |
-| v1.2.0 | Jun 30, 2023 |
-| v1.1.1 | Jun 26, 2023 |
-| v1.1.0 | May 17, 2023 |
-| v1.0.1 | Apr 18, 2023 |
-| v1.0.0 | Apr 14, 2023 |
-| v0.4.3 | Apr 12, 2023 |
-| v0.4.2 | Mar 17, 2023 |
-| v0.4.1 | Mar 16, 2023 |
-| v0.3.7 | Feb 22, 2023 |
-| v0.3.6 | Feb 16, 2023 |
-| v0.3.5 | Feb 16, 2023 |
-| v0.3.4 | Feb 3, 2023 |
-| v0.3.3 | Jan 31, 2023 |
-| v0.3.2 | Jan 18, 2023 |
-| v0.3.1 | Dec 19, 2022 |
-| v0.3.0 | Dec 13, 2022 |
-| v0.2.5 | Nov 7, 2022 |
-| v0.2.4 | Oct 24, 2022 |
-| v0.2.3 | Oct 6, 2022 |
-| v0.2.2 | Sep 15, 2022 |
-| v0.2.1 | Aug 30, 2022 |
-| v0.2.0 | Aug 15, 2022 |
-| v0.1.7 | Jul 29, 2022 |
-| v0.1.6 | Jul 27, 2022 |
-| v0.1.5 | Jul 27, 2022 |
-| v0.1.4 | Jun 27, 2022 |
-| v0.1.3 | Mar 2, 2023 |
-| v0.1.2 | Jun 20, 2022 |
-| v0.1.1 | Jun 17, 2022 |
-| v0.1.0 | Jun 10, 2022 |
+Current and previous releases can be found [here](https://github.com/openfga/openfga/releases).
 
 ## Roles
 
