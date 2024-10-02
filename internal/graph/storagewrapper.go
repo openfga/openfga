@@ -25,6 +25,7 @@ import (
 )
 
 var (
+	// Ensures that Datastore implements the OpenFGADatastore interface.
 	_ storage.OpenFGADatastore = (*CachedDatastore)(nil)
 
 	tuplesCacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
@@ -60,6 +61,10 @@ const (
 	QueryCachePrefix = "qc."
 )
 
+// iterFunc is a function closure that returns an iterator
+// from the underlying datastore.
+type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
+
 type CachedDatastore struct {
 	storage.OpenFGADatastore
 
@@ -68,8 +73,13 @@ type CachedDatastore struct {
 	ttl           time.Duration
 }
 
-// NewCachedDatastore returns a wrapper over a datastore...
-func NewCachedDatastore(inner storage.OpenFGADatastore, cache storage.InMemoryCache[any], maxSize int, ttl time.Duration) *CachedDatastore {
+// NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
+func NewCachedDatastore(
+	inner storage.OpenFGADatastore,
+	cache storage.InMemoryCache[any],
+	maxSize int,
+	ttl time.Duration,
+) *CachedDatastore {
 	return &CachedDatastore{
 		OpenFGADatastore: inner,
 		cache:            cache,
@@ -78,8 +88,18 @@ func NewCachedDatastore(inner storage.OpenFGADatastore, cache storage.InMemoryCa
 	}
 }
 
-func (c *CachedDatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(ctx, "cache.ReadUsersetTuples", trace.WithAttributes(attribute.Bool("cached", false)))
+// ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
+func (c *CachedDatastore) ReadUsersetTuples(
+	ctx context.Context,
+	store string,
+	filter storage.ReadUsersetTuplesFilter,
+	options storage.ReadUsersetTuplesOptions,
+) (storage.TupleIterator, error) {
+	ctx, span := tracer.Start(
+		ctx,
+		"cache.ReadUsersetTuples",
+		trace.WithAttributes(attribute.Bool("cached", false)),
+	)
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
@@ -91,7 +111,9 @@ func (c *CachedDatastore) ReadUsersetTuples(ctx context.Context, store string, f
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%srut/%s/%s#%s", QueryCachePrefix, store, filter.Object, filter.Relation))
+	b.WriteString(
+		fmt.Sprintf("%srut/%s/%s#%s", QueryCachePrefix, store, filter.Object, filter.Relation),
+	)
 
 	var rb strings.Builder
 	var wb strings.Builder
@@ -117,8 +139,18 @@ func (c *CachedDatastore) ReadUsersetTuples(ctx context.Context, store string, f
 	return c.newCachedIterator(ctx, iter, b.String())
 }
 
-func (c *CachedDatastore) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(ctx, "cache.Read", trace.WithAttributes(attribute.Bool("cached", false)))
+// Read see [storage.RelationshipTupleReader].Read.
+func (c *CachedDatastore) Read(
+	ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey,
+	options storage.ReadOptions,
+) (storage.TupleIterator, error) {
+	ctx, span := tracer.Start(
+		ctx,
+		"cache.Read",
+		trace.WithAttributes(attribute.Bool("cached", false)),
+	)
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
@@ -130,13 +162,19 @@ func (c *CachedDatastore) Read(ctx context.Context, store string, tupleKey *open
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%sr%s/%s", QueryCachePrefix, store, tuple.TupleKeyToString(tupleKey)))
+	b.WriteString(
+		fmt.Sprintf("%sr%s/%s", QueryCachePrefix, store, tuple.TupleKeyToString(tupleKey)),
+	)
 	return c.newCachedIterator(ctx, iter, b.String())
 }
 
-type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
-
-func (c *CachedDatastore) newCachedIterator(ctx context.Context, dsIterFunc iterFunc, key string) (storage.TupleIterator, error) {
+// newCachedIterator either returns a cached static iterator for a cache hit, or
+// returns a new iterator that attempts to cache the results.
+func (c *CachedDatastore) newCachedIterator(
+	ctx context.Context,
+	dsIterFunc iterFunc,
+	key string,
+) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
 	tuplesCacheTotalCounter.Inc()
 
@@ -176,34 +214,35 @@ func (c *CachedDatastore) Close() {
 }
 
 type cachedIterator struct {
-	iter          storage.TupleIterator
-	tuples        []*openfgav1.Tuple
-	cacheKey      string
-	cache         storage.InMemoryCache[any]
-	ttl           time.Duration
-	maxResultSize int
-	closeOnce     sync.Once
-	wg            sync.WaitGroup
-	sf            singleflight.Group
-}
+	iter     storage.TupleIterator
+	tuples   []*openfgav1.Tuple
+	cacheKey string
+	cache    storage.InMemoryCache[any]
+	ttl      time.Duration
 
-func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
-	if c.tuples == nil {
-		return false
-	}
-	c.tuples = append(c.tuples, t)
-	if len(c.tuples) >= c.maxResultSize {
-		tuplesCacheDiscardCounter.Inc()
-		c.tuples = nil
-	}
-	return true
+	// maxResultSize is the maximum number of tuples to cache. If the number
+	// of tuples found exceeds this value, it will not be cached.
+	maxResultSize int
+
+	// sf is used to prevent draining the same iterator
+	// across multiple requests.
+	sf singleflight.Group
+
+	// closeOnce is used to synchronize .Close() and ensure
+	// it's only done once.
+	closeOnce sync.Once
+
+	// wg is used purely for testing and is an internal detail.
+	wg sync.WaitGroup
 }
 
 // Next see [Iterator.Next].
 func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
-		if !errors.Is(err, storage.ErrIteratorDone) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		if !errors.Is(err, storage.ErrIteratorDone) &&
+			!errors.Is(err, context.Canceled) &&
+			!errors.Is(err, context.DeadlineExceeded) {
 			c.tuples = nil // don't store results that are incomplete
 		}
 		return nil, err
@@ -260,6 +299,20 @@ func (c *cachedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.iter.Head(ctx)
 }
 
+// addToBuffer adds a tuple to the buffer if not yet full.
+func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
+	if c.tuples == nil {
+		return false
+	}
+	c.tuples = append(c.tuples, t)
+	if len(c.tuples) >= c.maxResultSize {
+		tuplesCacheDiscardCounter.Inc()
+		c.tuples = nil
+	}
+	return true
+}
+
+// flush will store copy of buffered tuples into cache.
 func (c *cachedIterator) flush() {
 	if c.tuples == nil {
 		return
