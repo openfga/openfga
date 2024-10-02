@@ -1098,6 +1098,7 @@ func nestedUsersetLookupUsersetForUser(ctx context.Context,
 			userset: "",
 			err:     err,
 		}, usersetMessageChan)
+		return
 	}
 
 	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
@@ -1167,6 +1168,7 @@ func nestedUsersetFirstLevelLookupObject(ctx context.Context,
 			userset: "",
 			err:     err,
 		}, usersetMessageChan)
+		return
 	}
 
 	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
