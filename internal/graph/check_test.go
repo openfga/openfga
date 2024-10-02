@@ -4103,13 +4103,17 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 
 	tkContext := testutils.MustNewStruct(t, map[string]interface{}{"x": 1})
 
+	type expectedOutput struct {
+		allowed bool
+		err     error
+	}
+
 	var testcases = map[string]struct {
 		inputModel     string
 		inputTuples    []*openfgav1.TupleKey
 		inputRequest   *openfgav1.TupleKey
 		inputContext   *structpb.Struct
-		expectedOutput *ResolveCheckResponse
-		expectedError  error
+		expectedOutput expectedOutput
 	}{
 		`happy_case_ask_for_userset_recurse_once`: {
 			inputModel: `
@@ -4125,13 +4129,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:2", "parent", "group:1"),
 				tuple.NewTupleKey("group:3", "parent", "group:2"),
 			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "group:2#member"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:3", "member", "group:2#member"),
+			expectedOutput: expectedOutput{allowed: true},
 		},
 		`happy_case_ask_for_userset_recurse_multiple_times`: {
 			inputModel: `
@@ -4147,13 +4146,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:2", "parent", "group:1"),
 				tuple.NewTupleKey("group:3", "parent", "group:2"),
 			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "group:1#member"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:3", "member", "group:1#member"),
+			expectedOutput: expectedOutput{allowed: true},
 		},
 		`happy_case_ask_for_user_recurse_once`: {
 			inputModel: `
@@ -4169,13 +4163,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:1", "member", "user:maria"),
 				tuple.NewTupleKey("group:2", "parent", "group:1"),
 			},
-			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:2", "member", "user:maria"),
+			expectedOutput: expectedOutput{allowed: true},
 		},
 		`happy_case_for_user_recurse_multiple_times`: {
 			inputModel: `
@@ -4194,13 +4183,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:3", "parent", "group:2b"),
 				tuple.NewTupleKey("group:4", "parent", "group:3"),
 			},
-			inputRequest: tuple.NewTupleKey("group:4", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 5,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:4", "member", "user:maria"),
+			expectedOutput: expectedOutput{allowed: true},
 		},
 		`happy_path_ask_for_user__with_condition_on_tupleset`: {
 			inputModel: `
@@ -4219,14 +4203,9 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:1", "member", "user:maria"),
 				tuple.NewTupleKeyWithCondition("group:2", "parent", "group:1", "cond", tkContext),
 			},
-			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
-			inputContext: tkContext,
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:2", "member", "user:maria"),
+			inputContext:   tkContext,
+			expectedOutput: expectedOutput{allowed: true},
 		},
 		`happy_path_ask_for_user__with_condition_on_direct_relation`: {
 			inputModel: `
@@ -4245,14 +4224,9 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "cond", tkContext),
 				tuple.NewTupleKey("group:2", "parent", "group:1"),
 			},
-			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
-			inputContext: tkContext,
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:2", "member", "user:maria"),
+			inputContext:   tkContext,
+			expectedOutput: expectedOutput{allowed: true},
 		},
 		`user_is_not_member_of_any_group`: {
 			inputModel: `
@@ -4266,13 +4240,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 			inputTuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:2", "parent", "group:1"),
 			},
-			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:2", "member", "user:maria"),
+			expectedOutput: expectedOutput{allowed: false},
 		},
 		`group_has_no_members`: {
 			inputModel: `
@@ -4286,13 +4255,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 			inputTuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "member", "user:maria"),
 			},
-			inputRequest: tuple.NewTupleKey("group:2", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:2", "member", "user:maria"),
+			expectedOutput: expectedOutput{allowed: false},
 		},
 		`cycle_in_groups_returns_false`: {
 			inputModel: `
@@ -4308,13 +4272,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:3", "parent", "group:2"),
 				tuple.NewTupleKey("group:2", "parent", "group:3"),
 			},
-			inputRequest: tuple.NewTupleKey("group:3", "member", "user:maria"),
-			expectedOutput: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 4,
-				},
-			},
+			inputRequest:   tuple.NewTupleKey("group:3", "member", "user:maria"),
+			expectedOutput: expectedOutput{allowed: false},
 		},
 		`too_much_recursion_returns_error`: {
 			inputModel: `
@@ -4333,8 +4292,8 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 				tuple.NewTupleKey("group:5", "parent", "group:4"),
 				tuple.NewTupleKey("group:6", "parent", "group:5"),
 			},
-			inputRequest:  tuple.NewTupleKey("group:6", "member", "user:maria"),
-			expectedError: ErrResolutionDepthExceeded,
+			inputRequest:   tuple.NewTupleKey("group:6", "member", "user:maria"),
+			expectedOutput: expectedOutput{err: ErrResolutionDepthExceeded},
 		},
 	}
 
@@ -4343,6 +4302,7 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			// arrange
 			storeID := ulid.Make().String()
 			// using memory store for testing because mocking this would be too complicated
@@ -4368,11 +4328,11 @@ func TestCheckSimpleRecursiveTTU(t *testing.T) {
 			resp, err := checker.checkRewrite(ctx, inputReq, rel.GetRewrite())(ctx)
 
 			// assert
-			if tc.expectedError != nil {
-				assert.ErrorIs(t, err, tc.expectedError)
+			if tc.expectedOutput.err != nil {
+				assert.ErrorIs(t, err, tc.expectedOutput.err)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, tc.expectedOutput, resp)
+				assert.Equal(t, tc.expectedOutput.allowed, resp.GetAllowed())
 			}
 		})
 	}

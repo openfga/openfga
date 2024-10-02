@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -983,20 +982,11 @@ func (c *LocalChecker) checkSimpleRecursiveTTUInner(ctx context.Context, req *Re
 	}
 
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, defaultResolveNodeLimit)
-	defer func() {
-		cancelFunc()
-		_ = pool.Wait()
-	}()
+	defer cancelFunc()
 	channel := make(chan subResult, 100)
-	visitedGroups := make(map[string]struct{})
-
-	activeProducers := 0
-	concurrency.TrySendThroughChannel(ctx, subResult{producerCount: 1}, channel)
-	pool.Go(func(ctx context.Context) error {
-		c.getParentGroupsRecursive(ctx, req, rewrite, channel, visitedGroups, groupsToCheckAgainst, pool)
-		return nil
-	})
+	visitedGroups := new(sync.Map)
+	go c.getParentGroupsRecursive(cancellableCtx, req, rewrite, channel, visitedGroups, groupsToCheckAgainst)
+	activeProducers := 1
 
 ConsumerLoop:
 	for {
@@ -1083,7 +1073,7 @@ type subResult struct {
 	producerCount int
 }
 
-func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, channel chan subResult, visitedGroups map[string]struct{}, groupsToCheckAgainst map[string]struct{}, pool *pool.ContextPool) {
+func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, channel chan subResult, visitedGroups *sync.Map, groupsToCheckAgainst map[string]struct{}) {
 	ctx, span := tracer.Start(ctx, "getParentGroupsRecursive",
 		trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey()))),
 	)
@@ -1102,7 +1092,7 @@ func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *Resolv
 		return
 	}
 
-	visitedGroups[req.GetTupleKey().GetObject()] = struct{}{}
+	visitedGroups.Store(req.GetTupleKey().GetObject(), struct{}{})
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
@@ -1141,17 +1131,15 @@ func (c *LocalChecker) getParentGroupsRecursive(ctx context.Context, req *Resolv
 		userType, userID, _ := tuple.ToUserParts(t.GetUser())
 		nestedGroup := tuple.BuildObject(userType, userID)
 
-		if _, ok := visitedGroups[nestedGroup]; ok {
+		if _, ok := visitedGroups.Load(nestedGroup); ok {
 			continue
 		}
 
 		concurrency.TrySendThroughChannel(ctx, subResult{producerCount: 1}, channel)
-		pool.Go(func(ctx context.Context) error {
-			clonedReq := req.clone()
-			clonedReq.TupleKey.Object = nestedGroup
-			c.getParentGroupsRecursive(ctx, clonedReq, rewrite, channel, visitedGroups, groupsToCheckAgainst, pool)
-			return nil
-		})
+		clonedReq := req.clone()
+		clonedReq.TupleKey.Object = nestedGroup
+		// TODO make concurrent
+		c.getParentGroupsRecursive(ctx, clonedReq, rewrite, channel, visitedGroups, groupsToCheckAgainst)
 	}
 }
 
