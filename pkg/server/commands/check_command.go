@@ -113,7 +113,7 @@ func validateCheckRequest(ctx context.Context, req *openfgav1.CheckRequest, type
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}

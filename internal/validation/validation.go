@@ -13,8 +13,6 @@ import (
 )
 
 // ValidateUserObjectRelation returns nil if the tuple is well-formed and valid according to the provided model.
-//
-// Do NOT use this when reading or writing tuples to storage. Use ValidateTuple instead, because it's stricter.
 func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
 		return err
@@ -31,20 +29,22 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 	return nil
 }
 
-// ValidateTuple returns nil if a tuple is well formed and valid according to the provided model.
-// It is a superset of ValidateUserObjectRelation; it also validates TTU relations and type restrictions.
-//
-// Do NOT use this when validating a tuple that is an input to a Check or WriteAssertions request.
-func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// ValidateTupleForWrite returns nil if a tuple is well formed and valid according to the provided model.
+// It is a superset of ValidateUserObjectRelation and ValidateTupleForRead;
+// ONLY meant to be used in Write and contextual tuples (since these mimic being written in the datastore)
+func ValidateTupleForWrite(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 	}
-
 	// now we assume our tuple is well-formed, it's time to check
 	// the tuple against other model and type-restriction constraints
+	return ValidateTupleForRead(typesys, tk)
+}
 
-	err := validateTuplesetRestrictions(typesys, tk)
-	if err != nil {
+// ValidateTupleForRead returns nil if a tuple is valid according to the provided model.
+// It also validates TTU relations and type restrictions.
+func ValidateTupleForRead(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	if err := validateTuplesetRestrictions(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 	}
 
@@ -105,13 +105,8 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.
 
 	user := tk.GetUser()
 
-	// if a tupleset relation is related to an object but not a typed wildcard (e.g. 'user:*')
-	// then it is valid
-	if tuple.IsValidObject(user) && !tuple.IsTypedWildcard(user) {
-		return nil
-	}
-
 	// tupleset relation involving a wildcard (covers the '*' and 'type:*' cases)
+	// should precede IsValidObject due to old model (1.0) support were wildcards didn't have type
 	if tuple.IsWildcard(user) {
 		return fmt.Errorf("unexpected wildcard relationship with tupleset relation '%s#%s'", objectType, relation)
 	}
@@ -263,7 +258,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 // FilterInvalidTuples filters out tuples that aren't valid according to the provided model.
 func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgav1.TupleKey) bool {
-		err := ValidateTuple(typesys, tupleKey)
+		err := ValidateTupleForRead(typesys, tupleKey)
 		return err == nil
 	}
 }
@@ -298,6 +293,7 @@ func ValidateRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) er
 	object := tk.GetObject()
 	relation := tk.GetRelation()
 
+	// TODO: determine if we can avoid this since just checking for existence in the typesystem is enough
 	if !tuple.IsValidRelation(relation) {
 		return fmt.Errorf("the 'relation' field is malformed")
 	}
