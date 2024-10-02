@@ -563,11 +563,11 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	if allowed {
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
-	reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
+
 	return &ResolveCheckResponse{
 		Allowed: allowed,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: reqCount,
+			DatastoreQueryCount: 1,
 		},
 	}, nil
 }
@@ -747,6 +747,9 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		return nil, err
 	}
 
+	// for the read in checkDirectUsersetTuples
+	resp.GetResolutionMetadata().DatastoreQueryCount++
+
 	return resp, nil
 }
 
@@ -827,7 +830,11 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		return nil, err
 	}
+
+	// read from either checkTTU or checkDirectUsersetTuples
+	resp.ResolutionMetadata.DatastoreQueryCount++
 
 	return resp, err
 }
@@ -1070,7 +1077,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if err != nil {
 				return nil, err
 			}
-			req.GetRequestMetadata().DatastoreQueryCount++
 
 			filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 				storage.NewFilteredTupleKeyIterator(
@@ -1195,6 +1201,9 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		return nil, err
 	}
 
+	// read from checkTTU
+	resp.GetResolutionMetadata().DatastoreQueryCount++
+
 	return resp, nil
 }
 
@@ -1268,7 +1277,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		if err != nil {
 			return nil, err
 		}
-		req.GetRequestMetadata().DatastoreQueryCount++
 
 		// filter out invalid tuples yielded by the database iterator
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
