@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	sq "github.com/Masterminds/squirrel"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
@@ -74,7 +74,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -83,7 +83,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -92,7 +92,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -176,7 +176,7 @@ func TestCtxCancel(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -185,7 +185,7 @@ func TestCtxCancel(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -194,7 +194,7 @@ func TestCtxCancel(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -237,7 +237,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
@@ -246,7 +246,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()"), HandleSQLError),
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
@@ -291,6 +291,54 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
+}
+
+func TestFindLatestModel(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+	schemaVersion := typesystem.SchemaVersion1_1
+
+	t.Run("works_when_model_is_one_row", func(t *testing.T) {
+		model := parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user1
+			type user2`)
+		err := ds.WriteAuthorizationModel(ctx, store, model)
+		require.NoError(t, err)
+
+		latestModel, err := ds.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
+		require.Len(t, latestModel.GetTypeDefinitions(), 2)
+	})
+
+	t.Run("works_when_model_is_split_in_rows", func(t *testing.T) {
+		// write type "document"
+		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
+		require.NoError(t, err)
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
+		require.NoError(t, err)
+
+		// write type "user"
+		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
+		require.NoError(t, err)
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)",
+			store, modelID, schemaVersion, "user", bytesUserType, nil)
+		require.NoError(t, err)
+
+		latestModel, err := ds.FindLatestAuthorizationModel(ctx, store)
+		require.NoError(t, err)
+		require.Len(t, latestModel.GetTypeDefinitions(), 2)
+	})
 }
 
 // TestAllowNullCondition tests that tuple and changelog rows existing before
@@ -387,7 +435,7 @@ func TestAllowNullCondition(t *testing.T) {
 	readChangesOpts := storage.ReadChangesOptions{
 		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 	}
-	changes, _, err := ds.ReadChanges(ctx, "store", "folder", readChangesOpts, 0)
+	changes, _, err := ds.ReadChanges(ctx, "store", storage.ReadChangesFilter{ObjectType: "folder"}, readChangesOpts)
 	require.NoError(t, err)
 	require.Len(t, changes, 2)
 	require.Equal(t, tk, changes[0].GetTupleKey())

@@ -176,7 +176,9 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*listUsersResponse, error) {
-	ctx, span := tracer.Start(ctx, "ListUsers")
+	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	cancellableCtx, cancelCtx := context.WithCancel(ctx)

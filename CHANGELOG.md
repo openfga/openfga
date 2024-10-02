@@ -8,7 +8,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-* Added RELEASES.md file documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+### Added
+* RELEASES.md file documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+* Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
+* Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
+* `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976)
+
 
 ### Removed
 
@@ -19,6 +24,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
 * Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962)
+* Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [1980](https://github.com/openfga/openfga/issues/1980)
 
 ## [1.6.1] - 2024-09-12
 

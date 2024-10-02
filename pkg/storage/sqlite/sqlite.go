@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
+
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -32,8 +34,12 @@ import (
 
 var tracer = otel.Tracer("openfga/pkg/storage/sqlite")
 
-// SQLite provides a SQLite based implementation of [storage.OpenFGADatastore].
-type SQLite struct {
+func startTrace(ctx context.Context, name string) (context.Context, trace.Span) {
+	return tracer.Start(ctx, "sqlite."+name)
+}
+
+// Datastore provides a SQLite based implementation of [storage.OpenFGADatastore].
+type Datastore struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	logger                 logger.Logger
@@ -43,7 +49,7 @@ type SQLite struct {
 }
 
 // Ensures that SQLite implements the OpenFGADatastore interface.
-var _ storage.OpenFGADatastore = (*SQLite)(nil)
+var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
 // Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
 func PrepareDSN(uri string) (string, error) {
@@ -87,8 +93,8 @@ func PrepareDSN(uri string) (string, error) {
 	return uri, nil
 }
 
-// New creates a new [SQLite] storage.
-func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
+// New creates a new [Datastore] storage.
+func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	uri, err := PrepareDSN(uri)
 	if err != nil {
 		return nil, err
@@ -109,7 +115,7 @@ func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
 
 	stbl := sq.StatementBuilder.RunWith(db)
 
-	return &SQLite{
+	return &Datastore{
 		stbl:                   stbl,
 		db:                     db,
 		logger:                 cfg.Logger,
@@ -120,32 +126,37 @@ func New(uri string, cfg *sqlcommon.Config) (*SQLite, error) {
 }
 
 // Close see [storage.OpenFGADatastore].Close.
-func (m *SQLite) Close() {
-	if m.dbStatsCollector != nil {
-		prometheus.Unregister(m.dbStatsCollector)
+func (s *Datastore) Close() {
+	if s.dbStatsCollector != nil {
+		prometheus.Unregister(s.dbStatsCollector)
 	}
-	m.db.Close()
+	s.db.Close()
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
-func (m *SQLite) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.Read")
+func (s *Datastore) Read(
+	ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey,
+	_ storage.ReadOptions,
+) (storage.TupleIterator, error) {
+	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, nil)
+	return s.read(ctx, store, tupleKey, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (m *SQLite) ReadPage(
+func (s *Datastore) ReadPage(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
 	options storage.ReadPageOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadPage")
+	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, &options)
+	iter, err := s.read(ctx, store, tupleKey, &options)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -154,13 +165,14 @@ func (m *SQLite) ReadPage(
 	return iter.ToArray(options.Pagination)
 }
 
-func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.read")
+func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
+	ctx, span := startTrace(ctx, "read")
 	defer span.End()
 
-	sb := m.stbl.
+	sb := s.stbl.
 		Select(
-			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
+			"store", "object_type", "object_id", "relation",
+			"user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		).
 		From("tuple").
@@ -168,6 +180,7 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 	if options != nil {
 		sb = sb.OrderBy("ulid")
 	}
+
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
@@ -206,19 +219,24 @@ func (m *SQLite) read(ctx context.Context, store string, tupleKey *openfgav1.Tup
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
-func (m *SQLite) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
-	ctx, span := tracer.Start(ctx, "sqlite.Write")
+func (s *Datastore) Write(
+	ctx context.Context,
+	store string,
+	deletes storage.Deletes,
+	writes storage.Writes,
+) error {
+	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > m.MaxTuplesPerWrite() {
+	if len(deletes)+len(writes) > s.MaxTuplesPerWrite() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
-	return m.write(ctx, store, deletes, writes, time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, time.Now().UTC())
 }
 
 // Write provides the common method for writing to database across sql storage.
-func (m *SQLite) write(
+func (s *Datastore) write(
 	ctx context.Context,
 	store string,
 	deletes storage.Deletes,
@@ -228,7 +246,7 @@ func (m *SQLite) write(
 	var txn *sql.Tx
 	err := busyRetry(func() error {
 		var err error
-		txn, err = m.db.BeginTx(ctx, nil)
+		txn, err = s.db.BeginTx(ctx, nil)
 		return err
 	})
 	if err != nil {
@@ -238,7 +256,7 @@ func (m *SQLite) write(
 		_ = txn.Rollback()
 	}()
 
-	changelogBuilder := m.stbl.
+	changelogBuilder := s.stbl.
 		Insert("changelog").
 		Columns(
 			"store",
@@ -255,7 +273,7 @@ func (m *SQLite) write(
 			"inserted_at",
 		)
 
-	deleteBuilder := m.stbl.Delete("tuple")
+	deleteBuilder := s.stbl.Delete("tuple")
 
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -312,7 +330,7 @@ func (m *SQLite) write(
 		)
 	}
 
-	insertBuilder := m.stbl.
+	insertBuilder := s.stbl.
 		Insert("tuple").
 		Columns(
 			"store",
@@ -400,8 +418,8 @@ func (m *SQLite) write(
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadUserTuple")
+func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
@@ -412,9 +430,10 @@ func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 	var conditionContext []byte
 	var record storage.TupleRecord
 
-	err := m.stbl.
+	err := s.stbl.
 		Select(
-			"object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
+			"object_type", "object_id", "relation",
+			"user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context",
 		).
 		From("tuple").
@@ -459,18 +478,19 @@ func (m *SQLite) ReadUserTuple(ctx context.Context, store string, tupleKey *open
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
-func (m *SQLite) ReadUsersetTuples(
+func (s *Datastore) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
 	_ storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadUsersetTuples")
+	ctx, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
-	sb := m.stbl.
+	sb := s.stbl.
 		Select(
-			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
+			"store", "object_type", "object_id", "relation",
+			"user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		).
 		From("tuple").
@@ -491,10 +511,16 @@ func (m *SQLite) ReadUsersetTuples(
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
 			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Eq{"user_object_type": userset.GetType(), "user_relation": userset.GetRelation()})
+				orConditions = append(orConditions, sq.Eq{
+					"user_object_type": userset.GetType(),
+					"user_relation":    userset.GetRelation(),
+				})
 			}
 			if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"user_object_type": userset.GetType(), "user_object_id": "*"})
+				orConditions = append(orConditions, sq.Eq{
+					"user_object_type": userset.GetType(),
+					"user_object_id":   "*",
+				})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -508,13 +534,13 @@ func (m *SQLite) ReadUsersetTuples(
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
-func (m *SQLite) ReadStartingWithUser(
+func (s *Datastore) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
 	_ storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadStartingWithUser")
+	ctx, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
 	var targetUsersArg sq.Or
@@ -530,9 +556,10 @@ func (m *SQLite) ReadStartingWithUser(
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	builder := m.stbl.
+	builder := s.stbl.
 		Select(
-			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation",
+			"store", "object_type", "object_id", "relation",
+			"user_object_type", "user_object_id", "user_relation",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		).
 		From("tuple").
@@ -556,8 +583,8 @@ func (m *SQLite) ReadStartingWithUser(
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
-func (m *SQLite) MaxTuplesPerWrite() int {
-	return m.maxTuplesPerWriteField
+func (s *Datastore) MaxTuplesPerWrite() int {
+	return s.maxTuplesPerWriteField
 }
 
 func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.AuthorizationModel, error) {
@@ -587,11 +614,11 @@ func constructAuthorizationModelFromSQLRows(rows *sql.Rows) (*openfgav1.Authoriz
 }
 
 // ReadAuthorizationModel see [storage.AuthorizationModelReadBackend].ReadAuthorizationModel.
-func (m *SQLite) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadAuthorizationModel")
+func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
-	rows, err := m.stbl.
+	rows, err := s.stbl.
 		Select("authorization_model_id", "schema_version", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{
@@ -608,15 +635,15 @@ func (m *SQLite) ReadAuthorizationModel(ctx context.Context, store string, model
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (m *SQLite) ReadAuthorizationModels(
+func (s *Datastore) ReadAuthorizationModels(
 	ctx context.Context,
 	store string,
 	options storage.ReadAuthorizationModelsOptions,
 ) ([]*openfgav1.AuthorizationModel, []byte, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadAuthorizationModels")
+	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
-	sb := m.stbl.
+	sb := s.stbl.
 		Select("authorization_model_id", "schema_version", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -677,11 +704,11 @@ func (m *SQLite) ReadAuthorizationModels(
 }
 
 // FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
-func (m *SQLite) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.FindLatestAuthorizationModel")
+func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store string) (*openfgav1.AuthorizationModel, error) {
+	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
 	defer span.End()
 
-	rows, err := m.stbl.
+	rows, err := s.stbl.
 		Select("authorization_model_id", "schema_version", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -697,13 +724,13 @@ func (m *SQLite) FindLatestAuthorizationModel(ctx context.Context, store string)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
-func (m *SQLite) MaxTypesPerAuthorizationModel() int {
-	return m.maxTypesPerModelField
+func (s *Datastore) MaxTypesPerAuthorizationModel() int {
+	return s.maxTypesPerModelField
 }
 
 // WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
-func (m *SQLite) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
-	ctx, span := tracer.Start(ctx, "sqlite.WriteAuthorizationModel")
+func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
+	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
 	schemaVersion := model.GetSchemaVersion()
@@ -713,8 +740,8 @@ func (m *SQLite) WriteAuthorizationModel(ctx context.Context, store string, mode
 		return nil
 	}
 
-	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerModelField)
+	if len(typeDefinitions) > s.MaxTypesPerAuthorizationModel() {
+		return storage.ExceededMaxTypeDefinitionsLimitError(s.maxTypesPerModelField)
 	}
 
 	pbdata, err := proto.Marshal(model)
@@ -723,7 +750,7 @@ func (m *SQLite) WriteAuthorizationModel(ctx context.Context, store string, mode
 	}
 
 	err = busyRetry(func() error {
-		_, err := m.stbl.
+		_, err := s.stbl.
 			Insert("authorization_model").
 			Columns("store", "authorization_model_id", "schema_version", "serialized_protobuf").
 			Values(store, model.GetId(), schemaVersion, pbdata).
@@ -737,54 +764,22 @@ func (m *SQLite) WriteAuthorizationModel(ctx context.Context, store string, mode
 	return nil
 }
 
-// CreateStore adds a new store to the SQLite storage.
-func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.CreateStore")
+// CreateStore adds a new store to storage.
+func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
+	ctx, span := startTrace(ctx, "CreateStore")
 	defer span.End()
 
-	var txn *sql.Tx
-	err := busyRetry(func() error {
-		var err error
-		txn, err = m.db.BeginTx(ctx, &sql.TxOptions{
-			Isolation: sql.LevelSerializable,
-		})
-		return err
-	})
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-	defer func() {
-		_ = txn.Rollback()
-	}()
+	var id, name string
+	var createdAt, updatedAt time.Time
 
-	err = busyRetry(func() error {
-		_, err := m.stbl.
+	err := busyRetry(func() error {
+		return s.stbl.
 			Insert("store").
 			Columns("id", "name", "created_at", "updated_at").
 			Values(store.GetId(), store.GetName(), sq.Expr("datetime('subsec')"), sq.Expr("datetime('subsec')")).
-			RunWith(txn).
-			ExecContext(ctx)
-		return err
-	})
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-
-	var createdAt time.Time
-	var id, name string
-	err = m.stbl.
-		Select("id", "name", "created_at").
-		From("store").
-		Where(sq.Eq{"id": store.GetId()}).
-		RunWith(txn).
-		QueryRowContext(ctx).
-		Scan(&id, &name, &createdAt)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-
-	err = busyRetry(func() error {
-		return txn.Commit()
+			Suffix("returning id, name, created_at, updated_at").
+			QueryRowContext(ctx).
+			Scan(&id, &name, &createdAt, &updatedAt)
 	})
 	if err != nil {
 		return nil, HandleSQLError(err)
@@ -794,16 +789,16 @@ func (m *SQLite) CreateStore(ctx context.Context, store *openfgav1.Store) (*open
 		Id:        id,
 		Name:      name,
 		CreatedAt: timestamppb.New(createdAt),
-		UpdatedAt: timestamppb.New(createdAt),
+		UpdatedAt: timestamppb.New(updatedAt),
 	}, nil
 }
 
-// GetStore retrieves the details of a specific store from the SQLite using its storeID.
-func (m *SQLite) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.GetStore")
+// GetStore retrieves the details of a specific store using its storeID.
+func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
+	ctx, span := startTrace(ctx, "GetStore")
 	defer span.End()
 
-	row := m.stbl.
+	row := s.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{
@@ -830,12 +825,12 @@ func (m *SQLite) GetStore(ctx context.Context, id string) (*openfgav1.Store, err
 	}, nil
 }
 
-// ListStores provides a paginated list of all stores present in the SQLite storage.
-func (m *SQLite) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ListStores")
+// ListStores provides a paginated list of all stores present in the storage.
+func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+	ctx, span := startTrace(ctx, "ListStores")
 	defer span.End()
 
-	sb := m.stbl.
+	sb := s.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{"deleted_at": nil}).
@@ -891,12 +886,12 @@ func (m *SQLite) ListStores(ctx context.Context, options storage.ListStoresOptio
 	return stores, nil, nil
 }
 
-// DeleteStore removes a store from the SQLite storage.
-func (m *SQLite) DeleteStore(ctx context.Context, id string) error {
-	ctx, span := tracer.Start(ctx, "sqlite.DeleteStore")
+// DeleteStore removes a store from storage.
+func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
+	ctx, span := startTrace(ctx, "DeleteStore")
 	defer span.End()
 
-	_, err := m.stbl.
+	_, err := s.stbl.
 		Update("store").
 		Set("deleted_at", sq.Expr("datetime('subsec')")).
 		Where(sq.Eq{"id": id}).
@@ -909,8 +904,8 @@ func (m *SQLite) DeleteStore(ctx context.Context, id string) error {
 }
 
 // WriteAssertions see [storage.AssertionsBackend].WriteAssertions.
-func (m *SQLite) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
-	ctx, span := tracer.Start(ctx, "sqlite.WriteAssertions")
+func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
+	ctx, span := startTrace(ctx, "WriteAssertions")
 	defer span.End()
 
 	marshalledAssertions, err := proto.Marshal(&openfgav1.Assertions{Assertions: assertions})
@@ -919,11 +914,11 @@ func (m *SQLite) WriteAssertions(ctx context.Context, store, modelID string, ass
 	}
 
 	err = busyRetry(func() error {
-		_, err := m.stbl.
+		_, err := s.stbl.
 			Insert("assertion").
 			Columns("store", "authorization_model_id", "assertions").
 			Values(store, modelID, marshalledAssertions).
-			Suffix("ON CONFLICT(store,authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
+			Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
 			ExecContext(ctx)
 		return err
 	})
@@ -935,12 +930,12 @@ func (m *SQLite) WriteAssertions(ctx context.Context, store, modelID string, ass
 }
 
 // ReadAssertions see [storage.AssertionsBackend].ReadAssertions.
-func (m *SQLite) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadAssertions")
+func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
+	ctx, span := startTrace(ctx, "ReadAssertions")
 	defer span.End()
 
 	var marshalledAssertions []byte
-	err := m.stbl.
+	err := s.stbl.
 		Select("assertions").
 		From("assertion").
 		Where(sq.Eq{
@@ -966,24 +961,34 @@ func (m *SQLite) ReadAssertions(ctx context.Context, store, modelID string) ([]*
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (m *SQLite) ReadChanges(
+func (s *Datastore) ReadChanges(
 	ctx context.Context,
-	store, objectTypeFilter string,
+	store string,
+	filter storage.ReadChangesFilter,
 	options storage.ReadChangesOptions,
-	horizonOffset time.Duration,
 ) ([]*openfgav1.TupleChange, []byte, error) {
-	ctx, span := tracer.Start(ctx, "sqlite.ReadChanges")
+	ctx, span := startTrace(ctx, "ReadChanges")
 	defer span.End()
 
-	sb := m.stbl.
+	objectTypeFilter := filter.ObjectType
+	horizonOffset := filter.HorizonOffset
+
+	orderBy := "ulid asc"
+	if options.SortDesc {
+		orderBy = "ulid desc"
+	}
+
+	sb := s.stbl.
 		Select(
-			"ulid", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "operation",
+			"ulid", "object_type", "object_id", "relation",
+			"user_object_type", "user_object_id", "user_relation",
+			"operation",
 			"condition_name", "condition_context", "inserted_at",
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= datetime('subsec','-%f seconds')", horizonOffset.Seconds())).
-		OrderBy("ulid asc")
+		OrderBy(orderBy)
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
@@ -997,7 +1002,11 @@ func (m *SQLite) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token.
+		if options.SortDesc {
+			sb = sb.Where(sq.Lt{"ulid": token.Ulid})
+		} else {
+			sb = sb.Where(sq.Gt{"ulid": token.Ulid})
+		}
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -1072,10 +1081,12 @@ func (m *SQLite) ReadChanges(
 }
 
 // IsReady see [sqlcommon.IsReady].
-func (m *SQLite) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, m.db)
+func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
+	return sqlcommon.IsReady(ctx, s.db)
 }
 
+// HandleSQLError processes an SQL error and converts it into a more
+// specific error type based on the nature of the SQL error.
 func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
