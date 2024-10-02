@@ -28,7 +28,7 @@ func ValidateListUsersRequest(ctx context.Context, req *openfgav1.ListUsersReque
 
 func validateContextualTuples(request *openfgav1.ListUsersRequest, typeSystem *typesystem.TypeSystem) error {
 	for _, contextualTuple := range request.GetContextualTuples() {
-		if err := validation.ValidateTuple(typeSystem, contextualTuple); err != nil {
+		if err := validation.ValidateTupleForWrite(typeSystem, contextualTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
