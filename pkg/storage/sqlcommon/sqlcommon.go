@@ -527,7 +527,7 @@ func Write(
 	return nil
 }
 
-// WriteAuthorizationModel writes an authorization model for the given store.
+// WriteAuthorizationModel writes an authorization model for the given store in one row.
 func WriteAuthorizationModel(
 	ctx context.Context,
 	dbInfo *DBInfo,
@@ -615,7 +615,6 @@ func FindLatestAuthorizationModel(
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
 		OrderBy("authorization_model_id desc").
-		Limit(1).
 		QueryContext(ctx)
 	if err != nil {
 		return nil, dbInfo.HandleSQLError(err)
