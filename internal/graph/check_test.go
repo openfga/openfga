@@ -4307,6 +4307,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				typesys:              ts,
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
+				maxConcurrentReads:   10,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
@@ -4319,7 +4320,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				},
 			}
 
-			result, err := recursiveMatchUserUserset(context.Background(), req, info)
+			result, err := recursiveMatchUserUserset(context.Background(), req, info, 0)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, result)
 		})
@@ -5085,7 +5086,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			}
-			result, err := nestedUsersetFastpath(context.Background(), ts, ds, req)
+			result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
