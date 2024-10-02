@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"sync"
 	"time"
 
 	"github.com/karlseguin/ccache/v3"
@@ -31,6 +32,7 @@ type CachedResult[T any] struct {
 type InMemoryLRUCache[T any] struct {
 	ccache      *ccache.Cache[T]
 	maxElements int64
+	closeOnce   *sync.Once
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -46,6 +48,7 @@ var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCache[T] {
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
+		closeOnce:   &sync.Once{},
 	}
 
 	for _, opt := range opts {
@@ -69,5 +72,7 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 }
 
 func (i InMemoryLRUCache[T]) Stop() {
-	i.ccache.Stop()
+	i.closeOnce.Do(func() {
+		i.ccache.Stop()
+	})
 }
