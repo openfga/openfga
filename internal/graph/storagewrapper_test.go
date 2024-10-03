@@ -360,6 +360,54 @@ func TestRead(t *testing.T) {
 	})
 }
 
+func TestCloseDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().Close().Times(1).Return()
+
+	maxSize := 10
+	ttl := 5 * time.Hour
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	ds.Close()
+}
+
+func TestDatastoreIteratorError(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	maxSize := 10
+	ttl := 5 * time.Hour
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+
+	storeID := ulid.Make().String()
+
+	tk := tuple.NewTupleKey("license:1", "owner", "")
+
+	gomock.InOrder(
+		mockCache.EXPECT().Get(gomock.Any()),
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(nil, storage.ErrNotFound),
+	)
+
+	_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+	require.ErrorIs(t, err, storage.ErrNotFound)
+}
+
 func TestCachedIterator(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
