@@ -316,8 +316,8 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 
 	require.NoError(t, err)
 	// AuthorizationModel should return only 1 type which is of type "document"
-	require.Equal(t, 1, len(res.TypeDefinitions))
-	require.Equal(t, "document", res.TypeDefinitions[0].Type)
+	require.Len(t, res.GetTypeDefinitions(), 1)
+	require.Equal(t, "document", res.GetTypeDefinitions()[0].Type)
 }
 
 func TestFindLatestModel(t *testing.T) {
