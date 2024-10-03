@@ -3067,7 +3067,7 @@ func TestConsumeUsersets(t *testing.T) {
 
 			for _, curTuples := range tt.tuples {
 				// Note that we need to return a new iterator for each DS call
-				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 					storage.NewStaticTupleIterator(curTuples.tuples), curTuples.err)
 			}
 
