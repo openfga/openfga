@@ -88,7 +88,7 @@ func NewCachedDatastore(
 	}
 }
 
-// ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
+// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (c *CachedDatastore) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
@@ -300,7 +300,7 @@ func (c *cachedIterator) Stop() {
 	})
 }
 
-// Head see [storage.Iterator.Head].
+// Head see [storage.Iterator].Head.
 func (c *cachedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return c.iter.Head(ctx)
 }

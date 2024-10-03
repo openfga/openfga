@@ -629,13 +629,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
-	var checkCacheOptions []graph.CachedCheckResolverOpt
-	if s.cacheLimit > 0 {
+	if s.cacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(s.cacheLimit)),
 		}...)
 	}
 
+	var checkCacheOptions []graph.CachedCheckResolverOpt
 	if s.cache != nil && s.checkQueryCacheEnabled {
 		checkCacheOptions = append(checkCacheOptions,
 			graph.WithExistingCache(s.cache),
@@ -663,7 +663,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 	s.checkDatastore = s.datastore
 
-	if s.checkIteratorCacheEnabled {
+	if s.cache != nil && s.checkIteratorCacheEnabled {
 		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
 	}
 
