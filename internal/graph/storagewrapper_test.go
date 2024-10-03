@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -593,4 +594,92 @@ func TestCachedIterator(t *testing.T) {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
+
+	t.Run("prevent_draining_on_the_same_iterator_across_concurrent_requests", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			maxCacheSize := 10
+			cacheKey := "cache-key"
+			ttl := 5 * time.Hour
+			cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+				storage.WithMaxCacheSize[any](int64(100)),
+			}...)
+			defer cache.Stop()
+
+			sf := &singleflight.Group{}
+
+			var wg sync.WaitGroup
+
+			mockedIter1 := &mockCalledTupleIterator{
+				iter: storage.NewStaticTupleIterator(tuples),
+			}
+
+			iter1 := &cachedIterator{
+				iter:          mockedIter1,
+				tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+				cacheKey:      cacheKey,
+				cache:         cache,
+				maxResultSize: maxCacheSize,
+				ttl:           ttl,
+				sf:            sf,
+			}
+
+			mockedIter2 := &mockCalledTupleIterator{
+				iter: storage.NewStaticTupleIterator(tuples),
+			}
+
+			iter2 := &cachedIterator{
+				iter:          mockedIter2,
+				tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+				cacheKey:      cacheKey,
+				cache:         cache,
+				maxResultSize: maxCacheSize,
+				ttl:           ttl,
+				sf:            sf,
+			}
+
+			wg.Add(2)
+
+			go func() {
+				defer wg.Done()
+
+				iter1.Stop()
+				iter1.wg.Wait()
+			}()
+
+			go func() {
+				defer wg.Done()
+
+				iter2.Stop()
+				iter2.wg.Wait()
+			}()
+
+			wg.Wait()
+
+			require.GreaterOrEqual(t, mockedIter1.nextCalled, 0)
+			require.GreaterOrEqual(t, mockedIter2.nextCalled, 0)
+			require.GreaterOrEqual(t, mockedIter1.nextCalled+mockedIter2.nextCalled, 3)
+		}
+	})
+}
+
+type mockCalledTupleIterator struct {
+	iter        storage.TupleIterator
+	nextCalled  int
+	headCalled  int
+	closeCalled int
+}
+
+func (s *mockCalledTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	s.nextCalled++
+	return s.iter.Next(ctx)
+}
+
+func (s *mockCalledTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	s.headCalled++
+	return s.iter.Head(ctx)
+}
+
+func (s *mockCalledTupleIterator) Stop() {
+	s.closeCalled++
+	s.iter.Stop()
 }
