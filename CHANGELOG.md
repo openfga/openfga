@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.6.2] - 2024-09-30
+## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
 
@@ -16,26 +16,26 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
 * Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
-
-### Changed
-* `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976)
-* Add a cache for datastore iterators on Check API. [#1924](https://github.com/openfga/openfga/pull/1924)
+* Add a cache for datastore iterators on Check API. [#1924](https://github.com/openfga/openfga/pull/1924).
 
   Can be configured via `OPENFGA_CHECK_ITERATOR_CACHE_ENABLED` and `OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS`.
+
+### Changed
+* `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976).
 
   This is a breaking change related to the storage interface. If you are not implementing a storage adaptor, then these changes should not impact you.
 
 ### Removed
 
-* Removed deprecated opentelemetry-connector `memory_ballast` extension.
-* Removed experimental logging of cache hits for each subproblem in `Check` API calls. [#1960](https://github.com/openfga/openfga/pull/1960)
+* Removed deprecated opentelemetry-connector `memory_ballast` extension. [#1942](https://github.com/openfga/openfga/pull/1942).
+* Removed experimental logging of cache hits for each subproblem in `Check` API calls. [#1960](https://github.com/openfga/openfga/pull/1960).
 
 ### Fixed
 
-* Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
-* Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962)
-* Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [1980](https://github.com/openfga/openfga/issues/1980) and [1986](https://github.com/openfga/openfga/issues/1986)
-* Upgrade go from 1.22.6 to 1.22.7 to address CVE-2024-34156 [1987](https://github.com/openfga/openfga/pull/1987)
+* Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936). Thanks @DanCech!
+* Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962).
+* Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [#1980](https://github.com/openfga/openfga/issues/1980) and [#1986](https://github.com/openfga/openfga/issues/1986).
+* Upgrade go from 1.22.6 to 1.22.7 to address CVE-2024-34156 [#1987](https://github.com/openfga/openfga/pull/1987). Thanks @golanglemonade!
 
 ## [1.6.1] - 2024-09-12
 
