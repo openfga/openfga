@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -396,6 +397,7 @@ func TestCachedIterator(t *testing.T) {
 			cache:         cache,
 			maxResultSize: maxCacheSize,
 			ttl:           ttl,
+			sf:            &singleflight.Group{},
 		}
 
 		_, err := iter.Next(ctx)
@@ -429,6 +431,7 @@ func TestCachedIterator(t *testing.T) {
 			cache:         cache,
 			maxResultSize: maxCacheSize,
 			ttl:           ttl,
+			sf:            &singleflight.Group{},
 		}
 
 		var actual []*openfgav1.Tuple
@@ -471,6 +474,7 @@ func TestCachedIterator(t *testing.T) {
 			cache:         cache,
 			maxResultSize: maxCacheSize,
 			ttl:           ttl,
+			sf:            &singleflight.Group{},
 		}
 
 		iter.Stop()
@@ -496,6 +500,7 @@ func TestCachedIterator(t *testing.T) {
 			cache:         cache,
 			maxResultSize: maxCacheSize,
 			ttl:           ttl,
+			sf:            &singleflight.Group{},
 		}
 
 		var actual []*openfgav1.Tuple
@@ -541,6 +546,7 @@ func TestCachedIterator(t *testing.T) {
 			cache:         cache,
 			maxResultSize: maxCacheSize,
 			ttl:           ttl,
+			sf:            &singleflight.Group{},
 		}
 
 		iter.Stop()
@@ -569,6 +575,7 @@ func TestCachedIterator(t *testing.T) {
 			cache:         cache,
 			maxResultSize: maxCacheSize,
 			ttl:           ttl,
+			sf:            &singleflight.Group{},
 		}
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()

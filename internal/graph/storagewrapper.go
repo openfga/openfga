@@ -71,6 +71,7 @@ type CachedDatastore struct {
 	cache         storage.InMemoryCache[any]
 	maxResultSize int
 	ttl           time.Duration
+	sf            *singleflight.Group
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
@@ -85,6 +86,7 @@ func NewCachedDatastore(
 		cache:            cache,
 		maxResultSize:    maxSize,
 		ttl:              ttl,
+		sf:               &singleflight.Group{},
 	}
 }
 
@@ -205,6 +207,7 @@ func (c *CachedDatastore) newCachedIterator(
 		cache:         c.cache,
 		maxResultSize: c.maxResultSize,
 		ttl:           c.ttl,
+		sf:            c.sf,
 	}, nil
 }
 
@@ -226,7 +229,7 @@ type cachedIterator struct {
 
 	// sf is used to prevent draining the same iterator
 	// across multiple requests.
-	sf singleflight.Group
+	sf *singleflight.Group
 
 	// closeOnce is used to synchronize .Close() and ensure
 	// it's only done once.
