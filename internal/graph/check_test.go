@@ -3104,9 +3104,11 @@ func TestConsumeUsersets(t *testing.T) {
 
 			require.NoError(t, pool.Wait())
 			require.Equal(t, tt.errorExpected, err)
-			require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
-			require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
-			require.GreaterOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
+			if tt.errorExpected == nil {
+				require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
+				require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
+				require.GreaterOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
+			}
 		})
 	}
 }
