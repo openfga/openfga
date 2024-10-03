@@ -107,7 +107,9 @@ func TestAuthorize(t *testing.T) {
 
 	mockServer := mocks.NewMockServerInterface(mockController)
 
-	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
+	storeID := "test-store"
+	modelID := "test-model"
+	authorizer := NewAuthorizer(&Config{StoreID: storeID, ModelID: modelID}, mockServer, logger.NewNoopLogger())
 
 	t.Run("error_when_given_invalid_api_method", func(t *testing.T) {
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
@@ -155,10 +157,26 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("succeed", func(t *testing.T) {
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		clientID := "test-client"
+		contextualTuples := openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				getSystemAccessTuple(storeID),
+			},
+		}
+		checkReq := &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				User:     ClientIDType(clientID).String(),
+				Relation: CanCallCreateStore,
+				Object:   StoreIDType(storeID).String(),
+			},
+			ContextualTuples: &contextualTuples,
+		}
+		mockServer.EXPECT().Check(gomock.Any(), checkReq).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 
-		err := authorizer.Authorize(ctx, "store-id", CreateStore)
+		err := authorizer.Authorize(ctx, storeID, CreateStore)
 
 		require.NoError(t, err)
 	})
@@ -323,7 +341,9 @@ func TestModuleAuthorize(t *testing.T) {
 
 	mockServer := mocks.NewMockServerInterface(mockController)
 
-	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
+	storeID := "test-store"
+	modelID := "test-model"
+	authorizer := NewAuthorizer(&Config{StoreID: storeID, ModelID: modelID}, mockServer, logger.NewNoopLogger())
 
 	t.Run("return_no_error_when_no_modules", func(t *testing.T) {
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{})
@@ -360,15 +380,47 @@ func TestModuleAuthorize(t *testing.T) {
 		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
 	})
 
+	t.Run("succeed", func(t *testing.T) {
+		module1 := "module1"
+		contextualTuples := openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				{
+					User:     StoreIDType(storeID).String(),
+					Relation: StoreType,
+					Object:   ModuleIDType(storeID).String(module1),
+				},
+				getSystemAccessTuple(storeID),
+			},
+		}
+		clientID := "client-id"
+		checkReq := &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				User:     ClientIDType(clientID).String(),
+				Relation: CanCallWrite,
+				Object:   ModuleIDType(storeID).String(module1),
+			},
+			ContextualTuples: &contextualTuples,
+		}
+		mockServer.EXPECT().Check(gomock.Any(), checkReq).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+
+		err := authorizer.moduleAuthorize(context.Background(), clientID, CanCallWrite, storeID, []string{module1})
+		require.NoError(t, err)
+	})
+
 	t.Run("succeed_when_all_modules_are_allowed", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 
-		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
+		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, storeID, []string{"module1", "module2", "module3"})
 		require.NoError(t, err)
 	})
 }
+
+// Got: store_id:"test-store"  tuple_key:{user:"application:client-id"  relation:"can_call_write"  object:"module:test-store|module1"}  contextual_tuples:{tuple_keys:{user:"store:test-store"  relation:"store"  object:"module:test-store|module1"}  tuple_keys:{user:"system:fga"  relation:"system"  object:"store:test-store"}}  authorization_model_id:"test-model" (*openfgav1.CheckRequest)
+//         Want: is equal to store_id:"test-store"  tuple_key:{user:"application:client-id"  relation:"can_call_write"  object:"module:test-store|module1"}  contextual_tuples:{tuple_keys:{user:"store:test-store"  relation:"store"  object:"module:test-store|module1"}  tuple_keys:{user:"system:fga"  relation:"system"  object:"store:test-store"}}  authorization_model_id:"test-model" (*openfgav1.CheckRequest)
 
 func TestGetModulesForWriteRequest(t *testing.T) {
 	mockController := gomock.NewController(t)
