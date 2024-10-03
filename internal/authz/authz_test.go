@@ -419,9 +419,6 @@ func TestModuleAuthorize(t *testing.T) {
 	})
 }
 
-// Got: store_id:"test-store"  tuple_key:{user:"application:client-id"  relation:"can_call_write"  object:"module:test-store|module1"}  contextual_tuples:{tuple_keys:{user:"store:test-store"  relation:"store"  object:"module:test-store|module1"}  tuple_keys:{user:"system:fga"  relation:"system"  object:"store:test-store"}}  authorization_model_id:"test-model" (*openfgav1.CheckRequest)
-//         Want: is equal to store_id:"test-store"  tuple_key:{user:"application:client-id"  relation:"can_call_write"  object:"module:test-store|module1"}  contextual_tuples:{tuple_keys:{user:"store:test-store"  relation:"store"  object:"module:test-store|module1"}  tuple_keys:{user:"system:fga"  relation:"system"  object:"store:test-store"}}  authorization_model_id:"test-model" (*openfgav1.CheckRequest)
-
 func TestGetModulesForWriteRequest(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
