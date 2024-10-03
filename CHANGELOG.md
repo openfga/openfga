@@ -19,7 +19,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 * `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976)
-  The following is a breaking change related to the storage interface. If you are not implementing a storage adaptor, then these changes should not impact you.
+
+  This is a breaking change related to the storage interface. If you are not implementing a storage adaptor, then these changes should not impact you.
 
 ### Removed
 
