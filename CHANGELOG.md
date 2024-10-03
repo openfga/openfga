@@ -8,12 +8,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+* Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
 
 ### Added
-* RELEASES.md file documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
 * Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
 * Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
 
