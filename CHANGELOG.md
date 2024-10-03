@@ -24,6 +24,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936)
 * Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962)
 * Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [1980](https://github.com/openfga/openfga/issues/1980) and [1986](https://github.com/openfga/openfga/issues/1986)
+* Upgrade go from 1.22.6 to 1.22.7 to address CVE-2024-34156 [1987](https://github.com/openfga/openfga/pull/1987)
 
 ## [1.6.1] - 2024-09-12
 
