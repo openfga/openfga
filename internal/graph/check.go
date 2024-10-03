@@ -908,6 +908,7 @@ ConsumerLoop:
 			if outcome.resp.GetResolutionMetadata().CycleDetected {
 				finalResult.ResolutionMetadata.CycleDetected = true
 			}
+
 			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
 
 			if outcome.resp.Allowed {

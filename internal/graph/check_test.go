@@ -2810,12 +2810,16 @@ func TestConsumeUsersets(t *testing.T) {
 			tuples: []dsResults{
 				// we expect 3 ds.ReadStartingWithUser to be called in response to 3 batches from usersetsChannel
 				{
-					tuples: []*openfgav1.Tuple{},
-					err:    nil,
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
 				},
 				{
-					tuples: []*openfgav1.Tuple{},
-					err:    nil,
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
 				},
 				{
 					tuples: []*openfgav1.Tuple{
@@ -3097,10 +3101,10 @@ func TestConsumeUsersets(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			}, usersetChan)
-			require.Equal(t, tt.errorExpected, err)
-			require.Equal(t, tt.expectedResolveCheckResponse, result)
 
 			require.NoError(t, pool.Wait())
+			require.Equal(t, tt.errorExpected, err)
+			require.Equal(t, tt.expectedResolveCheckResponse, result)
 		})
 	}
 }
