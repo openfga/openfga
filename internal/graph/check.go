@@ -563,11 +563,11 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	if allowed {
 		span.SetAttributes(attribute.Bool("allowed", true))
 	}
-	reqCount := req.GetRequestMetadata().DatastoreQueryCount + 1
+
 	return &ResolveCheckResponse{
 		Allowed: allowed,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: reqCount,
+			DatastoreQueryCount: 1,
 		},
 	}, nil
 }
@@ -747,6 +747,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		return nil, err
 	}
 
+	// for the read in checkDirectUsersetTuples
 	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
@@ -829,54 +830,97 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		return nil, err
 	}
 
-	// Ideally, the caller would have accounted for getting the iter in the first place.
-	// TODO: add in logic for incrementing datastore query counter in caller.
-	if resp != nil {
-		resp.ResolutionMetadata.DatastoreQueryCount++
-	}
+	// read from either checkTTU or checkDirectUsersetTuples
+	resp.ResolutionMetadata.DatastoreQueryCount++
 
 	return resp, err
+}
+
+// processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
+func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) chan checkOutcome {
+	outcomes := make(chan checkOutcome, limit)
+	pool := concurrency.NewPool(ctx, int(limit))
+
+	go func() {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			_ = pool.Wait()
+			close(outcomes)
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-usersetsChan:
+				if !ok {
+					return
+				}
+				if msg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
+					break // continue
+				}
+
+				pool.Go(func(ctx context.Context) error {
+					resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					return nil
+				})
+			}
+		}
+	}()
+
+	return outcomes
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "consumeUsersets")
 	defer span.End()
 
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	outcomeChannel := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
+
 	var finalErr error
-	dbReads := req.GetRequestMetadata().DatastoreQueryCount
+	finalResult := &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{
+			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
+		},
+	}
 
 ConsumerLoop:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
-		case newBatch, channelOpen := <-usersetsChan:
+			break ConsumerLoop
+		case outcome, channelOpen := <-outcomeChannel:
 			if !channelOpen {
 				break ConsumerLoop
 			}
-			if newBatch.err != nil {
-				// Irrecoverable error when fetching usersets, so we abort.
-				finalErr = newBatch.err
-				break ConsumerLoop
+			if outcome.err != nil {
+				finalErr = outcome.err
+				break // continue
 			}
-			objectRel := newBatch.objectRelation
-			objectIDs := newBatch.objectIDs
 
-			resp, err := checkAssociatedObjects(ctx, req, objectRel, objectIDs)
-			dbReads++
-			if err != nil {
-				// We don't exit because we do a best effort to find the objectId that will give `allowed=true`.
-				// If that doesn't happen, we will return this error down below.
-				finalErr = err
-			} else if resp.Allowed {
-				resp.ResolutionMetadata.DatastoreQueryCount = dbReads
-				return resp, nil
+			if outcome.resp.GetResolutionMetadata().CycleDetected {
+				finalResult.ResolutionMetadata.CycleDetected = true
+			}
+
+			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
+
+			if outcome.resp.Allowed {
+				finalErr = nil
+				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
+				finalResult = outcome.resp
+				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
+				break ConsumerLoop
 			}
 		}
 	}
-
+	cancel() // prevent further processing of other checks
 	// context cancellation from upstream (e.g. client)
 	if ctx.Err() != nil {
 		finalErr = ctx.Err()
@@ -886,12 +930,7 @@ ConsumerLoop:
 		return nil, finalErr
 	}
 
-	return &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-		},
-	}, nil
+	return finalResult, nil
 }
 
 func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) {
@@ -1163,9 +1202,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		return nil, err
 	}
 
-	// if we had 3 dispatched requests, and the final result is "allowed = false",
-	// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
-	// if final result is "allowed = true", we want final reads to be N1 + 1
+	// read from checkTTU
 	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
@@ -1241,7 +1278,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		if err != nil {
 			return nil, err
 		}
-		defer iter.Stop()
 
 		// filter out invalid tuples yielded by the database iterator
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
