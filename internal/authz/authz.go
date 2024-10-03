@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -276,10 +276,9 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 	}
 
 	storeIDs := make([]string, len(resp.GetObjects()))
-	re := regexp.MustCompile(`^.*:(.*)`)
+	storePrefix := fmt.Sprintf("%s:", StoreType)
 	for i, store := range resp.GetObjects() {
-		id := re.FindStringSubmatch(store)
-		storeIDs[i] = id[1]
+		storeIDs[i] = strings.TrimPrefix(store, storePrefix)
 	}
 
 	return storeIDs, nil
