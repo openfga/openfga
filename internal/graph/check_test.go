@@ -3107,7 +3107,7 @@ func TestConsumeUsersets(t *testing.T) {
 			if tt.errorExpected == nil {
 				require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
 				require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
-				require.GreaterOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
+				require.LessOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
 			}
 		})
 	}
