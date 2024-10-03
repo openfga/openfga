@@ -315,14 +315,8 @@ func IsWildcard(s string) bool {
 // IsTypedWildcard returns true if the string 's' is a typed wildcard. A typed wildcard
 // has the form 'type:*'.
 func IsTypedWildcard(s string) bool {
-	if IsValidObject(s) {
-		_, id := SplitObject(s)
-		if id == Wildcard {
-			return true
-		}
-	}
-
-	return false
+	t, id := SplitObject(s)
+	return t != "" && id == Wildcard
 }
 
 // TypedPublicWildcard returns the string tuple representation for a given object type (ex: "user:*").
