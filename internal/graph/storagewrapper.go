@@ -178,6 +178,7 @@ func (c *CachedDatastore) newCachedIterator(
 	key string,
 ) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("cached_key", key))
 	tuplesCacheTotalCounter.Inc()
 
 	cacheKey := cacheKeyFor(key)
