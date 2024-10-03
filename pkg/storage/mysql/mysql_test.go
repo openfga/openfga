@@ -320,6 +320,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	require.Len(t, res.GetTypeDefinitions(), 1)
 	require.Equal(t, "document", res.GetTypeDefinitions()[0].Type)
 }
+
 func TestFindLatestModel(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
