@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	_ "github.com/microsoft/go-mssqldb" // MSSQL Driver.
+	_ "github.com/microsoft/go-mssqldb/integratedauth/krb5" // Kerberos Active Directory authentication
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
