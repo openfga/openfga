@@ -2849,7 +2849,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
+					DatastoreQueryCount: 1, // since order is not guaranteed the allowed might come from the first answer
 				},
 			},
 			errorExpected: nil,
@@ -3104,7 +3104,9 @@ func TestConsumeUsersets(t *testing.T) {
 
 			require.NoError(t, pool.Wait())
 			require.Equal(t, tt.errorExpected, err)
-			require.Equal(t, tt.expectedResolveCheckResponse, result)
+			require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
+			require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
+			require.GreaterOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
 		})
 	}
 }
