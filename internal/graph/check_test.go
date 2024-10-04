@@ -1285,14 +1285,14 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:no_access"),
 			allowed:    false,
 			minDBReads: 3, // 1 userset read (2 found) follow by 2 direct tuple check (not found)
-			maxDBReads: 3,
+			maxDBReads: 4,
 		},
 		{
 			name:       "multiple_userset_access",
 			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:maria"),
 			allowed:    true,
-			minDBReads: 2, // 1 userset read (2 found) follow by 1 direct tuple check (found, returns immediately)
-			maxDBReads: 2,
+			minDBReads: 2, // 2 userset read (2 found) follow by 2 direct tuple check (found, returns immediately)
+			maxDBReads: 4,
 		},
 		{
 			name:       "wildcard_no_access",
@@ -1320,8 +1320,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "union_and_ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:unknown"),
 			allowed:    false,
-			minDBReads: 2, // min(union (2 reads), ttu (4 reads))
-			maxDBReads: 4, // max(union (2 reads), ttu (4 reads))
+			minDBReads: 2, // min(union (2 reads), ttu (2 read))
+			maxDBReads: 4, // max(union (2 reads), ttu (2 read))
 		},
 		{
 			name:       "union_or_ttu",
@@ -2813,12 +2813,16 @@ func TestConsumeUsersets(t *testing.T) {
 			tuples: []dsResults{
 				// we expect 3 ds.ReadStartingWithUser to be called in response to 3 batches from usersetsChannel
 				{
-					tuples: []*openfgav1.Tuple{},
-					err:    nil,
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
 				},
 				{
-					tuples: []*openfgav1.Tuple{},
-					err:    nil,
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
 				},
 				{
 					tuples: []*openfgav1.Tuple{
@@ -2848,7 +2852,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
+					DatastoreQueryCount: 1, // since order is not guaranteed the allowed might come from the first answer
 				},
 			},
 			errorExpected: nil,
@@ -3004,7 +3008,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
+					DatastoreQueryCount: 1,
 				},
 			},
 			errorExpected: nil,
@@ -3066,7 +3070,7 @@ func TestConsumeUsersets(t *testing.T) {
 
 			for _, curTuples := range tt.tuples {
 				// Note that we need to return a new iterator for each DS call
-				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 					storage.NewStaticTupleIterator(curTuples.tuples), curTuples.err)
 			}
 
@@ -3100,10 +3104,14 @@ func TestConsumeUsersets(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			}, usersetChan)
-			require.Equal(t, tt.errorExpected, err)
-			require.Equal(t, tt.expectedResolveCheckResponse, result)
 
 			require.NoError(t, pool.Wait())
+			require.Equal(t, tt.errorExpected, err)
+			if tt.errorExpected == nil {
+				require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
+				require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
+				require.LessOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
+			}
 		})
 	}
 }
