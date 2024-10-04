@@ -48,7 +48,7 @@ var (
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        storage.InMemoryCache[*ResolveCheckResponse]
+	cache        storage.InMemoryCache[any]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
@@ -81,7 +81,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 // WithExistingCache sets the cache to the specified cache.
 // Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
 // to check whether the original cache should be stopped.
-func WithExistingCache(cache storage.InMemoryCache[*ResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache storage.InMemoryCache[any]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
@@ -113,10 +113,10 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 
 	if checker.cache == nil {
 		checker.allocatedCache = true
-		cacheOptions := []storage.InMemoryLRUCacheOpt[*ResolveCheckResponse]{
-			storage.WithMaxCacheSize[*ResolveCheckResponse](checker.maxCacheSize),
+		cacheOptions := []storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](checker.maxCacheSize),
 		}
-		checker.cache = storage.NewInMemoryLRUCache[*ResolveCheckResponse](cacheOptions...)
+		checker.cache = storage.NewInMemoryLRUCache[any](cacheOptions...)
 	}
 
 	return checker
@@ -165,7 +165,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 			checkCacheHitCounter.Inc()
 
 			// return a copy to avoid races across goroutines
-			return cachedResp.Value.clone(), nil
+			return cachedResp.Value.(*ResolveCheckResponse).clone(), nil
 		}
 	}
 

@@ -266,7 +266,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	checkCache := storage.NewInMemoryLRUCache[*graph.ResolveCheckResponse]()
+	checkCache := storage.NewInMemoryLRUCache[any]()
 	defer checkCache.Stop()
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
