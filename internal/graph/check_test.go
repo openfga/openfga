@@ -4679,11 +4679,12 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 		contextDone                     bool
 		readStartingWithUserTuples      []*openfgav1.Tuple
 		readStartingWithUserTuplesError error
+		iteratorHasError                bool
 		expected                        []usersetMessage
 		poolSize                        int
 	}{
 		{
-			name:                            "iterator_error",
+			name:                            "get_iterator_error",
 			contextDone:                     false,
 			poolSize:                        1,
 			readStartingWithUserTuples:      []*openfgav1.Tuple{},
@@ -4692,6 +4693,28 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 				{
 					userset: "",
 					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
+			name:             "iterator_next_error",
+			contextDone:      false,
+			poolSize:         1,
+			iteratorHasError: true,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "",
+					err:     mocks.SimulatedError,
 				},
 			},
 		},
@@ -4767,7 +4790,11 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			if tt.iteratorHasError {
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(mocks.NewErrorTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			} else {
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			}
 			model := parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
@@ -4817,11 +4844,12 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 		contextDone            bool
 		readUsersetTuples      []*openfgav1.Tuple
 		readUsersetTuplesError error
+		iteratorHasError       bool
 		expected               []usersetMessage
 		poolSize               int
 	}{
 		{
-			name:                   "iterator_error",
+			name:                   "get_iterator_error",
 			contextDone:            false,
 			poolSize:               1,
 			readUsersetTuples:      []*openfgav1.Tuple{},
@@ -4830,6 +4858,28 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				{
 					userset: "",
 					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
+			name:             "iterator_next_error",
+			contextDone:      false,
+			poolSize:         1,
+			iteratorHasError: true,
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+				{
+					userset: "",
+					err:     mocks.SimulatedError,
 				},
 			},
 		},
@@ -4905,7 +4955,11 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			if tt.iteratorHasError {
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(mocks.NewErrorTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			} else {
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			}
 			model := parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
@@ -5110,7 +5164,7 @@ func TestMatchUsersetFromUserAndUsersetFromObject(t *testing.T) {
 				name: "objectToUsersetMessages_error",
 				userToUsersetMessages: []usersetMessage{
 					{
-						userset: "group:1",
+						userset: "group:3",
 						err:     nil,
 					},
 				},
