@@ -643,15 +643,60 @@ func TestCachedIterator(t *testing.T) {
 		}
 	})
 
+	t.Run("prevent_draining_if_already_cached", func(t *testing.T) {
+		maxCacheSize := 10
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](mockController)
+		mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: tuples})
+
+		sf := &singleflight.Group{}
+
+		var wg sync.WaitGroup
+
+		mockedIter1 := &mockCalledTupleIterator{
+			iter: storage.NewStaticTupleIterator(tuples),
+		}
+
+		iter1 := &cachedIterator{
+			iter:          mockedIter1,
+			tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:      cacheKey,
+			cache:         mockCache,
+			maxResultSize: maxCacheSize,
+			ttl:           ttl,
+			sf:            sf,
+		}
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			iter1.Stop()
+			iter1.wg.Wait()
+		}()
+
+		wg.Wait()
+
+		require.Zero(t, mockedIter1.nextCalled)
+	})
+
 	t.Run("prevent_draining_on_the_same_iterator_across_concurrent_requests", func(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			maxCacheSize := 10
 			cacheKey := "cache-key"
 			ttl := 5 * time.Hour
-			cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
-				storage.WithMaxCacheSize[any](int64(100)),
-			}...)
-			defer cache.Stop()
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+
+			mockCache := mocks.NewMockInMemoryCache[any](mockController)
+
+			mockCache.EXPECT().Get(cacheKey).AnyTimes().Return(nil)
+			mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).AnyTimes()
 
 			sf := &singleflight.Group{}
 
@@ -665,7 +710,7 @@ func TestCachedIterator(t *testing.T) {
 				iter:          mockedIter1,
 				tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 				cacheKey:      cacheKey,
-				cache:         cache,
+				cache:         mockCache,
 				maxResultSize: maxCacheSize,
 				ttl:           ttl,
 				sf:            sf,
@@ -679,7 +724,7 @@ func TestCachedIterator(t *testing.T) {
 				iter:          mockedIter2,
 				tuples:        make([]*openfgav1.Tuple, 0, maxCacheSize),
 				cacheKey:      cacheKey,
-				cache:         cache,
+				cache:         mockCache,
 				maxResultSize: maxCacheSize,
 				ttl:           ttl,
 				sf:            sf,

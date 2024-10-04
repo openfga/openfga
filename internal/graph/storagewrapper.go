@@ -282,6 +282,14 @@ func (c *cachedIterator) Stop() {
 		go func() {
 			defer c.iter.Stop()
 			defer c.wg.Done()
+
+			// if cache is already set, we don't need to drain the iterator
+			cachedResp := c.cache.Get(c.cacheKey)
+			isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
+			if isCached {
+				return
+			}
+
 			// prevent draining on the same iterator across multiple requests
 			_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
 				for {
