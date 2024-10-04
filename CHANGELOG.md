@@ -8,12 +8,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+* Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
 
 ### Added
-
 * Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
 * Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
 * Add a cache for datastore iterators on Check API. [#1924](https://github.com/openfga/openfga/pull/1924).
@@ -24,6 +26,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976).
 
   This is a breaking change related to the storage interface. If you are not implementing a storage adaptor, then these changes should not impact you.
+
 
 ### Removed
 
