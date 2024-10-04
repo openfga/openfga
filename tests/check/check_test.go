@@ -54,6 +54,8 @@ func testRunTestMatrix(t *testing.T, engine string) {
 		// extend the timeout for the tests, coverage makes them slower
 		cfg.RequestTimeout = 10 * time.Second
 
+		cfg.CheckIteratorCache.Enabled = true
+
 		tests.StartServer(t, cfg)
 
 		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
@@ -333,6 +335,13 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
+
+	cfg.CheckIteratorCache.Enabled = true
+
+	// Some tests/stages are sensitive to the cache TTL,
+	// so we set it to a very low value to still exercise
+	// the Check iterator cache.
+	cfg.CheckQueryCache.TTL = 1 * time.Nanosecond
 
 	tests.StartServer(t, cfg)
 

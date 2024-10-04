@@ -662,7 +662,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-	mockCache := mocks.NewMockInMemoryCache[*ResolveCheckResponse](mockController)
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
 
 	cachedCheckResolver := NewCachedCheckResolver(
 		WithExistingCache(mockCache),
@@ -696,7 +696,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 
 	// The second check is a cache hit.
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
+	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[any]{Value: interface{}(&ResolveCheckResponse{Allowed: true})})
 	res, err = cachedCheckResolver.ResolveCheck(ctx, req)
 
 	require.NoError(t, err)
@@ -704,7 +704,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	// For TTU fastpath, we no longer call ResolveCheck to get the parent / child.
 	// As such, it should not have called the cache.
-	mockCache.EXPECT().Get(reqKey).Times(0).Return(&storage.CachedResult[*ResolveCheckResponse]{Value: &ResolveCheckResponse{Allowed: true}})
+	mockCache.EXPECT().Get(reqKey).Times(0).Return(&storage.CachedResult[any]{Value: interface{}(&ResolveCheckResponse{Allowed: true})})
 	res, err = localCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:          storeID,
 		TupleKey:         tuple.NewTupleKey("document:x", "ttu", "user:maria"),

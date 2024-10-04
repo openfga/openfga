@@ -294,6 +294,33 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 }
 
+func TestReadAuthorizationModelReturnValue(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	defer ds.Close()
+	store := "store"
+	modelID := "foo"
+	schemaVersion := typesystem.SchemaVersion1_0
+
+	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
+	require.NoError(t, err)
+
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, nil)
+
+	require.NoError(t, err)
+
+	res, err := ds.ReadAuthorizationModel(ctx, store, modelID)
+	require.NoError(t, err)
+	// AuthorizationModel should return only 1 type which is of type "document"
+	require.Len(t, res.GetTypeDefinitions(), 1)
+	require.Equal(t, "document", res.GetTypeDefinitions()[0].GetType())
+}
+
 func TestFindLatestModel(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
