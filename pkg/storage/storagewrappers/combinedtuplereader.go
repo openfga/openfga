@@ -29,18 +29,20 @@ type CombinedTupleReader struct {
 var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
-// that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation string) []*openfgav1.Tuple {
-	var filtered []*openfgav1.Tuple
-	for _, tk := range tuples {
-		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
-			filtered = append(filtered, &openfgav1.Tuple{
-				Key: tk,
-			})
-		}
-	}
+// that don't match the object, relation or user provided in the filterKey.
+func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation, targetUser string) []*openfgav1.Tuple {
+    var filtered []*openfgav1.Tuple
+    for _, tk := range tuples {
+        if (targetObject == "" || tk.GetObject() == targetObject) &&
+           (targetRelation == "" || tk.GetRelation() == targetRelation) &&
+           (targetUser == "" || tk.GetUser() == targetUser) {
+            filtered = append(filtered, &openfgav1.Tuple{
+                Key: tk,
+            })
+        }
+    }
 
-	return filtered
+    return filtered
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
