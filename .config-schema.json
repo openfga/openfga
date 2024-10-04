@@ -579,6 +579,12 @@
             "type": "duration",
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
+        },
+        "silentHealthChecks": {
+            "description": "Enables or disables the OpenFGA Silent Checks logs.",
+            "type": "boolean",
+            "default": false,
+            "x-env-variable": "OPENFGA_SILENT_HEALTHCHECK"
         }
     },
     "definitions": {

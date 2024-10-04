@@ -58,6 +58,8 @@ const (
 
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
+
+	DefaultSilentHealthChecks = false
 )
 
 type DatastoreMetricsConfig struct {
@@ -276,6 +278,8 @@ type Config struct {
 	// request timeout will be prioritized
 	RequestTimeout time.Duration
 
+	SilentHealthChecks bool
+
 	Datastore                     DatastoreConfig
 	GRPC                          GRPCConfig
 	HTTP                          HTTPConfig
@@ -435,6 +439,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.MaxConditionEvaluationCost < 100 {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
+	}
+
+	if cfg.SilentHealthChecks {
+		return errors.New("'silentHealthChecks' must be of type: boolean")
 	}
 
 	return nil
@@ -619,7 +627,8 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
+		RequestTimeout:     DefaultRequestTimeout,
+		SilentHealthChecks: DefaultSilentHealthChecks,
 	}
 }
 

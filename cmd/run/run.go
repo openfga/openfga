@@ -260,6 +260,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
+	flags.Bool("silent-healthchecks", defaultConfig.SilentHealthChecks, "Suppress logs for health checks")
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
