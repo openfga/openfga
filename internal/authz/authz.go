@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -31,6 +32,7 @@ const (
 	WriteAssertions         = "WriteAssertions"
 	ReadAssertions          = "ReadAssertions"
 	WriteAuthorizationModel = "WriteAuthorizationModel"
+	ListStores              = "ListStores"
 	CreateStore             = "CreateStore"
 	GetStore                = "GetStore"
 	DeleteStore             = "DeleteStore"
@@ -47,6 +49,7 @@ const (
 	CanCallWriteAssertions          = "can_call_write_assertions"
 	CanCallReadAssertions           = "can_call_read_assertions"
 	CanCallWriteAuthorizationModels = "can_call_write_authorization_models"
+	CanCallListStores               = "can_call_list_stores"
 	CanCallCreateStore              = "can_call_create_stores"
 	CanCallGetStore                 = "can_call_get_store"
 	CanCallDeleteStore              = "can_call_delete_store"
@@ -94,6 +97,8 @@ type Config struct {
 type AuthorizerInterface interface {
 	Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error
 	AuthorizeCreateStore(ctx context.Context) error
+	AuthorizeListStores(ctx context.Context) error
+	ListAuthorizedStores(ctx context.Context) ([]string, error)
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
 }
 
@@ -117,6 +122,14 @@ func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod strin
 
 func (a *NoopAuthorizer) AuthorizeCreateStore(ctx context.Context) error {
 	return nil
+}
+
+func (a *NoopAuthorizer) AuthorizeListStores(ctx context.Context) error {
+	return nil
+}
+
+func (a *NoopAuthorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
@@ -169,6 +182,8 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return CanCallReadAssertions, nil
 	case WriteAuthorizationModel:
 		return CanCallWriteAuthorizationModels, nil
+	case ListStores:
+		return CanCallListStores, nil
 	case CreateStore:
 		return CanCallCreateStore, nil
 	case GetStore:
@@ -228,6 +243,52 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 	}
 
 	return a.individualAuthorize(ctx, claims.ClientID, relation, SystemObjectID, &openfgav1.ContextualTupleKeys{})
+}
+
+// AuthorizeListStores checks if the user has access to list stores.
+func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
+	claims, err := checkAuthClaims(ctx)
+	if err != nil {
+		return err
+	}
+
+	relation, err := a.getRelation(ListStores)
+	if err != nil {
+		return err
+	}
+
+	return a.individualAuthorize(ctx, claims.ClientID, relation, SystemObjectID, &openfgav1.ContextualTupleKeys{})
+}
+
+// ListAuthorizedStores returns the list of store IDs that the user has access to.
+func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
+	claims, err := checkAuthClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &openfgav1.ListObjectsRequest{
+		StoreId:              a.config.StoreID,
+		AuthorizationModelId: a.config.ModelID,
+		User:                 ClientIDType(claims.ClientID).String(),
+		Relation:             CanCallGetStore,
+		Type:                 StoreType,
+	}
+
+	// Disable authz check for the list objects request.
+	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
+	resp, err := a.server.ListObjects(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	storeIDs := make([]string, len(resp.GetObjects()))
+	storePrefix := fmt.Sprintf("%s:", StoreType)
+	for i, store := range resp.GetObjects() {
+		storeIDs[i] = strings.TrimPrefix(store, storePrefix)
+	}
+
+	return storeIDs, nil
 }
 
 // GetModulesForWriteRequest returns the modules that should be checked for the write request.

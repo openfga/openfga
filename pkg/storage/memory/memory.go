@@ -784,6 +784,18 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 		stores = append(stores, t)
 	}
 
+	if len(options.IDs) > 0 {
+		var filteredStores []*openfgav1.Store
+		for _, storeID := range options.IDs {
+			for _, store := range stores {
+				if store.GetId() == storeID {
+					filteredStores = append(filteredStores, store)
+				}
+			}
+		}
+		stores = filteredStores
+	}
+
 	// From oldest to newest.
 	sort.SliceStable(stores, func(i, j int) bool {
 		return stores[i].GetId() < stores[j].GetId()

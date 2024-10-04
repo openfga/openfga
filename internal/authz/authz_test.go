@@ -101,6 +101,44 @@ func TestAuthorizeCreateStore(t *testing.T) {
 	})
 }
 
+func TestAuthorizeListStores(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockServer := mocks.NewMockServerInterface(mockController)
+
+	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
+
+	t.Run("error_when_authorized_errors", func(t *testing.T) {
+		errorMessage := fmt.Errorf("unable to perform action")
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		err := authorizer.AuthorizeListStores(ctx)
+
+		require.Error(t, err)
+		require.Equal(t, errorMessage.Error(), err.Error())
+	})
+
+	t.Run("error_when_not_authorized", func(t *testing.T) {
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		err := authorizer.AuthorizeListStores(ctx)
+
+		require.Error(t, err)
+	})
+
+	t.Run("succeed", func(t *testing.T) {
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		err := authorizer.AuthorizeListStores(ctx)
+
+		require.NoError(t, err)
+	})
+}
+
 func TestAuthorize(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -294,6 +332,46 @@ func TestExtractModulesFromTuples(t *testing.T) {
 		modules, err := extractModulesFromTuples(tuples, ts)
 		require.NoError(t, err)
 		require.Equal(t, map[string]struct{}{"module1": {}, "module2": {}}, modules)
+	})
+}
+
+func TestListAuthorizedStores(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockServer := mocks.NewMockServerInterface(mockController)
+
+	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
+
+	t.Run("error_when_invalid_claims", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := authorizer.ListAuthorizedStores(ctx)
+
+		require.Error(t, err)
+		require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+	})
+
+	t.Run("error_when_list_objects_errors", func(t *testing.T) {
+		errorMessage := fmt.Errorf("error")
+		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		_, err := authorizer.ListAuthorizedStores(ctx)
+
+		require.Error(t, err)
+		require.Equal(t, errorMessage.Error(), err.Error())
+	})
+
+	t.Run("succeed", func(t *testing.T) {
+		ID1 := "1234"
+		ID2 := "5678"
+		mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(&openfgav1.ListObjectsResponse{Objects: []string{fmt.Sprintf("store:%s", ID1), fmt.Sprintf("store:%s", ID2)}}, nil)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		stores, err := authorizer.ListAuthorizedStores(ctx)
+
+		require.NoError(t, err)
+		require.Equal(t, []string{ID1, ID2}, stores)
 	})
 }
 
