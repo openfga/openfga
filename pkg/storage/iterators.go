@@ -41,67 +41,75 @@ type TupleIterator = Iterator[*openfgav1.Tuple]
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
 type combinedIterator[T any] struct {
-	iters []Iterator[T]
+	pending []Iterator[T]
+	done    []Iterator[T]
 }
 
 // Next see [Iterator.Next].
 func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
-	for i, iter := range c.iters {
-		if iter == nil {
-			continue
-		}
-		val, err := iter.Next(ctx)
-		if err != nil {
-			if !errors.Is(err, ErrIteratorDone) {
-				return val, err
-			}
-			c.iters[i] = nil // End of this iterator.
-			continue
-		}
-
-		return val, nil
+	if len(c.pending) == 0 {
+		// All iterators ended.
+		var val T
+		return val, ErrIteratorDone
 	}
 
-	// All iterators ended.
-	var val T
-	return val, ErrIteratorDone
+	iter := c.pending[0]
+	val, err := iter.Next(ctx)
+	if err != nil {
+		if errors.Is(err, ErrIteratorDone) {
+			c.pending = c.pending[1:]
+			c.done = append(c.done, iter)
+			return c.Next(ctx)
+		}
+		return val, err
+	}
+
+	return val, nil
 }
 
 // Stop see [Iterator.Stop].
 func (c *combinedIterator[T]) Stop() {
-	for _, iter := range c.iters {
-		if iter != nil {
-			iter.Stop()
-		}
+	for _, iter := range c.done {
+		iter.Stop()
+	}
+	for _, iter := range c.pending {
+		iter.Stop()
 	}
 }
 
 // Head see [Iterator.Head].
 func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
-	for _, iter := range c.iters {
-		if iter == nil {
-			continue
-		}
-		val, err := iter.Head(ctx)
-		if err != nil {
-			if !errors.Is(err, ErrIteratorDone) {
-				return val, err
-			}
-			continue
-		}
-		return val, nil
+	if len(c.pending) == 0 {
+		// All iterators ended.
+		var val T
+		return val, ErrIteratorDone
 	}
 
-	// All iterators ended.
-	var val T
-	return val, ErrIteratorDone
+	iter := c.pending[0]
+	val, err := iter.Head(ctx)
+	if err != nil {
+		if errors.Is(err, ErrIteratorDone) {
+			c.pending = c.pending[1:]
+			c.done = append(c.done, iter)
+			return c.Head(ctx)
+		}
+		return val, err
+	}
+
+	return val, nil
 }
 
 // NewCombinedIterator takes generic iterators of a given type T
 // and combines them into a single iterator that yields all the
 // values from all iterators. Duplicates can be returned.
 func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
-	return &combinedIterator[T]{iters}
+	pending := make([]Iterator[T], 0, len(iters))
+	for _, iter := range iters {
+		if iter != nil {
+			pending = append(pending, iter)
+		}
+	}
+	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending))}
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.

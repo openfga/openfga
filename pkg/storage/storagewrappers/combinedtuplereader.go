@@ -15,18 +15,18 @@ func NewCombinedTupleReader(
 	ds storage.RelationshipTupleReader,
 	contextualTuples []*openfgav1.TupleKey,
 ) storage.RelationshipTupleReader {
-	return &combinedTupleReader{
+	return &CombinedTupleReader{
 		RelationshipTupleReader: ds,
 		contextualTuples:        contextualTuples,
 	}
 }
 
-type combinedTupleReader struct {
+type CombinedTupleReader struct {
 	storage.RelationshipTupleReader
 	contextualTuples []*openfgav1.TupleKey
 }
 
-var _ storage.RelationshipTupleReader = (*combinedTupleReader)(nil)
+var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object and relation provided in the filterKey.
@@ -44,7 +44,7 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
-func (c *combinedTupleReader) Read(
+func (c *CombinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
 	tk *openfgav1.TupleKey,
@@ -61,13 +61,13 @@ func (c *combinedTupleReader) Read(
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (c *combinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
 	// No reading from contextual tuples.
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, options)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
-func (c *combinedTupleReader) ReadUserTuple(
+func (c *CombinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
@@ -85,7 +85,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
-func (c *combinedTupleReader) ReadUsersetTuples(
+func (c *CombinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
@@ -110,7 +110,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
-func (c *combinedTupleReader) ReadStartingWithUser(
+func (c *CombinedTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,

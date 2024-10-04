@@ -34,7 +34,6 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
-	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
@@ -47,7 +46,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -123,6 +121,7 @@ type Server struct {
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
+	checkDatastore                   storage.OpenFGADatastore
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
@@ -147,9 +146,14 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
+	cacheLimit uint32
+	cache      storage.InMemoryCache[any]
+
 	checkQueryCacheEnabled bool
-	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
+
+	checkIteratorCacheEnabled    bool
+	checkIteratorCacheMaxResults uint32
 
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
@@ -373,11 +377,10 @@ func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	}
 }
 
-// WithCheckQueryCacheLimit sets the cache size limit (in items)
-// Needs WithCheckQueryCacheEnabled set to true.
-func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
+// WithCacheLimit sets the cache size limit (in items).
+func WithCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkQueryCacheLimit = limit
+		s.cacheLimit = limit
 	}
 }
 
@@ -386,6 +389,21 @@ func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheTTL = ttl
+	}
+}
+
+// WithCheckIteratorCacheEnabled enables caching of iterators produced within Check for subsequent requests.
+func WithCheckIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkIteratorCacheEnabled = enabled
+	}
+}
+
+// WithCheckIteratorCacheMaxResults sets the limit of an iterator size to cache (in items)
+// Needs WithCheckIteratorCacheEnabled set to true.
+func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkIteratorCacheMaxResults = limit
 	}
 }
 
@@ -566,10 +584,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
-		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
-		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
+		cacheLimit: serverconfig.DefaultCacheLimit,
+
+		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnabled,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
-		checkResolver:          nil,
+
+		checkIteratorCacheEnabled:    serverconfig.DefaultCheckIteratorCacheEnabled,
+		checkIteratorCacheMaxResults: serverconfig.DefaultCheckIteratorCacheMaxResults,
+
+		checkResolver: nil,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -637,15 +660,26 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
+	if s.cacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
+		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(s.cacheLimit)),
+		}...)
+	}
+
+	var checkCacheOptions []graph.CachedCheckResolverOpt
+	if s.cache != nil && s.checkQueryCacheEnabled {
+		checkCacheOptions = append(checkCacheOptions,
+			graph.WithExistingCache(s.cache),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		)
+	}
+
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		}...),
-		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, []graph.CachedCheckResolverOpt{
-			graph.WithMaxCacheSize(int64(s.checkQueryCacheLimit)),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		}...),
+		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
 
@@ -658,6 +692,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
+	s.checkDatastore = s.datastore
+
+	if s.cache != nil && s.checkIteratorCacheEnabled {
+		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.cache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
+	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
@@ -680,7 +719,12 @@ func (s *Server) Close() {
 	}
 
 	s.checkResolverCloser()
+
+	if s.cache != nil {
+		s.cache.Stop()
+	}
 	s.datastore.Close()
+
 	s.typesystemResolverStop()
 }
 
@@ -1002,12 +1046,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	))
 	defer span.End()
 
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  authz.Check,
@@ -1025,60 +1063,23 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)); err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
-
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return nil, serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx,
-		storagewrappers.NewBoundedConcurrencyTupleReader(
-			storagewrappers.NewCombinedTupleReader(
-				s.datastore,
-				req.GetContextualTuples().GetTupleKeys(),
-			),
-			s.maxConcurrentReadsForCheck,
-		),
-	)
-
-	checkRequestMetadata := graph.NewCheckRequestMetadata(s.resolveNodeLimit)
-
-	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		Context:              req.GetContext(),
-		RequestMetadata:      checkRequestMetadata,
-		Consistency:          req.GetConsistency(),
-	}
-
 	const methodName = "check"
-
-	resp, err := s.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
+	resp, checkRequestMetadata, err := commands.NewCheckCommand(
+		s.checkDatastore,
+		s.checkResolver,
+		typesys,
+		commands.WithCheckCommandLogger(s.logger),
+		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
+	).Execute(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-			return nil, serverErrors.AuthorizationModelResolutionTooComplex
-		}
-
-		if errors.Is(err, condition.ErrEvaluationFailed) {
-			return nil, serverErrors.ValidationError(err)
-		}
-
-		// Note for ListObjects:
-		// Currently this is not feasible in ListObjects and ListUsers as we return partial results.
-		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+		if errors.Is(err, serverErrors.ThrottledTimeout) {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-			return nil, serverErrors.ThrottledTimeout
 		}
-
-		return nil, serverErrors.HandleError("", err)
+		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
+		// and add a wrapper helper that automatically injects the service name tag?
+		return nil, err
 	}
 
 	span.SetAttributes(
