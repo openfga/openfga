@@ -1195,7 +1195,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCheckQueryCacheEnabled(true),
-		WithCheckQueryCacheLimit(10),
+		WithCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
 	t.Cleanup(func() {
@@ -2194,4 +2194,160 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Len(t, resp.GetObjects(), 1)
 	})
+}
+
+func TestServerCheckCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("query_cache_enabled_iterator_cache_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(true),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.cache)
+		require.NotEqual(t, s.datastore, s.checkDatastore)
+	})
+
+	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(false),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(true),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.cache)
+		require.NotEqual(t, s.datastore, s.checkDatastore)
+	})
+
+	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(false),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.cache)
+		require.Equal(t, s.datastore, s.checkDatastore)
+	})
+
+	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(false),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(false),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.Nil(t, s.cache)
+		require.Equal(t, s.datastore, s.checkDatastore)
+	})
+}
+
+func TestCheckWithCachedIterator(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type company
+			relations
+				define viewer: [user]
+		type license
+			relations
+				define viewer: [user, user:*, company#viewer]`).GetTypeDefinitions()
+
+	userTuple := &openfgav1.Tuple{
+		Key: tuple.NewTupleKey("company:1", "viewer", "user:1"),
+	}
+
+	usersetTuples := []*openfgav1.Tuple{
+		{
+			Key: tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+		},
+	}
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		Times(1).
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(2).
+		Return(userTuple, nil)
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator(usersetTuples), nil)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(10),
+	)
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	// Sleep for a while to ensure that the iterator is cached
+	time.Sleep(1 * time.Millisecond)
+
+	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:2"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
 }

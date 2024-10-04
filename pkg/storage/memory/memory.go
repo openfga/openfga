@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -211,7 +212,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, options storage.ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
+func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error) {
 	_, span := tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
 
@@ -234,6 +235,9 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 		}
 	}
 
+	objectType := filter.ObjectType
+	horizonOffset := filter.HorizonOffset
+
 	if typeInToken != "" && typeInToken != objectType {
 		return nil, nil, storage.ErrMismatchObjectType
 	}
@@ -241,7 +245,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	var allChanges []*openfgav1.TupleChange
 	now := time.Now().UTC()
 	for _, change := range s.changes[store] {
-		if objectType == "" || (objectType != "" && strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
+		if objectType == "" || (strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
 			if change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
 				break
 			}
@@ -255,6 +259,9 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	pageSize := storage.DefaultPageSize
 	if options.Pagination.PageSize > 0 {
 		pageSize = options.Pagination.PageSize
+	}
+	if options.SortDesc {
+		slices.Reverse(allChanges)
 	}
 	to := int(from) + pageSize
 	if len(allChanges) < to {

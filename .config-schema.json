@@ -458,6 +458,23 @@
                 }
             }
         },
+        "checkIteratorCache": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable caching of datastore iterators of Check requests",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED"
+                },
+                "maxResults": {
+                    "description": "if caching of datastore iterators of Check requests is enabled, this is the limit of rows to cache per query",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS"
+                }
+            }
+        },
         "checkQueryCache": {
             "type": "object",
             "properties": {

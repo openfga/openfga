@@ -103,7 +103,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		}
 
 		for _, tk := range writes {
-			err := validation.ValidateTuple(typesys, tk)
+			err := validation.ValidateTupleForWrite(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
 			}
