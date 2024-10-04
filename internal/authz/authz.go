@@ -53,18 +53,19 @@ const (
 	CanCallExpand                   = "can_call_expand"
 	CanCallReadChanges              = "can_call_read_changes"
 
-	StoreType       = "store"
-	ModuleType      = "module"
-	ApplicationType = "application"
-	SystemType      = "system"
-	RootSystemID    = "fga"
+	StoreType             = "store"
+	ModuleType            = "module"
+	ApplicationType       = "application"
+	SystemType            = "system"
+	SystemRelationOnStore = "system"
+	RootSystemID          = "fga"
 )
 
 var (
 	ErrUnauthorizedResponse = &openfgav1.ForbiddenResponse{Code: 403, Message: "the principal is not authorized to perform the action"}
 	ErrUnknownAPIMethod     = errors.New("unknown API method")
 
-	System = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
+	SystemObjectID = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
 )
 
 type StoreIDType string
@@ -195,8 +196,14 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 		return err
 	}
 
+	contextualTuples := openfgav1.ContextualTupleKeys{
+		TupleKeys: []*openfgav1.TupleKey{
+			getSystemAccessTuple(storeID),
+		},
+	}
+
 	// Check if there is top-level authorization first, before checking modules
-	err = a.individualAuthorize(ctx, claims.ClientID, relation, StoreIDType(storeID).String(), &openfgav1.ContextualTupleKeys{})
+	err = a.individualAuthorize(ctx, claims.ClientID, relation, StoreIDType(storeID).String(), &contextualTuples)
 	if err == nil {
 		return nil
 	}
@@ -220,7 +227,7 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 		return err
 	}
 
-	return a.individualAuthorize(ctx, claims.ClientID, relation, System, &openfgav1.ContextualTupleKeys{})
+	return a.individualAuthorize(ctx, claims.ClientID, relation, SystemObjectID, &openfgav1.ContextualTupleKeys{})
 }
 
 // GetModulesForWriteRequest returns the modules that should be checked for the write request.
@@ -324,6 +331,7 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 						Relation: StoreType,
 						Object:   ModuleIDType(storeID).String(module),
 					},
+					getSystemAccessTuple(storeID),
 				},
 			}
 
@@ -354,4 +362,12 @@ func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
 		return nil, status.Error(codes.InvalidArgument, "client ID not found in context")
 	}
 	return claims, nil
+}
+
+func getSystemAccessTuple(storeID string) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		User:     SystemObjectID,
+		Relation: SystemRelationOnStore,
+		Object:   StoreIDType(storeID).String(),
+	}
 }
