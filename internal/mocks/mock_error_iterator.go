@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	SimulatedError = fmt.Errorf("simulated error")
+	ErrSimulatedError = fmt.Errorf("simulated error")
 )
 
 // errorTupleIterator is a mock iterator that returns error when calling next on the second Next call.
@@ -26,7 +26,7 @@ func (s *errorTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error)
 
 	// we want to simulate returning error after the first read
 	if len(s.items) != s.originalLength {
-		return nil, SimulatedError
+		return nil, ErrSimulatedError
 	}
 
 	if len(s.items) == 0 {

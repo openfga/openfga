@@ -4714,7 +4714,7 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 				},
 				{
 					userset: "",
-					err:     mocks.SimulatedError,
+					err:     mocks.ErrSimulatedError,
 				},
 			},
 		},
@@ -4879,7 +4879,7 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				},
 				{
 					userset: "",
-					err:     mocks.SimulatedError,
+					err:     mocks.ErrSimulatedError,
 				},
 			},
 		},
