@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrSimulatedError = fmt.Errorf("simulated error")
+	ErrSimulatedError = fmt.Errorf("simulated errors")
 )
 
 // errorTupleIterator is a mock iterator that returns error when calling next on the second Next call.
