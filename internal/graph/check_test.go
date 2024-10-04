@@ -4097,6 +4097,339 @@ func TestCheckTTUSlowPath(t *testing.T) {
 	}
 }
 
+type parallelRecursiveTest struct {
+	numTimeFuncExecuted        *atomic.Uint32
+	returnResolveCheckResponse []*ResolveCheckResponse
+	returnError                []error
+}
+
+func (p *parallelRecursiveTest) testParalleliizeRecursive(context.Context,
+	*ResolveCheckRequest,
+	*recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error) {
+	currentCounter := p.numTimeFuncExecuted.Load()
+	p.numTimeFuncExecuted.Add(1)
+	return p.returnResolveCheckResponse[currentCounter], p.returnError[currentCounter]
+}
+
+func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                  string
+		usersetItems          []string
+		maxConcurrentReads    int
+		visitedItems          []string
+		parallelRecursiveTest parallelRecursiveTest
+		expectedResponse      *ResolveCheckResponse
+		expectedError         error
+	}{
+		{
+			name:               "empty_userset",
+			usersetItems:       []string{},
+			visitedItems:       []string{},
+			maxConcurrentReads: 20,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 15,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "multiple_userset_last_true_concurrent_read_large",
+			usersetItems:       []string{"group:1", "group:2", "group:3"},
+			visitedItems:       []string{},
+			maxConcurrentReads: 20,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+				returnResolveCheckResponse: []*ResolveCheckResponse{
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+				},
+				returnError: []error{
+					nil,
+					nil,
+					nil,
+				},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 20,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "multiple_userset_last_true_concurrent_read_small",
+			usersetItems:       []string{"group:1", "group:2", "group:3"},
+			visitedItems:       []string{},
+			maxConcurrentReads: 1,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+				returnResolveCheckResponse: []*ResolveCheckResponse{
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+				},
+				returnError: []error{
+					nil,
+					nil,
+					nil,
+				},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 20,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "multiple_userset_first_true_concurrent_read_large",
+			usersetItems:       []string{"group:1", "group:2", "group:3"},
+			visitedItems:       []string{},
+			maxConcurrentReads: 20,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+				returnResolveCheckResponse: []*ResolveCheckResponse{
+					{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+				},
+				returnError: []error{
+					nil,
+					nil,
+					nil,
+				},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 20,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "multiple_userset_first_true_concurrent_read_small",
+			usersetItems:       []string{"group:1", "group:2", "group:3"},
+			visitedItems:       []string{},
+			maxConcurrentReads: 1,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+				returnResolveCheckResponse: []*ResolveCheckResponse{
+					{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+				},
+				returnError: []error{
+					nil,
+					nil,
+					nil,
+				},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 20,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "multiple_userset_none_true_concurrent_read_small",
+			usersetItems:       []string{"group:1", "group:2", "group:3"},
+			visitedItems:       []string{},
+			maxConcurrentReads: 1,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+				returnResolveCheckResponse: []*ResolveCheckResponse{
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+					{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 20,
+							CycleDetected:       false,
+						},
+					},
+				},
+				returnError: []error{
+					nil,
+					nil,
+					nil,
+				},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 15,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "error",
+			usersetItems:       []string{"group:1"},
+			visitedItems:       []string{},
+			maxConcurrentReads: 20,
+			parallelRecursiveTest: parallelRecursiveTest{
+				numTimeFuncExecuted: &atomic.Uint32{},
+				returnResolveCheckResponse: []*ResolveCheckResponse{
+					nil,
+				},
+				returnError: []error{
+					fmt.Errorf("mock_error"),
+				},
+			},
+			expectedResponse: nil,
+			expectedError:    fmt.Errorf("mock_error"),
+		},
+		{
+			name:               "do_not_run_visited_item",
+			usersetItems:       []string{"group:1"},
+			visitedItems:       []string{"group:1"},
+			maxConcurrentReads: 20,
+			parallelRecursiveTest: parallelRecursiveTest{
+				// notice there are no items being returned as group:1 is skipped.
+				returnResolveCheckResponse: []*ResolveCheckResponse{},
+				returnError:                []error{},
+			},
+			expectedResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 15,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			commonParameters := &recursiveMatchUserUsersetInfo{
+				maxConcurrentReads: tt.maxConcurrentReads,
+				visitedUserset:     &sync.Map{},
+				dsCount:            &atomic.Uint32{},
+			}
+			for _, item := range tt.visitedItems {
+				commonParameters.visitedUserset.Store(item, struct{}{})
+			}
+			commonParameters.dsCount.Store(15)
+			resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
+				tt.usersetItems,
+				&ResolveCheckRequest{
+					RequestMetadata: NewCheckRequestMetadata(20),
+				},
+				commonParameters,
+				tt.parallelRecursiveTest.testParalleliizeRecursive)
+			require.Equal(t, tt.expectedResponse, resp)
+			require.Equal(t, tt.expectedError, err)
+		})
+	}
+}
+
 func TestRecursiveMatchUserUserset(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -4320,14 +4653,14 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				},
 			}
 
-			result, err := recursiveMatchUserUserset(context.Background(), req, info, 0)
+			result, err := recursiveMatchUserUserset(context.Background(), req, info)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestNestedUsersetLookupUsersetForUser(t *testing.T) {
+func TestStreamedLookupUsersetForUser(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -4338,7 +4671,7 @@ func TestNestedUsersetLookupUsersetForUser(t *testing.T) {
 		readStartingWithUserTuples      []*openfgav1.Tuple
 		readStartingWithUserTuplesError error
 		expected                        []usersetMessage
-		poolSize                        uint32
+		poolSize                        int
 	}{
 		{
 			name:                            "iterator_error",
@@ -4446,19 +4779,13 @@ func TestNestedUsersetLookupUsersetForUser(t *testing.T) {
 			}
 
 			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
-			pool := concurrency.NewPool(context.Background(), 1)
 			if tt.contextDone {
 				cancelFunc()
 			} else {
 				defer cancelFunc()
 			}
-			userToUsersetMessageChan := make(chan usersetMessage, tt.poolSize)
 
-			pool.Go(func(ctx context.Context) error {
-				nestedUsersetLookupUsersetForUser(cancellableCtx, ts, ds, req, userToUsersetMessageChan)
-				close(userToUsersetMessageChan)
-				return nil
-			})
+			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, ts, ds, req, tt.poolSize)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -4466,13 +4793,12 @@ func TestNestedUsersetLookupUsersetForUser(t *testing.T) {
 				userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
 			}
 
-			_ = pool.Wait()
 			require.Equal(t, tt.expected, userToUsersetMessages)
 		})
 	}
 }
 
-func TestNestedUsersetFirstLevelLookupObject(t *testing.T) {
+func TestStreamedLookupUsersetForObject(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -4483,7 +4809,7 @@ func TestNestedUsersetFirstLevelLookupObject(t *testing.T) {
 		readUsersetTuples      []*openfgav1.Tuple
 		readUsersetTuplesError error
 		expected               []usersetMessage
-		poolSize               uint32
+		poolSize               int
 	}{
 		{
 			name:                   "iterator_error",
@@ -4591,28 +4917,22 @@ func TestNestedUsersetFirstLevelLookupObject(t *testing.T) {
 			}
 
 			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
-			pool := concurrency.NewPool(context.Background(), 1)
 			if tt.contextDone {
 				cancelFunc()
 			} else {
 				defer cancelFunc()
 			}
-			userToUsersetMessageChan := make(chan usersetMessage, tt.poolSize)
 
-			pool.Go(func(ctx context.Context) error {
-				nestedUsersetFirstLevelLookupObject(cancellableCtx, ts, ds, req,
-					[]*openfgav1.RelationReference{
-						{
-							Type: "group",
-							RelationOrWildcard: &openfgav1.RelationReference_Relation{
-								Relation: "member",
-							},
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, ds, req,
+				[]*openfgav1.RelationReference{
+					{
+						Type: "group",
+						RelationOrWildcard: &openfgav1.RelationReference_Relation{
+							Relation: "member",
 						},
 					},
-					userToUsersetMessageChan)
-				close(userToUsersetMessageChan)
-				return nil
-			})
+				},
+				tt.poolSize)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -4620,7 +4940,6 @@ func TestNestedUsersetFirstLevelLookupObject(t *testing.T) {
 				userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
 			}
 
-			_ = pool.Wait()
 			require.Equal(t, tt.expected, userToUsersetMessages)
 		})
 	}
@@ -4690,7 +5009,7 @@ func TestProcessUsersetMessage(t *testing.T) {
 	}
 }
 
-func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
+func TestMatchUsersetFromUserAndUsersetFromObject(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -4705,13 +5024,19 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 			expectedError                error
 		}{
 			{
-				name:                         "empty_lists",
-				userToUsersetMessages:        []usersetMessage{},
-				objectToUsersetMessages:      []usersetMessage{},
-				expectedResolveCheckResponse: nil,
-				expectedUserToUserset:        []string{},
-				expectedObjectToUserset:      []string{},
-				expectedError:                nil,
+				name:                    "empty_lists",
+				userToUsersetMessages:   []usersetMessage{},
+				objectToUsersetMessages: []usersetMessage{},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
 			},
 			{
 				name: "userToUsersetMessages_not_nil_but_object_nil",
@@ -4721,11 +5046,17 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 						err:     nil,
 					},
 				},
-				objectToUsersetMessages:      []usersetMessage{},
-				expectedResolveCheckResponse: nil,
-				expectedUserToUserset:        []string{"group:2"},
-				expectedObjectToUserset:      []string{},
-				expectedError:                nil,
+				objectToUsersetMessages: []usersetMessage{},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
 			},
 			{
 				name:                  "objectToUsersetMessages_not_nil_but_user_nil",
@@ -4736,10 +5067,16 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 						err:     nil,
 					},
 				},
-				expectedResolveCheckResponse: nil,
-				expectedUserToUserset:        []string{},
-				expectedObjectToUserset:      []string{"group:2"},
-				expectedError:                nil,
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
 			},
 			{
 				name: "userToUsersetMessages_error",
@@ -4749,15 +5086,25 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 						err:     fmt.Errorf("mock_error"),
 					},
 				},
-				objectToUsersetMessages:      []usersetMessage{},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:1",
+						err:     nil,
+					},
+				},
 				expectedResolveCheckResponse: nil,
 				expectedUserToUserset:        nil,
 				expectedObjectToUserset:      nil,
 				expectedError:                fmt.Errorf("mock_error"),
 			},
 			{
-				name:                  "objectToUsersetMessages_error",
-				userToUsersetMessages: []usersetMessage{},
+				name: "objectToUsersetMessages_error",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:1",
+						err:     nil,
+					},
+				},
 				objectToUsersetMessages: []usersetMessage{
 					{
 						userset: "",
@@ -4838,15 +5185,15 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				userToUsersetMessagesChan := make(chan usersetMessage)
-				objectToUsersetMessagesChan := make(chan usersetMessage)
+				userToUsersetMessagesChan := make(chan usersetMessage, 5)
+				objectToUsersetMessagesChan := make(chan usersetMessage, 5)
 
 				pool := concurrency.NewPool(context.Background(), 2)
 				pool.Go(func(ctx context.Context) error {
 					time.Sleep(1 * time.Millisecond)
 
 					for _, userToUsersetMessage := range tt.userToUsersetMessages {
-						userToUsersetMessagesChan <- userToUsersetMessage
+						concurrency.TrySendThroughChannel(ctx, userToUsersetMessage, userToUsersetMessagesChan)
 					}
 					close(userToUsersetMessagesChan)
 					return nil
@@ -4856,7 +5203,7 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 					time.Sleep(1 * time.Millisecond)
 
 					for _, objectToUsersetMessage := range tt.objectToUsersetMessages {
-						objectToUsersetMessagesChan <- objectToUsersetMessage
+						concurrency.TrySendThroughChannel(ctx, objectToUsersetMessage, objectToUsersetMessagesChan)
 					}
 					close(objectToUsersetMessagesChan)
 					return nil
@@ -4870,7 +5217,7 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				}
 
-				resp, userToUserset, objectToUserset, err := processNestedUsersetFirstLevelMessage(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
+				resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
 				_ = pool.Wait()
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expectedResolveCheckResponse, resp)
@@ -4902,7 +5249,7 @@ func TestProcessNestedUsersetFirstLevelMessage(t *testing.T) {
 			RequestMetadata:      NewCheckRequestMetadata(20),
 		}
 
-		resp, userToUserset, objectToUserset, err := processNestedUsersetFirstLevelMessage(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
+		resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
 		require.ErrorIs(t, err, context.Canceled)
 		require.Nil(t, resp)
 		require.Nil(t, userToUserset)
