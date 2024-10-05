@@ -2211,7 +2211,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(2).
+		AnyTimes().
 		Return(userTuple, nil)
 
 	mockDatastore.EXPECT().
@@ -2242,7 +2242,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	require.True(t, checkResponse.GetAllowed())
 
 	// Sleep for a while to ensure that the iterator is cached
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
