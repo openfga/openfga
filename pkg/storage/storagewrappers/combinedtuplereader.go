@@ -35,7 +35,7 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
     if len(optionalParams) > 0 {
         targetUser = optionalParams[0]
     }
-	var filtered []*openfgav1.Tuple
+    var filtered []*openfgav1.Tuple
     for _, tk := range tuples {
         if (targetObject == "" || tk.GetObject() == targetObject) &&
            (targetRelation == "" || tk.GetRelation() == targetRelation) &&
