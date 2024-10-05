@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write # to write benchmark results
 
 jobs:
   lint:
