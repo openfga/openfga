@@ -30,23 +30,25 @@ var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object, relation or user provided in the filterKey.
+//
+//nolint:unparam
 func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation string, optionalParams ...string) []*openfgav1.Tuple {
-    var targetUser string
-    if len(optionalParams) > 0 {
-        targetUser = optionalParams[0]
-    }
-    var filtered []*openfgav1.Tuple
-    for _, tk := range tuples {
-        if (targetObject == "" || tk.GetObject() == targetObject) &&
-           (targetRelation == "" || tk.GetRelation() == targetRelation) &&
-           (targetUser == "" || tk.GetUser() == targetUser) {
-            filtered = append(filtered, &openfgav1.Tuple{
-                Key: tk,
-            })
-        }
-    }
+	var targetUser string
+	if len(optionalParams) > 0 {
+		targetUser = optionalParams[0]
+	}
+	var filtered []*openfgav1.Tuple
+	for _, tk := range tuples {
+		if (targetObject == "" || tk.GetObject() == targetObject) &&
+			(targetRelation == "" || tk.GetRelation() == targetRelation) &&
+			(targetUser == "" || tk.GetUser() == targetUser) {
+			filtered = append(filtered, &openfgav1.Tuple{
+				Key: tk,
+			})
+		}
+	}
 
-    return filtered
+	return filtered
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
