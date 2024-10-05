@@ -595,6 +595,7 @@ func benchmarkCheckWithTTUs(b *testing.B, engine string) {
 
 	tuplesToWrite := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("group:999", "member", "user:maria"),
+		tuple.NewTupleKey("group:999", "member_complex", "user:maria"),
 	}
 	for i := 1; i < 1_000; i++ {
 		tuplesToWrite = append(tuplesToWrite, tuple.NewTupleKey(
