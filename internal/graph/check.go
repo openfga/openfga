@@ -991,9 +991,9 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 	}
 }
 
-// recursiveMatchUserUsersetInfo groups common parameters needed
+// recursiveMatchUserUsersetCommonData groups common parameters needed
 // for recursiveMatchUserUserset for convenience purpose.
-type recursiveMatchUserUsersetInfo struct {
+type recursiveMatchUserUsersetCommonData struct {
 	typesys                     *typesystem.TypeSystem
 	ds                          storage.RelationshipTupleReader
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
@@ -1009,12 +1009,12 @@ type recursiveMatchUserUsersetInfo struct {
 // recursiveMatchUserUsersetFunc defines a function that recursively evaluates whether objects' matches userToUsersetMapping.
 type recursiveMatchUserUsersetFunc func(ctx context.Context,
 	req *ResolveCheckRequest,
-	commonParameters *recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error)
+	commonParameters *recursiveMatchUserUsersetCommonData) (*ResolveCheckResponse, error)
 
 func parallelizeRecursiveMatchUserUserset(ctx context.Context,
 	usersetItems []string,
 	req *ResolveCheckRequest,
-	commonParameters *recursiveMatchUserUsersetInfo,
+	commonParameters *recursiveMatchUserUsersetCommonData,
 	recursiveFunc recursiveMatchUserUsersetFunc,
 ) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "parallelizeRecursiveMatchUserUserset")
@@ -1091,7 +1091,7 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context,
 
 func recursiveMatchUserUserset(ctx context.Context,
 	req *ResolveCheckRequest,
-	commonParameters *recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error) {
+	commonParameters *recursiveMatchUserUsersetCommonData) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
 	defer span.End()
 
@@ -1461,7 +1461,7 @@ func nestedUsersetFastpath(ctx context.Context,
 	dsCount := &atomic.Uint32{}
 	dsCount.Store(2)
 
-	recursiveInfo := &recursiveMatchUserUsersetInfo{
+	recursiveCommonData := &recursiveMatchUserUsersetCommonData{
 		typesys:              typesys,
 		ds:                   ds,
 		dsCount:              dsCount,
@@ -1473,7 +1473,7 @@ func nestedUsersetFastpath(ctx context.Context,
 		},
 	}
 
-	return parallelizeRecursiveMatchUserUserset(ctx, usersetFromObject.Values(), req, recursiveInfo, recursiveMatchUserUserset)
+	return parallelizeRecursiveMatchUserUserset(ctx, usersetFromObject.Values(), req, recursiveCommonData, recursiveMatchUserUserset)
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided

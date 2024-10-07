@@ -4107,17 +4107,20 @@ func TestCheckTTUSlowPath(t *testing.T) {
 }
 
 type parallelRecursiveTest struct {
+	slowRequests               bool
 	numTimeFuncExecuted        *atomic.Uint32
 	returnResolveCheckResponse []*ResolveCheckResponse
 	returnError                []error
 }
 
-func (p *parallelRecursiveTest) testParalleliizeRecursive(context.Context,
+func (p *parallelRecursiveTest) testParallelizeRecursive(context.Context,
 	*ResolveCheckRequest,
-	*recursiveMatchUserUsersetInfo) (*ResolveCheckResponse, error) {
-	currentCounter := p.numTimeFuncExecuted.Load()
-	p.numTimeFuncExecuted.Add(1)
-	return p.returnResolveCheckResponse[currentCounter], p.returnError[currentCounter]
+	*recursiveMatchUserUsersetCommonData) (*ResolveCheckResponse, error) {
+	if p.slowRequests {
+		time.Sleep(5 * time.Millisecond)
+	}
+	currentCounter := p.numTimeFuncExecuted.Add(1)
+	return p.returnResolveCheckResponse[currentCounter-1], p.returnError[currentCounter-1]
 }
 
 func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
@@ -4125,318 +4128,489 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	tests := []struct {
-		name                  string
-		usersetItems          []string
-		maxConcurrentReads    int
-		visitedItems          []string
-		parallelRecursiveTest parallelRecursiveTest
-		expectedResponse      *ResolveCheckResponse
-		expectedError         error
-	}{
-		{
-			name:               "empty_userset",
-			usersetItems:       []string{},
-			visitedItems:       []string{},
-			maxConcurrentReads: 20,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 15,
-					CycleDetected:       false,
+	t.Run("regular_test", func(t *testing.T) {
+		tests := []struct {
+			name                  string
+			usersetItems          []string
+			maxConcurrentReads    int
+			visitedItems          []string
+			parallelRecursiveTest parallelRecursiveTest
+			expectedResponse      *ResolveCheckResponse
+			expectedError         error
+		}{
+			{
+				name:               "empty_userset",
+				usersetItems:       []string{},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
 				},
-			},
-			expectedError: nil,
-		},
-		{
-			name:               "multiple_userset_last_true_concurrent_read_large",
-			usersetItems:       []string{"group:1", "group:2", "group:3"},
-			visitedItems:       []string{},
-			maxConcurrentReads: 20,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-				returnResolveCheckResponse: []*ResolveCheckResponse{
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
 					},
 				},
-				returnError: []error{
-					nil,
-					nil,
-					nil,
-				},
+				expectedError: nil,
 			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 20,
-					CycleDetected:       false,
-				},
-			},
-			expectedError: nil,
-		},
-		{
-			name:               "multiple_userset_last_true_concurrent_read_small",
-			usersetItems:       []string{"group:1", "group:2", "group:3"},
-			visitedItems:       []string{},
-			maxConcurrentReads: 1,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-				returnResolveCheckResponse: []*ResolveCheckResponse{
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
+			{
+				name:               "multiple_userset_last_true_concurrent_read_large",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
 						},
 					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
 					},
 				},
-				returnError: []error{
-					nil,
-					nil,
-					nil,
-				},
-			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 20,
-					CycleDetected:       false,
-				},
-			},
-			expectedError: nil,
-		},
-		{
-			name:               "multiple_userset_first_true_concurrent_read_large",
-			usersetItems:       []string{"group:1", "group:2", "group:3"},
-			visitedItems:       []string{},
-			maxConcurrentReads: 20,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-				returnResolveCheckResponse: []*ResolveCheckResponse{
-					{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
 					},
 				},
-				returnError: []error{
-					nil,
-					nil,
-					nil,
-				},
+				expectedError: nil,
 			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 20,
-					CycleDetected:       false,
-				},
-			},
-			expectedError: nil,
-		},
-		{
-			name:               "multiple_userset_first_true_concurrent_read_small",
-			usersetItems:       []string{"group:1", "group:2", "group:3"},
-			visitedItems:       []string{},
-			maxConcurrentReads: 1,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-				returnResolveCheckResponse: []*ResolveCheckResponse{
-					{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
+			{
+				name:               "multiple_userset_last_true_concurrent_read_large_slow_requests",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					slowRequests:        true,
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
 						},
 					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
 					},
 				},
-				returnError: []error{
-					nil,
-					nil,
-					nil,
-				},
-			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 20,
-					CycleDetected:       false,
-				},
-			},
-			expectedError: nil,
-		},
-		{
-			name:               "multiple_userset_none_true_concurrent_read_small",
-			usersetItems:       []string{"group:1", "group:2", "group:3"},
-			visitedItems:       []string{},
-			maxConcurrentReads: 1,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-				returnResolveCheckResponse: []*ResolveCheckResponse{
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
-					},
-					{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 20,
-							CycleDetected:       false,
-						},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
 					},
 				},
-				returnError: []error{
-					nil,
-					nil,
-					nil,
-				},
+				expectedError: nil,
 			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 15,
-					CycleDetected:       false,
+			{
+				name:               "multiple_userset_last_true_concurrent_read_small",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
 				},
-			},
-			expectedError: nil,
-		},
-		{
-			name:               "error",
-			usersetItems:       []string{"group:1"},
-			visitedItems:       []string{},
-			maxConcurrentReads: 20,
-			parallelRecursiveTest: parallelRecursiveTest{
-				numTimeFuncExecuted: &atomic.Uint32{},
-				returnResolveCheckResponse: []*ResolveCheckResponse{
-					nil,
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
 				},
-				returnError: []error{
-					fmt.Errorf("mock_error"),
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_last_true_concurrent_read_small_slow_request",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					slowRequests:        true,
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
 				},
-			},
-			expectedResponse: nil,
-			expectedError:    fmt.Errorf("mock_error"),
-		},
-		{
-			name:               "do_not_run_visited_item",
-			usersetItems:       []string{"group:1"},
-			visitedItems:       []string{"group:1"},
-			maxConcurrentReads: 20,
-			parallelRecursiveTest: parallelRecursiveTest{
-				// notice there are no items being returned as group:1 is skipped.
-				returnResolveCheckResponse: []*ResolveCheckResponse{},
-				returnError:                []error{},
-			},
-			expectedResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 15,
-					CycleDetected:       false,
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
 				},
+				expectedError: nil,
 			},
-			expectedError: nil,
-		},
-	}
+			{
+				name:               "multiple_userset_first_true_concurrent_read_large",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_first_true_concurrent_read_small",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_none_true_concurrent_read_small",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "error",
+				usersetItems:       []string{"group:1"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						nil,
+					},
+					returnError: []error{
+						fmt.Errorf("mock_error"),
+					},
+				},
+				expectedResponse: nil,
+				expectedError:    fmt.Errorf("mock_error"),
+			},
+			{
+				name:               "do_not_run_visited_item",
+				usersetItems:       []string{"group:1"},
+				visitedItems:       []string{"group:1"},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					// notice there are no items being returned as group:1 is skipped.
+					returnResolveCheckResponse: []*ResolveCheckResponse{},
+					returnError:                []error{},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			commonParameters := &recursiveMatchUserUsersetInfo{
-				maxConcurrentReads: tt.maxConcurrentReads,
-				visitedUserset:     &sync.Map{},
-				dsCount:            &atomic.Uint32{},
-			}
-			for _, item := range tt.visitedItems {
-				commonParameters.visitedUserset.Store(item, struct{}{})
-			}
-			commonParameters.dsCount.Store(15)
-			resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
-				tt.usersetItems,
-				&ResolveCheckRequest{
-					RequestMetadata: NewCheckRequestMetadata(20),
-				},
-				commonParameters,
-				tt.parallelRecursiveTest.testParalleliizeRecursive)
-			require.Equal(t, tt.expectedResponse, resp)
-			require.Equal(t, tt.expectedError, err)
-		})
-	}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				commonParameters := &recursiveMatchUserUsersetCommonData{
+					maxConcurrentReads: tt.maxConcurrentReads,
+					visitedUserset:     &sync.Map{},
+					dsCount:            &atomic.Uint32{},
+				}
+				for _, item := range tt.visitedItems {
+					commonParameters.visitedUserset.Store(item, struct{}{})
+				}
+				commonParameters.dsCount.Store(15)
+				resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
+					tt.usersetItems,
+					&ResolveCheckRequest{
+						RequestMetadata: NewCheckRequestMetadata(20),
+					},
+					commonParameters,
+					tt.parallelRecursiveTest.testParallelizeRecursive)
+				require.Equal(t, tt.expectedResponse, resp)
+				require.Equal(t, tt.expectedError, err)
+			})
+		}
+	})
+	t.Run("very_large_slow_userset", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name         string
+			checkAllowed bool
+		}{
+			{
+				name:         "not_allowed",
+				checkAllowed: false,
+			},
+			{
+				name:         "allowed",
+				checkAllowed: true,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				maxConcurrentRead := 20
+				numUsersetItem := 5000
+				commonParameters := &recursiveMatchUserUsersetCommonData{
+					maxConcurrentReads: maxConcurrentRead,
+					visitedUserset:     &sync.Map{},
+					dsCount:            &atomic.Uint32{},
+				}
+				commonParameters.dsCount.Store(15)
+
+				usersetItems := make([]string, numUsersetItem)
+				returnResolveCheckResponse := make([]*ResolveCheckResponse, numUsersetItem)
+				returnError := make([]error, numUsersetItem)
+				for i := 0; i < numUsersetItem; i++ {
+					usersetItems[i] = fmt.Sprintf("group:%d", i)
+					returnResolveCheckResponse[i] = &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 15,
+							CycleDetected:       false,
+						},
+					}
+					returnError[i] = nil
+				}
+				if tt.checkAllowed {
+					returnResolveCheckResponse[numUsersetItem/2] = &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 15,
+							CycleDetected:       false,
+						},
+					}
+				}
+
+				recursiveTestResult := parallelRecursiveTest{
+					slowRequests:               true,
+					numTimeFuncExecuted:        &atomic.Uint32{},
+					returnResolveCheckResponse: returnResolveCheckResponse,
+					returnError:                returnError,
+				}
+				resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
+					usersetItems,
+					&ResolveCheckRequest{
+						RequestMetadata: NewCheckRequestMetadata(20),
+					},
+					commonParameters,
+					recursiveTestResult.testParallelizeRecursive)
+				require.NoError(t, err)
+				require.Equal(t, &ResolveCheckResponse{
+					Allowed: tt.checkAllowed,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				}, resp)
+			})
+		}
+	})
 }
 
 func TestRecursiveMatchUserUserset(t *testing.T) {
@@ -4645,7 +4819,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			userUsersetMapping.Add("group:a")
 			userUsersetMapping.Add("group:b")
 
-			info := &recursiveMatchUserUsersetInfo{
+			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
@@ -4662,7 +4836,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				},
 			}
 
-			result, err := recursiveMatchUserUserset(context.Background(), req, info)
+			result, err := recursiveMatchUserUserset(context.Background(), req, commonData)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, result)
 		})
