@@ -1,6 +1,6 @@
 # Contributing to OpenFGA
 
-Please see our main guide here: https://github.com/openfga/.github/blob/update-contribution-guidelines/CONTRIBUTING.md
+Please see our [main guide](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
 
 # Testing Guidelines
 
