@@ -311,6 +311,13 @@ type Config struct {
 }
 
 func (cfg *Config) Verify() error {
+	if err := cfg.VerifyServerSettings(); err != nil {
+		return err
+	}
+	return cfg.VerifyBinarySettings()
+}
+
+func (cfg *Config) VerifyServerSettings() error {
 	configuredTimeout := DefaultContextTimeout(cfg)
 
 	if cfg.ListObjectsDeadline > configuredTimeout {
@@ -332,6 +339,75 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
+	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
+		return errors.New("request duration datastore query count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration datastore query count bucket items must be non-negative integer",
+			)
+		}
+	}
+
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
+	err := cfg.VerifyCheckDispatchThrottlingConfig()
+	if err != nil {
+		return err
+	}
+
+	if cfg.ListObjectsDispatchThrottling.Enabled {
+		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
+		}
+	}
+
+	if cfg.ListUsersDispatchThrottling.Enabled {
+		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
+		}
+	}
+
+	if cfg.ListObjectsDeadline < 0 {
+		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if cfg.ListUsersDeadline < 0 {
+		return errors.New("listUsersDeadline must be non-negative time duration")
+	}
+
+	if cfg.MaxConditionEvaluationCost < 100 {
+		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
+	}
+
+	return nil
+}
+
+func (cfg *Config) VerifyBinarySettings() error {
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
 		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
 	}
@@ -378,78 +454,12 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
-		return errors.New("request duration datastore query count buckets must not be empty")
-	}
-	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New(
-				"request duration datastore query count bucket items must be non-negative integer",
-			)
-		}
-	}
-
-	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
-		return errors.New("request duration datastore dispatch count buckets must not be empty")
-	}
-	for _, val := range cfg.RequestDurationDispatchCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New(
-				"request duration dispatch count bucket items must be non-negative integer",
-			)
-		}
-	}
-
-	// Tha validation ensures we are picking the right values for Check dispatch throttling
-	err := cfg.VerifyCheckDispatchThrottlingConfig()
-	if err != nil {
-		return err
-	}
-
-	if cfg.ListObjectsDispatchThrottling.Enabled {
-		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
-		}
-	}
-
-	if cfg.ListUsersDispatchThrottling.Enabled {
-		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
-		}
-	}
-
 	if cfg.RequestTimeout < 0 {
 		return errors.New("requestTimeout must be a non-negative time duration")
 	}
 
 	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
-	}
-
-	if cfg.ListObjectsDeadline < 0 {
-		return errors.New("listObjectsDeadline must be non-negative time duration")
-	}
-
-	if cfg.ListUsersDeadline < 0 {
-		return errors.New("listUsersDeadline must be non-negative time duration")
-	}
-
-	if cfg.MaxConditionEvaluationCost < 100 {
-		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
 	return nil
