@@ -836,6 +836,12 @@ func Test_filterTuples(t *testing.T) {
 				},
 				{
 					Key: &openfgav1.TupleKey{
+						Relation: "member",
+						Object:   "group:1",
+					},
+				},
+				{
+					Key: &openfgav1.TupleKey{
 						User:     "user:testUser2",
 						Relation: "member",
 					},
@@ -852,6 +858,12 @@ func Test_filterTuples(t *testing.T) {
 				{
 					Key: &openfgav1.TupleKey{
 						Object: "group:1",
+					},
+				},
+				{
+					Key: &openfgav1.TupleKey{
+						Relation: "member",
+						Object:   "group:1",
 					},
 				},
 			},
