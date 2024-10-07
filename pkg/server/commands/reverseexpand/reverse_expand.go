@@ -296,10 +296,10 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	// e.g. 'group:eng#member'
-	if val, ok := req.User.(*UserRefObjectRelation); ok {
-		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
-		sourceUserObj = val.ObjectRelation.GetObject()
-		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
+	if userset, ok := req.User.(*UserRefObjectRelation); ok {
+		sourceUserType = tuple.GetType(userset.ObjectRelation.GetObject())
+		sourceUserObj = userset.ObjectRelation.GetObject()
+		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
 
 		if req.edge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
@@ -309,10 +309,8 @@ func (c *ReverseExpandQuery) execute(
 			}
 		}
 
-		sourceUserRel := val.ObjectRelation.GetRelation()
-
 		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
-		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+		if tuple.UsersetMatchTypeAndRelation(userset.String(), req.Relation, req.ObjectType) {
 			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
 				return err
 			}
