@@ -4514,9 +4514,9 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				commonParameters := &recursiveMatchUserUsersetCommonData{
-					maxConcurrentReads: tt.maxConcurrentReads,
-					visitedUserset:     &sync.Map{},
-					dsCount:            &atomic.Uint32{},
+					concurrencyLimit: tt.maxConcurrentReads,
+					visitedUserset:   &sync.Map{},
+					dsCount:          &atomic.Uint32{},
 				}
 				for _, item := range tt.visitedItems {
 					commonParameters.visitedUserset.Store(item, struct{}{})
@@ -4557,9 +4557,9 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 				maxConcurrentRead := 20
 				numUsersetItem := 5000
 				commonParameters := &recursiveMatchUserUsersetCommonData{
-					maxConcurrentReads: maxConcurrentRead,
-					visitedUserset:     &sync.Map{},
-					dsCount:            &atomic.Uint32{},
+					concurrencyLimit: maxConcurrentRead,
+					visitedUserset:   &sync.Map{},
+					dsCount:          &atomic.Uint32{},
 				}
 				commonParameters.dsCount.Store(15)
 
@@ -4823,7 +4823,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				typesys:              ts,
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
-				maxConcurrentReads:   10,
+				concurrencyLimit:     10,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{

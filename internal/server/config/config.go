@@ -26,7 +26,7 @@ const (
 	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000
-	DefaultMaxConcurrentReadsForCheck       = 100
+	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
 	DefaultListUsersDeadline                = 3 * time.Second
 	DefaultListUsersMaxResults              = 1000
