@@ -145,7 +145,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 				)
 			},
-			expectedError: "invalid issuer",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_token's_audience_does_not_match_the_one_provided_in_the_server_configuration,_MUST_return_'invalid_audience'_error",
@@ -165,7 +165,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 				)
 			},
-			expectedError: "invalid audience",
+			expectedError: "invalid bearer token",
 		},
 		{
 			testDescription: "when_the_subject_of_the_token_is_not_a_string,_MUST_return_'invalid_subject'_error",
@@ -186,7 +186,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 				)
 			},
-			expectedError: "invalid subject",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_the_subject_of_the_token_is_a_string_but_subject_is_not_valid,_MUST_return_'invalid_subject'_error",
@@ -207,7 +207,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					nil,
 				)
 			},
-			expectedError: "invalid subject",
+			expectedError: "invalid claims",
 		},
 	}
 
