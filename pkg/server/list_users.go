@@ -51,6 +51,11 @@ func (s *Server) ListUsers(
 
 	const methodName = "listusers"
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  methodName,
+	})
+
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
