@@ -4851,6 +4851,7 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 	tests := []struct {
 		name                            string
 		contextDone                     bool
+		publiclyAssignable              bool
 		readStartingWithUserTuples      []*openfgav1.Tuple
 		readStartingWithUserTuplesError error
 		iteratorHasError                bool
@@ -4956,6 +4957,51 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:        "non_publicly_assignable",
+			contextDone: false,
+			poolSize:    5,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:*"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:               "publicly_assignable",
+			contextDone:        false,
+			publiclyAssignable: true,
+			poolSize:           5,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:*"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -4969,7 +5015,19 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 			} else {
 				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 			}
-			model := parser.MustTransformDSLToProto(`
+			var model *openfgav1.AuthorizationModel
+			if tt.publiclyAssignable {
+				model = parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, user:*, group#member]
+`)
+			} else {
+				model = parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 
@@ -4978,6 +5036,7 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 					relations
 						define member: [user, group#member]
 `)
+			}
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
 

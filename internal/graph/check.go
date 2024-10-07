@@ -1193,7 +1193,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 			close(usersetMessageChan)
 		}()
 
-		// Note that this will take care of the publicly assignable case as well.
+		// Note that if the type of the request's user is publicly assignable, this will fetch that tuple as well.
 		iter, err := checkutil.IteratorReadStartingFromUser(ctx,
 			typesys, ds, req,
 			tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
