@@ -1337,10 +1337,7 @@ func processUsersetMessage(message usersetMessage,
 		return false, message.err
 	}
 	primarySortedSet.Add(message.userset)
-	if secondarySortedSet.Exists(message.userset) {
-		return true, nil
-	}
-	return false, nil
+	return secondarySortedSet.Exists(message.userset), nil
 }
 
 func matchUsersetFromUserAndUsersetFromObject(ctx context.Context,
