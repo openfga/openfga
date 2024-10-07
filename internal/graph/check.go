@@ -1103,6 +1103,9 @@ func recursiveMatchUserUserset(ctx context.Context,
 
 	commonParameters.dsCount.Add(1)
 
+	// In theory, we can call streamedLookupUsersetForObject. However, this creates un-necessary
+	// go-routine as this is a single producer single consumer problem.
+
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 

@@ -4760,7 +4760,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			},
 		},
 		{
-			name: "recursive_linear_found",
+			name: "found_second_level",
 			tuples: [][]*openfgav1.Tuple{
 				{
 					{
