@@ -1438,16 +1438,19 @@ func nestedUsersetFastpath(ctx context.Context,
 	ctx, span := tracer.Start(ctx, "nestedUsersetFastpath")
 	defer span.End()
 
+	cancellable, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	reqTupleKey := req.GetTupleKey()
 	objectType := tuple.GetType(reqTupleKey.GetObject())
 	relation := reqTupleKey.GetRelation()
 
-	userToUsersetMessageChan := streamedLookupUsersetForUser(ctx, typesys, ds, req, maxConcurrentReads)
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(ctx, typesys, ds, req, []*openfgav1.RelationReference{
+	userToUsersetMessageChan := streamedLookupUsersetForUser(cancellable, typesys, ds, req, maxConcurrentReads)
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, typesys, ds, req, []*openfgav1.RelationReference{
 		typesystem.DirectRelationReference(objectType, relation),
 	}, maxConcurrentReads)
 
-	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessageChan, objectToUsersetMessageChan)
+	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(cancellable, req, userToUsersetMessageChan, objectToUsersetMessageChan)
 
 	if err != nil {
 		span.RecordError(err)
