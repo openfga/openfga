@@ -4789,7 +4789,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// t.Parallel()
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -4820,7 +4820,14 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			userUsersetMapping.Add("group:a")
 			userUsersetMapping.Add("group:b")
 
-			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(context.Background(), ds, req)
+			evalRequest := tupleevaluator.EvaluationRequest{
+				StoreID:     req.GetStoreID(),
+				Consistency: req.GetConsistency(),
+				Object:      req.GetTupleKey().GetObject(),
+				Relation:    req.GetTupleKey().GetRelation(),
+			}
+
+			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(context.Background(), ds, evalRequest)
 			if tt.tupleIteratorError != nil {
 				require.Equal(t, tt.tupleIteratorError, err)
 				return
@@ -5220,7 +5227,18 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(cancellableCtx, ds, req)
+			evalRequest := tupleevaluator.EvaluationRequest{
+				StoreID:     req.GetStoreID(),
+				Consistency: req.GetConsistency(),
+				Object:      req.GetTupleKey().GetObject(),
+				Relation:    req.GetTupleKey().GetRelation(),
+			}
+
+			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(cancellableCtx, ds, evalRequest)
+			if tt.readUsersetTuplesError != nil {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 
 			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEval, tt.poolSize)

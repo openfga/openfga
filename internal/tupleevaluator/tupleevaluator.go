@@ -6,7 +6,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -14,7 +13,10 @@ import (
 
 type TupleIteratorEvaluator interface {
 	storage.TupleIterator
+	// Evaluate returns an error if the tuple is invalid according to the evaluator.
 	Evaluate(t *openfgav1.TupleKey) (string, error)
+	// Clone creates a copy of the evaluator but for a different object and relation pair.
+	Clone(ctx context.Context, object, relation string) (TupleIteratorEvaluator, error)
 }
 
 type EvaluatorKind int64
@@ -24,7 +26,7 @@ const (
 	NestedTTUKind     EvaluatorKind = 1
 )
 
-func NewTupleEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, req checkutil.ResolveCheckRequest, kind EvaluatorKind) (TupleIteratorEvaluator, error) {
+func NewTupleEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, req EvaluationRequest, kind EvaluatorKind) (TupleIteratorEvaluator, error) {
 	switch kind {
 	case NestedUsersetKind:
 		return NewNestedUsersetEvaluator(ctx, ds, req)
@@ -38,28 +40,50 @@ func NewTupleEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, 
 
 type NestedUsersetEvaluator struct {
 	storage.TupleIterator
+	ds     storage.RelationshipTupleReader
+	inputs EvaluationRequest
+	filter storage.ReadUsersetTuplesFilter
+}
+
+type EvaluationRequest struct {
+	StoreID          string
+	Consistency      openfgav1.ConsistencyPreference
+	Object, Relation string
 }
 
 var _ TupleIteratorEvaluator = (*NestedUsersetEvaluator)(nil)
 
-func NewNestedUsersetEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, req checkutil.ResolveCheckRequest) (*NestedUsersetEvaluator, error) {
-	objectID := req.GetTupleKey().GetObject()
+func NewNestedUsersetEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, req EvaluationRequest) (*NestedUsersetEvaluator, error) {
+	objectID := req.Object
 	objectType := tuple.GetType(objectID)
-	relation := req.GetTupleKey().GetRelation()
+	relation := req.Relation
 
-	iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+	filter := storage.ReadUsersetTuplesFilter{
 		Object:   objectID,
 		Relation: relation,
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 			typesystem.DirectRelationReference(objectType, relation),
 		},
-	}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
-		Preference: req.GetConsistency(),
+	}
+	iter, err := ds.ReadUsersetTuples(ctx, req.StoreID, filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
+		Preference: req.Consistency,
 	}})
 	if err != nil {
 		return nil, err
 	}
-	return &NestedUsersetEvaluator{iter}, nil
+	return &NestedUsersetEvaluator{iter, ds, req, filter}, nil
+}
+
+func (n NestedUsersetEvaluator) Clone(ctx context.Context, newObject, newRelation string) (TupleIteratorEvaluator, error) {
+	n.filter.Relation = newRelation
+	n.filter.Object = newObject
+	iter, err := n.ds.ReadUsersetTuples(ctx, n.inputs.StoreID, n.filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
+		Preference: n.inputs.Consistency,
+	}})
+	if err != nil {
+		return nil, err
+	}
+	return &NestedUsersetEvaluator{iter, n.ds, n.inputs, n.filter}, nil
 }
 
 func (n NestedUsersetEvaluator) Evaluate(t *openfgav1.TupleKey) (string, error) {

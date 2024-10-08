@@ -1107,7 +1107,12 @@ func recursiveMatchUserUserset(ctx context.Context,
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters.typesys, req, commonParameters.tupleEval, commonParameters.concurrencyLimit)
+	clonedEvaluator, err := commonParameters.tupleEval.Clone(cancellableCtx, req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation())
+	if err != nil {
+		return nil, err
+	}
+
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters.typesys, req, clonedEvaluator, commonParameters.concurrencyLimit)
 
 	var usersetItems []string
 	for usersetMsg := range objectToUsersetMessageChan {
@@ -1374,7 +1379,13 @@ func nestedUsersetFastpath(ctx context.Context,
 	cancellable, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	tupleEval, err := tupleevaluator.NewTupleEvaluator(cancellable, ds, req, kind)
+	evalRequest := tupleevaluator.EvaluationRequest{
+		StoreID:     req.GetStoreID(),
+		Consistency: req.GetConsistency(),
+		Object:      req.GetTupleKey().GetObject(),
+		Relation:    req.GetTupleKey().GetRelation(),
+	}
+	tupleEval, err := tupleevaluator.NewTupleEvaluator(cancellable, ds, evalRequest, kind)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
