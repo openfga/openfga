@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
@@ -88,6 +89,7 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
 		Consistency:          req.GetConsistency(),
+		LastChangelogTime:    time.Time{},
 	}
 
 	ctx = buildCheckContext(ctx, c.typesys, c.datastore, c.maxConcurrentReads, resolveCheckRequest.GetContextualTuples())

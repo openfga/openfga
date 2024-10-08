@@ -586,6 +586,43 @@ func TestResolveCheckExpired(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestResolveCheckLastChangelogRecent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+
+	req := &ResolveCheckRequest{
+		StoreID:              "12",
+		AuthorizationModelID: "33",
+		TupleKey: &openfgav1.TupleKey{
+			Object:   "document:abc",
+			Relation: "reader",
+			User:     "user:XYZ",
+		},
+		RequestMetadata:   NewCheckRequestMetadata(20),
+		LastChangelogTime: time.Now().Add(5 * time.Minute),
+	}
+
+	result := &ResolveCheckResponse{Allowed: true}
+	initialMockResolver := NewMockCheckResolver(ctrl)
+	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
+
+	// expect first call to result in actual resolve call
+	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Hour))
+	defer dut.Close()
+
+	dut.SetDelegate(initialMockResolver)
+
+	actualResult, err := dut.ResolveCheck(ctx, req)
+	require.Equal(t, result.Allowed, actualResult.Allowed)
+	require.NoError(t, err)
+
+	actualResult, err = dut.ResolveCheck(ctx, req)
+	require.Equal(t, result.Allowed, actualResult.Allowed)
+	require.NoError(t, err)
+}
+
 func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -697,7 +734,9 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 
 	// The second check is a cache hit.
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[any]{Value: interface{}(&ResolveCheckResponse{Allowed: true})})
+	mockCache.EXPECT().Get(reqKey).Times(1).Return(&storage.CachedResult[any]{
+		Value: interface{}(
+			&CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: &ResolveCheckResponse{Allowed: true}})})
 	res, err = cachedCheckResolver.ResolveCheck(ctx, req)
 
 	require.NoError(t, err)

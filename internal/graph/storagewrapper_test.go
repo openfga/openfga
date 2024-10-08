@@ -24,6 +24,68 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+func TestFindInCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockCache := mocks.NewMockInMemoryCache[any](mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	maxSize := 10
+	ttl := 5 * time.Hour
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+
+	storeID := ulid.Make().String()
+	key := "key"
+
+	t.Run("cache_miss", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{Expired: false, Value: nil}),
+		)
+		_, ok := ds.findInCache(storeID, key)
+		require.False(t, ok)
+	})
+	t.Run("cache_hit_no_invalid", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{
+				Value: &storage.TupleIteratorCacheEntry{
+					Tuples:       []*openfgav1.Tuple{},
+					LastModified: time.Now()}},
+			),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+		)
+		_, ok := ds.findInCache(storeID, key)
+		require.True(t, ok)
+	})
+	t.Run("cache_hit_invalid", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{
+				Value: &storage.TupleIteratorCacheEntry{
+					Tuples:       []*openfgav1.Tuple{},
+					LastModified: time.Now()}},
+			),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}}),
+		)
+		_, ok := ds.findInCache(storeID, key)
+		require.False(t, ok)
+	})
+	t.Run("cache_hit_stale_invalid", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{
+				Value: &storage.TupleIteratorCacheEntry{
+					Tuples:       []*openfgav1.Tuple{},
+					LastModified: time.Now()}},
+			),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}}),
+		)
+		_, ok := ds.findInCache(storeID, key)
+		require.True(t, ok)
+	})
+}
+
 func TestReadUsersetTuples(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
@@ -75,7 +137,9 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
-			mockCache.EXPECT().Set(gomock.Any(), tuples, ttl),
+			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
+				require.Equal(t, tuples, entry.Tuples)
+			}),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -103,7 +167,8 @@ func TestReadUsersetTuples(t *testing.T) {
 
 	t.Run("cache_hit", func(t *testing.T) {
 		gomock.InOrder(
-			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: tuples}),
+			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: &storage.TupleIteratorCacheEntry{Tuples: tuples}}),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -134,7 +199,9 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
-			mockCache.EXPECT().Set(gomock.Any(), []*openfgav1.Tuple{}, ttl),
+			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
+				require.Equal(t, []*openfgav1.Tuple{}, entry.Tuples)
+			}),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -240,7 +307,9 @@ func TestRead(t *testing.T) {
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
-			mockCache.EXPECT().Set(gomock.Any(), tuples, ttl),
+			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
+				require.Equal(t, tuples, entry.Tuples)
+			}),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -267,8 +336,8 @@ func TestRead(t *testing.T) {
 
 	t.Run("cache_hit", func(t *testing.T) {
 		gomock.InOrder(
-			mockCache.EXPECT().Get(gomock.Any()).
-				Return(&storage.CachedResult[any]{Value: tuples}),
+			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: &storage.TupleIteratorCacheEntry{Tuples: tuples}}),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -299,7 +368,9 @@ func TestRead(t *testing.T) {
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
-			mockCache.EXPECT().Set(gomock.Any(), []*openfgav1.Tuple{}, ttl),
+			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
+				require.Equal(t, []*openfgav1.Tuple{}, entry.Tuples)
+			}),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -574,7 +645,9 @@ func TestCachedIterator(t *testing.T) {
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
-		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+		entry := cachedResults.Value.(*storage.TupleIteratorCacheEntry)
+
+		if diff := cmp.Diff(tuples, entry.Tuples, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -603,7 +676,9 @@ func TestCachedIterator(t *testing.T) {
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
-		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+		entry := cachedResults.Value.(*storage.TupleIteratorCacheEntry)
+
+		if diff := cmp.Diff(tuples, entry.Tuples, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -638,7 +713,9 @@ func TestCachedIterator(t *testing.T) {
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
-		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+		entry := cachedResults.Value.(*storage.TupleIteratorCacheEntry)
+
+		if diff := cmp.Diff(tuples, entry.Tuples, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})

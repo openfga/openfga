@@ -5,6 +5,8 @@ type CheckResolverOrderedBuilder struct {
 	localCheckerOptions                    []LocalCheckerOption
 	cachedCheckResolverEnabled             bool
 	cachedCheckResolverOptions             []CachedCheckResolverOpt
+	cacheControllerCheckResolverEnabled    bool
+	cacheControllerCheckResolverOptions    []CacheControllerResolverOpt
 	dispatchThrottlingCheckResolverEnabled bool
 	dispatchThrottlingCheckResolverOptions []DispatchThrottlingCheckResolverOpt
 }
@@ -15,6 +17,14 @@ type CheckResolverOrderedBuilderOpt func(checkResolver *CheckResolverOrderedBuil
 func WithLocalCheckerOpts(opts ...LocalCheckerOption) CheckResolverOrderedBuilderOpt {
 	return func(r *CheckResolverOrderedBuilder) {
 		r.localCheckerOptions = opts
+	}
+}
+
+// WithCacheControllerCheckResolverOpts sets the opts to be used to build CacheController.
+func WithCacheControllerCheckResolverOpts(enabled bool, opts ...CacheControllerResolverOpt) CheckResolverOrderedBuilderOpt {
+	return func(r *CheckResolverOrderedBuilder) {
+		r.cacheControllerCheckResolverEnabled = enabled
+		r.cacheControllerCheckResolverOptions = opts
 	}
 }
 
@@ -51,6 +61,10 @@ func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckReso
 // The returned CheckResolverCloser should be used to close all resolvers involved in the list.
 func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverCloser) {
 	c.resolvers = []CheckResolver{}
+
+	if c.cacheControllerCheckResolverEnabled {
+		c.resolvers = append(c.resolvers, NewCacheController(c.cacheControllerCheckResolverOptions...))
+	}
 
 	if c.cachedCheckResolverEnabled {
 		c.resolvers = append(c.resolvers, NewCachedCheckResolver(c.cachedCheckResolverOptions...))

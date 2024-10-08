@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"time"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -15,6 +17,7 @@ type ResolveCheckRequest struct {
 	RequestMetadata      *ResolveCheckRequestMetadata
 	VisitedPaths         map[string]struct{}
 	Consistency          openfgav1.ConsistencyPreference
+	LastChangelogTime    time.Time
 }
 
 func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
@@ -38,6 +41,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		RequestMetadata:      requestMetadata,
 		VisitedPaths:         maps.Clone(r.GetVistedPaths()),
 		Consistency:          r.GetConsistency(),
+		LastChangelogTime:    r.GetLastChangelogTime(),
 	}
 }
 
@@ -95,4 +99,11 @@ func (r *ResolveCheckRequest) GetVistedPaths() map[string]struct{} {
 		return map[string]struct{}{}
 	}
 	return r.VisitedPaths
+}
+
+func (r *ResolveCheckRequest) GetLastChangelogTime() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	return r.LastChangelogTime
 }
