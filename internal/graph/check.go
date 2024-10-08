@@ -1102,52 +1102,23 @@ func recursiveMatchUserUserset(ctx context.Context,
 	}
 
 	commonParameters.dsCount.Add(1)
+	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
 
-	// In theory, we can call streamedLookupUsersetForObject. However, this creates un-necessary
-	// go-routine as this is a single producer single consumer problem.
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(
+		cancellableCtx,
+		commonParameters.typesys,
+		commonParameters.ds,
+		req,
+		commonParameters.allowedUserTypeRestrictions,
+		commonParameters.concurrencyLimit)
 
-	storeID := req.GetStoreID()
-	reqTupleKey := req.GetTupleKey()
-
-	opts := storage.ReadUsersetTuplesOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-	iter, err := commonParameters.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-		Object:                      reqTupleKey.GetObject(),
-		Relation:                    reqTupleKey.GetRelation(),
-		AllowedUserTypeRestrictions: commonParameters.allowedUserTypeRestrictions,
-	}, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(commonParameters.typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), commonParameters.typesys),
-	)
-	defer filteredIter.Stop()
-
-	// First, we will want to check if there are any intersection with the userToUsersetMapping.
-	// If so, we do not need to recursively lookup further.
 	var usersetItems []string
-	for {
-		t, err := filteredIter.Next(ctx)
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			return nil, err
+	for usersetMsg := range objectToUsersetMessageChan {
+		if usersetMsg.err != nil {
+			return nil, usersetMsg.err
 		}
-		usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
-		if relation == "" {
-			// This should not be possible given we have put in the type restriction.
-			return nil, fmt.Errorf("expect user %s to have form objection relation", t.GetUser())
-		}
+		usersetName := usersetMsg.userset
 		if commonParameters.userToUsersetMapping.Exists(usersetName) {
 			return &ResolveCheckResponse{
 				Allowed: true,
@@ -1158,6 +1129,7 @@ func recursiveMatchUserUserset(ctx context.Context,
 		}
 		usersetItems = append(usersetItems, usersetName)
 	}
+
 	if len(usersetItems) == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
