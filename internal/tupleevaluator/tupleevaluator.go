@@ -12,11 +12,12 @@ import (
 )
 
 type TupleIteratorEvaluator interface {
-	storage.TupleIterator
 	// Evaluate returns an error if the tuple is invalid according to the evaluator.
 	Evaluate(t *openfgav1.TupleKey) (string, error)
+	// Start starts the evaluator by reading from the DB.
+	Start(ctx context.Context) (storage.TupleIterator, error)
 	// Clone creates a copy of the evaluator but for a different object and relation pair.
-	Clone(ctx context.Context, object, relation string) (TupleIteratorEvaluator, error)
+	Clone(newObject, newRelation string) TupleIteratorEvaluator
 }
 
 type EvaluatorKind int64
@@ -26,23 +27,24 @@ const (
 	NestedTTUKind     EvaluatorKind = 1
 )
 
-func NewTupleEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, req EvaluationRequest, kind EvaluatorKind) (TupleIteratorEvaluator, error) {
+func NewTupleEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest, kind EvaluatorKind) TupleIteratorEvaluator {
 	switch kind {
 	case NestedUsersetKind:
-		return NewNestedUsersetEvaluator(ctx, ds, req)
+		return NewNestedUsersetEvaluator(ds, req)
 	case NestedTTUKind:
 		// TODO
-		return nil, fmt.Errorf("not implemented")
-	default:
-		return nil, fmt.Errorf("not supported: %v", kind)
+		return nil
 	}
+
+	return nil
 }
 
 type NestedUsersetEvaluator struct {
 	storage.TupleIterator
-	ds     storage.RelationshipTupleReader
-	inputs EvaluationRequest
-	filter storage.ReadUsersetTuplesFilter
+	Datastore storage.RelationshipTupleReader
+	Input     EvaluationRequest
+	Filter    storage.ReadUsersetTuplesFilter
+	Options   storage.ReadUsersetTuplesOptions
 }
 
 type EvaluationRequest struct {
@@ -53,7 +55,7 @@ type EvaluationRequest struct {
 
 var _ TupleIteratorEvaluator = (*NestedUsersetEvaluator)(nil)
 
-func NewNestedUsersetEvaluator(ctx context.Context, ds storage.RelationshipTupleReader, req EvaluationRequest) (*NestedUsersetEvaluator, error) {
+func NewNestedUsersetEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) *NestedUsersetEvaluator {
 	objectID := req.Object
 	objectType := tuple.GetType(objectID)
 	relation := req.Relation
@@ -65,25 +67,21 @@ func NewNestedUsersetEvaluator(ctx context.Context, ds storage.RelationshipTuple
 			typesystem.DirectRelationReference(objectType, relation),
 		},
 	}
-	iter, err := ds.ReadUsersetTuples(ctx, req.StoreID, filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
+	opts := storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
 		Preference: req.Consistency,
-	}})
-	if err != nil {
-		return nil, err
-	}
-	return &NestedUsersetEvaluator{iter, ds, req, filter}, nil
+	}}
+
+	return &NestedUsersetEvaluator{Datastore: ds, Input: req, Filter: filter, Options: opts}
 }
 
-func (n NestedUsersetEvaluator) Clone(ctx context.Context, newObject, newRelation string) (TupleIteratorEvaluator, error) {
-	n.filter.Relation = newRelation
-	n.filter.Object = newObject
-	iter, err := n.ds.ReadUsersetTuples(ctx, n.inputs.StoreID, n.filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
-		Preference: n.inputs.Consistency,
-	}})
-	if err != nil {
-		return nil, err
-	}
-	return &NestedUsersetEvaluator{iter, n.ds, n.inputs, n.filter}, nil
+func (n NestedUsersetEvaluator) Start(ctx context.Context) (storage.TupleIterator, error) {
+	return n.Datastore.ReadUsersetTuples(ctx, n.Input.StoreID, n.Filter, n.Options)
+}
+
+func (n NestedUsersetEvaluator) Clone(newObject, newRelation string) TupleIteratorEvaluator {
+	n.Filter.Relation = newRelation
+	n.Filter.Object = newObject
+	return &NestedUsersetEvaluator{Datastore: n.Datastore, Input: n.Input, Filter: n.Filter, Options: n.Options}
 }
 
 func (n NestedUsersetEvaluator) Evaluate(t *openfgav1.TupleKey) (string, error) {

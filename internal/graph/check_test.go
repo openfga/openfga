@@ -4827,12 +4827,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				Relation:    req.GetTupleKey().GetRelation(),
 			}
 
-			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(context.Background(), ds, evalRequest)
-			if tt.tupleIteratorError != nil {
-				require.Equal(t, tt.tupleIteratorError, err)
-				return
-			}
-			require.NoError(t, err)
+			tupleEval := tupleevaluator.NewNestedUsersetEvaluator(ds, evalRequest)
 
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
@@ -5234,12 +5229,7 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				Relation:    req.GetTupleKey().GetRelation(),
 			}
 
-			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(cancellableCtx, ds, evalRequest)
-			if tt.readUsersetTuplesError != nil {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
+			tupleEval := tupleevaluator.NewNestedUsersetEvaluator(ds, evalRequest)
 
 			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEval, tt.poolSize)
 

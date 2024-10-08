@@ -18,6 +18,15 @@ func TestNestedEvaluator(t *testing.T) {
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	baseEvaluator := NewNestedUsersetEvaluator(mockDatastore, EvaluationRequest{
+		StoreID:     "ABC",
+		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
+		Object:      "group:1",
+		Relation:    "member",
+	})
+	require.NotNil(t, baseEvaluator)
+
 	mockDatastore.EXPECT().
 		ReadUsersetTuples(gomock.Any(), "ABC", storage.ReadUsersetTuplesFilter{
 			Object:                      "group:1",
@@ -25,17 +34,18 @@ func TestNestedEvaluator(t *testing.T) {
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
 		}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY}}).
 		Return(nil, nil).Times(1)
-
-	baseEvaluator, err := NewNestedUsersetEvaluator(context.Background(), mockDatastore, EvaluationRequest{
-		StoreID:     "ABC",
-		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
-		Object:      "group:1",
-		Relation:    "member",
-	})
+	_, err := baseEvaluator.Start(context.Background())
 	require.NoError(t, err)
-	require.NotNil(t, baseEvaluator)
 
 	t.Run("clone", func(t *testing.T) {
+		clonedEvaluator := baseEvaluator.Clone("new_group:2", "new_relation")
+		require.NotNil(t, clonedEvaluator)
+		require.NotEqual(t, baseEvaluator, clonedEvaluator)
+
+		// original inputs should not be affected
+		require.Equal(t, "group:1", baseEvaluator.Input.Object)
+		require.Equal(t, "member", baseEvaluator.Input.Relation)
+
 		mockDatastore.EXPECT().
 			ReadUsersetTuples(gomock.Any(), "ABC", storage.ReadUsersetTuplesFilter{
 				Object:   "new_group:2",
@@ -44,14 +54,7 @@ func TestNestedEvaluator(t *testing.T) {
 				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
 			}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY}}).
 			Return(nil, nil).Times(1)
-
-		clonedEvaluator, err := baseEvaluator.Clone(context.Background(), "new_group:2", "new_relation")
+		_, err := clonedEvaluator.Start(context.Background())
 		require.NoError(t, err)
-		require.NotNil(t, clonedEvaluator)
-		require.NotEqual(t, baseEvaluator, clonedEvaluator)
-
-		// original inputs should not be affected
-		require.Equal(t, "group:1", baseEvaluator.inputs.Object)
-		require.Equal(t, "member", baseEvaluator.inputs.Relation)
 	})
 }
