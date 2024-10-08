@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/tupleevaluator"
 
 	"github.com/openfga/openfga/internal/mocks"
 
@@ -4819,6 +4820,13 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			userUsersetMapping.Add("group:a")
 			userUsersetMapping.Add("group:b")
 
+			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(context.Background(), ds, req)
+			if tt.tupleIteratorError != nil {
+				require.Equal(t, tt.tupleIteratorError, err)
+				return
+			}
+			require.NoError(t, err)
+
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
 				ds:                   ds,
@@ -4826,14 +4834,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				concurrencyLimit:     10,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
-				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
-					{
-						Type: "group",
-						RelationOrWildcard: &openfgav1.RelationReference_Relation{
-							Relation: "member",
-						},
-					},
-				},
+				tupleEval:            tupleEval,
 			}
 
 			result, err := recursiveMatchUserUserset(context.Background(), req, commonData)
@@ -5219,16 +5220,10 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, ds, req,
-				[]*openfgav1.RelationReference{
-					{
-						Type: "group",
-						RelationOrWildcard: &openfgav1.RelationReference_Relation{
-							Relation: "member",
-						},
-					},
-				},
-				tt.poolSize)
+			tupleEval, err := tupleevaluator.NewNestedUsersetEvaluator(cancellableCtx, ds, req)
+			require.NoError(t, err)
+
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEval, tt.poolSize)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -5730,7 +5725,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				}
-				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tupleevaluator.NestedUsersetKind, 10)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -5775,7 +5770,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata:      NewCheckRequestMetadata(20),
 		}
-		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tupleevaluator.NestedUsersetKind, 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})
