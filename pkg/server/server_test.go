@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
@@ -2186,16 +2187,6 @@ func TestCheckWithCachedIterator(t *testing.T) {
 			relations
 				define viewer: [user, user:*, company#viewer]`).GetTypeDefinitions()
 
-	userTuple := &openfgav1.Tuple{
-		Key: tuple.NewTupleKey("company:1", "viewer", "user:1"),
-	}
-
-	usersetTuples := []*openfgav1.Tuple{
-		{
-			Key: tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
-		},
-	}
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -2212,12 +2203,27 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		AnyTimes().
-		Return(userTuple, nil)
+		DoAndReturn(
+			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if tk.GetObject() == "company:1" {
+					return &openfgav1.Tuple{
+						Key:       tk,
+						Timestamp: timestamppb.Now(),
+					}, nil
+				}
+
+				return nil, storage.ErrNotFound
+			})
 
 	mockDatastore.EXPECT().
 		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 		Times(1).
-		Return(storage.NewStaticTupleIterator(usersetTuples), nil)
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
@@ -2242,7 +2248,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	require.True(t, checkResponse.GetAllowed())
 
 	// Sleep for a while to ensure that the iterator is cached
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(1 * time.Millisecond)
 
 	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
