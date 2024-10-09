@@ -12,6 +12,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
 * Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
 
+### Fixed
+* Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
