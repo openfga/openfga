@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Added
 * Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+* Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
 
 ## [1.6.2] - 2024-10-03
 
