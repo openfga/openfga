@@ -1691,6 +1691,22 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
 
+		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
+		objectTypeRelation := tuple.ToObjectRelationString(objectType, relation)
+
+		userType := tuple.GetType(req.GetTupleKey().GetUser())
+		if c.optimizationsEnabled && typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+			tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
+			evalRequest := tupleevaluator.EvaluationRequest{
+				StoreID:     req.GetStoreID(),
+				Consistency: req.GetConsistency(),
+				Object:      req.GetTupleKey().GetObject(),
+				Relation:    tuplesetRelation,
+				Kind:        tupleevaluator.NestedTTUKind,
+			}
+			return nestedUsersetFastpath(ctx, typesys, ds, req, evalRequest, int(c.concurrencyLimit))
+		}
+
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 

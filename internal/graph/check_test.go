@@ -5563,7 +5563,95 @@ func TestNestedUsersetFastpath(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	t.Run("normal_test_cases", func(t *testing.T) {
+	t.Run("normal_ttu_test_cases", func(t *testing.T) {
+		model := parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user] or member from parent
+					define parent: [group]
+			`)
+		tests := []struct {
+			name                            string
+			readStartingWithUserTuples      []*openfgav1.Tuple
+			readStartingWithUserTuplesError error
+			readTuples                      [][]*openfgav1.Tuple
+			readTuplesError                 error
+			expected                        *ResolveCheckResponse
+			expectedError                   error
+		}{
+			{
+				name: "happy_case",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:2", "parent", "group:1"),
+						},
+						{
+							Key: tuple.NewTupleKey("group:2a", "parent", "group:1a"),
+						},
+						{
+							Key: tuple.NewTupleKey("group:3", "parent", "group:2a"),
+						},
+						{
+							Key: tuple.NewTupleKey("group:3", "parent", "group:2"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				ds := mocks.NewMockRelationshipTupleReader(ctrl)
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+
+				for _, tuples := range tt.readTuples {
+					ds.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
+				}
+				ts, err := typesystem.New(model)
+				require.NoError(t, err)
+
+				req := &ResolveCheckRequest{
+					StoreID:              ulid.Make().String(),
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				}
+				evalRequest := tupleevaluator.EvaluationRequest{
+					StoreID:     req.GetStoreID(),
+					Consistency: req.GetConsistency(),
+					Object:      req.GetTupleKey().GetObject(),
+					Relation:    "parent",
+					Kind:        tupleevaluator.NestedTTUKind,
+				}
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, evalRequest, 10)
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
+			})
+		}
+	})
+
+	t.Run("normal_userset_test_cases", func(t *testing.T) {
 		tests := []struct {
 			name                            string
 			readStartingWithUserTuples      []*openfgav1.Tuple
