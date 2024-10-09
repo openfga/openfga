@@ -26,13 +26,13 @@ type TupleIteratorEvaluator interface {
 func NewTupleEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) TupleIteratorEvaluator {
 	switch req.Kind {
 	case NestedUsersetKind:
-		return NewNestedUsersetEvaluator(ds, req)
+		return newNestedUsersetEvaluator(ds, req)
 	case NestedTTUKind:
 		// TODO
 		return nil
+	default:
+		panic("unsupported evaluator kind")
 	}
-
-	return nil
 }
 
 type NestedUsersetEvaluator struct {
@@ -44,9 +44,9 @@ type NestedUsersetEvaluator struct {
 }
 
 type EvaluationRequest struct {
+	Kind             EvaluatorKind
 	StoreID          string
 	Consistency      openfgav1.ConsistencyPreference
-	Kind             EvaluatorKind
 	Object, Relation string
 }
 
@@ -59,7 +59,7 @@ const (
 
 var _ TupleIteratorEvaluator = (*NestedUsersetEvaluator)(nil)
 
-func NewNestedUsersetEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) *NestedUsersetEvaluator {
+func newNestedUsersetEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) *NestedUsersetEvaluator {
 	objectType := tuple.GetType(req.Object)
 
 	filter := storage.ReadUsersetTuplesFilter{

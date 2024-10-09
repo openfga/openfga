@@ -19,7 +19,7 @@ func TestNestedUsersetEvaluator(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	baseEvaluator := NewNestedUsersetEvaluator(mockDatastore, EvaluationRequest{
+	baseEvaluator := newNestedUsersetEvaluator(mockDatastore, EvaluationRequest{
 		StoreID:     "ABC",
 		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 		Object:      "group:1",

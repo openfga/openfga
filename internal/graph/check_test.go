@@ -4825,9 +4825,10 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				Consistency: req.GetConsistency(),
 				Object:      req.GetTupleKey().GetObject(),
 				Relation:    req.GetTupleKey().GetRelation(),
+				Kind:        tupleevaluator.NestedUsersetKind,
 			}
 
-			tupleEval := tupleevaluator.NewNestedUsersetEvaluator(ds, evalRequest)
+			tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
 
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
@@ -5227,9 +5228,10 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				Consistency: req.GetConsistency(),
 				Object:      req.GetTupleKey().GetObject(),
 				Relation:    req.GetTupleKey().GetRelation(),
+				Kind:        tupleevaluator.NestedUsersetKind,
 			}
 
-			tupleEval := tupleevaluator.NewNestedUsersetEvaluator(ds, evalRequest)
+			tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
 
 			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEval, tt.poolSize)
 
