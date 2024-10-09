@@ -732,6 +732,7 @@ func Test_filterTuples(t *testing.T) {
 		tuples         []*openfgav1.TupleKey
 		targetObject   string
 		targetRelation string
+		targetUsers    []string
 	}
 	okTuples := []*openfgav1.TupleKey{
 		{
@@ -799,6 +800,19 @@ func Test_filterTuples(t *testing.T) {
 				tuples:         okTuples,
 				targetObject:   "group:1",
 				targetRelation: "member",
+				targetUsers:    []string{"user:testUser1"},
+			},
+			want: []*openfgav1.Tuple{
+				{Key: tuple.MustParseTupleString("group:1#member@user:testUser1")},
+			},
+		},
+		{
+			name: "Test_filterTuples_OK_multiple_users",
+			args: args{
+				tuples:         okTuples,
+				targetObject:   "group:1",
+				targetRelation: "member",
+				targetUsers:    []string{"user:testUser1", "user:testUser2", "user:testUser3"},
 			},
 			want: []*openfgav1.Tuple{
 				{Key: tuple.MustParseTupleString("group:1#member@user:testUser1")},
@@ -868,10 +882,36 @@ func Test_filterTuples(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Test_filterTuples_with_incomplete_testTuples_only_user",
+			args: args{
+				tuples:      incompleteTuples,
+				targetUsers: []string{"user:testUser2"},
+			},
+			want: []*openfgav1.Tuple{
+				{
+					Key: &openfgav1.TupleKey{
+						User: "user:testUser2",
+					},
+				},
+				{
+					Key: &openfgav1.TupleKey{
+						User:   "user:testUser2",
+						Object: "doc:2",
+					},
+				},
+				{
+					Key: &openfgav1.TupleKey{
+						User:     "user:testUser2",
+						Relation: "member",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := filterTuples(tt.args.tuples, tt.args.targetObject, tt.args.targetRelation); !reflect.DeepEqual(got, tt.want) {
+			if got := filterTuples(tt.args.tuples, tt.args.targetObject, tt.args.targetRelation, tt.args.targetUsers); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("filterTuples() = %v, want %v", got, tt.want)
 			}
 		})
