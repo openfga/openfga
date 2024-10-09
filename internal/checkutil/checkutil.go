@@ -72,7 +72,7 @@ func userFilter(hasPubliclyAssignedType bool,
 	}
 }
 
-type ResolveCheckRequest interface {
+type resolveCheckRequest interface {
 	GetStoreID() string
 	GetTupleKey() *openfgav1.TupleKey
 	GetConsistency() openfgav1.ConsistencyPreference
@@ -84,7 +84,7 @@ type ResolveCheckRequest interface {
 func IteratorReadStartingFromUser(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
-	req ResolveCheckRequest,
+	req resolveCheckRequest,
 	objectRel string,
 	objectIDs storage.SortedSet) (storage.TupleIterator, error) {
 	storeID := req.GetStoreID()
