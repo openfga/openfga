@@ -4,6 +4,9 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/openfga/openfga/internal/cachecontroller"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -28,6 +31,7 @@ func TestCheckQuery(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockCache := mockstorage.NewMockInMemoryCache[any](mockController)
 
 	mockCheckResolver := graph.NewMockCheckResolver(mockController)
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -159,6 +163,38 @@ type doc
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.ErrorIs(t, err, errors.ErrUnknown)
+	})
+
+	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCacheController(cachecontroller.NewCacheController(mockDatastore, mockCache, 10*time.Second, 10*time.Second)))
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Zero(t, req.GetLastCacheInvalidationTime())
+			return nil, nil
+		})
+		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              ulid.Make().String(),
+			AuthorizationModelId: ulid.Make().String(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("cache_controller_sets_invalidation_time", func(t *testing.T) {
+		invalidationTime := time.Now().UTC()
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCacheController(cachecontroller.NewCacheController(mockDatastore, mockCache, 10*time.Second, 10*time.Second)))
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
+			return nil, nil
+		})
+		storeID := ulid.Make().String()
+		mockCache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.ChangelogCacheEntry{LastModified: invalidationTime}})
+		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: ulid.Make().String(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
 	})
 }
 

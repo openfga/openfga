@@ -40,12 +40,13 @@ func TestFindInCache(t *testing.T) {
 
 	storeID := ulid.Make().String()
 	key := "key"
+	invalidEntityKey := "invalid_key"
 
 	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{Expired: false, Value: nil}),
 		)
-		_, ok := ds.findInCache(storeID, key)
+		_, ok := ds.findInCache(storeID, key, invalidEntityKey)
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_no_invalid", func(t *testing.T) {
@@ -56,8 +57,9 @@ func TestFindInCache(t *testing.T) {
 					LastModified: time.Now()}},
 			),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key)
+		_, ok := ds.findInCache(storeID, key, invalidEntityKey)
 		require.True(t, ok)
 	})
 	t.Run("cache_hit_invalid", func(t *testing.T) {
@@ -69,7 +71,7 @@ func TestFindInCache(t *testing.T) {
 			),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}}),
 		)
-		_, ok := ds.findInCache(storeID, key)
+		_, ok := ds.findInCache(storeID, key, invalidEntityKey)
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_stale_invalid", func(t *testing.T) {
@@ -80,8 +82,35 @@ func TestFindInCache(t *testing.T) {
 					LastModified: time.Now()}},
 			),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}}),
+			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key)
+		_, ok := ds.findInCache(storeID, key, invalidEntityKey)
+		require.True(t, ok)
+	})
+	t.Run("cache_hit_invalid_entity", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{
+				Value: &storage.TupleIteratorCacheEntry{
+					Tuples:       []*openfgav1.Tuple{},
+					LastModified: time.Now()}},
+			),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKey).Return(&storage.CachedResult[any]{Value: &storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}}),
+		)
+		_, ok := ds.findInCache(storeID, key, invalidEntityKey)
+		require.False(t, ok)
+	})
+	t.Run("cache_hit_invalid_entity_stale", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return(&storage.CachedResult[any]{
+				Value: &storage.TupleIteratorCacheEntry{
+					Tuples:       []*openfgav1.Tuple{},
+					LastModified: time.Now()}},
+			),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKey).Return(&storage.CachedResult[any]{Value: &storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}}),
+		)
+		_, ok := ds.findInCache(storeID, key, invalidEntityKey)
 		require.True(t, ok)
 	})
 }

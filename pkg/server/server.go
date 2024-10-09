@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/openfga/openfga/internal/cachecontroller"
+
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 
 	"github.com/openfga/openfga/internal/graph"
@@ -144,6 +146,7 @@ type Server struct {
 
 	cacheControllerEnabled bool
 	cacheControllerTTL     time.Duration
+	cacheController        *cachecontroller.CacheController
 
 	checkQueryCacheEnabled bool
 	checkQueryCacheTTL     time.Duration
@@ -652,10 +655,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
+	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
+
 	if s.cacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(s.cacheLimit)),
 		}...)
+	}
+
+	if s.cache != nil && s.checkQueryCacheEnabled {
+		// TODO: replace checkQueryCacheTTL with checkIteratorCacheTTL once its introduced
+		s.cacheController = cachecontroller.NewCacheController(s.datastore, s.cache, s.cacheControllerTTL, s.checkQueryCacheTTL)
 	}
 
 	var checkCacheOptions []graph.CachedCheckResolverOpt
@@ -667,14 +677,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
-
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 		}...),
-		graph.WithCacheControllerCheckResolverOpts(s.cacheControllerEnabled, graph.WithCache(s.cache), graph.WithDatastore(s.datastore), graph.WithTTL(s.cacheControllerTTL)),
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
@@ -1030,6 +1037,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithCacheController(s.cacheController),
 	).Execute(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)

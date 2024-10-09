@@ -39,9 +39,9 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		ContextualTuples:          r.GetContextualTuples(),
 		Context:                   r.GetContext(),
 		RequestMetadata:           requestMetadata,
-		VisitedPaths:              maps.Clone(r.GetVistedPaths()),
+		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
 		Consistency:               r.GetConsistency(),
-		LastCacheInvalidationTime: r.GetLastChangelogTime(),
+		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 	}
 }
 
@@ -94,14 +94,14 @@ func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
 	return r.Consistency
 }
 
-func (r *ResolveCheckRequest) GetVistedPaths() map[string]struct{} {
+func (r *ResolveCheckRequest) GetVisitedPaths() map[string]struct{} {
 	if r == nil {
 		return map[string]struct{}{}
 	}
 	return r.VisitedPaths
 }
 
-func (r *ResolveCheckRequest) GetLastChangelogTime() time.Time {
+func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 	if r == nil {
 		return time.Time{}
 	}

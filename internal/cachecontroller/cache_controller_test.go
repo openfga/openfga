@@ -1,4 +1,4 @@
-package graph
+package cachecontroller
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func TestCacheController_ResolveCheck(t *testing.T) {
+func TestCacheController_DetermineInvalidation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -23,46 +23,18 @@ func TestCacheController_ResolveCheck(t *testing.T) {
 
 	cache := mocks.NewMockInMemoryCache[any](ctrl)
 	ds := mocks.NewMockOpenFGADatastore(ctrl)
-	mockResolver := NewMockCheckResolver(ctrl)
 
-	cacheController := NewCacheController(WithDatastore(ds), WithCache(cache), WithTTL(10*time.Second))
-	cacheController.SetDelegate(mockResolver)
+	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
 	storeID := "id"
 
-	t.Run("high_consistency", func(t *testing.T) {
-		req := &ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: "33",
-			TupleKey: &openfgav1.TupleKey{
-				Object:   "document:abc",
-				Relation: "reader",
-				User:     "user:XYZ",
-			},
-			RequestMetadata: NewCheckRequestMetadata(20),
-			Consistency:     openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		}
-		mockResolver.EXPECT().ResolveCheck(gomock.Any(), req)
-		_, err := cacheController.ResolveCheck(ctx, req)
-		require.NoError(t, err)
-	})
 	t.Run("cache_hit", func(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.ChangelogCacheEntry{LastModified: time.Now()}})
-		req := &ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: "33",
-			TupleKey: &openfgav1.TupleKey{
-				Object:   "document:abc",
-				Relation: "reader",
-				User:     "user:XYZ",
-			},
-			RequestMetadata: NewCheckRequestMetadata(20),
-		}
-		mockResolver.EXPECT().ResolveCheck(gomock.Any(), req)
-		_, err := cacheController.ResolveCheck(ctx, req)
-		require.NoError(t, err)
+
+		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
+		require.NotZero(t, invalidationTime)
 	})
 	t.Run("cache_miss", func(t *testing.T) {
-		changelogTimestamp := time.Now().Add(-20 * time.Second)
+		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
 
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(nil),
@@ -78,21 +50,8 @@ func TestCacheController_ResolveCheck(t *testing.T) {
 			}, []byte{}, nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
-		req := &ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: "33",
-			TupleKey: &openfgav1.TupleKey{
-				Object:   "document:abc",
-				Relation: "reader",
-				User:     "user:XYZ",
-			},
-			RequestMetadata: NewCheckRequestMetadata(20),
-		}
-		assertReq := req.clone()
-		assertReq.LastCacheInvalidationTime = timestamppb.New(changelogTimestamp).AsTime()
-		mockResolver.EXPECT().ResolveCheck(gomock.Any(), assertReq)
-		_, err := cacheController.ResolveCheck(ctx, req)
-		require.NoError(t, err)
+		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
+		require.Equal(t, changelogTimestamp, invalidationTime)
 	})
 }
 
@@ -275,7 +234,7 @@ func TestCacheController_findChangesAndInvalidate(t *testing.T) {
 
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
 			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, []byte{}, test.readChangesResults.err)
-			cacheController := NewCacheController(WithDatastore(datastore), WithCache(cache), WithTTL(10*time.Second))
+			cacheController := NewCacheController(datastore, cache, 10*time.Second, 10*time.Second)
 			_, err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
 			if test.expectedError != nil {
 				require.ErrorIs(t, err, test.expectedError)

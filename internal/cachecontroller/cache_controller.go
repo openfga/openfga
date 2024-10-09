@@ -1,9 +1,11 @@
-package graph
+package cachecontroller
 
 import (
 	"context"
 	"math"
 	"time"
+
+	"go.opentelemetry.io/otel"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/sync/singleflight"
@@ -11,97 +13,52 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+var tracer = otel.Tracer("internal/cachecontroller")
+
 type CacheController struct {
-	ds storage.OpenFGADatastore
+	ds               storage.OpenFGADatastore
+	cache            storage.InMemoryCache[any]
+	ttl              time.Duration
+	iteratorCacheTTL time.Duration
 
-	delegate CheckResolver
-	cache    storage.InMemoryCache[any]
-	sf       *singleflight.Group
-
-	ttl time.Duration
+	sf *singleflight.Group
 }
 
-var _ CheckResolver = (*CacheController)(nil)
-
-// CacheControllerResolverOpt defines an option that can be used to change the behavior of cacheControllerResolver
-// instance.
-type CacheControllerResolverOpt func(*CacheController)
-
-func WithDatastore(ds storage.OpenFGADatastore) CacheControllerResolverOpt {
-	return func(c *CacheController) {
-		c.ds = ds
-	}
-}
-
-func WithCache(cache storage.InMemoryCache[any]) CacheControllerResolverOpt {
-	return func(c *CacheController) {
-		c.cache = cache
-	}
-}
-
-func WithTTL(ttl time.Duration) CacheControllerResolverOpt {
-	return func(c *CacheController) {
-		c.ttl = ttl
-	}
-}
-func NewCacheController(opts ...CacheControllerResolverOpt) *CacheController {
+func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) *CacheController {
 	c := &CacheController{
-		ttl: defaultCacheTTL,
-		sf:  &singleflight.Group{},
-	}
-	c.delegate = c
-
-	for _, opt := range opts {
-		opt(c)
+		ds:               ds,
+		cache:            cache,
+		ttl:              ttl,
+		iteratorCacheTTL: iteratorCacheTTL,
+		sf:               &singleflight.Group{},
 	}
 
 	return c
 }
 
-// SetDelegate sets this CacheController's dispatch delegate.
-func (c *CacheController) SetDelegate(delegate CheckResolver) {
-	c.delegate = delegate
-}
-
-// GetDelegate returns this CacheController's dispatch delegate.
-func (c *CacheController) GetDelegate() CheckResolver {
-	return c.delegate
-}
-
-// Close will deallocate resource allocated by the CacheController
-// It will not deallocate cache if it has been passed in from WithCache.
-func (c *CacheController) Close() {
-}
-
-func (c *CacheController) ResolveCheck(
+func (c *CacheController) DetermineInvalidation(
 	ctx context.Context,
-	req *ResolveCheckRequest,
-) (*ResolveCheckResponse, error) {
+	storeID string,
+) time.Time {
 	ctx, span := tracer.Start(ctx, "cacheController.ResolveCheck")
 	defer span.End()
-	if req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		return c.delegate.ResolveCheck(ctx, req)
-	}
 
-	storeID := req.GetStoreID()
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
 	if cacheResp != nil && !cacheResp.Expired && cacheResp.Value != nil {
 		entry := cacheResp.Value.(*storage.ChangelogCacheEntry)
-		// since last verified is less than our pre-defined TTL, do nothing
-		req.LastCacheInvalidationTime = entry.LastModified
-		return c.delegate.ResolveCheck(ctx, req)
+		return entry.LastModified
 	}
 
 	lastModified, err, _ := c.sf.Do(storeID, func() (interface{}, error) {
 		return c.findChangesAndInvalidate(ctx, storeID)
 	})
 
-	if err == nil {
-		req.LastCacheInvalidationTime = lastModified.(time.Time)
+	if err != nil {
+		return time.Time{}
 	}
 
-	return c.delegate.ResolveCheck(ctx, req)
+	return lastModified.(time.Time)
 }
 
 func (c *CacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, []byte, error) {
@@ -163,5 +120,5 @@ func (c *CacheController) invalidateIteratorCache(storeID string) {
 }
 
 func (c *CacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string) {
-	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), nil, c.ttl)
+	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, c.iteratorCacheTTL)
 }
