@@ -473,10 +473,7 @@ func (c *LocalChecker) ResolveCheck(
 	object := tupleKey.GetObject()
 	relation := tupleKey.GetRelation()
 
-	userObject, userRelation := tuple.SplitObjectRelation(req.GetTupleKey().GetUser())
-
-	// Check(document:1#viewer@document:1#viewer) will always return true
-	if relation == userRelation && object == userObject {
+	if tuple.IsSelfDefining(req.GetTupleKey()) {
 		return &ResolveCheckResponse{
 			Allowed: true,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
