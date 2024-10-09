@@ -13,7 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestNestedEvaluator(t *testing.T) {
+func TestNestedUsersetEvaluator(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -34,17 +34,17 @@ func TestNestedEvaluator(t *testing.T) {
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
 		}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY}}).
 		Return(nil, nil).Times(1)
+
 	_, err := baseEvaluator.Start(context.Background())
 	require.NoError(t, err)
 
 	t.Run("clone", func(t *testing.T) {
 		clonedEvaluator := baseEvaluator.Clone("new_group:2", "new_relation")
 		require.NotNil(t, clonedEvaluator)
-		require.NotEqual(t, baseEvaluator, clonedEvaluator)
 
 		// original inputs should not be affected
-		require.Equal(t, "group:1", baseEvaluator.Input.Object)
-		require.Equal(t, "member", baseEvaluator.Input.Relation)
+		require.Equal(t, "group:1", baseEvaluator.Filter.Object)
+		require.Equal(t, "member", baseEvaluator.Filter.Relation)
 
 		mockDatastore.EXPECT().
 			ReadUsersetTuples(gomock.Any(), "ABC", storage.ReadUsersetTuplesFilter{
@@ -54,6 +54,7 @@ func TestNestedEvaluator(t *testing.T) {
 				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
 			}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY}}).
 			Return(nil, nil).Times(1)
+
 		_, err := clonedEvaluator.Start(context.Background())
 		require.NoError(t, err)
 	})

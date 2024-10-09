@@ -20,15 +20,8 @@ type TupleIteratorEvaluator interface {
 	Clone(newObject, newRelation string) TupleIteratorEvaluator
 }
 
-type EvaluatorKind int64
-
-const (
-	NestedUsersetKind EvaluatorKind = 0
-	NestedTTUKind     EvaluatorKind = 1
-)
-
-func NewTupleEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest, kind EvaluatorKind) TupleIteratorEvaluator {
-	switch kind {
+func NewTupleEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) TupleIteratorEvaluator {
+	switch req.Kind {
 	case NestedUsersetKind:
 		return NewNestedUsersetEvaluator(ds, req)
 	case NestedTTUKind:
@@ -42,7 +35,7 @@ func NewTupleEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest
 type NestedUsersetEvaluator struct {
 	storage.TupleIterator
 	Datastore storage.RelationshipTupleReader
-	Input     EvaluationRequest
+	StoreID   string
 	Filter    storage.ReadUsersetTuplesFilter
 	Options   storage.ReadUsersetTuplesOptions
 }
@@ -50,38 +43,44 @@ type NestedUsersetEvaluator struct {
 type EvaluationRequest struct {
 	StoreID          string
 	Consistency      openfgav1.ConsistencyPreference
+	Kind             EvaluatorKind
 	Object, Relation string
 }
+
+type EvaluatorKind int64
+
+const (
+	NestedUsersetKind EvaluatorKind = 0
+	NestedTTUKind     EvaluatorKind = 1
+)
 
 var _ TupleIteratorEvaluator = (*NestedUsersetEvaluator)(nil)
 
 func NewNestedUsersetEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) *NestedUsersetEvaluator {
-	objectID := req.Object
-	objectType := tuple.GetType(objectID)
-	relation := req.Relation
+	objectType := tuple.GetType(req.Object)
 
 	filter := storage.ReadUsersetTuplesFilter{
-		Object:   objectID,
-		Relation: relation,
+		Object:   req.Object,
+		Relation: req.Relation,
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
-			typesystem.DirectRelationReference(objectType, relation),
+			typesystem.DirectRelationReference(objectType, req.Relation),
 		},
 	}
 	opts := storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
 		Preference: req.Consistency,
 	}}
 
-	return &NestedUsersetEvaluator{Datastore: ds, Input: req, Filter: filter, Options: opts}
+	return &NestedUsersetEvaluator{Datastore: ds, StoreID: req.StoreID, Filter: filter, Options: opts}
 }
 
 func (n NestedUsersetEvaluator) Start(ctx context.Context) (storage.TupleIterator, error) {
-	return n.Datastore.ReadUsersetTuples(ctx, n.Input.StoreID, n.Filter, n.Options)
+	return n.Datastore.ReadUsersetTuples(ctx, n.StoreID, n.Filter, n.Options)
 }
 
 func (n NestedUsersetEvaluator) Clone(newObject, newRelation string) TupleIteratorEvaluator {
 	n.Filter.Relation = newRelation
 	n.Filter.Object = newObject
-	return &NestedUsersetEvaluator{Datastore: n.Datastore, Input: n.Input, Filter: n.Filter, Options: n.Options}
+	return &NestedUsersetEvaluator{Datastore: n.Datastore, StoreID: n.StoreID, Filter: n.Filter, Options: n.Options}
 }
 
 func (n NestedUsersetEvaluator) Evaluate(t *openfgav1.TupleKey) (string, error) {
@@ -91,8 +90,4 @@ func (n NestedUsersetEvaluator) Evaluate(t *openfgav1.TupleKey) (string, error) 
 		return "", fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
 	}
 	return usersetName, nil
-}
-
-func (n NestedUsersetEvaluator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	return n.TupleIterator.Next(ctx)
 }

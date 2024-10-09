@@ -5733,7 +5733,14 @@ func TestNestedUsersetFastpath(t *testing.T) {
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				}
-				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tupleevaluator.NestedUsersetKind, 10)
+				evalRequest := tupleevaluator.EvaluationRequest{
+					StoreID:     req.GetStoreID(),
+					Consistency: req.GetConsistency(),
+					Object:      req.GetTupleKey().GetObject(),
+					Relation:    req.GetTupleKey().GetRelation(),
+					Kind:        tupleevaluator.NestedUsersetKind,
+				}
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, evalRequest, 10)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -5778,7 +5785,14 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata:      NewCheckRequestMetadata(20),
 		}
-		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tupleevaluator.NestedUsersetKind, 10)
+		evalRequest := tupleevaluator.EvaluationRequest{
+			StoreID:     req.GetStoreID(),
+			Consistency: req.GetConsistency(),
+			Object:      req.GetTupleKey().GetObject(),
+			Relation:    req.GetTupleKey().GetRelation(),
+			Kind:        tupleevaluator.NestedUsersetKind,
+		}
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, evalRequest, 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})

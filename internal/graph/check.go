@@ -1377,7 +1377,7 @@ func nestedUsersetFastpath(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
 	req *ResolveCheckRequest,
-	kind tupleevaluator.EvaluatorKind,
+	evalRequest tupleevaluator.EvaluationRequest,
 	concurrencyLimit int) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "nestedUsersetFastpath")
 	defer span.End()
@@ -1385,13 +1385,7 @@ func nestedUsersetFastpath(ctx context.Context,
 	cancellable, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	evalRequest := tupleevaluator.EvaluationRequest{
-		StoreID:     req.GetStoreID(),
-		Consistency: req.GetConsistency(),
-		Object:      req.GetTupleKey().GetObject(),
-		Relation:    req.GetTupleKey().GetRelation(),
-	}
-	tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest, kind)
+	tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
 	userToUsersetMessageChan := streamedLookupUsersetForUser(cancellable, typesys, ds, req, concurrencyLimit)
 	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, typesys, req, tupleEval, concurrencyLimit)
 
@@ -1533,7 +1527,14 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
 					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
 					tuple.GetType(reqTupleKey.GetUser())) {
-					return nestedUsersetFastpath(ctx, typesys, ds, req, tupleevaluator.NestedUsersetKind, int(c.concurrencyLimit))
+					evalRequest := tupleevaluator.EvaluationRequest{
+						StoreID:     req.GetStoreID(),
+						Consistency: req.GetConsistency(),
+						Object:      req.GetTupleKey().GetObject(),
+						Relation:    req.GetTupleKey().GetRelation(),
+						Kind:        tupleevaluator.NestedUsersetKind,
+					}
+					return nestedUsersetFastpath(ctx, typesys, ds, req, evalRequest, int(c.concurrencyLimit))
 				}
 			}
 
