@@ -89,7 +89,7 @@ func (c *CacheController) ResolveCheck(
 	if cacheResp != nil && !cacheResp.Expired && cacheResp.Value != nil {
 		entry := cacheResp.Value.(*storage.ChangelogCacheEntry)
 		// since last verified is less than our pre-defined TTL, do nothing
-		req.LastChangelogTime = entry.LastModified
+		req.LastCacheInvalidationTime = entry.LastModified
 		return c.delegate.ResolveCheck(ctx, req)
 	}
 
@@ -98,7 +98,7 @@ func (c *CacheController) ResolveCheck(
 	})
 
 	if err == nil {
-		req.LastChangelogTime = lastModified.(time.Time)
+		req.LastCacheInvalidationTime = lastModified.(time.Time)
 	}
 
 	return c.delegate.ResolveCheck(ctx, req)

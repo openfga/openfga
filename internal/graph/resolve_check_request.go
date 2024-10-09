@@ -9,15 +9,15 @@ import (
 )
 
 type ResolveCheckRequest struct {
-	StoreID              string
-	AuthorizationModelID string
-	TupleKey             *openfgav1.TupleKey
-	ContextualTuples     []*openfgav1.TupleKey
-	Context              *structpb.Struct
-	RequestMetadata      *ResolveCheckRequestMetadata
-	VisitedPaths         map[string]struct{}
-	Consistency          openfgav1.ConsistencyPreference
-	LastChangelogTime    time.Time
+	StoreID                   string
+	AuthorizationModelID      string
+	TupleKey                  *openfgav1.TupleKey
+	ContextualTuples          []*openfgav1.TupleKey
+	Context                   *structpb.Struct
+	RequestMetadata           *ResolveCheckRequestMetadata
+	VisitedPaths              map[string]struct{}
+	Consistency               openfgav1.ConsistencyPreference
+	LastCacheInvalidationTime time.Time
 }
 
 func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
@@ -33,15 +33,15 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	}
 
 	return &ResolveCheckRequest{
-		StoreID:              r.GetStoreID(),
-		AuthorizationModelID: r.GetAuthorizationModelID(),
-		TupleKey:             r.GetTupleKey(),
-		ContextualTuples:     r.GetContextualTuples(),
-		Context:              r.GetContext(),
-		RequestMetadata:      requestMetadata,
-		VisitedPaths:         maps.Clone(r.GetVistedPaths()),
-		Consistency:          r.GetConsistency(),
-		LastChangelogTime:    r.GetLastChangelogTime(),
+		StoreID:                   r.GetStoreID(),
+		AuthorizationModelID:      r.GetAuthorizationModelID(),
+		TupleKey:                  r.GetTupleKey(),
+		ContextualTuples:          r.GetContextualTuples(),
+		Context:                   r.GetContext(),
+		RequestMetadata:           requestMetadata,
+		VisitedPaths:              maps.Clone(r.GetVistedPaths()),
+		Consistency:               r.GetConsistency(),
+		LastCacheInvalidationTime: r.GetLastChangelogTime(),
 	}
 }
 
@@ -105,5 +105,5 @@ func (r *ResolveCheckRequest) GetLastChangelogTime() time.Time {
 	if r == nil {
 		return time.Time{}
 	}
-	return r.LastChangelogTime
+	return r.LastCacheInvalidationTime
 }

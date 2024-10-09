@@ -89,7 +89,7 @@ func TestCacheController_ResolveCheck(t *testing.T) {
 			RequestMetadata: NewCheckRequestMetadata(20),
 		}
 		assertReq := req.clone()
-		assertReq.LastChangelogTime = timestamppb.New(changelogTimestamp).AsTime()
+		assertReq.LastCacheInvalidationTime = timestamppb.New(changelogTimestamp).AsTime()
 		mockResolver.EXPECT().ResolveCheck(gomock.Any(), assertReq)
 		_, err := cacheController.ResolveCheck(ctx, req)
 		require.NoError(t, err)

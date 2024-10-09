@@ -600,8 +600,8 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 			Relation: "reader",
 			User:     "user:XYZ",
 		},
-		RequestMetadata:   NewCheckRequestMetadata(20),
-		LastChangelogTime: time.Now().Add(5 * time.Minute),
+		RequestMetadata:           NewCheckRequestMetadata(20),
+		LastCacheInvalidationTime: time.Now().Add(5 * time.Minute),
 	}
 
 	result := &ResolveCheckResponse{Allowed: true}

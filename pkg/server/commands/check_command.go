@@ -81,15 +81,15 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 	}
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		Context:              req.GetContext(),
-		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
-		Consistency:          req.GetConsistency(),
-		LastChangelogTime:    time.Time{},
+		StoreID:                   req.GetStoreId(),
+		AuthorizationModelID:      c.typesys.GetAuthorizationModelID(), // the resolved model ID
+		TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
+		ContextualTuples:          req.GetContextualTuples().GetTupleKeys(),
+		Context:                   req.GetContext(),
+		VisitedPaths:              make(map[string]struct{}),
+		RequestMetadata:           graph.NewCheckRequestMetadata(c.resolveNodeLimit),
+		Consistency:               req.GetConsistency(),
+		LastCacheInvalidationTime: time.Time{},
 	}
 
 	ctx = buildCheckContext(ctx, c.typesys, c.datastore, c.maxConcurrentReads, resolveCheckRequest.GetContextualTuples())
