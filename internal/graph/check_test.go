@@ -5054,7 +5054,18 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, ts, ds, req, tt.poolSize)
+			dsCount := &atomic.Uint32{}
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:                     ts,
+				ds:                          ds,
+				dsCount:                     dsCount,
+				userToUsersetMapping:        nil, // not used
+				concurrencyLimit:            tt.poolSize,
+				visitedUserset:              &sync.Map{},
+				allowedUserTypeRestrictions: nil, // not used
+			}
+
+			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, commonData, req)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -5219,8 +5230,15 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, ds, req,
-				[]*openfgav1.RelationReference{
+			dsCount := &atomic.Uint32{}
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:              ts,
+				ds:                   ds,
+				dsCount:              dsCount,
+				userToUsersetMapping: nil, // not used
+				concurrencyLimit:     tt.poolSize,
+				visitedUserset:       &sync.Map{},
+				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 					{
 						Type: "group",
 						RelationOrWildcard: &openfgav1.RelationReference_Relation{
@@ -5228,7 +5246,9 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 						},
 					},
 				},
-				tt.poolSize)
+			}
+
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, req)
 
 			var userToUsersetMessages []usersetMessage
 
