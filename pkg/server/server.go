@@ -663,7 +663,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}...)
 	}
 
-	if s.cache != nil && s.checkQueryCacheEnabled {
+	if s.cache != nil && s.cacheControllerEnabled {
 		// TODO: replace checkQueryCacheTTL with checkIteratorCacheTTL once its introduced
 		s.cacheController = cachecontroller.NewCacheController(s.datastore, s.cache, s.cacheControllerTTL, s.checkQueryCacheTTL)
 	}

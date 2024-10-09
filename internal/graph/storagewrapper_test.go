@@ -169,6 +169,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Equal(t, tuples, entry.Tuples)
 			}),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, filter.Object, filter.Relation)),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -198,6 +199,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: &storage.TupleIteratorCacheEntry{Tuples: tuples}}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, filter.Object, filter.Relation)).Return(nil),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -231,6 +233,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Equal(t, []*openfgav1.Tuple{}, entry.Tuples)
 			}),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, filter.Object, filter.Relation)),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -317,7 +320,7 @@ func TestRead(t *testing.T) {
 		tuple.NewTupleKey("company:1", "viewer", "user:4"),
 		tuple.NewTupleKey("company:1", "viewer", "user:5"),
 	}
-	tuples := []*openfgav1.Tuple{}
+	var tuples []*openfgav1.Tuple
 	for _, tk := range tks {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk})
 	}
@@ -339,6 +342,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Equal(t, tuples, entry.Tuples)
 			}),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, tk.GetObject(), tk.GetRelation())),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -367,6 +371,7 @@ func TestRead(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: &storage.TupleIteratorCacheEntry{Tuples: tuples}}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, tk.GetObject(), tk.GetRelation())),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -400,6 +405,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Equal(t, []*openfgav1.Tuple{}, entry.Tuples)
 			}),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, tk.GetObject(), tk.GetRelation())),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -803,6 +809,7 @@ func TestCachedIterator(t *testing.T) {
 
 			mockCache.EXPECT().Get(cacheKey).AnyTimes().Return(nil)
 			mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).AnyTimes()
+			mockCache.EXPECT().Delete(gomock.Any()).AnyTimes()
 
 			sf := &singleflight.Group{}
 
