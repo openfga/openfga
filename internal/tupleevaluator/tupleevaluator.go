@@ -11,8 +11,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// TupleIteratorEvaluator is to evaluate and extract information from tuples.
 type TupleIteratorEvaluator interface {
 	// Evaluate returns an error if the tuple is invalid according to the evaluator.
+	// Otherwise, it returns the information from the tuple.
 	Evaluate(t *openfgav1.TupleKey) (string, error)
 	// Start starts the evaluator by reading from the DB.
 	Start(ctx context.Context) (storage.TupleIterator, error)
@@ -20,6 +22,7 @@ type TupleIteratorEvaluator interface {
 	Clone(newObject, newRelation string) TupleIteratorEvaluator
 }
 
+// NewTupleEvaluator is a factory that returns the right evaluator based on the request's kind.
 func NewTupleEvaluator(ds storage.RelationshipTupleReader, req EvaluationRequest) TupleIteratorEvaluator {
 	switch req.Kind {
 	case NestedUsersetKind:
