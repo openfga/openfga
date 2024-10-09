@@ -43,6 +43,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [#1980](https://github.com/openfga/openfga/issues/1980) and [#1986](https://github.com/openfga/openfga/issues/1986).
 * Upgrade go from 1.22.6 to 1.22.7 to address CVE-2024-34156 [#1987](https://github.com/openfga/openfga/pull/1987). Thanks @golanglemonade!
 
+### Performance
+* Improve check performance in the case that the query involves resolving nested userset. Enable via experimental flag `enable-check-optimizations`. [#1945](https://github.com/openfga/openfga/issues/1945)
+
 ## [1.6.1] - 2024-09-12
 
 ### Changed

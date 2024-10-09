@@ -478,6 +478,12 @@ var usersetCompleteTestingModelTest = []*stage{
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "usersets-user:userset_recursive_1", Relation: "userset_recursive", User: "user:userset_recursive_user_1"},
 			{Object: "usersets-user:userset_recursive_1", Relation: "userset_recursive", User: "usersets-user:userset_recursive_2#userset_recursive"},
+			{Object: "usersets-user:userset_recursive_multi_level", Relation: "userset_recursive", User: "usersets-user:userset_recursive_multi_level_1#userset_recursive"},
+			{Object: "usersets-user:userset_recursive_multi_level_1", Relation: "userset_recursive", User: "usersets-user:userset_recursive_multi_level_2#userset_recursive"},
+			{Object: "usersets-user:userset_recursive_multi_level_2", Relation: "userset_recursive", User: "usersets-user:userset_recursive_multi_level_3#userset_recursive"},
+			{Object: "usersets-user:userset_recursive_multi_level_3", Relation: "userset_recursive", User: "usersets-user:userset_recursive_multi_level_4#userset_recursive"},
+			{Object: "usersets-user:userset_recursive_multi_level_4", Relation: "userset_recursive", User: "user:userset_recursive_user_multi_level"},
+			{Object: "usersets-user:userset_recursive_invalid_object", Relation: "userset_recursive", User: "user:userset_recursive_user_invalid_object"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -491,20 +497,112 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
+				Name:        "valid_user_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_multi_level", Relation: "userset_recursive", User: "user:userset_recursive_user_multi_level"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_multi_level", Relation: "userset_recursive", User: "usersets-user:userset_recursive_multi_level_4#userset_recursive"},
+				Expectation: true,
+			},
+			{
 				Name:        "invalid_recursive",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive", User: "usersets-user:userset_3#userset_recursive"},
 				Expectation: false,
 			},
 			{
 				Name:        "invalid_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive", User: "user:userset_user_2"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive", User: "user:userset_recursive_user_invalid_user"},
 				Expectation: false,
 			},
-
+			{
+				Name:        "invalid_user_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_multi_level", Relation: "userset_recursive", User: "user:userset_recursive_user_invalid_user"},
+				Expectation: false,
+			},
 			{
 				Name:        "invalid_object",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_2", Relation: "userset_recursive", User: "user:userset_user_2"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive", User: "user:userset_recursive_user_invalid_object"},
 				Expectation: false,
+			},
+			{
+				Name:        "invalid_object_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_multi_level", Relation: "userset_recursive", User: "user:userset_recursive_user_invalid_object"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "userset_recursive_mixed_direct_assignment_mixed_direct_assignment",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_1", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_1"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_1", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_2#userset_recursive_mixed_direct_assignment"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_1#userset_recursive_mixed_direct_assignment"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_1", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_2#userset_recursive_mixed_direct_assignment"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_2", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_3#userset_recursive_mixed_direct_assignment"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_3", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_4#userset_recursive_mixed_direct_assignment"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_4", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_multi_level"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_invalid_object", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_invalid_object"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_2", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_2#userset"},
+			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_2", Relation: "userset", User: "directs-user:userset_recursive_mixed_direct_assignment_2#direct"},
+			{Object: "directs-user:userset_recursive_mixed_direct_assignment_2", Relation: "direct", User: "user:userset_recursive_mixed_direct_assignment_2"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_recursive",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_1", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_2#userset_recursive_mixed_direct_assignment"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_1", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_multi_level"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level_4#userset_recursive_mixed_direct_assignment"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_recursive",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive_mixed_direct_assignment", User: "usersets-user:userset_3#userset_recursive_mixed_direct_assignment"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_invalid_user"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_invalid_user"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_object",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_invalid_object"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_object_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_multi_level", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_invalid_object"},
+				Expectation: false,
+			},
+			{
+				Name:        "valid_user_via_directs-user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_2", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_2"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_direct_user_computed",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_mixed_direct_assignment_2", Relation: "userset_recursive_mixed_direct_assignment", User: "directs-user:userset_recursive_mixed_direct_assignment_2#direct"},
+				Expectation: true,
 			},
 		},
 	},

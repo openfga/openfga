@@ -1114,6 +1114,7 @@ type usersets-user
     define userset_to_butnot_computed: [directs-user#butnot_computed]
     define userset_to_and_computed:[directs-user#and_computed]
     define userset_recursive: [user, usersets-user#userset_recursive]
+    define userset_recursive_mixed_direct_assignment: [user, usersets-user#userset_recursive_mixed_direct_assignment, usersets-user#userset]
     define or_userset: userset or userset_to_computed_cond
     define and_userset: userset_to_computed_cond and userset_to_computed_wild
     define butnot_userset: userset_cond_to_computed_wild but not userset_cond
