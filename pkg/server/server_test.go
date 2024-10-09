@@ -640,7 +640,8 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 
 		type group
 			relations
-				define member: [user, group#member]
+				define other: [user]
+				define member: [user, group#member] or other
 		`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
@@ -2025,7 +2026,8 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 
 		type group
 		relations
-			define member: [user, group#member]
+			define other: [user]
+			define member: [user, group#member, group#other]
 
 		type document
 		relations

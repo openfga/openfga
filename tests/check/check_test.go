@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -33,15 +34,19 @@ import (
 )
 
 func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory")
+	testRunTestMatrix(t, "memory", true)
+	testRunTestMatrix(t, "memory", false)
 }
 
-func testRunTestMatrix(t *testing.T, engine string) {
-	t.Run("test_matrix_"+engine, func(t *testing.T) {
+func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
 		cfg := config.MustDefaultConfig()
+		if experimental {
+			cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+		}
 		cfg.Log.Level = "error"
 		cfg.Datastore.Engine = engine
 		cfg.ListUsersDeadline = 0   // no deadline
@@ -88,6 +93,7 @@ func TestServerLogs(t *testing.T) {
 	_ = mocks.NewMockTracingServer(t, otlpServerPort)
 
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
@@ -326,6 +332,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
@@ -384,6 +391,7 @@ func benchmarkAll(b *testing.B, engine string) {
 // and a cancellation function that stops the benchmark timer.
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
