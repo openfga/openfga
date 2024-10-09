@@ -994,7 +994,7 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 type recursiveMatchUserUsersetCommonData struct {
 	typesys              *typesystem.TypeSystem
 	ds                   storage.RelationshipTupleReader
-	tupleEval            tupleevaluator.TupleIteratorEvaluator
+	tupleEvaluator       tupleevaluator.TupleIteratorEvaluator
 	userToUsersetMapping storage.SortedSet
 	concurrencyLimit     int
 
@@ -1106,8 +1106,8 @@ func recursiveMatchUserUserset(ctx context.Context,
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
-	clonedEvaluator := commonParameters.tupleEval.Clone(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation())
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters.typesys, req, clonedEvaluator, commonParameters.concurrencyLimit)
+	tupleEvaluator := commonParameters.tupleEvaluator.Clone(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation())
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters.typesys, req, tupleEvaluator, commonParameters.concurrencyLimit)
 
 	var usersetItems []string
 	for usersetMsg := range objectToUsersetMessageChan {
@@ -1215,7 +1215,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 
 // streamedLookupUsersetForObject streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetForObject(ctx context.Context, typesys *typesystem.TypeSystem, req *ResolveCheckRequest, tupleEval tupleevaluator.TupleIteratorEvaluator, concurrencyLimit int) chan usersetMessage {
+func streamedLookupUsersetForObject(ctx context.Context, typesys *typesystem.TypeSystem, req *ResolveCheckRequest, tupleEvaluator tupleevaluator.TupleIteratorEvaluator, concurrencyLimit int) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForObject")
 	defer span.End()
 
@@ -1226,7 +1226,7 @@ func streamedLookupUsersetForObject(ctx context.Context, typesys *typesystem.Typ
 			close(usersetMessageChan)
 		}()
 
-		iter, err := tupleEval.Start(ctx)
+		iter, err := tupleEvaluator.Start(ctx)
 		if err != nil {
 			span.RecordError(err)
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{
@@ -1259,7 +1259,7 @@ func streamedLookupUsersetForObject(ctx context.Context, typesys *typesystem.Typ
 				}, usersetMessageChan)
 				return
 			}
-			usersetName, err := tupleEval.Evaluate(t)
+			usersetName, err := tupleEvaluator.Evaluate(t)
 			if err != nil {
 				span.RecordError(err)
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{
@@ -1384,9 +1384,9 @@ func nestedUsersetFastpath(ctx context.Context,
 	cancellable, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
+	tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
 	userToUsersetMessageChan := streamedLookupUsersetForUser(cancellable, typesys, ds, req, concurrencyLimit)
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, typesys, req, tupleEval, concurrencyLimit)
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, typesys, req, tupleEvaluator, concurrencyLimit)
 
 	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(cancellable, req, userToUsersetMessageChan, objectToUsersetMessageChan)
 
@@ -1409,7 +1409,7 @@ func nestedUsersetFastpath(ctx context.Context,
 		userToUsersetMapping: usersetFromUser,
 		concurrencyLimit:     concurrencyLimit,
 		visitedUserset:       &sync.Map{},
-		tupleEval:            tupleEval,
+		tupleEvaluator:       tupleEvaluator,
 	}
 
 	return parallelizeRecursiveMatchUserUserset(ctx, usersetFromObject.Values(), req, recursiveCommonData, recursiveMatchUserUserset)

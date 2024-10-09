@@ -4828,7 +4828,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				Kind:        tupleevaluator.NestedUsersetKind,
 			}
 
-			tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
+			tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
 
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
@@ -4837,7 +4837,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				concurrencyLimit:     10,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
-				tupleEval:            tupleEval,
+				tupleEvaluator:       tupleEvaluator,
 			}
 
 			result, err := recursiveMatchUserUserset(context.Background(), req, commonData)
@@ -5231,9 +5231,9 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				Kind:        tupleevaluator.NestedUsersetKind,
 			}
 
-			tupleEval := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
+			tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
 
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEval, tt.poolSize)
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEvaluator, tt.poolSize)
 
 			var userToUsersetMessages []usersetMessage
 
