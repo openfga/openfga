@@ -39,14 +39,14 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	}
 
 	return &ResolveCheckRequest{
-		StoreID:              r.GetStoreID(),
-		AuthorizationModelID: r.GetAuthorizationModelID(),
-		TupleKey:             tupleKey,
-		ContextualTuples:     r.GetContextualTuples(),
-		Context:              r.GetContext(),
-		RequestMetadata:      requestMetadata,
-		VisitedPaths:         maps.Clone(r.GetVistedPaths()),
-		Consistency:          r.GetConsistency(),
+		StoreID:                   r.GetStoreID(),
+		AuthorizationModelID:      r.GetAuthorizationModelID(),
+		TupleKey:                  tupleKey,
+		ContextualTuples:          r.GetContextualTuples(),
+		Context:                   r.GetContext(),
+		RequestMetadata:           requestMetadata,
+		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
+		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 	}
 }
