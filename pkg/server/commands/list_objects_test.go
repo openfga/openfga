@@ -281,9 +281,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	cacheKey, err := graph.CheckRequestCacheKey(req)
 	require.NoError(t, err)
 
-	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
-		Allowed: false,
-	}, 10*time.Second)
+	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
+		LastModified: time.Now(),
+		CheckResponse: &graph.ResolveCheckResponse{
+			Allowed: false,
+		}}, 10*time.Second)
 
 	require.NoError(t, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
@@ -337,9 +339,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.Len(t, resp.Objects, 3)
 
 	// Now set the third item as `allowed: false` in the cache and run with `UNSPECIFIED`, it should use the cache and only return two item
-	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
-		Allowed: false,
-	}, 10*time.Second)
+	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
+		LastModified: time.Now(),
+		CheckResponse: &graph.ResolveCheckResponse{
+			Allowed: false,
+		}}, 10*time.Second)
 
 	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:     storeID,
