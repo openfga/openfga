@@ -48,7 +48,7 @@ type EvaluationResult struct {
 }
 
 // EvaluableCondition represents a condition that can eventually be evaluated
-// given a CEL expression and a set of parameters. Calling .Map() will
+// given a CEL expression and a set of parameters. Calling .Evaluate() will
 // optionally call .Compile() which validates and compiles the expression and
 // parameter type definitions if it hasn't been done already.
 type EvaluableCondition struct {
@@ -201,7 +201,7 @@ func (e *EvaluableCondition) Evaluate(
 	ctx context.Context,
 	contextMaps ...map[string]*structpb.Value,
 ) (EvaluationResult, error) {
-	_, span := tracer.Start(ctx, "Map")
+	_, span := tracer.Start(ctx, "Evaluate")
 	defer span.End()
 
 	if err := e.Compile(); err != nil {

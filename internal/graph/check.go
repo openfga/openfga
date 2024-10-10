@@ -1531,14 +1531,14 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
 					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
 					tuple.GetType(reqTupleKey.GetUser())) {
-					evalRequest := tuplemapper.Request{
+					tupleMapperRequest := tuplemapper.Request{
 						StoreID:     req.GetStoreID(),
 						Consistency: req.GetConsistency(),
 						Object:      req.GetTupleKey().GetObject(),
 						Relation:    req.GetTupleKey().GetRelation(),
 						Kind:        tuplemapper.NestedUsersetKind,
 					}
-					return nestedUsersetFastpath(ctx, typesys, ds, req, evalRequest, int(c.concurrencyLimit))
+					return nestedUsersetFastpath(ctx, typesys, ds, req, tupleMapperRequest, int(c.concurrencyLimit))
 				}
 			}
 

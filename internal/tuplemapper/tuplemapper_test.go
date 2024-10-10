@@ -21,13 +21,13 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	baseEvaluator := newNestedUsersetTupleMapper(mockDatastore, Request{
+	mapper := newNestedUsersetTupleMapper(mockDatastore, Request{
 		StoreID:     "ABC",
 		Consistency: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 		Object:      "group:1",
 		Relation:    "member",
 	})
-	require.NotNil(t, baseEvaluator)
+	require.NotNil(t, mapper)
 
 	mockDatastore.EXPECT().
 		ReadUsersetTuples(gomock.Any(), "ABC", storage.ReadUsersetTuplesFilter{
@@ -37,37 +37,37 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 		}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY}}).
 		Return(nil, nil).Times(1)
 
-	_, err := baseEvaluator.Start(context.Background())
+	_, err := mapper.Start(context.Background())
 	require.NoError(t, err)
 
-	t.Run("map", func(t *testing.T) {
-		res, err := baseEvaluator.Map(tuple.NewTupleKey("group:1", "member", "group:2#member"))
+	t.Run("map_success", func(t *testing.T) {
+		res, err := mapper.Map(tuple.NewTupleKey("group:1", "member", "group:2#member"))
 		require.NoError(t, err)
 		require.Equal(t, "group:2", res)
 	})
 
 	t.Run("map_with_error", func(t *testing.T) {
-		_, err := baseEvaluator.Map(tuple.NewTupleKey("group:1", "member", "group:2"))
+		_, err := mapper.Map(tuple.NewTupleKey("group:1", "member", "group:2"))
 		require.Error(t, err)
 	})
 
 	t.Run("clone", func(t *testing.T) {
-		clonedEvaluator := baseEvaluator.Clone("new_group:2")
-		require.NotNil(t, clonedEvaluator)
+		clonedMapper := mapper.Clone("new_group:2")
+		require.NotNil(t, clonedMapper)
 
-		// original inputs should not be affected
-		require.Equal(t, "group:1", baseEvaluator.Filter.Object)
+		// Original mapper should not be modified.
+		require.Equal(t, "group:1", mapper.Filter.Object)
 
 		mockDatastore.EXPECT().
 			ReadUsersetTuples(gomock.Any(), "ABC", storage.ReadUsersetTuplesFilter{
 				Object:   "new_group:2",
-				Relation: "member",
-				// keep the same filter as the original
+				Relation: "member", // same relation
+				// Same AllowedUserTypeRestrictions as the original mapper.
 				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
 			}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_MINIMIZE_LATENCY}}).
 			Return(nil, nil).Times(1)
 
-		_, err := clonedEvaluator.Start(context.Background())
+		_, err := clonedMapper.Start(context.Background())
 		require.NoError(t, err)
 	})
 }
