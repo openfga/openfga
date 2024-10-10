@@ -152,9 +152,12 @@ func (c *CachedDatastore) Read(
 		return c.OpenFGADatastore.Read(ctx, store, tupleKey, options)
 	}
 
-	// this instance of Read is only called from TTU resolution path which always includes Object/Relation, if by some reason the caller
-	// passes a user value in the TupleKey, bypass cache completely
-	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY || tupleKey.GetUser() != "" {
+	// this instance of Read is only called from TTU resolution path which always includes Object/Relation
+	if tupleKey.GetRelation() == "" || !tuple.IsValidObject(tupleKey.GetObject()) {
+		return iter(ctx)
+	}
+
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return iter(ctx)
 	}
 

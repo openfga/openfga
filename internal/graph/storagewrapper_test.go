@@ -465,9 +465,10 @@ func TestRead(t *testing.T) {
 		require.Equal(t, tuples, actual)
 	})
 
-	t.Run("tuple_key_includes_user", func(t *testing.T) {
+	t.Run("tuple_key_is_not_from_ttu", func(t *testing.T) {
 		tupleKey := &openfgav1.TupleKey{
-			User: "some user",
+			Relation: tk.GetRelation(),
+			Object:   "invalid",
 		}
 		gomock.InOrder(
 			mockDatastore.EXPECT().
