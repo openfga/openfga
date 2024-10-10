@@ -2,6 +2,9 @@ package cachecontroller
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/build"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"math"
 	"time"
 
@@ -13,9 +16,37 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-var tracer = otel.Tracer("internal/cachecontroller")
+var (
+	tracer = otel.Tracer("internal/cachecontroller")
 
-type CacheController struct {
+	cacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_cache_total_count",
+		Help:      "The total number of cachecontroller requests.",
+	})
+
+	cacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_cache_hit_count",
+		Help:      "The total number of cache hits from cachecontroller requests.",
+	})
+)
+
+type CacheController interface {
+	DetermineInvalidation(ctx context.Context, storeID string) time.Time
+}
+
+type NoopCacheController struct{}
+
+func (c *NoopCacheController) DetermineInvalidation(_ context.Context, _ string) time.Time {
+	return time.Time{}
+}
+
+func NewNoopCacheController() CacheController {
+	return &NoopCacheController{}
+}
+
+type InMemoryCacheController struct {
 	ds               storage.OpenFGADatastore
 	cache            storage.InMemoryCache[any]
 	ttl              time.Duration
@@ -24,8 +55,8 @@ type CacheController struct {
 	sf *singleflight.Group
 }
 
-func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) *CacheController {
-	c := &CacheController{
+func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
+	c := &InMemoryCacheController{
 		ds:               ds,
 		cache:            cache,
 		ttl:              ttl,
@@ -36,17 +67,19 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 	return c
 }
 
-func (c *CacheController) DetermineInvalidation(
+func (c *InMemoryCacheController) DetermineInvalidation(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
 	ctx, span := tracer.Start(ctx, "cacheController.ResolveCheck")
 	defer span.End()
+	cacheTotalCounter.Inc()
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
 	if cacheResp != nil && !cacheResp.Expired && cacheResp.Value != nil {
 		entry := cacheResp.Value.(*storage.ChangelogCacheEntry)
+		cacheHitCounter.Inc()
 		return entry.LastModified
 	}
 
@@ -61,7 +94,7 @@ func (c *CacheController) DetermineInvalidation(
 	return lastModified.(time.Time)
 }
 
-func (c *CacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, []byte, error) {
+func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, []byte, error) {
 	opts := storage.ReadChangesOptions{
 		SortDesc: true,
 		Pagination: storage.PaginationOptions{
@@ -71,7 +104,7 @@ func (c *CacheController) findChanges(ctx context.Context, storeID string) ([]*o
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *CacheController) findChangesAndInvalidate(ctx context.Context, storeID string) (time.Time, error) {
+func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) (time.Time, error) {
 	ctx, span := tracer.Start(ctx, "cacheController.Invalidations")
 	defer span.End()
 	cacheKey := storage.GetChangelogCacheKey(storeID)
@@ -114,11 +147,11 @@ func (c *CacheController) findChangesAndInvalidate(ctx context.Context, storeID 
 	return entry.LastModified, nil
 }
 
-func (c *CacheController) invalidateIteratorCache(storeID string) {
+func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 	// These entries do not need to expire
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
-func (c *CacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string) {
+func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string) {
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, c.iteratorCacheTTL)
 }

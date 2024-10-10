@@ -2,6 +2,7 @@ package cachecontroller
 
 import (
 	"context"
+	"golang.org/x/sync/singleflight"
 	"testing"
 	"time"
 
@@ -15,7 +16,14 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func TestCacheController_DetermineInvalidation(t *testing.T) {
+func TestNoopCacheController_DetermineInvalidation(t *testing.T) {
+	t.Run("returns_zero_time", func(t *testing.T) {
+		ctrl := NewNoopCacheController()
+		require.Zero(t, ctrl.DetermineInvalidation(context.Background(), ""))
+	})
+}
+
+func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -71,7 +79,7 @@ func generateChanges(object, relation, user string, count int) []*openfgav1.Tupl
 	return changes
 }
 
-func TestCacheController_findChangesAndInvalidate(t *testing.T) {
+func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -234,7 +242,13 @@ func TestCacheController_findChangesAndInvalidate(t *testing.T) {
 
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
 			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, []byte{}, test.readChangesResults.err)
-			cacheController := NewCacheController(datastore, cache, 10*time.Second, 10*time.Second)
+			cacheController := &InMemoryCacheController{
+				ds:               datastore,
+				cache:            cache,
+				ttl:              10 * time.Second,
+				iteratorCacheTTL: 10 * time.Second,
+				sf:               &singleflight.Group{},
+			}
 			_, err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
 			if test.expectedError != nil {
 				require.ErrorIs(t, err, test.expectedError)

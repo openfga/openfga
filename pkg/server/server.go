@@ -146,7 +146,7 @@ type Server struct {
 
 	cacheControllerEnabled bool
 	cacheControllerTTL     time.Duration
-	cacheController        *cachecontroller.CacheController
+	cacheController        cachecontroller.CacheController
 
 	checkQueryCacheEnabled bool
 	checkQueryCacheTTL     time.Duration
@@ -583,6 +583,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		cacheLimit: serverconfig.DefaultCacheLimit,
 
+		cacheController:        cachecontroller.NewNoopCacheController(),
 		cacheControllerEnabled: serverconfig.DefaultCacheControllerEnabled,
 		cacheControllerTTL:     serverconfig.DefaultCacheControllerTTL,
 

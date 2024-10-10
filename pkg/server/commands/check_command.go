@@ -35,7 +35,7 @@ type CheckQuery struct {
 	checkResolver   graph.CheckResolver
 	typesys         *typesystem.TypeSystem
 	datastore       storage.RelationshipTupleReader
-	cacheController *cachecontroller.CacheController
+	cacheController cachecontroller.CacheController
 
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
@@ -61,7 +61,7 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	}
 }
 
-func WithCacheController(ctrl *cachecontroller.CacheController) CheckQueryOption {
+func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.cacheController = ctrl
 	}
@@ -73,6 +73,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		datastore:          datastore,
 		checkResolver:      checkResolver,
 		typesys:            typesys,
+		cacheController:    cachecontroller.NewNoopCacheController(),
 		resolveNodeLimit:   defaultResolveNodeLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
 	}
@@ -91,7 +92,7 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 
 	cacheInvalidationTime := time.Time{}
 
-	if c.cacheController != nil && req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
 	}
 
