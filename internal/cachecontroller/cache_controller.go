@@ -73,7 +73,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	ctx, span := tracer.Start(ctx, "cacheController.ResolveCheck")
+	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidation")
 	defer span.End()
 	cacheTotalCounter.Inc()
 
