@@ -138,7 +138,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 		b.WriteString(rb.String())
 	}
 
-	return c.newCachedIterator(ctx, iter, b.String())
+	return c.newCachedIterator(ctx, iter, b.String(), filter.Relation, filter.Object)
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -167,7 +167,7 @@ func (c *CachedDatastore) Read(
 	b.WriteString(
 		fmt.Sprintf("%sr%s/%s", QueryCachePrefix, store, tuple.TupleKeyToString(tupleKey)),
 	)
-	return c.newCachedIterator(ctx, iter, b.String())
+	return c.newCachedIterator(ctx, iter, b.String(), tupleKey.GetRelation(), tupleKey.GetObject())
 }
 
 // newCachedIterator either returns a cached static iterator for a cache hit, or
@@ -175,7 +175,7 @@ func (c *CachedDatastore) Read(
 func (c *CachedDatastore) newCachedIterator(
 	ctx context.Context,
 	dsIterFunc iterFunc,
-	key string,
+	key, relation, object string,
 ) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.String("cached_key", key))
@@ -192,8 +192,9 @@ func (c *CachedDatastore) newCachedIterator(
 
 	if isCached {
 		tuplesCacheHitCounter.Inc()
-		span.SetAttributes(attribute.Bool("cached", true))
-		return storage.NewStaticTupleIterator(cachedResp.Value.([]*openfgav1.Tuple)), nil
+		staticIter := storage.NewStaticIterator[cachedUserTuple](cachedResp.Value.([]cachedUserTuple))
+		iter := &cachedUserTupleIterator{object, relation, staticIter}
+		return iter, nil
 	}
 
 	iter, err := dsIterFunc(ctx)
@@ -203,7 +204,9 @@ func (c *CachedDatastore) newCachedIterator(
 
 	return &cachedIterator{
 		iter:          iter,
-		tuples:        make([]*openfgav1.Tuple, 0, c.maxResultSize),
+		relation:      relation,
+		object:        object,
+		tuples:        make([]cachedUserTuple, 0, c.maxResultSize),
 		cacheKey:      cacheKey,
 		cache:         c.cache,
 		maxResultSize: c.maxResultSize,
@@ -219,7 +222,9 @@ func (c *CachedDatastore) Close() {
 
 type cachedIterator struct {
 	iter     storage.TupleIterator
-	tuples   []*openfgav1.Tuple
+	relation string
+	object   string
+	tuples   []cachedUserTuple
 	cacheKey string
 	cache    storage.InMemoryCache[any]
 	ttl      time.Duration
@@ -322,7 +327,13 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	if c.tuples == nil {
 		return false
 	}
-	c.tuples = append(c.tuples, t)
+	tk := t.GetKey()
+	ct := cachedUserTuple{
+		user:      tk.GetUser(),
+		condition: tk.GetCondition(),
+		timestamp: t.GetTimestamp(),
+	}
+	c.tuples = append(c.tuples, ct)
 	if len(c.tuples) >= c.maxResultSize {
 		tuplesCacheDiscardCounter.Inc()
 		c.tuples = nil
@@ -339,7 +350,7 @@ func (c *cachedIterator) flush() {
 	// Copy tuples buffer into new destination before storing into cache
 	// otherwise, the cache will be storing pointers. This should also help
 	// with garbage collection.
-	tuples := make([]*openfgav1.Tuple, len(c.tuples))
+	tuples := make([]cachedUserTuple, len(c.tuples))
 	copy(tuples, c.tuples)
 
 	c.cache.Set(c.cacheKey, tuples, c.ttl)

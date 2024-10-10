@@ -114,7 +114,7 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
 func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
-	iter := &staticIterator[*openfgav1.Tuple]{
+	iter := &StaticIterator[*openfgav1.Tuple]{
 		items: tuples,
 	}
 
@@ -123,7 +123,7 @@ func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
 
 // NewStaticTupleKeyIterator returns a [TupleKeyIterator] that iterates over the provided slice.
 func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
-	iter := &staticIterator[*openfgav1.TupleKey]{
+	iter := &StaticIterator[*openfgav1.TupleKey]{
 		items: tupleKeys,
 	}
 
@@ -165,12 +165,12 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 	return &tupleKeyIterator{iter}
 }
 
-type staticIterator[T any] struct {
+type StaticIterator[T any] struct {
 	items []T
 }
 
 // Next see [Iterator.Next].
-func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
+func (s *StaticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
 
 	if ctx.Err() != nil {
@@ -188,10 +188,10 @@ func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 }
 
 // Stop see [Iterator.Stop].
-func (s *staticIterator[T]) Stop() {}
+func (s *StaticIterator[T]) Stop() {}
 
 // Head see [Iterator.Head].
-func (s *staticIterator[T]) Head(ctx context.Context) (T, error) {
+func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 	var val T
 
 	if ctx.Err() != nil {
@@ -203,6 +203,10 @@ func (s *staticIterator[T]) Head(ctx context.Context) (T, error) {
 	}
 
 	return s.items[0], nil
+}
+
+func NewStaticIterator[T any](items []T) Iterator[T] {
+	return &StaticIterator[T]{items: items}
 }
 
 // TupleKeyFilterFunc is a filter function that is used to filter out
