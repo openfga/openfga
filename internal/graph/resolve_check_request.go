@@ -1,20 +1,23 @@
 package graph
 
 import (
+	"time"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type ResolveCheckRequest struct {
-	StoreID              string
-	AuthorizationModelID string
-	TupleKey             *openfgav1.TupleKey
-	ContextualTuples     []*openfgav1.TupleKey
-	Context              *structpb.Struct
-	RequestMetadata      *ResolveCheckRequestMetadata
-	VisitedPaths         map[string]struct{}
-	Consistency          openfgav1.ConsistencyPreference
+	StoreID                   string
+	AuthorizationModelID      string
+	TupleKey                  *openfgav1.TupleKey
+	ContextualTuples          []*openfgav1.TupleKey
+	Context                   *structpb.Struct
+	RequestMetadata           *ResolveCheckRequestMetadata
+	VisitedPaths              map[string]struct{}
+	Consistency               openfgav1.ConsistencyPreference
+	LastCacheInvalidationTime time.Time
 }
 
 func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
@@ -30,14 +33,15 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	}
 
 	return &ResolveCheckRequest{
-		StoreID:              r.GetStoreID(),
-		AuthorizationModelID: r.GetAuthorizationModelID(),
-		TupleKey:             r.GetTupleKey(),
-		ContextualTuples:     r.GetContextualTuples(),
-		Context:              r.GetContext(),
-		RequestMetadata:      requestMetadata,
-		VisitedPaths:         maps.Clone(r.GetVistedPaths()),
-		Consistency:          r.GetConsistency(),
+		StoreID:                   r.GetStoreID(),
+		AuthorizationModelID:      r.GetAuthorizationModelID(),
+		TupleKey:                  r.GetTupleKey(),
+		ContextualTuples:          r.GetContextualTuples(),
+		Context:                   r.GetContext(),
+		RequestMetadata:           requestMetadata,
+		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
+		Consistency:               r.GetConsistency(),
+		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 	}
 }
 
@@ -90,9 +94,16 @@ func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
 	return r.Consistency
 }
 
-func (r *ResolveCheckRequest) GetVistedPaths() map[string]struct{} {
+func (r *ResolveCheckRequest) GetVisitedPaths() map[string]struct{} {
 	if r == nil {
 		return map[string]struct{}{}
 	}
 	return r.VisitedPaths
+}
+
+func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	return r.LastCacheInvalidationTime
 }

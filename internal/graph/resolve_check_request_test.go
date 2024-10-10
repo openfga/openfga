@@ -108,7 +108,8 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Nil(t, r.GetRequestMetadata())
 		require.Nil(t, r.GetContext())
 		require.Equal(t, openfgav1.ConsistencyPreference_UNSPECIFIED, r.GetConsistency())
-		require.Equal(t, map[string]struct{}{}, r.GetVistedPaths())
+		require.Equal(t, map[string]struct{}{}, r.GetVisitedPaths())
+		require.Zero(t, r.GetLastCacheInvalidationTime())
 	})
 }
 
@@ -121,5 +122,6 @@ func TestDefaultValueRequestMetadata(t *testing.T) {
 	require.Nil(t, r.GetRequestMetadata())
 	require.Nil(t, r.GetContext())
 	require.Equal(t, openfgav1.ConsistencyPreference_UNSPECIFIED, r.GetConsistency())
-	require.Equal(t, map[string]struct{}{}, r.GetVistedPaths())
+	require.Equal(t, map[string]struct{}{}, r.GetVisitedPaths())
+	require.Zero(t, r.GetLastCacheInvalidationTime())
 }
