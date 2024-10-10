@@ -5,6 +5,9 @@ import (
 	"math"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -73,7 +76,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidation")
+	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidation", trace.WithAttributes(attribute.Bool("cached", false)))
 	defer span.End()
 	cacheTotalCounter.Inc()
 
@@ -82,6 +85,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	if cacheResp != nil && !cacheResp.Expired && cacheResp.Value != nil {
 		entry := cacheResp.Value.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
+		span.SetAttributes(attribute.Bool("cached", true))
 		return entry.LastModified
 	}
 
@@ -107,12 +111,15 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 }
 
 func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) (time.Time, error) {
-	ctx, span := tracer.Start(ctx, "cacheController.Invalidations")
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Bool("invalidations", true))
 	cacheKey := storage.GetChangelogCacheKey(storeID)
-	// this should have a deadline since it will hold everything
+	// TODO: this should have a deadline since it will hold up everything if it doesn't return
+	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
+	// re-evaluate at a later time.
 	changes, _, err := c.findChanges(ctx, storeID)
 	if err != nil {
+		span.RecordError(err)
 		// do not allow any cache read until next refresh
 		c.invalidateIteratorCache(storeID)
 		return time.Time{}, err
@@ -127,6 +134,12 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	c.cache.Set(cacheKey, entry, c.ttl)
 
 	lastVerified := time.Now().Add(-c.ttl)
+
+	if entry.LastModified.Before(lastVerified) {
+		// no new changes, no need to perform invalidations
+		span.SetAttributes(attribute.Bool("invalidations", false))
+		return entry.LastModified, nil
+	}
 
 	// need to consider there might just be 1 change
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
