@@ -39,6 +39,18 @@ func (m *MockInMemoryCache[T]) EXPECT() *MockInMemoryCacheMockRecorder[T] {
 	return m.recorder
 }
 
+// Delete mocks base method.
+func (m *MockInMemoryCache[T]) Delete(prefix string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Delete", prefix)
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockInMemoryCacheMockRecorder[T]) Delete(prefix any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockInMemoryCache[T])(nil).Delete), prefix)
+}
+
 // Get mocks base method.
 func (m *MockInMemoryCache[T]) Get(key string) T {
 	m.ctrl.T.Helper()
