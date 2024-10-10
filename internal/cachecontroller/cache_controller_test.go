@@ -2,9 +2,10 @@ package cachecontroller
 
 import (
 	"context"
-	"golang.org/x/sync/singleflight"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -163,7 +164,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				},
 				{
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-					Timestamp: timestamppb.New(time.UnixMilli(1257894000000)),
+					Timestamp: timestamppb.New(time.Now().UTC().Add(-50 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
 						Object:   "test",
 						Relation: "writer",
@@ -190,7 +191,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				},
 				{
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-					Timestamp: timestamppb.New(time.UnixMilli(1257894000000)),
+					Timestamp: timestamppb.New(time.Now().Add(-10 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
 						Object:   "test",
 						Relation: "writer",
@@ -199,7 +200,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				},
 				{
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-					Timestamp: timestamppb.New(time.UnixMilli(1257894000000 - 1)),
+					Timestamp: timestamppb.New(time.Now().Add(-11 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
 						Object:   "test",
 						Relation: "writer",
@@ -208,7 +209,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				},
 				{
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-					Timestamp: timestamppb.New(time.UnixMilli(1257894000000 - 2)),
+					Timestamp: timestamppb.New(time.Now().Add(-12 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
 						Object:   "test",
 						Relation: "writer",
@@ -231,6 +232,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()

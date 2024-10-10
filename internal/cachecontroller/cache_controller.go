@@ -2,11 +2,13 @@ package cachecontroller
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/build"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"math"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/openfga/openfga/internal/build"
 
 	"go.opentelemetry.io/otel"
 
@@ -139,8 +141,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		c.invalidateIteratorCache(storeID)
 	} else {
 		// only a subset of changes are new, revoke the respective ones
+		lastModified := time.Now()
 		for ; idx >= 0; idx-- {
-			c.invalidateIteratorCacheByObjectRelation(storeID, changes[idx].GetTupleKey().GetObject(), changes[idx].GetTupleKey().GetRelation())
+			c.invalidateIteratorCacheByObjectRelation(storeID, changes[idx].GetTupleKey().GetObject(), changes[idx].GetTupleKey().GetRelation(), lastModified)
 		}
 	}
 
@@ -152,6 +155,6 @@ func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
-func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string) {
-	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, c.iteratorCacheTTL)
+func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
+	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
