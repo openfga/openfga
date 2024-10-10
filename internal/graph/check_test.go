@@ -4116,7 +4116,8 @@ type parallelRecursiveTest struct {
 
 func (p *parallelRecursiveTest) testParallelizeRecursive(context.Context,
 	*ResolveCheckRequest,
-	*recursiveMatchUserUsersetCommonData) (*ResolveCheckResponse, error) {
+	*recursiveMatchUserUsersetCommonData,
+	tupleevaluator.TupleIteratorEvaluator) (*ResolveCheckResponse, error) {
 	if p.slowRequests {
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -4523,12 +4524,18 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 					commonParameters.visitedUserset.Store(item, struct{}{})
 				}
 				commonParameters.dsCount.Store(15)
+				tupleEvaluator := tupleevaluator.NewTupleEvaluator(nil, tupleevaluator.EvaluationRequest{
+					Kind:     tupleevaluator.NestedUsersetKind,
+					Object:   "",
+					Relation: "",
+				})
 				resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
 					tt.usersetItems,
 					&ResolveCheckRequest{
 						RequestMetadata: NewCheckRequestMetadata(20),
 					},
 					commonParameters,
+					tupleEvaluator,
 					tt.parallelRecursiveTest.testParallelizeRecursive)
 				require.Equal(t, tt.expectedResponse, resp)
 				require.Equal(t, tt.expectedError, err)
@@ -4588,6 +4595,9 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 					}
 				}
 
+				tupleEvaluator := tupleevaluator.NewTupleEvaluator(nil, tupleevaluator.EvaluationRequest{
+					Kind: tupleevaluator.NestedUsersetKind,
+				})
 				recursiveTestResult := parallelRecursiveTest{
 					slowRequests:               true,
 					numTimeFuncExecuted:        &atomic.Uint32{},
@@ -4600,6 +4610,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 						RequestMetadata: NewCheckRequestMetadata(20),
 					},
 					commonParameters,
+					tupleEvaluator,
 					recursiveTestResult.testParallelizeRecursive)
 				require.NoError(t, err)
 				require.Equal(t, &ResolveCheckResponse{
@@ -4820,15 +4831,13 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			userUsersetMapping.Add("group:a")
 			userUsersetMapping.Add("group:b")
 
-			evalRequest := tupleevaluator.EvaluationRequest{
+			tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, tupleevaluator.EvaluationRequest{
 				StoreID:     req.GetStoreID(),
 				Consistency: req.GetConsistency(),
 				Object:      req.GetTupleKey().GetObject(),
 				Relation:    req.GetTupleKey().GetRelation(),
 				Kind:        tupleevaluator.NestedUsersetKind,
-			}
-
-			tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
+			})
 
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
@@ -4837,10 +4846,9 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				concurrencyLimit:     10,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
-				tupleEvaluator:       tupleEvaluator,
 			}
 
-			result, err := recursiveMatchUserUserset(context.Background(), req, commonData)
+			result, err := recursiveMatchUserUserset(context.Background(), req, commonData, tupleEvaluator)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, result)
 		})
@@ -5058,7 +5066,17 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, ts, ds, req, tt.poolSize)
+			dsCount := &atomic.Uint32{}
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:              ts,
+				ds:                   ds,
+				dsCount:              dsCount,
+				userToUsersetMapping: nil, // not used
+				concurrencyLimit:     tt.poolSize,
+				visitedUserset:       &sync.Map{},
+			}
+
+			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, commonData, req)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -5223,17 +5241,25 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			evalRequest := tupleevaluator.EvaluationRequest{
+			tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, tupleevaluator.EvaluationRequest{
 				StoreID:     req.GetStoreID(),
 				Consistency: req.GetConsistency(),
 				Object:      req.GetTupleKey().GetObject(),
 				Relation:    req.GetTupleKey().GetRelation(),
 				Kind:        tupleevaluator.NestedUsersetKind,
+			})
+
+			dsCount := &atomic.Uint32{}
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:              ts,
+				ds:                   ds,
+				dsCount:              dsCount,
+				userToUsersetMapping: nil, // not used
+				concurrencyLimit:     tt.poolSize,
+				visitedUserset:       &sync.Map{},
 			}
 
-			tupleEvaluator := tupleevaluator.NewTupleEvaluator(ds, evalRequest)
-
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, ts, req, tupleEvaluator, tt.poolSize)
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, tupleEvaluator, req)
 
 			var userToUsersetMessages []usersetMessage
 
