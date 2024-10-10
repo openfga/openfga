@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -110,6 +112,63 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, openfgav1.ConsistencyPreference_UNSPECIFIED, r.GetConsistency())
 		require.Equal(t, map[string]struct{}{}, r.GetVisitedPaths())
 		require.Zero(t, r.GetLastCacheInvalidationTime())
+	})
+
+	t.Run("thread_safe_clone", func(t *testing.T) {
+		contextStruct, err := structpb.NewStruct(map[string]interface{}{
+			"x": 10,
+		})
+		require.NoError(t, err)
+
+		orig := &ResolveCheckRequest{
+			StoreID:              "12",
+			AuthorizationModelID: "33",
+			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+			ContextualTuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")},
+			Context:              contextStruct,
+			RequestMetadata:      NewCheckRequestMetadata(20),
+			VisitedPaths: map[string]struct{}{
+				"abc": {},
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}
+
+		const clonesCount = 100
+		var wg sync.WaitGroup
+		wg.Add(clonesCount)
+
+		clones := make([]*ResolveCheckRequest, clonesCount)
+
+		for i := 0; i < clonesCount; i++ {
+			go func(i int) {
+				defer wg.Done()
+				cloned := orig.clone()
+				// Simulate some processing time to help expose concurrency issues
+				time.Sleep(10 * time.Millisecond)
+				clones[i] = cloned
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Ensure each clone is correct and doesn't reflect changes made to orig after cloning
+		for _, cloned := range clones {
+			require.Equal(t, "12", cloned.GetStoreID())
+			require.Equal(t, "33", cloned.GetAuthorizationModelID())
+			require.Equal(t, "user:XYZ", cloned.GetTupleKey().GetUser())
+			require.Equal(t, "reader", cloned.GetTupleKey().GetRelation())
+			require.Equal(t, "document:abc", cloned.GetTupleKey().GetObject())
+			require.Len(t, cloned.GetContextualTuples(), 1)
+			require.Equal(t, "user:123", cloned.GetContextualTuples()[0].GetUser())
+			require.Equal(t, "writer", cloned.GetContextualTuples()[0].GetRelation())
+			require.Equal(t, "document:def", cloned.GetContextualTuples()[0].GetObject())
+			require.Equal(t, contextStruct, cloned.GetContext())
+			require.Equal(t, uint32(20), cloned.GetRequestMetadata().Depth)
+			require.False(t, cloned.GetRequestMetadata().WasThrottled.Load())
+			require.Equal(t, map[string]struct{}{
+				"abc": {},
+			}, cloned.VisitedPaths)
+		}
 	})
 }
 

@@ -5,6 +5,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -32,10 +33,15 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		}
 	}
 
+	var tupleKey *openfgav1.TupleKey
+	if origTupleKey := r.GetTupleKey(); origTupleKey != nil {
+		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
+	}
+
 	return &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
-		TupleKey:                  r.GetTupleKey(),
+		TupleKey:                  tupleKey,
 		ContextualTuples:          r.GetContextualTuples(),
 		Context:                   r.GetContext(),
 		RequestMetadata:           requestMetadata,
