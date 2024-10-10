@@ -103,7 +103,7 @@ func TestReadUsersetTuples(t *testing.T) {
 
 	t.Run("cache_hit", func(t *testing.T) {
 		gomock.InOrder(
-			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: tuples}),
+			mockCache.EXPECT().Get(gomock.Any()).Return(tuples),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -268,7 +268,7 @@ func TestRead(t *testing.T) {
 	t.Run("cache_hit", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).
-				Return(&storage.CachedResult[any]{Value: tuples}),
+				Return(tuples),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -574,7 +574,7 @@ func TestCachedIterator(t *testing.T) {
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
-		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuples, cachedResults.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -603,7 +603,7 @@ func TestCachedIterator(t *testing.T) {
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
-		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuples, cachedResults.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -638,7 +638,7 @@ func TestCachedIterator(t *testing.T) {
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
 
-		if diff := cmp.Diff(tuples, cachedResults.Value.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
+		if diff := cmp.Diff(tuples, cachedResults.([]*openfgav1.Tuple), cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -651,7 +651,7 @@ func TestCachedIterator(t *testing.T) {
 		defer mockController.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](mockController)
-		mockCache.EXPECT().Get(gomock.Any()).Return(&storage.CachedResult[any]{Value: tuples})
+		mockCache.EXPECT().Get(gomock.Any()).Return(tuples)
 
 		sf := &singleflight.Group{}
 

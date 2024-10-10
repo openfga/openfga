@@ -159,13 +159,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 		checkCacheTotalCounter.Inc()
 
 		cachedResp := c.cache.Get(cacheKey)
-		isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
+		isCached := cachedResp != nil
 		span.SetAttributes(attribute.Bool("is_cached", isCached))
 		if isCached {
 			checkCacheHitCounter.Inc()
 
 			// return a copy to avoid races across goroutines
-			return cachedResp.Value.(*ResolveCheckResponse).clone(), nil
+			return cachedResp.(*ResolveCheckResponse).clone(), nil
 		}
 	}
 

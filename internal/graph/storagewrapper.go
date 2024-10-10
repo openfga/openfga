@@ -188,12 +188,10 @@ func (c *CachedDatastore) newCachedIterator(
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
-
-	if isCached {
+	if cachedResp != nil {
 		tuplesCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
-		return storage.NewStaticTupleIterator(cachedResp.Value.([]*openfgav1.Tuple)), nil
+		return storage.NewStaticTupleIterator(cachedResp.([]*openfgav1.Tuple)), nil
 	}
 
 	iter, err := dsIterFunc(ctx)
@@ -285,8 +283,7 @@ func (c *cachedIterator) Stop() {
 
 			// if cache is already set, we don't need to drain the iterator
 			cachedResp := c.cache.Get(c.cacheKey)
-			isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
-			if isCached {
+			if cachedResp != nil {
 				return
 			}
 

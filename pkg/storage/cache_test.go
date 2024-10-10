@@ -19,8 +19,17 @@ func TestInMemoryCache(t *testing.T) {
 		defer cache.Stop()
 		cache.Set("key", "value", 1*time.Second)
 		result := cache.Get("key")
-		require.Equal(t, "value", result.Value)
-		require.False(t, result.Expired)
+		require.Equal(t, "value", result)
+	})
+
+	t.Run("set_and_get_expired", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+		cache.Set("key", "value", -1*time.Nanosecond)
+		result := cache.Get("key")
+		require.Nil(t, result)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
