@@ -29,7 +29,7 @@ func TestInMemoryCache(t *testing.T) {
 		defer cache.Stop()
 		cache.Set("key", "value", -1*time.Nanosecond)
 		result := cache.Get("key")
-		require.Nil(t, result)
+		require.Equal(t, "", result)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
