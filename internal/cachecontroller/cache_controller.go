@@ -156,5 +156,6 @@ func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
+	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

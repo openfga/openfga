@@ -464,6 +464,38 @@ func TestRead(t *testing.T) {
 
 		require.Equal(t, tuples, actual)
 	})
+
+	t.Run("tuple_key_includes_user", func(t *testing.T) {
+		tupleKey := &openfgav1.TupleKey{
+			User: "some user",
+		}
+		gomock.InOrder(
+			mockDatastore.EXPECT().
+				Read(gomock.Any(), storeID, tupleKey, storage.ReadOptions{}).
+				Return(storage.NewStaticTupleIterator(tuples), nil),
+		)
+
+		iter, err := ds.Read(ctx, storeID, tupleKey, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		var actual []*openfgav1.Tuple
+
+		for {
+			tuple, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+				break
+			}
+
+			actual = append(actual, tuple)
+		}
+
+		require.Equal(t, tuples, actual)
+	})
 }
 
 func TestCloseDatastore(t *testing.T) {
