@@ -129,7 +129,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			objectType:              "folder",
 			relation:                "can_delete",
 			user:                    "user:jon",
-			expectedDispatchCount:   2,
+			expectedDispatchCount:   1,
 			expectedThrottlingValue: 0,
 		},
 		{
@@ -271,7 +271,8 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
 	req := &graph.ResolveCheckRequest{
-		StoreID: storeID,
+		StoreID:              storeID,
+		AuthorizationModelID: ts.GetAuthorizationModelID(),
 		TupleKey: &openfgav1.TupleKey{
 			User:     "user:jon",
 			Relation: "viewer",

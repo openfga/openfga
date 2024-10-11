@@ -188,8 +188,10 @@ func (l *listUsersQuery) ListUsers(
 	}
 	defer cancelCtx()
 
+	metricsDs := storagewrappers.NewMetricsOpenFGAStorage(l.ds)
 	l.ds = storagewrappers.NewCombinedTupleReader(
-		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
+		storagewrappers.NewBoundedConcurrencyTupleReader(
+			metricsDs, l.maxConcurrentReads),
 		req.GetContextualTuples(),
 	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
@@ -210,15 +212,13 @@ func (l *listUsersQuery) ListUsers(
 			return &listUsersResponse{
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
-					DatastoreQueryCount: 0,
-					DispatchCounter:     new(atomic.Uint32),
-					WasThrottled:        new(atomic.Bool),
+					DispatchCounter: new(atomic.Uint32),
+					WasThrottled:    new(atomic.Bool),
 				},
 			}, nil
 		}
 	}
 
-	datastoreQueryCount := atomic.Uint32{}
 	dispatchCount := atomic.Uint32{}
 
 	foundUsersCh := l.buildResultsChannel()
@@ -243,7 +243,7 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		internalRequest := fromListUsersRequest(req, &datastoreQueryCount, &dispatchCount)
+		internalRequest := fromListUsersRequest(req, &dispatchCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
 		if resp.err != nil {
 			expandErrCh <- resp.err
@@ -291,7 +291,7 @@ func (l *listUsersQuery) ListUsers(
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: datastoreQueryCount.Load(),
+			DatastoreQueryCount: uint32(metricsDs.GetMetrics().DatastoreQueryCount),
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
 		},
@@ -453,7 +453,6 @@ func (l *listUsersQuery) expandDirect(
 		}
 	}
 	defer iter.Stop()
-	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
@@ -874,7 +873,6 @@ func (l *listUsersQuery) expandTTU(
 		}
 	}
 	defer iter.Stop()
-	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),

@@ -112,7 +112,7 @@ type UserRef struct {
 
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
-	datastore               storage.RelationshipTupleReader
+	datastore               *storagewrappers.MetricsOpenFGAStorage
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
@@ -148,7 +148,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
 		logger:                  logger.NewNoopLogger(),
-		datastore:               ds,
+		datastore:               storagewrappers.NewMetricsOpenFGAStorage(ds),
 		typesystem:              ts,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
@@ -182,7 +182,7 @@ type ReverseExpandResult struct {
 }
 
 type ResolutionMetadata struct {
-	DatastoreQueryCount *uint32
+	DatastoreQueryCount int
 
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCounter *atomic.Uint32
@@ -193,7 +193,7 @@ type ResolutionMetadata struct {
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		DatastoreQueryCount: new(uint32),
+		DatastoreQueryCount: 0,
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
 	}
@@ -223,6 +223,9 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	defer func() {
+		resolutionMetadata.DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
+	}()
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err
@@ -497,7 +500,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			Preference: req.Consistency,
 		},
 	})
-	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err
 	}
