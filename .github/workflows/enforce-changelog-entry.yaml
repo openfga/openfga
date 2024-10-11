@@ -17,4 +17,14 @@ jobs:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v3.5.2
       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # pin@v4
       - run: npx prettier --check CHANGELOG.md
-      - run: npx kacl lint
+      - run: npx keep-a-changelog
+      - run: |
+          files=$(git status --porcelain)
+          if [[ -n ${files}  ]]; then
+            >&2 echo "Tidy modules resulted in changed files:"
+            >&2 echo ""
+            >&2 echo "${files}"
+            >&2 echo ""
+            >&2 echo "Please run \`npx keep-a-changelog\` to fix changelog."
+            exit 1
+          fi
