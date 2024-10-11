@@ -82,8 +82,8 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
-	if cacheResp != nil && !cacheResp.Expired && cacheResp.Value != nil {
-		entry := cacheResp.Value.(*storage.ChangelogCacheEntry)
+	if cacheResp != nil {
+		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 		return entry.LastModified

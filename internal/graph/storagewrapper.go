@@ -170,20 +170,20 @@ func (c *CachedDatastore) Read(
 
 func (c *CachedDatastore) findInCache(store, key, invalidEntityKey string) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
-	if res := c.cache.Get(key); res != nil && !res.Expired && res.Value != nil {
-		tupleEntry = res.Value.(*storage.TupleIteratorCacheEntry)
+	if res := c.cache.Get(key); res != nil {
+		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
 	} else {
 		return nil, false
 	}
 	invalidCacheKey := storage.GetInvalidIteratorCacheKey(store)
-	if res := c.cache.Get(invalidCacheKey); res != nil && !res.Expired && res.Value != nil {
-		invalidEntry := res.Value.(*storage.InvalidEntityCacheEntry)
+	if res := c.cache.Get(invalidCacheKey); res != nil {
+		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
 			return nil, false
 		}
 	}
-	if res := c.cache.Get(invalidEntityKey); res != nil && !res.Expired && res.Value != nil {
-		invalidEntry := res.Value.(*storage.InvalidEntityCacheEntry)
+	if res := c.cache.Get(invalidEntityKey); res != nil {
+		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
 			return nil, false
 		}
@@ -300,7 +300,7 @@ func (c *cachedIterator) Stop() {
 			defer c.wg.Done()
 
 			// if cache is already set, we don't need to drain the iterator
-			if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil {
+			if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
 				return
 			}
 
