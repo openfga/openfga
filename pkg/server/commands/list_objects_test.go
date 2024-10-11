@@ -123,8 +123,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			`,
 			tuples: []string{
 				"folder:C#can_delete@user:jon",
-				"folder:B#viewer@user:jon",
-				"folder:A#viewer@user:jon",
+				"folder:C#editor@user:jon",
 			},
 			objectType:              "folder",
 			relation:                "can_delete",
@@ -229,7 +228,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				}),
 			)
 			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
-			mockThrottler.EXPECT().Close().Times(1)
+			mockThrottler.EXPECT().Close().Times(1) //LO closes throttler during server close call.
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
