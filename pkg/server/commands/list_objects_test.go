@@ -129,7 +129,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			objectType:              "folder",
 			relation:                "can_delete",
 			user:                    "user:jon",
-			expectedDispatchCount:   2,
+			expectedDispatchCount:   1,
 			expectedThrottlingValue: 0,
 		},
 		{
@@ -208,6 +208,13 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
+				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
+					graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+						DefaultThreshold: 1,
+						MaxThreshold:     0,
+					}),
+					graph.WithThrottler(mockThrottler),
+				}...),
 				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
 			t.Cleanup(checkResolverCloser)
 
@@ -222,6 +229,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				}),
 			)
 			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
+			mockThrottler.EXPECT().Close().Times(1)
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
