@@ -16,7 +16,6 @@ jobs:
           skipLabels: 'Skip-Changelog,dependencies,tests'
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v3.5.2
       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # pin@v4
-      - run: npx prettier --check CHANGELOG.md
       - run: npx keep-a-changelog
       - run: |
           files=$(git status --porcelain)
