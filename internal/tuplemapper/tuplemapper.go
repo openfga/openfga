@@ -18,10 +18,12 @@ type Mapper[ResultType any] interface {
 type MapperKind int64
 
 const (
-	UsersetKind MapperKind = 0
-	TTUKind     MapperKind = 1
-	// For tests only.
-	NoOpKind MapperKind = 2
+	// NoOpKind is for tests only.
+	NoOpKind MapperKind = 0
+
+	// NestedUsersetKind is a mapper that returns the userset ID from the tuple's user field.
+	NestedUsersetKind MapperKind = 1
+	NestedTTUKind     MapperKind = 2
 )
 
 // New is a factory that returns the right mapper based on the request's kind.
@@ -29,9 +31,9 @@ func New(kind MapperKind, iter storage.TupleIterator) interface{} {
 	switch kind {
 	case NoOpKind:
 		return &NoOpMapper{iter}
-	case UsersetKind:
-		return &UsersetMapper{iter}
-	case TTUKind:
+	case NestedUsersetKind:
+		return &NestedUsersetMapper{iter}
+	case NestedTTUKind:
 		// TODO
 		return nil
 	default:
@@ -61,25 +63,25 @@ func (n NoOpMapper) Map(t *openfgav1.TupleKey) (string, error) {
 
 var _ Mapper[string] = (*NoOpMapper)(nil)
 
-var _ Mapper[string] = (*UsersetMapper)(nil)
+var _ Mapper[string] = (*NestedUsersetMapper)(nil)
 
-type UsersetMapper struct {
+type NestedUsersetMapper struct {
 	iter storage.TupleIterator
 }
 
-func (n UsersetMapper) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+func (n NestedUsersetMapper) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	return n.iter.Next(ctx)
 }
 
-func (n UsersetMapper) Stop() {
+func (n NestedUsersetMapper) Stop() {
 	n.iter.Stop()
 }
 
-func (n UsersetMapper) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+func (n NestedUsersetMapper) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	return n.iter.Head(ctx)
 }
 
-func (n UsersetMapper) Map(t *openfgav1.TupleKey) (string, error) {
+func (n NestedUsersetMapper) Map(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
 	if relation == "" {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.

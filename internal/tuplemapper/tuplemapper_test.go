@@ -13,6 +13,27 @@ import (
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 )
 
+func TestNewMapper(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockIter := mockstorage.NewErrorTupleIterator(nil)
+
+	t.Run("no_op", func(t *testing.T) {
+		mapper := New(NoOpKind, mockIter)
+		require.NotNil(t, mapper)
+		_, ok := mapper.(*NoOpMapper)
+		require.True(t, ok)
+	})
+
+	t.Run("nested_userset", func(t *testing.T) {
+		mapper := New(NestedUsersetKind, mockIter)
+		require.NotNil(t, mapper)
+		_, ok := mapper.(*NestedUsersetMapper)
+		require.True(t, ok)
+	})
+}
+
 func TestUsersetTupleMapper(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -21,7 +42,7 @@ func TestUsersetTupleMapper(t *testing.T) {
 		{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
 	})
 
-	mapper := New(UsersetKind, mockIter)
+	mapper := New(NestedUsersetKind, mockIter)
 	require.NotNil(t, mapper)
 	actualMapper, ok := mapper.(Mapper[string])
 	require.True(t, ok)

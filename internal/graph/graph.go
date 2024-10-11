@@ -144,7 +144,7 @@ type RelationshipGraph struct {
 	typesystem *typesystem.TypeSystem
 }
 
-// New returns a RelationshipGraph from an authorization model. The RelationshipGraph should be used to introspect what kind of relationships between
+// New returns a RelationshipGraph from an authorization model. The RelationshipGraph should be used to introspect what tupleMapperKind of relationships between
 // object types can exist. To visualize this graph, use https://github.com/jon-whit/openfga-graphviz-gen
 func New(typesystem *typesystem.TypeSystem) *RelationshipGraph {
 	return &RelationshipGraph{

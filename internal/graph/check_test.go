@@ -4819,6 +4819,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
 				concurrencyLimit:     10,
+				tupleMapperKind:      tuplemapper.NestedUsersetKind,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 			}
@@ -5204,13 +5205,13 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 
 			dsCount := &atomic.Uint32{}
 			commonData := &recursiveMatchUserUsersetCommonData{
-				typesys:              ts,
-				ds:                   ds,
-				dsCount:              dsCount,
-				userToUsersetMapping: nil, // not used
-				concurrencyLimit:     tt.poolSize,
-				visitedUserset:       &sync.Map{},
-				//kind:                        tuplemapper.UsersetKind,
+				typesys:                     ts,
+				ds:                          ds,
+				dsCount:                     dsCount,
+				userToUsersetMapping:        nil, // not used
+				concurrencyLimit:            tt.poolSize,
+				visitedUserset:              &sync.Map{},
+				tupleMapperKind:             tuplemapper.NestedUsersetKind,
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
 			}
 
@@ -5719,7 +5720,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 
 				typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
 
-				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tuplemapper.UsersetKind, typeRes, 10)
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tuplemapper.NestedUsersetKind, typeRes, 10)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -5767,7 +5768,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 
 		typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
 
-		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tuplemapper.UsersetKind, typeRes, 10)
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tuplemapper.NestedUsersetKind, typeRes, 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})
