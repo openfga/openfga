@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"math"
+	"time"
+
+	"github.com/openfga/openfga/internal/cachecontroller"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
@@ -28,10 +31,11 @@ const (
 )
 
 type CheckQuery struct {
-	logger        logger.Logger
-	checkResolver graph.CheckResolver
-	typesys       *typesystem.TypeSystem
-	datastore     storage.RelationshipTupleReader
+	logger          logger.Logger
+	checkResolver   graph.CheckResolver
+	typesys         *typesystem.TypeSystem
+	datastore       storage.RelationshipTupleReader
+	cacheController cachecontroller.CacheController
 
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
@@ -57,12 +61,19 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	}
 }
 
+func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption {
+	return func(c *CheckQuery) {
+		c.cacheController = ctrl
+	}
+}
+
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
 		datastore:          datastore,
 		checkResolver:      checkResolver,
 		typesys:            typesys,
+		cacheController:    cachecontroller.NewNoopCacheController(),
 		resolveNodeLimit:   defaultResolveNodeLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
 	}
@@ -79,6 +90,12 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 		return nil, nil, err
 	}
 
+	cacheInvalidationTime := time.Time{}
+
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
+	}
+
 	resolveCheckRequest := graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
@@ -88,6 +105,8 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
 		Consistency:          req.GetConsistency(),
+		// avoid having to read from cache consistently by propagating it
+		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
 	ctx = buildCheckContext(ctx, c.typesys, c.datastore, c.maxConcurrentReads, resolveCheckRequest.GetContextualTuples())
