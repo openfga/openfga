@@ -317,6 +317,7 @@ func (q *ListObjectsQuery) evaluate(
 		ctx := storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
+		var wasCheckThrottled atomic.Bool
 
 	ConsumerReadLoop:
 		for {
@@ -346,7 +347,6 @@ func (q *ListObjectsQuery) evaluate(
 						<-concurrencyLimiterCh
 						wg.Done()
 					}()
-					var wasCheckThrottled bool
 
 					concurrencyLimiterCh <- struct{}{}
 					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
@@ -371,8 +371,8 @@ func (q *ListObjectsQuery) evaluate(
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
-					if !wasCheckThrottled && checkRequestMetadata.WasThrottled.Load() {
-						wasCheckThrottled = true
+					if !wasCheckThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
+						wasCheckThrottled.Store(true)
 						resolutionMetadata.WasThrottled.Store(true)
 					}
 
