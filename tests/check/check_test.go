@@ -356,17 +356,17 @@ func BenchmarkCheckMemory(b *testing.B) {
 	benchmarkAll(b, "memory")
 }
 
-func BenchmarkCheckPostgres(b *testing.B) {
-	benchmarkAll(b, "postgres")
-}
-
-func BenchmarkCheckMySQL(b *testing.B) {
-	benchmarkAll(b, "mysql")
-}
-
-func BenchmarkCheckSQLite(b *testing.B) {
-	benchmarkAll(b, "sqlite")
-}
+//func BenchmarkCheckPostgres(b *testing.B) {
+//	benchmarkAll(b, "postgres")
+//}
+//
+//func BenchmarkCheckMySQL(b *testing.B) {
+//	benchmarkAll(b, "mysql")
+//}
+//
+//func BenchmarkCheckSQLite(b *testing.B) {
+//	benchmarkAll(b, "sqlite")
+//}
 
 func benchmarkAll(b *testing.B, engine string) {
 	b.Cleanup(func() {
@@ -377,14 +377,14 @@ func benchmarkAll(b *testing.B, engine string) {
 		)
 	})
 	b.Run("benchmarkCheckDirectAndUserset", func(b *testing.B) { benchmarkCheckDirectAndUserset(b, engine) })
-	b.Run("benchmarkCheckWithIntersectionAndExclusion", func(b *testing.B) { benchmarkCheckWithIntersectionAndExclusion(b, engine) })
-	b.Run("BenchmarkCheckWithComputed", func(b *testing.B) { benchmarkCheckWithComputed(b, engine) })
-	b.Run("benchmarkCheckWithUserset", func(b *testing.B) { benchmarkCheckWithUserset(b, engine) })
-	b.Run("BenchmarkCheckWithNestedUsersets", func(b *testing.B) { benchmarkCheckWithNestedUsersets(b, engine) })
-	b.Run("BenchmarkCheckWithTTUs", func(b *testing.B) { benchmarkCheckWithTTUs(b, engine) })
-	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
-	b.Run("BenchmarkCheckWithOneCondition", func(b *testing.B) { benchmarkCheckWithOneCondition(b, engine) })
-	b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
+	//b.Run("benchmarkCheckWithIntersectionAndExclusion", func(b *testing.B) { benchmarkCheckWithIntersectionAndExclusion(b, engine) })
+	//b.Run("BenchmarkCheckWithComputed", func(b *testing.B) { benchmarkCheckWithComputed(b, engine) })
+	//b.Run("benchmarkCheckWithUserset", func(b *testing.B) { benchmarkCheckWithUserset(b, engine) })
+	//b.Run("BenchmarkCheckWithNestedUsersets", func(b *testing.B) { benchmarkCheckWithNestedUsersets(b, engine) })
+	//b.Run("BenchmarkCheckWithTTUs", func(b *testing.B) { benchmarkCheckWithTTUs(b, engine) })
+	//b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
+	//b.Run("BenchmarkCheckWithOneCondition", func(b *testing.B) { benchmarkCheckWithOneCondition(b, engine) })
+	//b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
 }
 
 // setupBenchmarkTest spins a new server and a backing datastore, and returns a client to the server
@@ -392,12 +392,13 @@ func benchmarkAll(b *testing.B, engine string) {
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := config.MustDefaultConfig()
 	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-	cfg.Log.Level = "none"
+	cfg.Log.Level = "warn"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 	cfg.MaxTuplesPerWrite = 10_000 // TODO use the engine's max tuples per write
 
+	// TODO No server
 	tests.StartServer(b, cfg)
 
 	// nolint:staticcheck // ignoring gRPC deprecations
