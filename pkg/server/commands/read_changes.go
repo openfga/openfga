@@ -66,7 +66,11 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	opts := storage.ReadChangesOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
 	}
-	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), req.GetType(), opts, q.horizonOffset)
+	filter := storage.ReadChangesFilter{
+		ObjectType:    req.GetType(),
+		HorizonOffset: q.horizonOffset,
+	}
+	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), filter, opts)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1.ReadChangesResponse{

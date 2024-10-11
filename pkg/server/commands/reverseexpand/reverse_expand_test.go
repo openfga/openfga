@@ -42,7 +42,8 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 			relations
 				define viewer: [user]`)
 
-	typeSystem := typesystem.New(model)
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -110,7 +111,8 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 			relations
 				define viewer: [user]`)
 
-	typeSystem := typesystem.New(model)
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -195,7 +197,8 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 				define allowed: [user]
 				define viewer: [user] and allowed`)
 
-	typeSystem := typesystem.New(model)
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -253,7 +256,8 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 			relations
 				define viewer: [user]`)
 
-	typeSystem := typesystem.New(model)
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -339,9 +343,14 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 		errChan := make(chan error, 1)
 
 		go func() {
-			reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typesystem.New(model))
+			ts, err := typesystem.New(model)
+			if err != nil {
+				t.Error("unexpected error creating model", err)
+				return
+			}
+			reverseExpandQuery := NewReverseExpandQuery(mockDatastore, ts)
 			t.Logf("before produce")
-			err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
+			err = reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 				StoreID:    store,
 				ObjectType: "document",
 				Relation:   "viewer",
@@ -417,7 +426,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					// NOTE this tuple is invalid
-					{Key: tuple.NewTupleKey("group:eng#member", "member", "group:fga#member")},
+					{Key: tuple.NewTupleKey("group:eng", "member", "fail:fga#member")},
 				}), nil
 			}),
 	},
@@ -429,8 +438,13 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	errChan := make(chan error, 1)
 
 	go func() {
-		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typesystem.New(model))
-		err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
+		ts, err := typesystem.New(model)
+		if err != nil {
+			t.Error("unexpected error creating model", err)
+			return
+		}
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, ts)
+		err = reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 			StoreID:          storeID,
 			ObjectType:       "group",
 			Relation:         "member",

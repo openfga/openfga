@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -117,9 +119,11 @@ func TestCheck_CorrectContext(t *testing.T) {
 			type document
 				relations
 					define viewer: [user]`)
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(model))
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+		ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
-		_, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		_, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
@@ -821,9 +825,12 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 					define viewer: [user] but not restricted
 					define restricted: [user, document#viewer]`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -862,9 +869,12 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 					define restrictedb: [user, document#viewer]
 			`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -910,7 +920,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 			type group
 				relations
-					define member: [user, group#member]
+					define other: [user]
+					define member: [user, group#member] or other
 
 			type document
 				relations
@@ -918,9 +929,12 @@ func TestResolveCheckDeterministic(t *testing.T) {
 					define viewer: [group#member] or editor
 					define editor: [group#member] and allowed`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -971,9 +985,12 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
@@ -1018,9 +1035,12 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			}
 			`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
@@ -1073,9 +1093,12 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 			relations
 				define viewer: [group#member]`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
@@ -1143,9 +1166,12 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 				define parent: [org]
 		`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 
 	tests := []struct {
@@ -1260,14 +1286,14 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:no_access"),
 			allowed:    false,
 			minDBReads: 3, // 1 userset read (2 found) follow by 2 direct tuple check (not found)
-			maxDBReads: 3,
+			maxDBReads: 4,
 		},
 		{
 			name:       "multiple_userset_access",
 			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:maria"),
 			allowed:    true,
-			minDBReads: 2, // 1 userset read (2 found) follow by 1 direct tuple check (found, returns immediately)
-			maxDBReads: 2,
+			minDBReads: 2, // 2 userset read (2 found) follow by 2 direct tuple check (found, returns immediately)
+			maxDBReads: 4,
 		},
 		{
 			name:       "wildcard_no_access",
@@ -1295,8 +1321,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "union_and_ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:unknown"),
 			allowed:    false,
-			minDBReads: 2, // min(union (2 reads), ttu (4 reads))
-			maxDBReads: 4, // max(union (2 reads), ttu (4 reads))
+			minDBReads: 2, // min(union (2 reads), ttu (2 read))
+			maxDBReads: 4, // max(union (2 reads), ttu (2 read))
 		},
 		{
 			name:       "union_or_ttu",
@@ -1536,7 +1562,8 @@ func TestCheckDispatchCount(t *testing.T) {
 
 			type group
 				relations
-					define member: [user, group#member]
+					define other: [user]
+					define member: [user, group#member] or other
 
 			type document
 				relations
@@ -2158,9 +2185,12 @@ func TestCycleDetection(t *testing.T) {
 					define x: y
 					define y: x`)
 
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
 		ctx := typesystem.ContextWithTypesystem(
 			context.Background(),
-			typesystem.New(model),
+			ts,
 		)
 
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -2700,7 +2730,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
 
-			ts := typesystem.New(tt.model)
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
 			ctx := context.Background()
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -2783,12 +2814,16 @@ func TestConsumeUsersets(t *testing.T) {
 			tuples: []dsResults{
 				// we expect 3 ds.ReadStartingWithUser to be called in response to 3 batches from usersetsChannel
 				{
-					tuples: []*openfgav1.Tuple{},
-					err:    nil,
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
 				},
 				{
-					tuples: []*openfgav1.Tuple{},
-					err:    nil,
+					tuples: []*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("group:11", "member", "user:maria")},
+					},
+					err: nil,
 				},
 				{
 					tuples: []*openfgav1.Tuple{
@@ -2818,7 +2853,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
+					DatastoreQueryCount: 1, // since order is not guaranteed the allowed might come from the first answer
 				},
 			},
 			errorExpected: nil,
@@ -2974,7 +3009,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
+					DatastoreQueryCount: 1,
 				},
 			},
 			errorExpected: nil,
@@ -3036,11 +3071,12 @@ func TestConsumeUsersets(t *testing.T) {
 
 			for _, curTuples := range tt.tuples {
 				// Note that we need to return a new iterator for each DS call
-				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 					storage.NewStaticTupleIterator(curTuples.tuples), curTuples.err)
 			}
 
-			ts := typesystem.New(model)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
 			var ctx context.Context
 			var cancel context.CancelFunc
 			ctx = context.Background()
@@ -3069,10 +3105,14 @@ func TestConsumeUsersets(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			}, usersetChan)
-			require.Equal(t, tt.errorExpected, err)
-			require.Equal(t, tt.expectedResolveCheckResponse, result)
 
 			require.NoError(t, pool.Wait())
+			require.Equal(t, tt.errorExpected, err)
+			if tt.errorExpected == nil {
+				require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
+				require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
+				require.LessOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
+			}
 		})
 	}
 }
@@ -3144,7 +3184,8 @@ func TestProduceUsersetDispatches(t *testing.T) {
 				condition condX(x: int) {
 					x < 100
 				}`)
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
@@ -3290,7 +3331,8 @@ func TestProduceTTUDispatches(t *testing.T) {
 					x < 100
 				}`)
 
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
@@ -3861,7 +3903,8 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 				condition condX(x: int) {
 					x < 100
 				}`)
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
 	const initialDSCount = 20
@@ -3959,7 +4002,8 @@ func TestCheckTTUSlowPath(t *testing.T) {
 					x < 100
 				}`)
 
-	ts := typesystem.New(model)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	const initialDSCount = 20
 
@@ -4060,4 +4104,1699 @@ func TestCheckTTUSlowPath(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+}
+
+type parallelRecursiveTest struct {
+	slowRequests               bool
+	numTimeFuncExecuted        *atomic.Uint32
+	returnResolveCheckResponse []*ResolveCheckResponse
+	returnError                []error
+}
+
+func (p *parallelRecursiveTest) testParallelizeRecursive(context.Context,
+	*ResolveCheckRequest,
+	*recursiveMatchUserUsersetCommonData) (*ResolveCheckResponse, error) {
+	if p.slowRequests {
+		time.Sleep(5 * time.Millisecond)
+	}
+	currentCounter := p.numTimeFuncExecuted.Add(1)
+	return p.returnResolveCheckResponse[currentCounter-1], p.returnError[currentCounter-1]
+}
+
+func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("regular_test", func(t *testing.T) {
+		tests := []struct {
+			name                  string
+			usersetItems          []string
+			maxConcurrentReads    int
+			visitedItems          []string
+			parallelRecursiveTest parallelRecursiveTest
+			expectedResponse      *ResolveCheckResponse
+			expectedError         error
+		}{
+			{
+				name:               "empty_userset",
+				usersetItems:       []string{},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_last_true_concurrent_read_large",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_last_true_concurrent_read_large_slow_requests",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					slowRequests:        true,
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_last_true_concurrent_read_small",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_last_true_concurrent_read_small_slow_request",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					slowRequests:        true,
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_first_true_concurrent_read_large",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_first_true_concurrent_read_small",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: true,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 20,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "multiple_userset_none_true_concurrent_read_small",
+				usersetItems:       []string{"group:1", "group:2", "group:3"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 1,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+						{
+							Allowed: false,
+							ResolutionMetadata: &ResolveCheckResponseMetadata{
+								DatastoreQueryCount: 20,
+								CycleDetected:       false,
+							},
+						},
+					},
+					returnError: []error{
+						nil,
+						nil,
+						nil,
+					},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+			{
+				name:               "error",
+				usersetItems:       []string{"group:1"},
+				visitedItems:       []string{},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					numTimeFuncExecuted: &atomic.Uint32{},
+					returnResolveCheckResponse: []*ResolveCheckResponse{
+						nil,
+					},
+					returnError: []error{
+						fmt.Errorf("mock_error"),
+					},
+				},
+				expectedResponse: nil,
+				expectedError:    fmt.Errorf("mock_error"),
+			},
+			{
+				name:               "do_not_run_visited_item",
+				usersetItems:       []string{"group:1"},
+				visitedItems:       []string{"group:1"},
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					// notice there are no items being returned as group:1 is skipped.
+					returnResolveCheckResponse: []*ResolveCheckResponse{},
+					returnError:                []error{},
+				},
+				expectedResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				},
+				expectedError: nil,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				commonParameters := &recursiveMatchUserUsersetCommonData{
+					concurrencyLimit: tt.maxConcurrentReads,
+					visitedUserset:   &sync.Map{},
+					dsCount:          &atomic.Uint32{},
+				}
+				for _, item := range tt.visitedItems {
+					commonParameters.visitedUserset.Store(item, struct{}{})
+				}
+				commonParameters.dsCount.Store(15)
+				resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
+					tt.usersetItems,
+					&ResolveCheckRequest{
+						RequestMetadata: NewCheckRequestMetadata(20),
+					},
+					commonParameters,
+					tt.parallelRecursiveTest.testParallelizeRecursive)
+				require.Equal(t, tt.expectedResponse, resp)
+				require.Equal(t, tt.expectedError, err)
+			})
+		}
+	})
+	t.Run("very_large_slow_userset", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name         string
+			checkAllowed bool
+		}{
+			{
+				name:         "not_allowed",
+				checkAllowed: false,
+			},
+			{
+				name:         "allowed",
+				checkAllowed: true,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				maxConcurrentRead := 20
+				numUsersetItem := 5000
+				commonParameters := &recursiveMatchUserUsersetCommonData{
+					concurrencyLimit: maxConcurrentRead,
+					visitedUserset:   &sync.Map{},
+					dsCount:          &atomic.Uint32{},
+				}
+				commonParameters.dsCount.Store(15)
+
+				usersetItems := make([]string, numUsersetItem)
+				returnResolveCheckResponse := make([]*ResolveCheckResponse, numUsersetItem)
+				returnError := make([]error, numUsersetItem)
+				for i := 0; i < numUsersetItem; i++ {
+					usersetItems[i] = fmt.Sprintf("group:%d", i)
+					returnResolveCheckResponse[i] = &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 15,
+							CycleDetected:       false,
+						},
+					}
+					returnError[i] = nil
+				}
+				if tt.checkAllowed {
+					returnResolveCheckResponse[numUsersetItem/2] = &ResolveCheckResponse{
+						Allowed: true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							DatastoreQueryCount: 15,
+							CycleDetected:       false,
+						},
+					}
+				}
+
+				recursiveTestResult := parallelRecursiveTest{
+					slowRequests:               true,
+					numTimeFuncExecuted:        &atomic.Uint32{},
+					returnResolveCheckResponse: returnResolveCheckResponse,
+					returnError:                returnError,
+				}
+				resp, err := parallelizeRecursiveMatchUserUserset(context.Background(),
+					usersetItems,
+					&ResolveCheckRequest{
+						RequestMetadata: NewCheckRequestMetadata(20),
+					},
+					commonParameters,
+					recursiveTestResult.testParallelizeRecursive)
+				require.NoError(t, err)
+				require.Equal(t, &ResolveCheckResponse{
+					Allowed: tt.checkAllowed,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 15,
+						CycleDetected:       false,
+					},
+				}, resp)
+			})
+		}
+	})
+}
+
+func TestRecursiveMatchUserUserset(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name               string
+		tuples             [][]*openfgav1.Tuple
+		tupleIteratorError error
+		expected           *ResolveCheckResponse
+		expectedError      error
+	}{
+		{
+			name: "empty_recursive_userset",
+			tuples: [][]*openfgav1.Tuple{
+				{},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "first_item_match",
+			tuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:a#member"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:x#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "second_item_match",
+			tuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:x#member"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:a#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "iter_error",
+			tuples: [][]*openfgav1.Tuple{
+				{},
+			},
+			tupleIteratorError: fmt.Errorf("mock_error"),
+			expected:           nil,
+			expectedError:      fmt.Errorf("mock_error"),
+		},
+		{
+			name: "recursive_linear_not_found",
+			tuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:x#member"),
+					},
+				},
+				{
+					{
+						Key: tuple.NewTupleKey("group:x", "member", "group:y#member"),
+					},
+				},
+				{},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "recursive_linear_found",
+			tuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:x#member"),
+					},
+				},
+				{
+					{
+						Key: tuple.NewTupleKey("group:x", "member", "group:y#member"),
+					},
+				},
+				{
+					{
+						Key: tuple.NewTupleKey("group:y", "member", "group:b#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "recursive_breath_not_found",
+			tuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:x#member"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:x", "member", "group:y#member"),
+					},
+				},
+				{},
+				{},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+					CycleDetected:       false,
+				},
+			},
+		},
+		{
+			name: "found_second_level",
+			tuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:x#member"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:x", "member", "group:y#member"),
+					},
+				},
+				{},
+				{
+					{
+						Key: tuple.NewTupleKey("group:y", "member", "group:b#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 3,
+					CycleDetected:       false,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			for _, tuples := range tt.tuples {
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tuples), tt.tupleIteratorError)
+			}
+			model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			req := &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}
+
+			userUsersetMapping := storage.NewSortedSet()
+			userUsersetMapping.Add("group:a")
+			userUsersetMapping.Add("group:b")
+
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:              ts,
+				ds:                   ds,
+				dsCount:              &atomic.Uint32{},
+				concurrencyLimit:     10,
+				userToUsersetMapping: userUsersetMapping,
+				visitedUserset:       &sync.Map{},
+				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+					{
+						Type: "group",
+						RelationOrWildcard: &openfgav1.RelationReference_Relation{
+							Relation: "member",
+						},
+					},
+				},
+			}
+
+			result, err := recursiveMatchUserUserset(context.Background(), req, commonData)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestStreamedLookupUsersetForUser(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                            string
+		contextDone                     bool
+		publiclyAssignable              bool
+		readStartingWithUserTuples      []*openfgav1.Tuple
+		readStartingWithUserTuplesError error
+		iteratorHasError                bool
+		expected                        []usersetMessage
+		poolSize                        int
+	}{
+		{
+			name:                            "get_iterator_error",
+			contextDone:                     false,
+			poolSize:                        1,
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: fmt.Errorf("mock_error"),
+			expected: []usersetMessage{
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
+			name:             "iterator_next_error",
+			contextDone:      false,
+			poolSize:         1,
+			iteratorHasError: true,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "",
+					err:     mocks.ErrSimulatedError,
+				},
+			},
+		},
+		{
+			name:                            "empty_user",
+			contextDone:                     false,
+			poolSize:                        1,
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: nil,
+			expected:                        nil,
+		},
+		{
+			name:                            "ctx_cancel",
+			contextDone:                     true,
+			poolSize:                        1,
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: nil,
+			expected:                        nil,
+		},
+		{
+			name:        "has_users",
+			contextDone: false,
+			poolSize:    1,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:        "has_users_large_pool_size",
+			contextDone: false,
+			poolSize:    5,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:        "non_publicly_assignable",
+			contextDone: false,
+			poolSize:    5,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:*"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:               "publicly_assignable",
+			contextDone:        false,
+			publiclyAssignable: true,
+			poolSize:           5,
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:*"),
+				},
+			},
+			readStartingWithUserTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
+				},
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			if tt.iteratorHasError {
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(mocks.NewErrorTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			} else {
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			}
+			var model *openfgav1.AuthorizationModel
+			if tt.publiclyAssignable {
+				model = parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, user:*, group#member]
+`)
+			} else {
+				model = parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+			}
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			req := &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}
+
+			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
+			if tt.contextDone {
+				cancelFunc()
+			} else {
+				defer cancelFunc()
+			}
+
+			dsCount := &atomic.Uint32{}
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:                     ts,
+				ds:                          ds,
+				dsCount:                     dsCount,
+				userToUsersetMapping:        nil, // not used
+				concurrencyLimit:            tt.poolSize,
+				visitedUserset:              &sync.Map{},
+				allowedUserTypeRestrictions: nil, // not used
+			}
+
+			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, commonData, req)
+
+			var userToUsersetMessages []usersetMessage
+
+			for userToUsersetMessage := range userToUsersetMessageChan {
+				userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
+			}
+
+			require.Equal(t, tt.expected, userToUsersetMessages)
+		})
+	}
+}
+
+func TestStreamedLookupUsersetForObject(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                   string
+		contextDone            bool
+		readUsersetTuples      []*openfgav1.Tuple
+		readUsersetTuplesError error
+		iteratorHasError       bool
+		expected               []usersetMessage
+		poolSize               int
+	}{
+		{
+			name:                   "get_iterator_error",
+			contextDone:            false,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: fmt.Errorf("mock_error"),
+			expected: []usersetMessage{
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
+			name:             "iterator_next_error",
+			contextDone:      false,
+			poolSize:         1,
+			iteratorHasError: true,
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+				{
+					userset: "",
+					err:     mocks.ErrSimulatedError,
+				},
+			},
+		},
+		{
+			name:                   "empty_userset",
+			contextDone:            false,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: nil,
+			expected:               nil,
+		},
+		{
+			name:                   "ctx_cancel",
+			contextDone:            true,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: nil,
+			expected:               nil,
+		},
+		{
+			name:        "has_userset",
+			contextDone: false,
+			poolSize:    1,
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+				{
+					userset: "group:3",
+					err:     nil,
+				},
+			},
+		},
+		{
+			name:        "has_userset_large_pool_size",
+			contextDone: false,
+			poolSize:    5,
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			expected: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+				{
+					userset: "group:3",
+					err:     nil,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			if tt.iteratorHasError {
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(mocks.NewErrorTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			} else {
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			}
+			model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			req := &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}
+
+			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
+			if tt.contextDone {
+				cancelFunc()
+			} else {
+				defer cancelFunc()
+			}
+
+			dsCount := &atomic.Uint32{}
+			commonData := &recursiveMatchUserUsersetCommonData{
+				typesys:              ts,
+				ds:                   ds,
+				dsCount:              dsCount,
+				userToUsersetMapping: nil, // not used
+				concurrencyLimit:     tt.poolSize,
+				visitedUserset:       &sync.Map{},
+				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+					{
+						Type: "group",
+						RelationOrWildcard: &openfgav1.RelationReference_Relation{
+							Relation: "member",
+						},
+					},
+				},
+			}
+
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, req)
+
+			var userToUsersetMessages []usersetMessage
+
+			for userToUsersetMessage := range userToUsersetMessageChan {
+				userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
+			}
+
+			require.Equal(t, tt.expected, userToUsersetMessages)
+		})
+	}
+}
+
+func TestProcessUsersetMessage(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name                 string
+		message              usersetMessage
+		matchingUserset      []string
+		expectedFound        bool
+		expectedError        error
+		expectedInputUserset []string
+	}{
+		{
+			name: "error_input",
+			message: usersetMessage{
+				userset: "",
+				err:     fmt.Errorf("mock_error"),
+			},
+			matchingUserset:      []string{"a", "b"},
+			expectedFound:        false,
+			expectedError:        fmt.Errorf("mock_error"),
+			expectedInputUserset: []string{},
+		},
+		{
+			name: "match",
+			message: usersetMessage{
+				userset: "b",
+				err:     nil,
+			},
+			matchingUserset:      []string{"a", "b"},
+			expectedFound:        true,
+			expectedError:        nil,
+			expectedInputUserset: []string{"b"},
+		},
+		{
+			name: "not_match",
+			message: usersetMessage{
+				userset: "c",
+				err:     nil,
+			},
+			matchingUserset:      []string{"a", "b"},
+			expectedFound:        false,
+			expectedError:        nil,
+			expectedInputUserset: []string{"c"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			inputSortedSet := storage.NewSortedSet()
+			matchingSortedSet := storage.NewSortedSet()
+			for _, match := range tt.matchingUserset {
+				matchingSortedSet.Add(match)
+			}
+			output, err := processUsersetMessage(tt.message, inputSortedSet, matchingSortedSet)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expectedFound, output)
+			require.Equal(t, tt.expectedInputUserset, inputSortedSet.Values())
+		})
+	}
+}
+
+func TestMatchUsersetFromUserAndUsersetFromObject(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("non_cancel_context", func(t *testing.T) {
+		tests := []struct {
+			name                         string
+			userToUsersetMessages        []usersetMessage
+			objectToUsersetMessages      []usersetMessage
+			expectedResolveCheckResponse *ResolveCheckResponse
+			expectedUserToUserset        []string
+			expectedObjectToUserset      []string
+			expectedError                error
+		}{
+			{
+				name:                    "empty_lists",
+				userToUsersetMessages:   []usersetMessage{},
+				objectToUsersetMessages: []usersetMessage{},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+			{
+				name: "userToUsersetMessages_not_nil_but_object_nil",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+			{
+				name:                  "objectToUsersetMessages_not_nil_but_user_nil",
+				userToUsersetMessages: []usersetMessage{},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+			{
+				name: "userToUsersetMessages_error",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "",
+						err:     fmt.Errorf("mock_error"),
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:1",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        nil,
+				expectedObjectToUserset:      nil,
+				expectedError:                fmt.Errorf("mock_error"),
+			},
+			{
+				name: "objectToUsersetMessages_error",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:3",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "",
+						err:     fmt.Errorf("mock_error"),
+					},
+				},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        nil,
+				expectedObjectToUserset:      nil,
+				expectedError:                fmt.Errorf("mock_error"),
+			},
+			{
+				name: "direct_assignment",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:1",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+			{
+				name: "items_not_match",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:3",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: nil,
+				expectedUserToUserset:        []string{"group:2"},
+				expectedObjectToUserset:      []string{"group:3"},
+				expectedError:                nil,
+			},
+			{
+				name: "items_match",
+				userToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				objectToUsersetMessages: []usersetMessage{
+					{
+						userset: "group:2",
+						err:     nil,
+					},
+				},
+				expectedResolveCheckResponse: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+				expectedUserToUserset:   nil,
+				expectedObjectToUserset: nil,
+				expectedError:           nil,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				userToUsersetMessagesChan := make(chan usersetMessage, 5)
+				objectToUsersetMessagesChan := make(chan usersetMessage, 5)
+
+				pool := concurrency.NewPool(context.Background(), 2)
+				pool.Go(func(ctx context.Context) error {
+					time.Sleep(1 * time.Millisecond)
+
+					for _, userToUsersetMessage := range tt.userToUsersetMessages {
+						concurrency.TrySendThroughChannel(ctx, userToUsersetMessage, userToUsersetMessagesChan)
+					}
+					close(userToUsersetMessagesChan)
+					return nil
+				})
+
+				pool.Go(func(ctx context.Context) error {
+					time.Sleep(1 * time.Millisecond)
+
+					for _, objectToUsersetMessage := range tt.objectToUsersetMessages {
+						concurrency.TrySendThroughChannel(ctx, objectToUsersetMessage, objectToUsersetMessagesChan)
+					}
+					close(objectToUsersetMessagesChan)
+					return nil
+				})
+				ctx := context.Background()
+
+				req := &ResolveCheckRequest{
+					StoreID:              ulid.Make().String(),
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				}
+
+				resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
+				_ = pool.Wait()
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expectedResolveCheckResponse, resp)
+				if tt.expectedUserToUserset != nil {
+					require.Equal(t, tt.expectedUserToUserset, userToUserset.Values())
+				} else {
+					require.Nil(t, userToUserset)
+				}
+				if tt.expectedObjectToUserset != nil {
+					require.Equal(t, tt.expectedObjectToUserset, objectToUserset.Values())
+				} else {
+					require.Nil(t, objectToUserset)
+				}
+			})
+		}
+	})
+	t.Run("cancel_context", func(t *testing.T) {
+		t.Parallel()
+		userToUsersetMessagesChan := make(chan usersetMessage)
+		objectToUsersetMessagesChan := make(chan usersetMessage)
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		req := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+
+		resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, resp)
+		require.Nil(t, userToUserset)
+		require.Nil(t, objectToUserset)
+	})
+}
+
+func TestNestedUsersetFastpath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("normal_test_cases", func(t *testing.T) {
+		tests := []struct {
+			name                            string
+			readStartingWithUserTuples      []*openfgav1.Tuple
+			readStartingWithUserTuplesError error
+			readUsersetTuples               [][]*openfgav1.Tuple
+			readUsersetTuplesError          error
+			expected                        *ResolveCheckResponse
+			expectedError                   error
+		}{
+			{
+				name:                       "no_user_assigned_to_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+						},
+					},
+					{},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+			},
+			{
+				name: "user_directly_assigned_to_main_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+			},
+			{
+				name: "user_assigned_to_first_level_sub_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+			},
+			{
+				name: "user_assigned_to_second_level_sub_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:6", "member", "group:5#member"),
+						},
+					},
+					{
+						{
+							Key: tuple.NewTupleKey("group:5", "member", "group:3#member"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 3,
+						CycleDetected:       false,
+					},
+				},
+			},
+			{
+				name: "user_not_assigned_to_sub_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+						},
+					},
+					{},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 3,
+						CycleDetected:       false,
+					},
+				},
+			},
+			{
+				name:                            "error_getting_tuple",
+				readStartingWithUserTuples:      []*openfgav1.Tuple{},
+				readStartingWithUserTuplesError: fmt.Errorf("mock error"),
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{},
+				},
+				expected:      nil,
+				expectedError: fmt.Errorf("mock error"),
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				ds := mocks.NewMockRelationshipTupleReader(ctrl)
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+
+				for _, tuples := range tt.readUsersetTuples {
+					ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
+				}
+				model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+				ts, err := typesystem.New(model)
+				require.NoError(t, err)
+
+				req := &ResolveCheckRequest{
+					StoreID:              ulid.Make().String(),
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				}
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
+			})
+		}
+	})
+	t.Run("resolution_depth_exceeded", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ds := mocks.NewMockRelationshipTupleReader(ctrl)
+		ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:bad", "member", "user:maria"),
+				},
+			}), nil)
+
+		for i := 0; i < 26; i++ {
+			ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i+1), "member", "group:"+strconv.Itoa(i)+"#member"),
+					},
+				}), nil)
+		}
+		model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		req := &ResolveCheckRequest{
+			StoreID:              ulid.Make().String(),
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(20),
+		}
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
+		require.Nil(t, result)
+		require.Equal(t, ErrResolutionDepthExceeded, err)
+	})
 }

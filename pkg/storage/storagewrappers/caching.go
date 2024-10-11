@@ -38,7 +38,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	cachedEntry := c.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
-		return cachedEntry.Value, nil
+		return cachedEntry, nil
 	}
 
 	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)

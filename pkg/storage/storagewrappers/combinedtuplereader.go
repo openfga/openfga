@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"slices"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -15,25 +16,29 @@ func NewCombinedTupleReader(
 	ds storage.RelationshipTupleReader,
 	contextualTuples []*openfgav1.TupleKey,
 ) storage.RelationshipTupleReader {
-	return &combinedTupleReader{
+	return &CombinedTupleReader{
 		RelationshipTupleReader: ds,
 		contextualTuples:        contextualTuples,
 	}
 }
 
-type combinedTupleReader struct {
+type CombinedTupleReader struct {
 	storage.RelationshipTupleReader
 	contextualTuples []*openfgav1.TupleKey
 }
 
-var _ storage.RelationshipTupleReader = (*combinedTupleReader)(nil)
+var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
-// that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation string) []*openfgav1.Tuple {
+// that don't match the object, relation or user provided in the filterKey.
+//
+//nolint:unparam
+func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation string, targetUsers []string) []*openfgav1.Tuple {
 	var filtered []*openfgav1.Tuple
 	for _, tk := range tuples {
-		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
+		if (targetObject == "" || tk.GetObject() == targetObject) &&
+			(targetRelation == "" || tk.GetRelation() == targetRelation) &&
+			(len(targetUsers) == 0 || slices.Contains(targetUsers, tk.GetUser())) {
 			filtered = append(filtered, &openfgav1.Tuple{
 				Key: tk,
 			})
@@ -44,13 +49,13 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 }
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
-func (c *combinedTupleReader) Read(
+func (c *CombinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
 	tk *openfgav1.TupleKey,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
-	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation()))
+	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation(), []string{}))
 
 	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk, options)
 	if err != nil {
@@ -61,19 +66,20 @@ func (c *combinedTupleReader) Read(
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (c *combinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
 	// No reading from contextual tuples.
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, options)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
-func (c *combinedTupleReader) ReadUserTuple(
+func (c *CombinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
-	filteredContextualTuples := filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation())
+	targetUsers := []string{tk.GetUser()}
+	filteredContextualTuples := filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation(), targetUsers)
 
 	for _, t := range filteredContextualTuples {
 		if t.GetKey().GetUser() == tk.GetUser() {
@@ -85,7 +91,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
-func (c *combinedTupleReader) ReadUsersetTuples(
+func (c *CombinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
@@ -93,7 +99,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 ) (storage.TupleIterator, error) {
 	var usersetTuples []*openfgav1.Tuple
 
-	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation) {
+	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation, []string{}) {
 		if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
 			usersetTuples = append(usersetTuples, t)
 		}
@@ -110,34 +116,27 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
-func (c *combinedTupleReader) ReadStartingWithUser(
+func (c *CombinedTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
 	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	var filteredTuples []*openfgav1.Tuple
-	for _, t := range c.contextualTuples {
-		if tuple.GetType(t.GetObject()) != filter.ObjectType {
+	var userFilters []string
+	for _, u := range filter.UserFilter {
+		uf := u.GetObject()
+		if u.GetRelation() != "" {
+			uf = tuple.ToObjectRelationString(uf, u.GetRelation())
+		}
+		userFilters = append(userFilters, uf)
+	}
+
+	filteredTuples := make([]*openfgav1.Tuple, 0, len(c.contextualTuples))
+	for _, t := range filterTuples(c.contextualTuples, "", filter.Relation, userFilters) {
+		if tuple.GetType(t.GetKey().GetObject()) != filter.ObjectType {
 			continue
 		}
-
-		if t.GetRelation() != filter.Relation {
-			continue
-		}
-
-		for _, u := range filter.UserFilter {
-			targetUser := u.GetObject()
-			if u.GetRelation() != "" {
-				targetUser = tuple.ToObjectRelationString(targetUser, u.GetRelation())
-			}
-
-			if t.GetUser() == targetUser {
-				filteredTuples = append(filteredTuples, &openfgav1.Tuple{
-					Key: t,
-				})
-			}
-		}
+		filteredTuples = append(filteredTuples, t)
 	}
 
 	iter1 := storage.NewStaticTupleIterator(filteredTuples)

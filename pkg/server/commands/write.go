@@ -97,10 +97,13 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 		}
 
-		typesys := typesystem.New(authModel)
+		typesys, err := typesystem.New(authModel)
+		if err != nil {
+			return err
+		}
 
 		for _, tk := range writes {
-			err := validation.ValidateTuple(typesys, tk)
+			err := validation.ValidateTupleForWrite(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
 			}

@@ -35,7 +35,7 @@ The following section aims to help you get started quickly. Please look at our o
 
 OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), so you can quickly start it using the in-memory datastore by running the following commands:
 
-```bash
+```shell
 docker pull openfga/openfga
 docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
@@ -49,21 +49,21 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 
 1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
-   ```bash
-   curl -LO https://openfga.dev/docker-compose.yaml
-   ```
+    ```shell
+    curl -LO https://openfga.dev/docker-compose.yaml
+    ```
 
 2. Then, run the following command:
 
-   ```bash
-   docker compose up
-   ```
+    ```shell
+    docker compose up
+    ```
 
 ### Package Managers
 
 If you are a [Homebrew](https://brew.sh/) user, you can install [OpenFGA](https://formulae.brew.sh/formula/openfga) with the following command:
 
-```bash
+```shell
 brew install openfga
 ```
 
@@ -72,7 +72,7 @@ brew install openfga
 Download your platform's [latest release](https://github.com/openfga/openfga/releases/latest) and extract it. Then run the binary
 with the command:
 
-```bash
+```shell
 ./openfga run
 ```
 
@@ -82,27 +82,27 @@ There are two recommended options for building OpenFGA from source code:
 
 #### Building from source with `go install`
 
-> Make sure you have Go 1.20 or later installed. See the [Go downloads](https://go.dev/dl/) page.
+> Make sure you have the latest version of Go installed. See the [Go downloads](https://go.dev/dl/) page.
 
 You can install from source using Go modules:
 
 1. First, make sure `$GOBIN` is on your shell `$PATH`:
 
-   ```bash
-   export PATH=$PATH:$(go env GOBIN)
-   ```
+    ```shell
+    export PATH=$PATH:$(go env GOBIN)
+    ```
 
 2. Then use the install command:
 
-   ```bash
-   go install github.com/openfga/openfga/cmd/openfga
-   ```
+    ```shell
+    go install github.com/openfga/openfga/cmd/openfga
+    ```
 
 3. Run the server with:
 
-   ```bash
-   ./openfga run
-   ```
+    ```shell
+    ./openfga run
+    ```
 
 #### Building from source with `go build`
 
@@ -110,27 +110,27 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 
 1. Clone the repo to a local directory, and navigate to that directory:
 
-   ```bash
-   git clone https://github.com/openfga/openfga.git && cd openfga
-   ```
+    ```shell
+    git clone https://github.com/openfga/openfga.git && cd openfga
+    ```
 
 2. Then use the build command:
 
-   ```bash
-   go build -o ./openfga ./cmd/openfga
-   ```
+    ```shell
+    go build -o ./openfga ./cmd/openfga
+    ```
 
 3. Run the server with:
 
-   ```bash
-   ./openfga run
-   ```
+    ```shell
+    ./openfga run
+    ```
 
 ### Verifying the Installation
 
 Now that you have [Set up and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/docs/getting-started/create-store).
 
-```bash
+```shell
 curl -X POST 'localhost:8080/stores' \
 --header 'Content-Type: application/json' \
 --data-raw '{
@@ -154,21 +154,21 @@ The Playground facilitates rapid development by allowing you to visualize and mo
 
 To run OpenFGA with the Playground disabled, provide the `--playground-enabled=false` flag.
 
-```
+```shell
 ./openfga run --playground-enabled=false
 ```
 Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
 
 In the event that a port other than the default port is required, the `--playground-port` flag can be set to change it. For example,
 
-```sh
+```shell
 ./openfga run --playground-enabled --playground-port 3001
 ```
 
 ## Profiler (pprof)
 Profiling through [pprof](https://github.com/google/pprof) can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
 
-```sh
+```shell
 ./openfga run --profiler-enabled
 ```
 
@@ -176,13 +176,13 @@ This will start serving profiling data on port `3001`. You can see that data by 
 
 If you need to serve the profiler on a different address, you can do so by specifying the `--profiler-addr` flag. For example,
 
-```sh
+```shell
 ./openfga run --profiler-enabled --profiler-addr :3002
 ```
 
 Once the OpenFGA server is running, in another window you can run the following command to generate a compressed CPU profile:
 
-```sh
+```shell
 go tool pprof -proto -seconds 60 http://localhost:3001/debug/pprof/profile
 # will collect data for 60 seconds and generate a file like pprof.samples.cpu.001.pb.gz
 ```

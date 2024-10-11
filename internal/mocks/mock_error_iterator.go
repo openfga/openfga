@@ -9,6 +9,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+var (
+	ErrSimulatedError = fmt.Errorf("simulated errors")
+)
+
 // errorTupleIterator is a mock iterator that returns error when calling next on the second Next call.
 type errorTupleIterator struct {
 	items          []*openfgav1.Tuple
@@ -22,7 +26,7 @@ func (s *errorTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error)
 
 	// we want to simulate returning error after the first read
 	if len(s.items) != s.originalLength {
-		return nil, fmt.Errorf("simulated errors")
+		return nil, ErrSimulatedError
 	}
 
 	if len(s.items) == 0 {

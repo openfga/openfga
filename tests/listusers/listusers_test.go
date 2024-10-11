@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -47,8 +48,12 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
+	cfg.ListUsersDeadline = 0 // no deadline
+	// extend the timeout for the tests, coverage makes them slower
+	cfg.RequestTimeout = 10 * time.Second
 
 	tests.StartServer(t, cfg)
 
