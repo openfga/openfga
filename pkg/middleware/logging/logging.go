@@ -9,6 +9,7 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
+	"github.com/ory/viper"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -37,6 +38,7 @@ const (
 
 	gatewayUserAgentHeader string = "grpcgateway-user-agent"
 	userAgentHeader        string = "user-agent"
+	grpcHealth             string = "grpc.health.v1.Health"
 )
 
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
@@ -142,6 +144,19 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 
 		if userAgent, ok := userAgentFromContext(ctx); ok {
 			fields = append(fields, zap.String(userAgentKey, userAgent))
+		}
+
+		if c.Service == grpcHealth {
+			silentHealthChecks := viper.GetBool("silent-healthchecks")
+			if silentHealthChecks {
+				return &reporter{
+					ctx:            ctxzap.ToContext(ctx, l.(*logger.ZapLogger).Logger),
+					logger:         l,
+					fields:         fields,
+					protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
+				}, ctx
+			}
+			fields = append(fields, zap.String("log_level", "debug"))
 		}
 
 		zapLogger := l.(*logger.ZapLogger)

@@ -18,7 +18,8 @@ type TargetService interface {
 type Checker struct {
 	healthv1pb.UnimplementedHealthServer
 	TargetService
-	TargetServiceName string
+	TargetServiceName  string
+	SilentHealthChecks bool
 }
 
 var _ grpcauth.ServiceAuthFuncOverride = (*Checker)(nil)
@@ -29,6 +30,9 @@ func (o *Checker) AuthFuncOverride(ctx context.Context, fullMethodName string) (
 }
 
 func (o *Checker) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
+	if o.SilentHealthChecks {
+		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
+	}
 	requestedService := req.GetService()
 	if requestedService == "" || requestedService == o.TargetServiceName {
 		ready, err := o.TargetService.IsReady(ctx)
