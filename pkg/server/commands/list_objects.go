@@ -346,6 +346,7 @@ func (q *ListObjectsQuery) evaluate(
 						<-concurrencyLimiterCh
 						wg.Done()
 					}()
+					var wasCheckThrottled bool
 
 					concurrencyLimiterCh <- struct{}{}
 					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
@@ -369,8 +370,11 @@ func (q *ListObjectsQuery) evaluate(
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
+					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
+					if !wasCheckThrottled && checkRequestMetadata.WasThrottled.Load() {
+						wasCheckThrottled = true
+						resolutionMetadata.WasThrottled.Store(true)
+					}
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
