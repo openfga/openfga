@@ -33,9 +33,17 @@ const (
 	DefaultMaxConcurrentReadsForListUsers   = math.MaxUint32
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
-	DefaultCheckQueryCacheLimit  = 10000
-	DefaultCheckQueryCacheTTL    = 10 * time.Second
-	DefaultCheckQueryCacheEnable = false
+
+	DefaultCacheLimit = 10000
+
+	DefaultCacheControllerEnabled = false
+	DefaultCacheControllerTTL     = 10 * time.Second
+
+	DefaultCheckQueryCacheEnabled = false
+	DefaultCheckQueryCacheTTL     = 10 * time.Second
+
+	DefaultCheckIteratorCacheEnabled    = false
+	DefaultCheckIteratorCacheMaxResults = 10000
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -197,8 +205,16 @@ type MetricConfig struct {
 // CheckQueryCache defines configuration for caching when resolving check.
 type CheckQueryCache struct {
 	Enabled bool
-	Limit   uint32 // (in items)
 	TTL     time.Duration
+}
+
+type CacheConfig struct {
+	Limit uint32
+}
+
+type CheckIteratorCacheConfig struct {
+	Enabled    bool
+	MaxResults uint32
 }
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
@@ -289,6 +305,8 @@ type Config struct {
 	Playground                    PlaygroundConfig
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
+	Cache                         CacheConfig
+	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
@@ -598,10 +616,16 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
+		CheckIteratorCache: CheckIteratorCacheConfig{
+			Enabled:    DefaultCheckIteratorCacheEnabled,
+			MaxResults: DefaultCheckIteratorCacheMaxResults,
+		},
 		CheckQueryCache: CheckQueryCache{
-			Enabled: DefaultCheckQueryCacheEnable,
-			Limit:   DefaultCheckQueryCacheLimit,
+			Enabled: DefaultCheckQueryCacheEnabled,
 			TTL:     DefaultCheckQueryCacheTTL,
+		},
+		Cache: CacheConfig{
+			Limit: DefaultCacheLimit,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,

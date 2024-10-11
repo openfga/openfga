@@ -408,3 +408,16 @@ func FromUserParts(userObjectType, userObjectID, userRelation string) string {
 	}
 	return user
 }
+
+// IsSelfDefining returns true if the tuple is reflexive/self-defining. E.g. Document:1#viewer@document:1#viewer.
+// See https://github.com/openfga/rfcs/blob/main/20240328-queries-with-usersets.md
+func IsSelfDefining(tuple *openfgav1.TupleKey) bool {
+	userObject, userRelation := SplitObjectRelation(tuple.GetUser())
+	return tuple.GetRelation() == userRelation && tuple.GetObject() == userObject
+}
+
+// UsersetMatchTypeAndRelation returns true if the type and relation of a userset match the inputs.
+func UsersetMatchTypeAndRelation(userset, relation, typee string) bool {
+	userObjectType, _, userRelation := ToUserParts(userset)
+	return relation == userRelation && typee == userObjectType
+}
