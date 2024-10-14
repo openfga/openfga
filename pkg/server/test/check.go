@@ -81,9 +81,28 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
 
 		// then give one team access to repo
+
+		// This is how you write the other bits you need ------------
+		// Write Command
+		cmd := commands.NewWriteCommand(
+			ds,
+			//commands.WithWriteCmdLogger(s.logger),
+		)
+
+		writes := &openfgav1.WriteRequestWrites{TupleKeys: tuples}
+
+		_, err = cmd.Execute(ctx, &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: typeSystem.GetAuthorizationModelID(), // the resolved model id
+			Writes:               writes,
+			Deletes:              nil,
+		})
+		require.NoError(b, err)
+		// end of write ------------------------
+
 		// then give anne direct access to repo
 
-		// run check
+		// do the actual checking
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				checkQuery := commands.NewCheckCommand(ds, bm.checker, typeSystem)
