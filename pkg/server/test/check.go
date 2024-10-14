@@ -57,13 +57,13 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 	for name, bm := range benchmarkScenarios {
 		ctx := context.Background()
 		storeID := ulid.Make().String()
-		// write model
+		//bm.inputRequest.StoreId = storeID
 		model := testutils.MustTransformDSLToProtoWithID(bm.inputModel)
 		typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
 		require.NoError(b, err)
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 
-		// create and write tuples
+		// create and write necessary tuples
 		tuples := bm.tupleGenerator()
 		for i := 0; i < len(tuples); {
 			var tuplesToWrite []*openfgav1.TupleKey
@@ -77,19 +77,19 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
 			require.NoError(b, err)
 		}
-		bm.inputRequest.StoreId = storeID
+
 		ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
 
-		// then give one team access to repo
-
-		// This is how you write the other bits you need ------------
 		// Write Command
-		cmd := commands.NewWriteCommand(
-			ds,
-			//commands.WithWriteCmdLogger(s.logger),
-		)
+		cmd := commands.NewWriteCommand(ds)
 
-		writes := &openfgav1.WriteRequestWrites{TupleKeys: tuples}
+		// give both a team and anne the 'admin' relation
+		writes := &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
+				{Object: "repo:openfga", Relation: "admin", User: "team:123#member"},
+			},
+		}
 
 		_, err = cmd.Execute(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
@@ -98,14 +98,20 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			Deletes:              nil,
 		})
 		require.NoError(b, err)
-		// end of write ------------------------
 
-		// then give anne direct access to repo
-
-		// do the actual checking
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				checkQuery := commands.NewCheckCommand(ds, bm.checker, typeSystem)
+				_, _, err = checkQuery.Execute(ctx, &openfgav1.CheckRequest{
+					StoreId: storeID,
+					TupleKey: &openfgav1.CheckRequestTupleKey{
+						Object:   "repo:openfga",
+						Relation: "admin",
+						User:     "user:anne",
+					},
+				})
+
+				require.NoError(b, err)
 			}
 		})
 	}
