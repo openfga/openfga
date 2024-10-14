@@ -12,18 +12,22 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 	"testing"
 )
 
 func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 	benchmarkScenarios := map[string]struct {
-		inputModel      string
-		tupleGenerator  func() []*openfgav1.TupleKey
-		checker         graph.CheckResolver
-		inputRequest    *openfgav1.CheckRequest
-		expectedResults any // not sure what goes here yet
+		inputModel       string
+		tupleGenerator   func() []*openfgav1.TupleKey
+		checker          graph.CheckResolver
+		inputRequest     *openfgav1.CheckRequest
+		tupleKey         *openfgav1.CheckRequestTupleKey
+		contextStruct    *structpb.Struct
+		contextualTuples *openfgav1.ContextualTupleKeys
+		expected         bool
 	}{
-		`check_direct_and_userset`: {
+		`race_between_direct_and_userset`: {
 			inputModel: `
 				model
 					schema 1.1
@@ -56,9 +60,54 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				return tuples
 			},
 
-			checker:         graph.NewLocalChecker(),
-			inputRequest:    &openfgav1.CheckRequest{},
-			expectedResults: "hello",
+			checker:      graph.NewLocalChecker(), // TODO: Are all the scenarios LocalChecker?
+			inputRequest: &openfgav1.CheckRequest{},
+			tupleKey: &openfgav1.CheckRequestTupleKey{
+				Object:   "repo:openfga",
+				Relation: "admin",
+				User:     "user:anne",
+			},
+			expected: true,
+		},
+		`userset_check_only`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type team
+					relations
+						define member: [user,team#member]
+				type repo
+					relations
+						define admin: [user,team#member] or member from owner
+						define owner: [organization]
+				type organization
+					relations
+						define member: [user]`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				var tuples []*openfgav1.TupleKey
+				for i := 0; i < 1000; i++ { // add user:anne to many teams
+					tuples = append(tuples, &openfgav1.TupleKey{
+						Object:   fmt.Sprintf("team:%d", i),
+						Relation: "member",
+						User:     "user:anne",
+					})
+				}
+
+				// Now give a team direct access
+				tuples = append(tuples, &openfgav1.TupleKey{Object: "repo:openfga", Relation: "admin", User: "team:123#member"})
+				return tuples
+			},
+
+			checker:      graph.NewLocalChecker(),
+			inputRequest: &openfgav1.CheckRequest{},
+			// user:bob has no direct access, so we must check if he's a member of a team
+			tupleKey: &openfgav1.CheckRequestTupleKey{
+				Object:   "repo:openfga",
+				Relation: "admin",
+				User:     "user:bob",
+			},
+			expected: false,
 		},
 	}
 
@@ -95,17 +144,28 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 					commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
 				)
 				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
-					StoreId: storeID,
-					TupleKey: &openfgav1.CheckRequestTupleKey{
-						Object:   "repo:openfga",
-						Relation: "admin",
-						User:     "user:anne",
-					},
+					StoreId:          storeID,
+					TupleKey:         bm.tupleKey,
+					ContextualTuples: bm.contextualTuples,
+					Context:          bm.contextStruct,
 				})
 
-				require.True(b, response.GetAllowed())
+				require.Equal(b, response.GetAllowed(), bm.expected)
 				require.NoError(b, err)
 			}
 		})
 	}
 }
+
+/*
+benchmarkCheckWithUserset- tuples to write
+benchmarkCheckWithComputed - one tuple
+benchmarkCheckWithIntersectionAndExclusion - two tuples
+benchmarkCheckWithTTUs - lots of tuples
+benchmarkCheckWithNestedUsersets - lots
+benchmarkCheckWithBypassUsersetRead - lots
+benchmarkCheckWithOneCondition - one tuple
+benchmarkCheckWithOneConditionWithManyParameters - one
+
+
+*/
