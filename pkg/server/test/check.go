@@ -42,13 +42,20 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				var tuples []*openfgav1.TupleKey
 				for i := 0; i < 1000; i++ { // add user:anne to many teams
 					tuples = append(tuples, &openfgav1.TupleKey{
-						User:     "user:anne",
-						Relation: "member",
 						Object:   fmt.Sprintf("team:%d", i),
+						Relation: "member",
+						User:     "user:anne",
 					})
 				}
+
+				// Now give anne direct admin and also give one of the teams admin
+				tuples = append(tuples, []*openfgav1.TupleKey{
+					{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
+					{Object: "repo:openfga", Relation: "admin", User: "team:123#member"},
+				}...)
 				return tuples
 			},
+
 			checker:         graph.NewLocalChecker(),
 			inputRequest:    &openfgav1.CheckRequest{},
 			expectedResults: "hello",
@@ -58,7 +65,6 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 	for name, bm := range benchmarkScenarios {
 		ctx := context.Background()
 		storeID := ulid.Make().String()
-		//bm.inputRequest.StoreId = storeID
 		model := testutils.MustTransformDSLToProtoWithID(bm.inputModel)
 		typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
 		require.NoError(b, err)
@@ -78,27 +84,6 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
 			require.NoError(b, err)
 		}
-
-		ctx = typesystem.ContextWithTypesystem(ctx, typeSystem)
-
-		// Write Command
-		cmd := commands.NewWriteCommand(ds)
-
-		// give both a team and anne the 'admin' relation
-		writes := &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
-				{Object: "repo:openfga", Relation: "admin", User: "team:123#member"},
-			},
-		}
-
-		_, err = cmd.Execute(ctx, &openfgav1.WriteRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: typeSystem.GetAuthorizationModelID(), // the resolved model id
-			Writes:               writes,
-			Deletes:              nil,
-		})
-		require.NoError(b, err)
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
