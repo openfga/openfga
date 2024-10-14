@@ -6,6 +6,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -101,8 +102,14 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				checkQuery := commands.NewCheckCommand(ds, bm.checker, typeSystem)
-				_, _, err = checkQuery.Execute(ctx, &openfgav1.CheckRequest{
+				checkQuery := commands.NewCheckCommand(
+					ds,
+					bm.checker,
+					typeSystem,
+					commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
+					commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
+				)
+				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
 					StoreId: storeID,
 					TupleKey: &openfgav1.CheckRequestTupleKey{
 						Object:   "repo:openfga",
@@ -111,6 +118,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 					},
 				})
 
+				require.True(b, response.GetAllowed())
 				require.NoError(b, err)
 			}
 		})
