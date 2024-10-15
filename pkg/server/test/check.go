@@ -117,7 +117,9 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		model := testutils.MustTransformDSLToProtoWithID(bm.inputModel)
 		typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
 		require.NoError(b, err)
+
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+		require.NoError(b, err)
 
 		// create and write necessary tuples
 		tuples := bm.tupleGenerator()

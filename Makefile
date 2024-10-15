@@ -106,8 +106,7 @@ test-docker: ## Run tests requiring Docker
 
 test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	${call print, "Running benchmark tests"}
-#	@go test ./tests/check -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
-	@go test ./pkg/server/test/.. -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
+	@go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Development
