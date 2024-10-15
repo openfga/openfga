@@ -136,15 +136,16 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			require.NoError(b, err)
 		}
 
+		checkQuery := commands.NewCheckCommand(
+			ds,
+			bm.checker,
+			typeSystem,
+			commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
+			commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
+		)
+	
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				checkQuery := commands.NewCheckCommand(
-					ds,
-					bm.checker,
-					typeSystem,
-					commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
-					commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
-				)
 				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
 					StoreId:          storeID,
 					TupleKey:         bm.tupleKey,
