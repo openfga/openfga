@@ -391,13 +391,12 @@ func benchmarkAll(b *testing.B, engine string) {
 func setupBenchmarkTest(b *testing.B, engine string) (openfgav1.OpenFGAServiceClient, context.CancelFunc) {
 	cfg := config.MustDefaultConfig()
 	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-	cfg.Log.Level = "warn"
+	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 	cfg.MaxTuplesPerWrite = 10_000 // TODO use the engine's max tuples per write
 
-	// TODO No server
 	tests.StartServer(b, cfg)
 
 	// nolint:staticcheck // ignoring gRPC deprecations

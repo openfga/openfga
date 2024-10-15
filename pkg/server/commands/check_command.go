@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"time"
 
@@ -110,15 +109,8 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	// check request: {StoreID:01J9Y7T0M8JWC147V5ZBE83AS2
-	// AuthorizationModelID:01J9Y7T0MA99T6WWX4MM4148YE TupleKey:user:"user:anne"
-	// relation:"admin" object:"repo:openfga" ContextualTuples:[]
-	// Context:<nil> RequestMetadata:0x140009d4be8 VisitedPaths:map[] Consistency:UNSPECIFIED}
-	//c.logger.Warn(fmt.Sprintf("justin check request: %+v", resolveCheckRequest))
-
 	ctx = buildCheckContext(ctx, c.typesys, c.datastore, c.maxConcurrentReads, resolveCheckRequest.GetContextualTuples())
 
-	c.logger.Warn(fmt.Sprintf("what type of check resolver? %+v", c.checkResolver))
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		return nil, nil, translateError(resolveCheckRequest.GetRequestMetadata(), err)

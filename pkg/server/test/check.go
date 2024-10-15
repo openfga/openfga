@@ -60,7 +60,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				return tuples
 			},
 
-			checker:      graph.NewLocalChecker(), // TODO: Are all the scenarios LocalChecker?
+			checker:      graph.NewLocalChecker(),
 			inputRequest: &openfgav1.CheckRequest{},
 			tupleKey: &openfgav1.CheckRequestTupleKey{
 				Object:   "repo:openfga",
@@ -156,16 +156,3 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		})
 	}
 }
-
-/*
-benchmarkCheckWithUserset- tuples to write
-benchmarkCheckWithComputed - one tuple
-benchmarkCheckWithIntersectionAndExclusion - two tuples
-benchmarkCheckWithTTUs - lots of tuples
-benchmarkCheckWithNestedUsersets - lots
-benchmarkCheckWithBypassUsersetRead - lots
-benchmarkCheckWithOneCondition - one tuple
-benchmarkCheckWithOneConditionWithManyParameters - one
-
-
-*/
