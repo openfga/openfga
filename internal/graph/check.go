@@ -1424,7 +1424,7 @@ func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiv
 		panic("TODO not implemented")
 	}
 
-	panic("unreachable")
+	return nil, fmt.Errorf("unsupported mapper kind %v", common.tupleMapperKind)
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
