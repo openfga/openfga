@@ -1423,7 +1423,7 @@ func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiv
 		)
 		return &NestedUsersetMapper{Iter: filteredIter}, nil
 	case NestedTTUKind:
-		iter, err := common.ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation(), common.tuplesetRelation),
+		iter, err := common.ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), common.tuplesetRelation, ""),
 			storage.ReadOptions{
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
