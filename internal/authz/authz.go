@@ -299,7 +299,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.ListObjects(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("error authorizing the call: %w", err)
+		return nil, err
 	}
 
 	storeIDs := make([]string, len(resp.GetObjects()))

@@ -79,7 +79,7 @@ func TestAuthorizeCreateStore(t *testing.T) {
 		err := authorizer.AuthorizeCreateStore(ctx)
 
 		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
+		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
 	})
 
 	t.Run("error_when_not_authorized", func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestAuthorizeListStores(t *testing.T) {
 		err := authorizer.AuthorizeListStores(ctx)
 
 		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
+		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
 	})
 
 	t.Run("error_when_not_authorized", func(t *testing.T) {
@@ -170,7 +170,7 @@ func TestAuthorize(t *testing.T) {
 		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
 
 		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
+		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
 	})
 
 	t.Run("error_when_check_errors", func(t *testing.T) {
@@ -181,7 +181,7 @@ func TestAuthorize(t *testing.T) {
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 
 		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
+		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
 	})
 
 	t.Run("error_when_unauthorized", func(t *testing.T) {
@@ -191,7 +191,7 @@ func TestAuthorize(t *testing.T) {
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 	})
 
 	t.Run("succeed", func(t *testing.T) {
@@ -390,7 +390,7 @@ func TestIndividualAuthorize(t *testing.T) {
 		err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 
 		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
+		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
 	})
 	t.Run("error_when_unauthorized", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
@@ -398,7 +398,7 @@ func TestIndividualAuthorize(t *testing.T) {
 		err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 	})
 	t.Run("succeed", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
@@ -435,7 +435,7 @@ func TestModuleAuthorize(t *testing.T) {
 
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 	})
 
 	t.Run("error_when_last_module_errors", func(t *testing.T) {
@@ -445,7 +445,7 @@ func TestModuleAuthorize(t *testing.T) {
 
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 	})
 
 	t.Run("error_when_all_modules_error", func(t *testing.T) {
@@ -455,7 +455,7 @@ func TestModuleAuthorize(t *testing.T) {
 
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 	})
 
 	t.Run("succeed", func(t *testing.T) {

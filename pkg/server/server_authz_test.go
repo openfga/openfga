@@ -261,7 +261,7 @@ func TestListObjects(t *testing.T) {
 				User:                 "user:ben",
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_list_objects", func(t *testing.T) {
@@ -340,7 +340,7 @@ func TestStreamedListObjects(t *testing.T) {
 			}, server)
 			require.Error(t, err)
 
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_streamed_list_objects", func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestRead(t *testing.T) {
 				},
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_read", func(t *testing.T) {
@@ -493,7 +493,7 @@ func TestWrite(t *testing.T) {
 				},
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_write", func(t *testing.T) {
@@ -526,7 +526,7 @@ func TestWrite(t *testing.T) {
 				},
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_write_for_modules", func(t *testing.T) {
@@ -613,7 +613,7 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkCreateStoreAuthz(ctx)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -687,7 +687,7 @@ func TestCheckAuthz(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -765,7 +765,7 @@ func TestCheckWriteAuthz(t *testing.T) {
 				},
 			}, typesys)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -839,7 +839,7 @@ func TestCheck(t *testing.T) {
 				},
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_check", func(t *testing.T) {
@@ -962,7 +962,7 @@ func TestExpand(t *testing.T) {
 				},
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_expand", func(t *testing.T) {
@@ -1048,7 +1048,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 				},
 			)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_readAuthorizationModel", func(t *testing.T) {
@@ -1117,7 +1117,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 				},
 			)
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_readAuthorizationModels", func(t *testing.T) {
@@ -1205,7 +1205,7 @@ func TestWriteAssertions(t *testing.T) {
 				Assertions:           assertions,
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_writeAssertions", func(t *testing.T) {
@@ -1289,7 +1289,7 @@ func TestReadAssertions(t *testing.T) {
 				AuthorizationModelId: settings.testData.modelID,
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_readAssertions", func(t *testing.T) {
@@ -1362,7 +1362,7 @@ func TestReadChanges(t *testing.T) {
 				PageSize: wrapperspb.Int32(50),
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_readChanges", func(t *testing.T) {
@@ -1429,7 +1429,7 @@ func TestCreateStore(t *testing.T) {
 				Name: name,
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_createStore", func(t *testing.T) {
@@ -1487,7 +1487,7 @@ func TestDeleteStore(t *testing.T) {
 				StoreId: settings.testData.id,
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_deleteStore", func(t *testing.T) {
@@ -1544,7 +1544,7 @@ func TestGetStore(t *testing.T) {
 				StoreId: settings.testData.id,
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_getStore", func(t *testing.T) {
@@ -1603,7 +1603,7 @@ func TestListStores(t *testing.T) {
 				ContinuationToken: "",
 			})
 			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(403) desc = the principal is not authorized to perform the action", err.Error())
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
 		})
 
 		t.Run("successfully_call_listStores", func(t *testing.T) {
