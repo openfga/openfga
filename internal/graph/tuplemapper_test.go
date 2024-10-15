@@ -1,4 +1,4 @@
-package tuplemapper
+package graph
 
 import (
 	"context"

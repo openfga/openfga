@@ -1,4 +1,4 @@
-package tuplemapper
+package graph
 
 import (
 	"context"
@@ -10,15 +10,17 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-type MapperKind int64
+type TupleMapperKind int64
 
 const (
 	// NestedUsersetKind is a mapper that returns the userset ID from the tuple's user field.
-	NestedUsersetKind MapperKind = iota
+	NestedUsersetKind TupleMapperKind = iota
+	// NestedTTUKind is a mapper that returns the user field of the tuple.
 	NestedTTUKind
 )
 
-type Mapper interface {
+// TupleMapper is an iterator that, on calls to Next and Head, returns a mapping of the tuple.
+type TupleMapper interface {
 	storage.Iterator[string]
 }
 
@@ -31,7 +33,7 @@ func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.Map(tupleRes)
+	return n.doMap(tupleRes)
 }
 
 func (n NestedUsersetMapper) Stop() {
@@ -43,10 +45,10 @@ func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.Map(tupleRes)
+	return n.doMap(tupleRes)
 }
 
-func (n NestedUsersetMapper) Map(t *openfgav1.TupleKey) (string, error) {
+func (n NestedUsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
 	if relation == "" {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.

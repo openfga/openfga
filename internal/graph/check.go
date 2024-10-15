@@ -16,7 +16,6 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/internal/tuplemapper"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -997,7 +996,7 @@ type recursiveMatchUserUsersetCommonData struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 	userToUsersetMapping        storage.SortedSet
 	concurrencyLimit            int
-	tupleMapperKind             tuplemapper.MapperKind
+	tupleMapperKind             TupleMapperKind
 	// The following member are atomic/sync in anticipation
 	// that the algorithm will parallelize the lookup.
 	dsCount        *atomic.Uint32
@@ -1008,7 +1007,7 @@ type recursiveMatchUserUsersetCommonData struct {
 type recursiveMatchUserUsersetFunc func(ctx context.Context,
 	req *ResolveCheckRequest,
 	commonParameters *recursiveMatchUserUsersetCommonData,
-	mapper tuplemapper.Mapper) (*ResolveCheckResponse, error)
+	mapper TupleMapper) (*ResolveCheckResponse, error)
 
 func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []string, req *ResolveCheckRequest, commonParameters *recursiveMatchUserUsersetCommonData, recursiveFunc recursiveMatchUserUsersetFunc) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "parallelizeRecursiveMatchUserUserset")
@@ -1091,7 +1090,7 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []st
 }
 
 func recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, commonParameters *recursiveMatchUserUsersetCommonData,
-	mapper tuplemapper.Mapper) (*ResolveCheckResponse, error) {
+	mapper TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
 	defer span.End()
 
@@ -1209,7 +1208,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 
 // streamedLookupUsersetForObject streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetForObject(ctx context.Context, commonParameters *recursiveMatchUserUsersetCommonData, tupleMapper tuplemapper.Mapper) chan usersetMessage {
+func streamedLookupUsersetForObject(ctx context.Context, commonParameters *recursiveMatchUserUsersetCommonData, tupleMapper TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForObject")
 	defer span.End()
 
@@ -1348,7 +1347,7 @@ func nestedUsersetFastpath(ctx context.Context,
 	typesys *typesystem.TypeSystem,
 	ds storage.RelationshipTupleReader,
 	req *ResolveCheckRequest,
-	mapperKind tuplemapper.MapperKind,
+	mapperKind TupleMapperKind,
 	allowedUserTypeRestrictions []*openfgav1.RelationReference,
 	concurrencyLimit int) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "nestedUsersetFastpath")
@@ -1397,9 +1396,9 @@ func nestedUsersetFastpath(ctx context.Context,
 	return parallelizeRecursiveMatchUserUserset(ctx, usersetFromObject.Values(), req, recursiveCommonData, recursiveMatchUserUserset)
 }
 
-func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiveMatchUserUsersetCommonData) (tuplemapper.Mapper, error) {
+func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiveMatchUserUsersetCommonData) (TupleMapper, error) {
 	switch common.tupleMapperKind {
-	case tuplemapper.NestedUsersetKind:
+	case NestedUsersetKind:
 		iter, err := common.ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    req.GetTupleKey().GetRelation(),
@@ -1419,8 +1418,8 @@ func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiv
 			),
 			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), common.typesys),
 		)
-		return &tuplemapper.NestedUsersetMapper{Iter: filteredIter}, nil
-	case tuplemapper.NestedTTUKind:
+		return &NestedUsersetMapper{Iter: filteredIter}, nil
+	case NestedTTUKind:
 		panic("TODO not implemented")
 	}
 
@@ -1538,7 +1537,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
 					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
 					tuple.GetType(reqTupleKey.GetUser())) {
-					return nestedUsersetFastpath(ctx, typesys, ds, req, tuplemapper.NestedUsersetKind, directlyRelatedUsersetTypes, int(c.concurrencyLimit))
+					return nestedUsersetFastpath(ctx, typesys, ds, req, NestedUsersetKind, directlyRelatedUsersetTypes, int(c.concurrencyLimit))
 				}
 			}
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/internal/checkutil"
-	"github.com/openfga/openfga/internal/tuplemapper"
 
 	"github.com/openfga/openfga/internal/mocks"
 
@@ -4117,7 +4116,7 @@ type parallelRecursiveTest struct {
 func (p *parallelRecursiveTest) testParallelizeRecursive(context.Context,
 	*ResolveCheckRequest,
 	*recursiveMatchUserUsersetCommonData,
-	tuplemapper.Mapper) (*ResolveCheckResponse, error) {
+	TupleMapper) (*ResolveCheckResponse, error) {
 	if p.slowRequests {
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -4537,7 +4536,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 					visitedUserset:   &sync.Map{},
 					dsCount:          &atomic.Uint32{},
 					ds:               ds,
-					tupleMapperKind:  tuplemapper.NestedUsersetKind,
+					tupleMapperKind:  NestedUsersetKind,
 				}
 				for _, item := range tt.visitedItems {
 					commonParameters.visitedUserset.Store(item, struct{}{})
@@ -4586,7 +4585,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 					visitedUserset:   &sync.Map{},
 					dsCount:          &atomic.Uint32{},
 					ds:               ds,
-					tupleMapperKind:  tuplemapper.NestedUsersetKind,
+					tupleMapperKind:  NestedUsersetKind,
 				}
 				commonParameters.dsCount.Store(15)
 
@@ -4851,7 +4850,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
 				concurrencyLimit:     10,
-				tupleMapperKind:      tuplemapper.NestedUsersetKind,
+				tupleMapperKind:      NestedUsersetKind,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
@@ -5271,7 +5270,7 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				userToUsersetMapping: nil, // not used
 				concurrencyLimit:     tt.poolSize,
 				visitedUserset:       &sync.Map{},
-				tupleMapperKind:      tuplemapper.NestedUsersetKind,
+				tupleMapperKind:      NestedUsersetKind,
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 					{
 						Type: "group",
@@ -5793,7 +5792,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 
 				typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
 
-				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tuplemapper.NestedUsersetKind, typeRes, 10)
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, 10)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -5841,7 +5840,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 
 		typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
 
-		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, tuplemapper.NestedUsersetKind, typeRes, 10)
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})
