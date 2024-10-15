@@ -68,7 +68,7 @@ const (
 )
 
 var (
-	ErrUnauthorizedResponse = &openfgav1.ForbiddenResponse{Code: 403, Message: "the principal is not authorized to perform the action"}
+	ErrUnauthorizedResponse = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
 	ErrUnknownAPIMethod     = errors.New("unknown API method")
 
 	SystemObjectID = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
@@ -397,7 +397,7 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	}
 
 	if !resp.GetAllowed() {
-		return status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), ErrUnauthorizedResponse.GetMessage())
+		return ErrUnauthorizedResponse
 	}
 
 	return nil
