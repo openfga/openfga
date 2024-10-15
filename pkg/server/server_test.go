@@ -2082,7 +2082,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: "some-model-id", StoreID: "some-store-id"}, ""),
+			WithAccessControlParams(true, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsAccessControlEnabled())
@@ -2092,7 +2092,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: false, ModelID: "some-model-id", StoreID: "some-store-id"}, ""),
+			WithAccessControlParams(false, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
 		require.False(t, s.IsAccessControlEnabled())
@@ -2102,7 +2102,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
 			WithExperimentals(ExperimentalAccessControlParams),
-			WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, ModelID: ulid.Make().String(), StoreID: ulid.Make().String()}, "oidc"),
+			WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), "oidc"),
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAccessControlEnabled())
