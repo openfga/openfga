@@ -4522,8 +4522,8 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 				commonParameters := &recursiveMatchUserUsersetCommonData{
 					concurrencyLimit: tt.maxConcurrentReads,
 					visitedUserset:   &sync.Map{},
-					ds:               ds,
 					dsCount:          &atomic.Uint32{},
+					ds:               ds,
 					tupleMapperKind:  tuplemapper.NestedUsersetKind,
 				}
 				for _, item := range tt.visitedItems {
@@ -4693,6 +4693,15 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			},
 		},
 		{
+			name: "iter_error",
+			tuples: [][]*openfgav1.Tuple{
+				{},
+			},
+			tupleIteratorError: fmt.Errorf("mock_error"),
+			expected:           nil,
+			expectedError:      fmt.Errorf("mock_error"),
+		},
+		{
 			name: "recursive_linear_not_found",
 			tuples: [][]*openfgav1.Tuple{
 				{
@@ -4842,7 +4851,10 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				},
 			}
 			mapper, err := buildMapper(context.Background(), req, commonData)
-			require.NoError(t, err)
+			if tt.tupleIteratorError != nil {
+				require.Equal(t, tt.tupleIteratorError, err)
+				return
+			}
 
 			result, err := recursiveMatchUserUserset(context.Background(), req, commonData, mapper)
 			require.Equal(t, tt.expectedError, err)
@@ -5101,6 +5113,19 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 		poolSize               int
 	}{
 		{
+			name:                   "get_iterator_error",
+			contextDone:            false,
+			poolSize:               1,
+			readUsersetTuples:      []*openfgav1.Tuple{},
+			readUsersetTuplesError: fmt.Errorf("mock_error"),
+			expected: []usersetMessage{
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
+				},
+			},
+		},
+		{
 			name:             "iterator_next_error",
 			contextDone:      false,
 			poolSize:         1,
@@ -5245,7 +5270,10 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 			}
 
 			mapper, err := buildMapper(context.Background(), req, commonData)
-			require.NoError(t, err)
+			if tt.readUsersetTuplesError != nil {
+				require.Equal(t, tt.readUsersetTuplesError, err)
+				return
+			}
 
 			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, mapper)
 
