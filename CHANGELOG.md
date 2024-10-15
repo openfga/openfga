@@ -15,6 +15,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 
+### Changed
+* Refactor Check benchmark test to remove server dependency [#2017](https://github.com/openfga/openfga/pull/2017)
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
