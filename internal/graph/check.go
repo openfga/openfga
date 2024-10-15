@@ -1153,7 +1153,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForUser")
 	defer span.End()
 
-	usersetMessageChan := make(chan usersetMessage, commonParameters.concurrencyLimit)
+	usersetMessageChan := make(chan usersetMessage)
 
 	go func() {
 		defer func() {
@@ -1215,7 +1215,7 @@ func streamedLookupUsersetForObject(ctx context.Context,
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForObject")
 	defer span.End()
 
-	usersetMessageChan := make(chan usersetMessage, commonParameters.concurrencyLimit)
+	usersetMessageChan := make(chan usersetMessage)
 
 	go func() {
 		defer func() {
@@ -1342,22 +1342,20 @@ func matchUsersetFromUserAndUsersetFromObject(ctx context.Context,
 						},
 					}, nil, nil, nil
 				}
-				//  check to see if there is a direct assignment
-				if req.GetTupleKey().GetObject() == userToUsersetMessage.userset {
-					return &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
-						},
-					}, nil, nil, nil
-				}
 			}
 		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
 			if !ok {
 				objectToUsersetDone = true
-				// note that if channel is closed and usersetFromObject is empty, it is still possible
-				// for allowed:true IF there is a direct assignment. Therefore, we will need to wait
-				// until userset has finished processing.
+				if usersetFromObject.Size() == 0 {
+					return &ResolveCheckResponse{
+						Allowed: false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{
+							// It probably is +1.  However, we have no control on whether
+							// the userset member lookup for the first level has started DS query.
+							DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
+						},
+					}, nil, nil, nil
+				}
 			} else {
 				found, err := processUsersetMessage(objectToUsersetMessage, usersetFromObject, usersetFromUser)
 				if err != nil {
@@ -1376,16 +1374,7 @@ func matchUsersetFromUserAndUsersetFromObject(ctx context.Context,
 			}
 		}
 	}
-	if usersetFromObject.Size() == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				// It probably is +1.  However, we have no control on whether
-				// the userset member lookup for the first level has started DS query.
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
-			},
-		}, nil, nil, nil
-	}
+
 	return nil, usersetFromUser, usersetFromObject, nil
 }
 
@@ -1524,6 +1513,19 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					Preference: req.GetConsistency(),
 				},
 			}
+
+			resolver := c.checkUsersetSlowPath
+
+			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
+					resolver = c.checkUsersetFastPath
+				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
+					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
+					tuple.GetType(reqTupleKey.GetUser())) {
+					return nestedUsersetFastpath(ctx, typesys, ds, req, int(c.concurrencyLimit))
+				}
+			}
+
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
@@ -1541,18 +1543,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 			)
 			defer filteredIter.Stop()
-			resolver := c.checkUsersetSlowPath
-
-			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
-				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
-					resolver = c.checkUsersetFastPath
-				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
-					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
-					tuple.GetType(reqTupleKey.GetUser())) {
-					return nestedUsersetFastpath(ctx, typesys, ds, req, int(c.concurrencyLimit))
-				}
-			}
-
 			return resolver(ctx, req, filteredIter)
 		}
 

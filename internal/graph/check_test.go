@@ -5433,26 +5433,6 @@ func TestMatchUsersetFromUserAndUsersetFromObject(t *testing.T) {
 				expectedError:                fmt.Errorf("mock_error"),
 			},
 			{
-				name: "direct_assignment",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:1",
-						err:     nil,
-					},
-				},
-				objectToUsersetMessages: []usersetMessage{},
-				expectedResolveCheckResponse: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-				expectedUserToUserset:   nil,
-				expectedObjectToUserset: nil,
-				expectedError:           nil,
-			},
-			{
 				name: "items_not_match",
 				userToUsersetMessages: []usersetMessage{
 					{
@@ -5608,27 +5588,6 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				},
 			},
 			{
-				name: "user_directly_assigned_to_main_group",
-				readStartingWithUserTuples: []*openfgav1.Tuple{
-					{
-						Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
-					},
-					{
-						Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
-					},
-				},
-				readUsersetTuples: [][]*openfgav1.Tuple{
-					{},
-				},
-				expected: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-			},
-			{
 				name: "user_assigned_to_first_level_sub_group",
 				readStartingWithUserTuples: []*openfgav1.Tuple{
 					{
@@ -5714,6 +5673,11 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				readStartingWithUserTuples:      []*openfgav1.Tuple{},
 				readStartingWithUserTuplesError: fmt.Errorf("mock error"),
 				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+						},
+					},
 					{},
 				},
 				expected:      nil,
