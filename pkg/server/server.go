@@ -37,6 +37,7 @@ import (
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -45,7 +46,6 @@ import (
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -367,9 +367,13 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 }
 
 // WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
-func WithAccessControlParams(accessControl serverconfig.AccessControlConfig, authnMethod string) OpenFGAServiceV1Option {
+func WithAccessControlParams(enabled bool, storeID string, modelID string, authnMethod string) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.AccessControl = accessControl
+		s.AccessControl = serverconfig.AccessControlConfig{
+			Enabled: enabled,
+			StoreID: storeID,
+			ModelID: modelID,
+		}
 		s.AuthnMethod = authnMethod
 	}
 }

@@ -4,7 +4,7 @@ package metrics
 import (
 	"time"
 
-	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/internal/server/config"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"

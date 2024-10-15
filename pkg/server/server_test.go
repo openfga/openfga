@@ -29,8 +29,8 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
@@ -191,7 +191,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true}, ""),
+				WithAccessControlParams(true, "", "", ""),
 			)
 		})
 	})
@@ -204,7 +204,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: ulid.Make().String()}, ""),
+				WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), ""),
 			)
 		})
 	})
@@ -217,7 +217,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: "not-a-valid-ulid", ModelID: ulid.Make().String()}, "oidc"),
+				WithAccessControlParams(true, "not-a-valid-ulid", ulid.Make().String(), "oidc"),
 			)
 		})
 	})
@@ -230,7 +230,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
 				WithExperimentals(ExperimentalAccessControlParams),
-				WithAccessControlParams(serverconfig.AccessControlConfig{Enabled: true, StoreID: ulid.Make().String(), ModelID: "not-a-valid-ulid"}, "oidc"),
+				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
 			)
 		})
 	})

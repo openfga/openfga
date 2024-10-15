@@ -41,8 +41,8 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/gateway"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
@@ -645,7 +645,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
-		server.WithAccessControlParams(config.AccessControl, config.Authn.Method),
+		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)
 

@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 

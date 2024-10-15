@@ -25,8 +25,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
