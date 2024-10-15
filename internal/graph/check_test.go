@@ -4134,6 +4134,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 		tests := []struct {
 			name                  string
 			usersetItems          []string
+			usersetError          error
 			maxConcurrentReads    int
 			visitedItems          []string
 			parallelRecursiveTest parallelRecursiveTest
@@ -4510,6 +4511,18 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 				},
 				expectedError: nil,
 			},
+			{
+				name:               "mapper_build_error",
+				usersetItems:       []string{"group:1"},
+				usersetError:       fmt.Errorf("mock_error"),
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					returnResolveCheckResponse: []*ResolveCheckResponse{},
+					returnError:                []error{},
+				},
+				expectedResponse: nil,
+				expectedError:    fmt.Errorf("mock_error"),
+			},
 		}
 
 		for _, tt := range tests {
@@ -4518,7 +4531,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
 				ds := mocks.NewMockRelationshipTupleReader(ctrl)
-				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(storage.NewStaticTupleIterator(nil), nil)
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(storage.NewStaticTupleIterator(nil), tt.usersetError)
 				commonParameters := &recursiveMatchUserUsersetCommonData{
 					concurrencyLimit: tt.maxConcurrentReads,
 					visitedUserset:   &sync.Map{},
