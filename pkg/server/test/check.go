@@ -22,7 +22,6 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		inputModel       string
 		tupleGenerator   func() []*openfgav1.TupleKey
 		checker          graph.CheckResolver
-		inputRequest     *openfgav1.CheckRequest
 		tupleKey         *openfgav1.CheckRequestTupleKey
 		contextStruct    *structpb.Struct
 		contextualTuples *openfgav1.ContextualTupleKeys
@@ -61,8 +60,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				return tuples
 			},
 
-			checker:      graph.NewLocalChecker(),
-			inputRequest: &openfgav1.CheckRequest{},
+			checker: graph.NewLocalChecker(),
 			tupleKey: &openfgav1.CheckRequestTupleKey{
 				Object:   "repo:openfga",
 				Relation: "admin",
@@ -100,8 +98,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				return tuples
 			},
 
-			checker:      graph.NewLocalChecker(),
-			inputRequest: &openfgav1.CheckRequest{},
+			checker: graph.NewLocalChecker(),
 			// user:bob has no direct access, so we must check if he's a member of a team
 			tupleKey: &openfgav1.CheckRequestTupleKey{
 				Object:   "repo:openfga",
