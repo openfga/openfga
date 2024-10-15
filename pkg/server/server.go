@@ -11,6 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/openfga/openfga/internal/cachecontroller"
+
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+
 	"github.com/openfga/openfga/internal/graph"
 
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -40,7 +44,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -51,6 +54,8 @@ const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 	allowedLabel               = "allowed"
+
+	ExperimentalCheckOptimizations ExperimentalFeatureFlag = "enable-check-optimizations"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -138,6 +143,10 @@ type Server struct {
 
 	cacheLimit uint32
 	cache      storage.InMemoryCache[any]
+
+	cacheControllerEnabled bool
+	cacheControllerTTL     time.Duration
+	cacheController        cachecontroller.CacheController
 
 	checkQueryCacheEnabled bool
 	checkQueryCacheTTL     time.Duration
@@ -364,6 +373,20 @@ func WithCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithCacheControllerEnabled enables cache invalidation of different cache entities.
+func WithCacheControllerEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheControllerEnabled = enabled
+	}
+}
+
+// WithCacheControllerTTL sets the frequency for the controller to execute.
+func WithCacheControllerTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheControllerTTL = ttl
+	}
+}
+
 // WithCheckQueryCacheTTL sets the TTL of cached checks and list objects partial results
 // Needs WithCheckQueryCacheEnabled set to true.
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
@@ -560,6 +583,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		cacheLimit: serverconfig.DefaultCacheLimit,
 
+		cacheController:        cachecontroller.NewNoopCacheController(),
+		cacheControllerEnabled: serverconfig.DefaultCacheControllerEnabled,
+		cacheControllerTTL:     serverconfig.DefaultCacheControllerTTL,
+
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnabled,
 		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 
@@ -629,10 +656,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
+	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
+
 	if s.cacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(s.cacheLimit)),
 		}...)
+	}
+
+	if s.cache != nil && s.cacheControllerEnabled {
+		// TODO: replace checkQueryCacheTTL with checkIteratorCacheTTL once its introduced
+		s.cacheController = cachecontroller.NewCacheController(s.datastore, s.cache, s.cacheControllerTTL, s.checkQueryCacheTTL)
 	}
 
 	var checkCacheOptions []graph.CachedCheckResolverOpt
@@ -647,6 +681,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
@@ -660,7 +695,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
-	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
 	s.checkDatastore = s.datastore
 
 	if s.cache != nil && s.checkIteratorCacheEnabled {
@@ -1004,6 +1038,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithCacheController(s.cacheController),
 	).Execute(ctx, req)
 	if err != nil {
 		telemetry.TraceError(span, err)
