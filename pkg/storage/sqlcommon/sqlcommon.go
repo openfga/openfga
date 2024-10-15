@@ -704,3 +704,10 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 		IsReady: true,
 	}, nil
 }
+
+func AddFromUlid(sb sq.SelectBuilder, fromUlid interface{}, sortDescending bool) sq.SelectBuilder {
+	if sortDescending {
+		return sb.Where(sq.Lt{"ulid": fromUlid})
+	}
+	return sb.Where(sq.Gt{"ulid": fromUlid})
+}

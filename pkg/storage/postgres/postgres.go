@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
@@ -749,11 +751,11 @@ func (s *Datastore) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		if options.SortDesc {
-			sb = sb.Where(sq.Lt{"ulid": token.Ulid})
-		} else {
-			sb = sb.Where(sq.Gt{"ulid": token.Ulid})
-		}
+		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
+	} else if filter.StartTime != nil {
+		ulidFrom := ulid.Timestamp(*filter.StartTime)
+
+		sb = sqlcommon.AddFromUlid(sb, ulidFrom, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.

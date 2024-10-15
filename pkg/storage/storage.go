@@ -300,6 +300,7 @@ type AssertionsBackend interface {
 type ReadChangesFilter struct {
 	ObjectType    string
 	HorizonOffset time.Duration
+	StartTime     *time.Time
 }
 
 // ChangelogBackend is an interface for interacting with and managing changelogs.
