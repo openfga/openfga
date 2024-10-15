@@ -10,75 +10,40 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-type Mapper[ResultType any] interface {
-	storage.TupleIterator
-	Map(t *openfgav1.TupleKey) (ResultType, error)
-}
-
 type MapperKind int64
 
 const (
-	// NoOpKind is for tests only.
-	NoOpKind MapperKind = 0
-
 	// NestedUsersetKind is a mapper that returns the userset ID from the tuple's user field.
-	NestedUsersetKind MapperKind = 1
-	NestedTTUKind     MapperKind = 2
+	NestedUsersetKind MapperKind = iota
+	NestedTTUKind
 )
 
-// New is a factory that returns the right mapper based on the request's kind.
-func New(kind MapperKind, iter storage.TupleIterator) interface{} {
-	switch kind {
-	case NoOpKind:
-		return &NoOpMapper{iter}
-	case NestedUsersetKind:
-		return &NestedUsersetMapper{iter}
-	case NestedTTUKind:
-		// TODO
-		return nil
-	default:
-		panic("unsupported mapper kind")
-	}
+type Mapper interface {
+	storage.Iterator[string]
 }
-
-type NoOpMapper struct {
-	iter storage.TupleIterator
-}
-
-func (n NoOpMapper) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	return n.iter.Next(ctx)
-}
-
-func (n NoOpMapper) Stop() {
-	n.iter.Stop()
-}
-
-func (n NoOpMapper) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	return n.iter.Head(ctx)
-}
-
-func (n NoOpMapper) Map(t *openfgav1.TupleKey) (string, error) {
-	return "", nil
-}
-
-var _ Mapper[string] = (*NoOpMapper)(nil)
-
-var _ Mapper[string] = (*NestedUsersetMapper)(nil)
 
 type NestedUsersetMapper struct {
-	iter storage.TupleIterator
+	Iter storage.TupleKeyIterator
 }
 
-func (n NestedUsersetMapper) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	return n.iter.Next(ctx)
+func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
+	tupleRes, err := n.Iter.Next(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.Map(tupleRes)
 }
 
 func (n NestedUsersetMapper) Stop() {
-	n.iter.Stop()
+	n.Iter.Stop()
 }
 
-func (n NestedUsersetMapper) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	return n.iter.Head(ctx)
+func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
+	tupleRes, err := n.Iter.Head(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.Map(tupleRes)
 }
 
 func (n NestedUsersetMapper) Map(t *openfgav1.TupleKey) (string, error) {

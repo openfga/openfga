@@ -4117,7 +4117,7 @@ type parallelRecursiveTest struct {
 func (p *parallelRecursiveTest) testParallelizeRecursive(context.Context,
 	*ResolveCheckRequest,
 	*recursiveMatchUserUsersetCommonData,
-	storage.TupleIterator) (*ResolveCheckResponse, error) {
+	tuplemapper.Mapper) (*ResolveCheckResponse, error) {
 	if p.slowRequests {
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -4524,6 +4524,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 					visitedUserset:   &sync.Map{},
 					ds:               ds,
 					dsCount:          &atomic.Uint32{},
+					tupleMapperKind:  tuplemapper.NestedUsersetKind,
 				}
 				for _, item := range tt.visitedItems {
 					commonParameters.visitedUserset.Store(item, struct{}{})
@@ -4569,6 +4570,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 					visitedUserset:   &sync.Map{},
 					dsCount:          &atomic.Uint32{},
 					ds:               ds,
+					tupleMapperKind:  tuplemapper.NestedUsersetKind,
 				}
 				commonParameters.dsCount.Store(15)
 
@@ -4787,10 +4789,9 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			for i := 1; i < len(tt.tuples); i++ {
+			for i := 0; i < len(tt.tuples); i++ {
 				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples[i]), nil)
 			}
-			iter := storage.NewStaticTupleIterator(tt.tuples[0])
 			model := parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
@@ -4814,17 +4815,20 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			userUsersetMapping.Add("group:a")
 			userUsersetMapping.Add("group:b")
 
+			tupleMapperKind := tuplemapper.NestedUsersetKind
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
 				concurrencyLimit:     10,
-				tupleMapperKind:      tuplemapper.NestedUsersetKind,
+				tupleMapperKind:      tupleMapperKind,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 			}
+			mapper, err := buildMapper(context.TODO(), tupleMapperKind, ds, req, nil, ts)
+			require.NoError(t, err)
 
-			result, err := recursiveMatchUserUserset(context.Background(), req, commonData, iter)
+			result, err := recursiveMatchUserUserset(context.Background(), req, commonData, mapper)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, result)
 		})
@@ -5173,9 +5177,10 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			iter := storage.NewStaticTupleIterator(tt.readUsersetTuples)
 			if tt.iteratorHasError {
-				iter = mocks.NewErrorTupleIterator(tt.readUsersetTuples)
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(mocks.NewErrorTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+			} else {
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
 			}
 			model := parser.MustTransformDSLToProto(`
 				model
@@ -5204,18 +5209,23 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 			}
 
 			dsCount := &atomic.Uint32{}
+			kind := tuplemapper.NestedUsersetKind
 			commonData := &recursiveMatchUserUsersetCommonData{
-				typesys:                     ts,
-				ds:                          ds,
-				dsCount:                     dsCount,
-				userToUsersetMapping:        nil, // not used
-				concurrencyLimit:            tt.poolSize,
-				visitedUserset:              &sync.Map{},
-				tupleMapperKind:             tuplemapper.NestedUsersetKind,
-				allowedUserTypeRestrictions: []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")},
+				typesys:              ts,
+				ds:                   ds,
+				dsCount:              dsCount,
+				userToUsersetMapping: nil, // not used
+				concurrencyLimit:     tt.poolSize,
+				visitedUserset:       &sync.Map{},
+				tupleMapperKind:      kind,
+				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+					typesystem.DirectRelationReference("group", "member")},
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, iter, req)
+			mapper, err := buildMapper(context.Background(), kind, ds, req, nil, ts)
+			require.NoError(t, err)
+
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, mapper)
 
 			var userToUsersetMessages []usersetMessage
 

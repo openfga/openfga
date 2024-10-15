@@ -286,7 +286,7 @@ type ConditionsFilteredTupleKeyIterator struct {
 	onceValid bool
 }
 
-var _ TupleKeyIterator = &ConditionsFilteredTupleKeyIterator{}
+var _ TupleKeyIterator = (*ConditionsFilteredTupleKeyIterator)(nil)
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.

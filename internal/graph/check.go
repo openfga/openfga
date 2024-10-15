@@ -1008,7 +1008,7 @@ type recursiveMatchUserUsersetCommonData struct {
 type recursiveMatchUserUsersetFunc func(ctx context.Context,
 	req *ResolveCheckRequest,
 	commonParameters *recursiveMatchUserUsersetCommonData,
-	iterator storage.TupleIterator) (*ResolveCheckResponse, error)
+	mapper tuplemapper.Mapper) (*ResolveCheckResponse, error)
 
 func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []string, req *ResolveCheckRequest, commonParameters *recursiveMatchUserUsersetCommonData, recursiveFunc recursiveMatchUserUsersetFunc) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "parallelizeRecursiveMatchUserUserset")
@@ -1033,7 +1033,7 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []st
 				newReq := req.clone()
 				newTupleKey := tuple.NewTupleKey(usersetItem, req.GetTupleKey().GetRelation(), req.GetTupleKey().GetUser())
 				newReq.TupleKey = newTupleKey
-				newIter, err := buildMappedIterator(ctx, commonParameters.tupleMapperKind, commonParameters.ds, newReq, commonParameters.allowedUserTypeRestrictions)
+				newMapper, err := buildMapper(ctx, commonParameters.tupleMapperKind, commonParameters.ds, newReq, commonParameters.allowedUserTypeRestrictions, commonParameters.typesys)
 				if err != nil {
 					concurrency.TrySendThroughChannel(cancellableCtx, checkOutcome{
 						err: err,
@@ -1041,7 +1041,7 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []st
 					return
 				}
 				pool.Go(func(ctx context.Context) error {
-					result, err := recursiveFunc(cancellableCtx, newReq, commonParameters, newIter)
+					result, err := recursiveFunc(cancellableCtx, newReq, commonParameters, newMapper)
 					concurrency.TrySendThroughChannel(cancellableCtx, checkOutcome{
 						resp: result,
 						err:  err,
@@ -1091,7 +1091,7 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []st
 }
 
 func recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, commonParameters *recursiveMatchUserUsersetCommonData,
-	iter storage.TupleIterator) (*ResolveCheckResponse, error) {
+	mapper tuplemapper.Mapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
 	defer span.End()
 
@@ -1108,7 +1108,7 @@ func recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, co
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters, iter, req)
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters, mapper)
 
 	var usersetItems []string
 	for usersetMsg := range objectToUsersetMessageChan {
@@ -1209,49 +1209,25 @@ func streamedLookupUsersetForUser(ctx context.Context,
 
 // streamedLookupUsersetForObject streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetForObject(ctx context.Context,
-	commonParameters *recursiveMatchUserUsersetCommonData,
-	tupleIterator storage.TupleIterator,
-	req *ResolveCheckRequest) chan usersetMessage {
+func streamedLookupUsersetForObject(ctx context.Context, commonParameters *recursiveMatchUserUsersetCommonData, tupleMapper tuplemapper.Mapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForObject")
 	defer span.End()
 
 	usersetMessageChan := make(chan usersetMessage, commonParameters.concurrencyLimit)
 
-	mapper := tuplemapper.New(commonParameters.tupleMapperKind, tupleIterator)
-	castedMapper, _ := mapper.(tuplemapper.Mapper[string]) // hmmm..
-
 	go func() {
 		defer func() {
+			tupleMapper.Stop()
 			close(usersetMessageChan)
 		}()
 
-		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(castedMapper),
-				validation.FilterInvalidTuples(commonParameters.typesys),
-			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), commonParameters.typesys),
-		)
-		defer filteredIter.Stop()
-
 		for {
-			t, err := filteredIter.Next(ctx)
+			res, err := tupleMapper.Next(ctx)
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					break
 				}
 
-				// error encountered.  No need to process further
-				span.RecordError(err)
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{
-					userset: "",
-					err:     err,
-				}, usersetMessageChan)
-				return
-			}
-			usersetName, err := castedMapper.Map(t)
-			if err != nil {
 				span.RecordError(err)
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{
 					userset: "",
@@ -1260,7 +1236,7 @@ func streamedLookupUsersetForObject(ctx context.Context,
 				return
 			}
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{
-				userset: usersetName,
+				userset: res,
 				err:     nil,
 			}, usersetMessageChan)
 		}
@@ -1397,13 +1373,13 @@ func nestedUsersetFastpath(ctx context.Context,
 
 	userToUsersetMessageChan := streamedLookupUsersetForUser(cancellable, recursiveCommonData, req)
 
-	iter, err := buildMappedIterator(ctx, mapperKind, ds, req, allowedUserTypeRestrictions)
+	mapper, err := buildMapper(ctx, mapperKind, ds, req, allowedUserTypeRestrictions, typesys)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, recursiveCommonData, iter, req)
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, recursiveCommonData, mapper)
 
 	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(cancellable, req, userToUsersetMessageChan, objectToUsersetMessageChan)
 
@@ -1421,12 +1397,10 @@ func nestedUsersetFastpath(ctx context.Context,
 	return parallelizeRecursiveMatchUserUserset(ctx, usersetFromObject.Values(), req, recursiveCommonData, recursiveMatchUserUserset)
 }
 
-func buildMappedIterator(ctx context.Context, mapperKind tuplemapper.MapperKind, ds storage.RelationshipTupleReader, req *ResolveCheckRequest, allowedUserTypeRestrictions []*openfgav1.RelationReference) (storage.TupleIterator, error) {
-	var iter storage.TupleIterator
-	var erroriter error
+func buildMapper(ctx context.Context, mapperKind tuplemapper.MapperKind, ds storage.RelationshipTupleReader, req *ResolveCheckRequest, allowedUserTypeRestrictions []*openfgav1.RelationReference, typesys *typesystem.TypeSystem) (tuplemapper.Mapper, error) {
 	switch mapperKind {
 	case tuplemapper.NestedUsersetKind:
-		iter, erroriter = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    req.GetTupleKey().GetRelation(),
 			AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
@@ -1435,11 +1409,22 @@ func buildMappedIterator(ctx context.Context, mapperKind tuplemapper.MapperKind,
 				Preference: req.GetConsistency(),
 			},
 		})
+		if err != nil {
+			return nil, err
+		}
+		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(iter),
+				validation.FilterInvalidTuples(typesys),
+			),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+		)
+		return &tuplemapper.NestedUsersetMapper{Iter: filteredIter}, nil
 	case tuplemapper.NestedTTUKind:
 		panic("TODO not implemented")
 	}
 
-	return iter, erroriter
+	return nil, fmt.Errorf("unsupported mapper kind %v", mapperKind)
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided

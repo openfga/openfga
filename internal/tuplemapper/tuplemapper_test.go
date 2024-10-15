@@ -8,56 +8,42 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/storage"
 
-	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestNewMapper(t *testing.T) {
+func TestNestedUsersetTupleMapper(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockIter := mockstorage.NewErrorTupleIterator(nil)
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("group:fga", "member", "group:2#member"),
+		tuple.NewTupleKey("group:fga", "member", "group:2"),
+	}
 
-	t.Run("no_op", func(t *testing.T) {
-		mapper := New(NoOpKind, mockIter)
-		require.NotNil(t, mapper)
-		_, ok := mapper.(*NoOpMapper)
-		require.True(t, ok)
-	})
+	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	t.Run("nested_userset", func(t *testing.T) {
-		mapper := New(NestedUsersetKind, mockIter)
-		require.NotNil(t, mapper)
-		_, ok := mapper.(*NestedUsersetMapper)
-		require.True(t, ok)
-	})
-}
-
-func TestUsersetTupleMapper(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockIter := mockstorage.NewErrorTupleIterator([]*openfgav1.Tuple{
-		{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
-	})
-
-	mapper := New(NestedUsersetKind, mockIter)
+	mapper := &NestedUsersetMapper{innerIter}
 	require.NotNil(t, mapper)
-	actualMapper, ok := mapper.(Mapper[string])
-	require.True(t, ok)
 
-	_, err := actualMapper.Next(context.Background())
-	require.NoError(t, err)
-
-	t.Run("map_success", func(t *testing.T) {
-		res, err := actualMapper.Map(tuple.NewTupleKey("group:1", "member", "group:2#member"))
+	t.Run("head_success", func(t *testing.T) {
+		res, err := mapper.Head(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, "group:2", res)
 	})
 
-	t.Run("map_with_error", func(t *testing.T) {
-		_, err := actualMapper.Map(tuple.NewTupleKey("group:1", "member", "group:2"))
+	t.Run("map_success", func(t *testing.T) {
+		// first tk is a userset so can be mapped
+		res, err := mapper.Next(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "group:2", res)
+	})
+
+	t.Run("map_error", func(t *testing.T) {
+		// second tk is not a userset so can't be mapped
+		res, err := mapper.Next(context.Background())
 		require.Error(t, err)
+		require.Equal(t, "", res)
 	})
 }
