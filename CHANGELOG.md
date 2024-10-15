@@ -15,6 +15,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 
+### Performance
+* Improve check performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2007](https://github.com/openfga/openfga/pull/2007)
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
