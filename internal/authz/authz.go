@@ -113,11 +113,7 @@ type NoopAuthorizer struct {
 }
 
 func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Logger) *NoopAuthorizer {
-	return &NoopAuthorizer{
-		config: config,
-		server: server,
-		logger: logger,
-	}
+	return &NoopAuthorizer{}
 }
 
 func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {

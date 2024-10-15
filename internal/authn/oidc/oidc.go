@@ -63,6 +63,16 @@ func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audie
 		httpClient:     client.StandardClient(),
 		ClientIDClaims: clientIDClaims,
 	}
+
+	// Client ID is:
+	// 1. If the user has set it in configuration, use that
+	// 2, If the user has not set it in configuration, use the following as default:
+	// 2.a. Use `azp`: the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+	// 3.b. Use `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
+	if len(oidc.ClientIDClaims) == 0 {
+		oidc.ClientIDClaims = []string{"azp", "client_id"}
+	}
+
 	err := fetchJWKs(oidc)
 	if err != nil {
 		return nil, err
@@ -132,17 +142,8 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		}
 	}
 
-	// Client ID is:
-	// 1. If the user has set it in configuration, use that
-	// 2, If the user has not set it in configuration, use the following as default:
-	// 2.a. Use `azp`: the OpenID standard https://openid.net/specs/openid-connect-core-1_0.html#IDToken
-	// 3.b. Use `client_id` in RFC9068 https://www.rfc-editor.org/rfc/rfc9068.html#name-data-structure
-	clientIDClaims := oidc.ClientIDClaims
-	if len(clientIDClaims) == 0 {
-		clientIDClaims = []string{"azp", "client_id"}
-	}
 	clientID := ""
-	for _, claimString := range clientIDClaims {
+	for _, claimString := range oidc.ClientIDClaims {
 		clientID, ok = claims[claimString].(string)
 		if ok {
 			break
