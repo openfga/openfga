@@ -3,6 +3,8 @@ package test
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -13,7 +15,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
-	"testing"
 )
 
 func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
@@ -143,7 +144,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
 			commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
 		)
-	
+
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
@@ -153,7 +154,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 					Context:          bm.contextStruct,
 				})
 
-				require.Equal(b, response.GetAllowed(), bm.expected)
+				require.Equal(b, bm.expected, response.GetAllowed())
 				require.NoError(b, err)
 			}
 		})
