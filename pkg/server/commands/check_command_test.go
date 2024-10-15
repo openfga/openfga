@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -159,6 +160,39 @@ type doc
 			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.ErrorIs(t, err, errors.ErrUnknown)
+	})
+
+	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Zero(t, req.GetLastCacheInvalidationTime())
+			return nil, nil
+		})
+		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              ulid.Make().String(),
+			AuthorizationModelId: ulid.Make().String(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("cache_controller_sets_invalidation_time", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		invalidationTime := time.Now().UTC()
+		cacheController := mockstorage.NewMockCacheController(mockController)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCacheController(cacheController))
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
+			return nil, nil
+		})
+		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
+		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: ulid.Make().String(),
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
 	})
 }
 
