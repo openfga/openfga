@@ -36,6 +36,9 @@ const (
 
 	DefaultCacheLimit = 10000
 
+	DefaultCacheControllerEnabled = false
+	DefaultCacheControllerTTL     = 10 * time.Second
+
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
