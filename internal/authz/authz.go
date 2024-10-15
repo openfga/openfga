@@ -159,7 +159,7 @@ type AuthorizationError struct {
 }
 
 func (e *AuthorizationError) Error() string {
-	return fmt.Sprintf("error authorizing request: %s", e.Err)
+	return fmt.Sprintf("error authorizing the call: %s", e.Err)
 }
 
 func (e *AuthorizationError) Unwrap() error {
@@ -299,7 +299,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.ListObjects(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error authorizing the call: %w", err)
 	}
 
 	storeIDs := make([]string, len(resp.GetObjects()))
@@ -393,11 +393,11 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.Check(ctx, req)
 	if err != nil {
-		return err
+		return fmt.Errorf("error authorizing the call: %w", err)
 	}
 
 	if !resp.GetAllowed() {
-		return status.Error(codes.Code(ErrUnauthorizedResponse.GetCode()), ErrUnauthorizedResponse.GetMessage())
+		return status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), ErrUnauthorizedResponse.GetMessage())
 	}
 
 	return nil
