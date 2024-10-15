@@ -994,10 +994,10 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 type recursiveMatchUserUsersetCommonData struct {
 	typesys                     *typesystem.TypeSystem
 	ds                          storage.RelationshipTupleReader
+	allowedUserTypeRestrictions []*openfgav1.RelationReference
 	userToUsersetMapping        storage.SortedSet
 	concurrencyLimit            int
 	tupleMapperKind             tuplemapper.MapperKind
-	allowedUserTypeRestrictions []*openfgav1.RelationReference
 	// The following member are atomic/sync in anticipation
 	// that the algorithm will parallelize the lookup.
 	dsCount        *atomic.Uint32
@@ -1033,7 +1033,7 @@ func parallelizeRecursiveMatchUserUserset(ctx context.Context, usersetItems []st
 				newReq := req.clone()
 				newTupleKey := tuple.NewTupleKey(usersetItem, req.GetTupleKey().GetRelation(), req.GetTupleKey().GetUser())
 				newReq.TupleKey = newTupleKey
-				newMapper, err := buildMapper(ctx, commonParameters.tupleMapperKind, commonParameters.ds, newReq, commonParameters.allowedUserTypeRestrictions, commonParameters.typesys)
+				newMapper, err := buildMapper(ctx, newReq, commonParameters)
 				if err != nil {
 					concurrency.TrySendThroughChannel(cancellableCtx, checkOutcome{
 						err: err,
@@ -1373,7 +1373,7 @@ func nestedUsersetFastpath(ctx context.Context,
 
 	userToUsersetMessageChan := streamedLookupUsersetForUser(cancellable, recursiveCommonData, req)
 
-	mapper, err := buildMapper(ctx, mapperKind, ds, req, allowedUserTypeRestrictions, typesys)
+	mapper, err := buildMapper(ctx, req, recursiveCommonData)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -1397,13 +1397,13 @@ func nestedUsersetFastpath(ctx context.Context,
 	return parallelizeRecursiveMatchUserUserset(ctx, usersetFromObject.Values(), req, recursiveCommonData, recursiveMatchUserUserset)
 }
 
-func buildMapper(ctx context.Context, mapperKind tuplemapper.MapperKind, ds storage.RelationshipTupleReader, req *ResolveCheckRequest, allowedUserTypeRestrictions []*openfgav1.RelationReference, typesys *typesystem.TypeSystem) (tuplemapper.Mapper, error) {
-	switch mapperKind {
+func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiveMatchUserUsersetCommonData) (tuplemapper.Mapper, error) {
+	switch common.tupleMapperKind {
 	case tuplemapper.NestedUsersetKind:
-		iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		iter, err := common.ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    req.GetTupleKey().GetRelation(),
-			AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
+			AllowedUserTypeRestrictions: common.allowedUserTypeRestrictions,
 		}, storage.ReadUsersetTuplesOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: req.GetConsistency(),
@@ -1415,16 +1415,16 @@ func buildMapper(ctx context.Context, mapperKind tuplemapper.MapperKind, ds stor
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
+				validation.FilterInvalidTuples(common.typesys),
 			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), common.typesys),
 		)
 		return &tuplemapper.NestedUsersetMapper{Iter: filteredIter}, nil
 	case tuplemapper.NestedTTUKind:
 		panic("TODO not implemented")
 	}
 
-	return nil, fmt.Errorf("unsupported mapper kind %v", mapperKind)
+	panic("unreachable")
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided

@@ -4815,17 +4815,16 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 			userUsersetMapping.Add("group:a")
 			userUsersetMapping.Add("group:b")
 
-			tupleMapperKind := tuplemapper.NestedUsersetKind
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
 				concurrencyLimit:     10,
-				tupleMapperKind:      tupleMapperKind,
+				tupleMapperKind:      tuplemapper.NestedUsersetKind,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 			}
-			mapper, err := buildMapper(context.TODO(), tupleMapperKind, ds, req, nil, ts)
+			mapper, err := buildMapper(context.Background(), req, commonData)
 			require.NoError(t, err)
 
 			result, err := recursiveMatchUserUserset(context.Background(), req, commonData, mapper)
@@ -5209,7 +5208,6 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 			}
 
 			dsCount := &atomic.Uint32{}
-			kind := tuplemapper.NestedUsersetKind
 			commonData := &recursiveMatchUserUsersetCommonData{
 				typesys:              ts,
 				ds:                   ds,
@@ -5217,12 +5215,12 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				userToUsersetMapping: nil, // not used
 				concurrencyLimit:     tt.poolSize,
 				visitedUserset:       &sync.Map{},
-				tupleMapperKind:      kind,
+				tupleMapperKind:      tuplemapper.NestedUsersetKind,
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 					typesystem.DirectRelationReference("group", "member")},
 			}
 
-			mapper, err := buildMapper(context.Background(), kind, ds, req, nil, ts)
+			mapper, err := buildMapper(context.Background(), req, commonData)
 			require.NoError(t, err)
 
 			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, mapper)
