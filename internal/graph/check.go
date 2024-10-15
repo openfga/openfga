@@ -1275,8 +1275,6 @@ func matchUsersetFromUserAndUsersetFromObject(ctx context.Context,
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				// It probably is +1.  However, we have no control on whether
-				// the userset member lookup for the first level has started DS query.
 				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
 			},
 		}, nil, nil, nil
