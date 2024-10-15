@@ -9,6 +9,9 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/utils"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -69,6 +72,7 @@ var (
 	ErrUnknownAPIMethod     = errors.New("unknown API method")
 
 	SystemObjectID = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
+	tracer         = otel.Tracer("internal/authz")
 )
 
 type StoreIDType string
@@ -201,6 +205,13 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 
 // Authorize checks if the user has access to the resource.
 func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
+	ctx, span := tracer.Start(ctx, "Authorize", trace.WithAttributes(
+		attribute.String("storeID", storeID),
+		attribute.String("apiMethod", apiMethod),
+		attribute.String("modules", strings.Join(modules, ",")),
+	))
+	defer span.End()
+
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
 		return err
@@ -232,6 +243,9 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 
 // AuthorizeCreateStore checks if the user has access to create a store.
 func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "AuthorizeCreateStore")
+	defer span.End()
+
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
 		return err
@@ -247,6 +261,9 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 
 // AuthorizeListStores checks if the user has access to list stores.
 func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "AuthorizeListStores")
+	defer span.End()
+
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
 		return err
@@ -262,6 +279,9 @@ func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
 
 // ListAuthorizedStores returns the list of store IDs that the user has access to.
 func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "ListAuthorizedStores")
+	defer span.End()
+
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
 		return nil, err
@@ -351,6 +371,13 @@ func extractModulesFromTuples[T TupleKeyInterface](tupleKeys []T, typesys *types
 }
 
 func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation, object string, contextualTuples *openfgav1.ContextualTupleKeys) error {
+	ctx, span := tracer.Start(ctx, "individualAuthorize", trace.WithAttributes(
+		attribute.String("clientID", clientID),
+		attribute.String("relation", relation),
+		attribute.String("object", object),
+	))
+	defer span.End()
+
 	req := &openfgav1.CheckRequest{
 		StoreId:              a.config.StoreID,
 		AuthorizationModelId: a.config.ModelID,
@@ -378,6 +405,14 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 
 // moduleAuthorize checks if the user has access to each of the modules, and exits if an error is encountered.
 func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, storeID string, modules []string) error {
+	ctx, span := tracer.Start(ctx, "moduleAuthorize", trace.WithAttributes(
+		attribute.String("clientID", clientID),
+		attribute.String("relation", relation),
+		attribute.String("storeID", storeID),
+		attribute.String("modules", strings.Join(modules, ",")),
+	))
+	defer span.End()
+
 	var wg sync.WaitGroup
 	errorChannel := make(chan error, len(modules))
 
