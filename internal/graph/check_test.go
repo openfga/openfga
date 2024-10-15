@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/internal/checkutil"
+
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/internal/concurrency"
