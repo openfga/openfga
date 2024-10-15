@@ -1107,7 +1107,7 @@ func recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, co
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonParameters, mapper)
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, mapper)
 
 	var usersetItems []string
 	for usersetMsg := range objectToUsersetMessageChan {
@@ -1146,8 +1146,9 @@ type usersetMessage struct {
 // streamedLookupUsersetForUser streams the userset (req's object#relation) that are assigned to
 // the user to the usersetMessageChan channel.
 func streamedLookupUsersetForUser(ctx context.Context,
-	commonParameters *recursiveMatchUserUsersetCommonData,
 	req *ResolveCheckRequest,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader,
 ) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForUser")
 	defer span.End()
@@ -1161,7 +1162,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 
 		// Note that if the type of the request's user is publicly assignable, this will fetch that tuple as well.
 		iter, err := checkutil.IteratorReadStartingFromUser(ctx,
-			commonParameters.typesys, commonParameters.ds, req,
+			typesys, ds, req,
 			tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
 			nil)
 		if err != nil {
@@ -1176,9 +1177,9 @@ func streamedLookupUsersetForUser(ctx context.Context,
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(commonParameters.typesys),
+				validation.FilterInvalidTuples(typesys),
 			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), commonParameters.typesys),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 		)
 		defer filteredIter.Stop()
 
@@ -1208,7 +1209,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 
 // streamedLookupUsersetForObject streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetForObject(ctx context.Context, commonParameters *recursiveMatchUserUsersetCommonData, tupleMapper TupleMapper) chan usersetMessage {
+func streamedLookupUsersetForObject(ctx context.Context, tupleMapper TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetForObject")
 	defer span.End()
 
@@ -1258,18 +1259,37 @@ func processUsersetMessage(message usersetMessage,
 
 func matchUsersetFromUserAndUsersetFromObject(ctx context.Context,
 	req *ResolveCheckRequest,
-	userToUsersetMessageChan,
-	objectToUsersetMessageChan chan usersetMessage) (*ResolveCheckResponse, storage.SortedSet, storage.SortedSet, error) {
+	objectToUsersetMessageChan chan usersetMessage,
+	typesys *typesystem.TypeSystem,
+	ds storage.RelationshipTupleReader) (*ResolveCheckResponse, storage.SortedSet, storage.SortedSet, error) {
 	usersetFromUser := storage.NewSortedSet()
 	usersetFromObject := storage.NewSortedSet()
 
 	userToUsersetDone := false
 	objectToUsersetDone := false
 
+	// check to see if there are any nested userset assigned.  If not,
+	// we don't even need to check the user side.
+	objectToUsersetMessageInit, okInit := <-objectToUsersetMessageChan
+	if !okInit {
+		return &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				// It probably is +1.  However, we have no control on whether
+				// the userset member lookup for the first level has started DS query.
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			},
+		}, nil, nil, nil
+	}
+	if objectToUsersetMessageInit.err != nil {
+		return nil, nil, nil, objectToUsersetMessageInit.err
+	}
+	usersetFromObject.Add(objectToUsersetMessageInit.userset)
+
+	userToUsersetMessageChan := streamedLookupUsersetForUser(ctx, req, typesys, ds)
+
 	for !userToUsersetDone || !objectToUsersetDone {
 		select {
-		case <-ctx.Done():
-			return nil, nil, nil, ctx.Err()
 		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
 			if !ok {
 				userToUsersetDone = true
@@ -1300,16 +1320,7 @@ func matchUsersetFromUserAndUsersetFromObject(ctx context.Context,
 		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
 			if !ok {
 				objectToUsersetDone = true
-				if usersetFromObject.Size() == 0 {
-					return &ResolveCheckResponse{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							// It probably is +1.  However, we have no control on whether
-							// the userset member lookup for the first level has started DS query.
-							DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 2,
-						},
-					}, nil, nil, nil
-				}
+				// usersetFromObject must not be empty because we would have caught it earlier.
 			} else {
 				found, err := processUsersetMessage(objectToUsersetMessage, usersetFromObject, usersetFromUser)
 				if err != nil {
@@ -1359,17 +1370,15 @@ func nestedUsersetFastpath(ctx context.Context,
 		visitedUserset:              &sync.Map{},
 	}
 
-	userToUsersetMessageChan := streamedLookupUsersetForUser(cancellable, recursiveCommonData, req)
-
 	mapper, err := buildMapper(ctx, req, recursiveCommonData)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, recursiveCommonData, mapper)
+	objectToUsersetMessageChan := streamedLookupUsersetForObject(cancellable, mapper)
 
-	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(cancellable, req, userToUsersetMessageChan, objectToUsersetMessageChan)
+	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(cancellable, req, objectToUsersetMessageChan, typesys, ds)
 
 	if err != nil {
 		span.RecordError(err)
