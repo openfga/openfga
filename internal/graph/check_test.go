@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -26,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
