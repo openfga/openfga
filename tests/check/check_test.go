@@ -13,6 +13,12 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
+	"google.golang.org/grpc"
+
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
@@ -21,11 +27,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
-	"google.golang.org/grpc"
 )
 
 func TestMatrixMemory(t *testing.T) {

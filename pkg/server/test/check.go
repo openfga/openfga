@@ -3,7 +3,6 @@ package test
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/pkg/tuple"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -16,11 +15,12 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // Some of the benchmark tests require context blocks to be built
-// but many do not. This noop method is a placeholder for the non-context test cases
+// but many do not. This noop method is a placeholder for the non-context test cases.
 func noopContextGenerator() *structpb.Struct {
 	return &structpb.Struct{}
 }
@@ -31,7 +31,6 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		tupleGenerator   func() []*openfgav1.TupleKey
 		tupleKeyToCheck  *openfgav1.CheckRequestTupleKey
 		contextGenerator func() *structpb.Struct
-		contextualTuples *openfgav1.ContextualTupleKeys
 		expected         bool
 	}{
 		`race_between_direct_and_userset`: {
@@ -392,10 +391,9 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
-					StoreId:          storeID,
-					TupleKey:         bm.tupleKeyToCheck,
-					ContextualTuples: bm.contextualTuples,
-					Context:          bm.contextGenerator(),
+					StoreId:  storeID,
+					TupleKey: bm.tupleKeyToCheck,
+					Context:  bm.contextGenerator(),
 				})
 
 				require.Equal(b, bm.expected, response.GetAllowed())
@@ -409,7 +407,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 }
 
 // This benchmark test creates multiple authorization models so it doesn't fit into
-// the table pattern above
+// the table pattern above.
 func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatastore) {
 	schemaOne := `
 		model
