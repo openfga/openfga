@@ -281,41 +281,6 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			contextGenerator: noopContextGenerator,
 			expected:         true,
 		},
-		// This one has two authorizatio models, needs to be custom
-		//`with_bypass_userset_read`: {
-		//	inputModel: `
-		//		model
-		//			schema 1.1
-		//		type user
-		//		type group
-		//			relations
-		//				define member: [user]
-		//		type document
-		//			relations
-		//				define viewer: [user:*, group#member]
-		//	`,
-		//	tupleGenerator: func() []*openfgav1.TupleKey {
-		//		var tuplesToWrite []*openfgav1.TupleKey
-		//		for i := 1; i < 1_000; i++ {
-		//			// add user to many usersets according to model A
-		//			tuplesToWrite = append(tuplesToWrite, &openfgav1.TupleKey{
-		//				Object: "folder:x",
-		//				Relation: "parent",
-		//				User: fmt.Sprintf("group:%d", i),
-		//			})
-		//		}
-		//
-		//		// one of those usersets gives access to document:budget
-		//		tuplesToWrite = append(tuplesToWrite, &openfgav1.TupleKey{
-		//			Object: "document:budget", Relation: "viewer", User: "group:999#member"},
-		//		)
-		//		return tuplesToWrite
-		//
-		//	},
-		//	tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{},
-		//	expected:        true,
-		//
-		//},
 		`with_one_condition`: {
 			inputModel: `
 				model
@@ -437,5 +402,98 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				require.NoError(b, err)
 			}
 		})
+
+		// Now run the one benchmark that doesn't fit the table pattern
+		benchmarkCheckWithBypassUsersetReads(b, ds)
 	}
+}
+
+// This benchmark test creates multiple authorization models so it doesn't fit into
+// the table pattern above
+func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatastore) {
+	schemaOne := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define member: [user]
+		type document
+			relations
+				define viewer: [user:*, group#member]
+	`
+	storeID := ulid.Make().String()
+	modelOne := testutils.MustTransformDSLToProtoWithID(schemaOne)
+	//typeSystemOne, err := typesystem.NewAndValidate(context.Background(), modelOne)
+	//require.NoError(b, err)
+
+	err := ds.WriteAuthorizationModel(context.Background(), storeID, modelOne)
+	require.NoError(b, err)
+
+	// add user to many usersets according to model A
+	var tuples []*openfgav1.TupleKey
+	for i := 0; i < 1000; i++ {
+		tuples = append(tuples, &openfgav1.TupleKey{
+			Object:   fmt.Sprintf("group:%d", i),
+			Relation: "member",
+			User:     "user:anne",
+		})
+	}
+
+	// one userset gets access to document:budget
+	tuples = append(tuples, &openfgav1.TupleKey{Object: "document:budget", Relation: "viewer", User: "group:999#member"})
+
+	// now actually write the tuples
+	for i := 0; i < len(tuples); {
+		var tuplesToWrite []*openfgav1.TupleKey
+		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
+			if i == len(tuples) {
+				break
+			}
+			tuplesToWrite = append(tuplesToWrite, tuples[i])
+			i++
+		}
+		err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
+		require.NoError(b, err)
+	}
+
+	schemaTwo := `
+		model
+			schema 1.1
+		type user
+		type user2
+		type group
+			relations
+				define member: [user2]
+		type document
+			relations
+				define viewer: [user:*, group#member]
+	`
+	modelTwo := testutils.MustTransformDSLToProtoWithID(schemaTwo)
+	typeSystemTwo, err := typesystem.NewAndValidate(context.Background(), modelTwo)
+	require.NoError(b, err)
+
+	// all the usersets added above are now invalid and should be skipped!
+	err = ds.WriteAuthorizationModel(context.Background(), storeID, modelTwo)
+	require.NoError(b, err)
+
+	checkQuery := commands.NewCheckCommand(
+		ds,
+		graph.NewLocalChecker(),
+		typeSystemTwo,
+		commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
+		commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
+	)
+
+	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			response, _, err := checkQuery.Execute(context.Background(), &openfgav1.CheckRequest{
+				StoreId:  storeID,
+				TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
+			})
+
+			require.False(b, response.GetAllowed())
+			require.NoError(b, err)
+		}
+	})
 }
