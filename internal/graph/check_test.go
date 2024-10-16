@@ -5564,7 +5564,89 @@ func TestNestedUsersetFastpath(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	t.Run("normal_test_cases", func(t *testing.T) {
+	t.Run("normal_ttu_test_cases", func(t *testing.T) {
+		model := parser.MustTransformDSLToProto(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user] or member from parent
+					define parent: [group]
+			`)
+		tests := []struct {
+			name                            string
+			readStartingWithUserTuples      []*openfgav1.Tuple
+			readStartingWithUserTuplesError error
+			readTuples                      [][]*openfgav1.Tuple
+			readTuplesError                 error
+			expected                        *ResolveCheckResponse
+			expectedError                   error
+		}{
+			{
+				name: "happy_case",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:2", "parent", "group:1"),
+						},
+						{
+							Key: tuple.NewTupleKey("group:2a", "parent", "group:1a"),
+						},
+						{
+							Key: tuple.NewTupleKey("group:3", "parent", "group:2a"),
+						},
+						{
+							Key: tuple.NewTupleKey("group:3", "parent", "group:2"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 2,
+						CycleDetected:       false,
+					},
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				ds := mocks.NewMockRelationshipTupleReader(ctrl)
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+
+				for _, tuples := range tt.readTuples {
+					ds.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
+				}
+				ts, err := typesystem.New(model)
+				require.NoError(t, err)
+
+				req := &ResolveCheckRequest{
+					StoreID:              ulid.Make().String(),
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(20),
+				}
+
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedTTUKind, nil, "parent", 10)
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
+			})
+		}
+	})
+
+	t.Run("normal_userset_test_cases", func(t *testing.T) {
 		tests := []struct {
 			name                            string
 			readStartingWithUserTuples      []*openfgav1.Tuple
@@ -5723,7 +5805,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 
 				typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
 
-				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, 10)
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, "", 10)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -5771,8 +5853,193 @@ func TestNestedUsersetFastpath(t *testing.T) {
 
 		typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
 
-		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, 10)
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, "", 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
+	})
+}
+
+func TestBuildMapper(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	ctx := context.Background()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
+	t.Run("nested_userset", func(t *testing.T) {
+		mockDatastore.EXPECT().ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+			},
+		}, storage.ReadUsersetTuplesOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}).Times(1)
+
+		commonData := &recursiveMatchUserUsersetCommonData{
+			typesys:         ts,
+			ds:              mockDatastore,
+			tupleMapperKind: NestedUsersetKind,
+			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+			},
+		}
+		res, err := buildMapper(ctx, &ResolveCheckRequest{
+			StoreID:     storeID,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}, commonData)
+		require.NoError(t, err)
+		_, ok := res.(*NestedUsersetMapper)
+		require.True(t, ok)
+	})
+
+	t.Run("nested_ttu", func(t *testing.T) {
+		mockDatastore.EXPECT().Read(ctx, storeID, tuple.NewTupleKey("document:1", "parent", ""), storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}).Times(1)
+
+		commonData := &recursiveMatchUserUsersetCommonData{
+			tuplesetRelation: "parent",
+			typesys:          ts,
+			ds:               mockDatastore,
+			tupleMapperKind:  NestedTTUKind,
+		}
+		res, err := buildMapper(ctx, &ResolveCheckRequest{
+			StoreID:     storeID,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}, commonData)
+		require.NoError(t, err)
+		_, ok := res.(*NestedTTUMapper)
+		require.True(t, ok)
+	})
+}
+
+func TestCheckTTU(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// model
+	//	schema 1.1
+	// type user
+	// type group
+	//	relations
+	//		define member: [user] or member from parent
+	//		define parent: [group]
+
+	ttuRewrite := &openfgav1.Userset{
+		Userset: &openfgav1.Userset_TupleToUserset{
+			TupleToUserset: &openfgav1.TupleToUserset{
+				Tupleset: &openfgav1.ObjectRelation{
+					Relation: "parent",
+				},
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Relation: "member",
+				},
+			},
+		},
+	}
+	model := &openfgav1.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgav1.Userset{
+					"parent": {
+						Userset: &openfgav1.Userset_This{},
+					},
+					"member": {
+						Userset: &openfgav1.Userset_Union{
+							Union: &openfgav1.Usersets{
+								Child: []*openfgav1.Userset{
+									{
+										Userset: &openfgav1.Userset_This{},
+									},
+									ttuRewrite,
+								},
+							},
+						},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"parent": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{
+									Type: "group",
+								},
+							},
+						},
+						"member": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{
+									Type: "user",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	t.Run("nested_ttu_and_optimizations_enabled_calls_nestedUsersetFastpath", func(t *testing.T) {
+		// arrange
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		checker := NewLocalChecker(WithOptimizations(true))
+		t.Cleanup(checker.Close)
+
+		storeID := ulid.Make().String()
+
+		req := &ResolveCheckRequest{
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(24),
+		}
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tuple.NewTupleKey("group:1", "parent", ""), gomock.Any()).
+			Times(1).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+
+		// act
+		res, err := checker.checkTTU(ctx, req, ttuRewrite)(ctx)
+
+		// assert
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.False(t, res.GetAllowed()) // user:maria is not part of any group, and no parents for group:1
 	})
 }
