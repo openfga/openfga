@@ -306,7 +306,7 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 			}
-			resolutionMetadata.DatastoreQueryCount.Add(uint32(reverseExpandResolutionMetadata.DatastoreQueryCount))
+			resolutionMetadata.DatastoreQueryCount.Add(reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
 			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 		}()

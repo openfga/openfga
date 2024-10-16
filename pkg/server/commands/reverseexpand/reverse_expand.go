@@ -182,7 +182,7 @@ type ReverseExpandResult struct {
 }
 
 type ResolutionMetadata struct {
-	DatastoreQueryCount int
+	DatastoreQueryCount uint32
 
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCounter *atomic.Uint32
@@ -224,7 +224,7 @@ func (c *ReverseExpandQuery) Execute(
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	defer func() {
-		resolutionMetadata.DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
+		resolutionMetadata.DatastoreQueryCount = uint32(c.datastore.GetMetrics().DatastoreQueryCount)
 	}()
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {

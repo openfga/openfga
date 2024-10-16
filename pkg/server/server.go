@@ -843,13 +843,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 		return nil, err
 	}
-	datastoreQueryCount := result.ResolutionMetadata.DatastoreQueryCount.Load()
+	datastoreQueryCount := float64(result.ResolutionMetadata.DatastoreQueryCount.Load())
+
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
-	span.SetAttributes(attribute.Int(datastoreQueryCountHistogramName, int(datastoreQueryCount)))
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-	).Observe(float64(datastoreQueryCount))
+	).Observe(datastoreQueryCount)
 
 	dispatchCount := float64(result.ResolutionMetadata.DispatchCounter.Load())
 
@@ -947,14 +948,14 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		telemetry.TraceError(span, err)
 		return err
 	}
-	datastoreQueryCount := resolutionMetadata.DatastoreQueryCount.Load()
+	datastoreQueryCount := float64(resolutionMetadata.DatastoreQueryCount.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
-	span.SetAttributes(attribute.Int(datastoreQueryCountHistogramName, int(datastoreQueryCount)))
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-	).Observe(float64(datastoreQueryCount))
+	).Observe(datastoreQueryCount)
 
 	dispatchCount := float64(resolutionMetadata.DispatchCounter.Load())
 
