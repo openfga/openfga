@@ -1627,3 +1627,94 @@ func TestListStores(t *testing.T) {
 		})
 	})
 }
+
+func TestListUsers(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("listUsers_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		_, err := openfga.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
+			StoreId:              settings.testData.id,
+			AuthorizationModelId: settings.testData.modelID,
+			Object: &openfgav1.Object{
+				Type: "workspace",
+				Id:   "1",
+			},
+			Relation: "guest",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("listUsers_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_check_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Object: &openfgav1.Object{
+					Type: "workspace",
+					Id:   "1",
+				},
+				Relation: "guest",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{Type: "user"},
+				},
+			})
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		})
+
+		t.Run("successfully_call_listUsers", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.rootData.id,
+				AuthorizationModelId: settings.rootData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey(fmt.Sprintf("store:%s", settings.testData.id), authz.CanCallListUsers, fmt.Sprintf("application:%s", settings.clientID)),
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			_, err = openfga.ListUsers(ctx, &openfgav1.ListUsersRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Object: &openfgav1.Object{
+					Type: "workspace",
+					Id:   "1",
+				},
+				Relation: "guest",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{Type: "user"},
+				},
+			})
+			require.NoError(t, err)
+		})
+	})
+}
