@@ -5953,3 +5953,112 @@ func TestBuildMapper(t *testing.T) {
 		require.True(t, ok)
 	})
 }
+
+func TestCheckTTU(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// model
+	//	schema 1.1
+	//type user
+	//type group
+	//	relations
+	//		define member: [user] or member from parent
+	//		define parent: [group]
+
+	ttuRewrite := &openfgav1.Userset{
+		Userset: &openfgav1.Userset_TupleToUserset{
+			TupleToUserset: &openfgav1.TupleToUserset{
+				Tupleset: &openfgav1.ObjectRelation{
+					Relation: "parent",
+				},
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Relation: "member",
+				},
+			},
+		},
+	}
+	model := &openfgav1.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgav1.Userset{
+					"parent": {
+						Userset: &openfgav1.Userset_This{},
+					},
+					"member": {
+						Userset: &openfgav1.Userset_Union{
+							Union: &openfgav1.Usersets{
+								Child: []*openfgav1.Userset{
+									{
+										Userset: &openfgav1.Userset_This{},
+									},
+									ttuRewrite,
+								},
+							},
+						},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"parent": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{
+									Type: "group",
+								},
+							},
+						},
+						"member": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{
+									Type: "user",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	typesys, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	t.Run("nested_ttu_and_optimizations_enabled_calls_nestedUsersetFastpath", func(t *testing.T) {
+		// arrange
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+		checker := NewLocalChecker(WithOptimizations(true))
+		t.Cleanup(checker.Close)
+
+		storeID := ulid.Make().String()
+
+		req := &ResolveCheckRequest{
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(24),
+		}
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tuple.NewTupleKey("group:1", "parent", ""), gomock.Any()).
+			Times(1).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+
+		// act
+		res, err := checker.checkTTU(ctx, req, ttuRewrite)(ctx)
+
+		// assert
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.False(t, res.GetAllowed())
+	})
+}
