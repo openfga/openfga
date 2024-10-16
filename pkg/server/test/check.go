@@ -146,6 +146,42 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				Object: "group:1", Relation: "exclude", User: "user:anne",
 			},
 			expected: false,
+		}, `with_computed`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define computed_member: member
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				return []*openfgav1.TupleKey{{Object: "group:x", Relation: "member", User: "user:anne"}}
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "group:x", Relation: "computed_member", User: "user:anne"},
+			expected:        true,
+		}, `with_userset`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type user2
+				type team
+					relations
+						define member: [user, user2]
+				type document
+					relations
+						define viewer: [team#member]
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				return []*openfgav1.TupleKey{
+					{Object: "document:x", Relation: "viewer", User: "team:fga#member"},
+					{Object: "team:fga", Relation: "member", User: "user:anne"},
+				}
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "document:x", Relation: "viewer", User: "user:anne"},
+			expected:        true,
 		},
 	}
 
