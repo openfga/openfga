@@ -106,11 +106,7 @@ type AuthorizerInterface interface {
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
 }
 
-type NoopAuthorizer struct {
-	config *Config
-	server ServerInterface
-	logger logger.Logger
-}
+type NoopAuthorizer struct{}
 
 func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Logger) *NoopAuthorizer {
 	return &NoopAuthorizer{}
