@@ -7,6 +7,7 @@ import (
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 
 	"github.com/openfga/openfga/internal/authn"
+	"github.com/openfga/openfga/pkg/authclaims"
 )
 
 type PresharedKeyAuthenticator struct {
@@ -27,14 +28,14 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 	return &PresharedKeyAuthenticator{ValidKeys: vKeys}, nil
 }
 
-func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.AuthClaims, error) {
+func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authclaims.AuthClaims, error) {
 	authHeader, err := grpcauth.AuthFromMD(ctx, "Bearer")
 	if err != nil {
 		return nil, authn.ErrMissingBearerToken
 	}
 
 	if _, found := pka.ValidKeys[authHeader]; found {
-		return &authn.AuthClaims{
+		return &authclaims.AuthClaims{
 			Subject: "", // no user information in this auth method
 		}, nil
 	}

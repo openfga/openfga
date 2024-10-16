@@ -376,7 +376,6 @@ func benchmarkAll(b *testing.B, engine string) {
 			goleak.IgnoreTopFunction("testing.(*B).doBench"),
 		)
 	})
-	b.Run("benchmarkCheckDirectAndUserset", func(b *testing.B) { benchmarkCheckDirectAndUserset(b, engine) })
 	b.Run("benchmarkCheckWithIntersectionAndExclusion", func(b *testing.B) { benchmarkCheckWithIntersectionAndExclusion(b, engine) })
 	b.Run("BenchmarkCheckWithComputed", func(b *testing.B) { benchmarkCheckWithComputed(b, engine) })
 	b.Run("benchmarkCheckWithUserset", func(b *testing.B) { benchmarkCheckWithUserset(b, engine) })
@@ -696,105 +695,6 @@ func benchmarkCheckWithNestedUsersets(b *testing.B, engine string) {
 		require.NoError(b, err)
 		require.True(b, resp.GetAllowed())
 	}
-}
-
-func benchmarkCheckDirectAndUserset(b *testing.B, engine string) {
-	client, cancel := setupBenchmarkTest(b, engine)
-	defer cancel()
-
-	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "benchmarkCheckDirectAndUserset"})
-	require.NoError(b, err)
-
-	storeID := resp.GetId()
-	model := parser.MustTransformDSLToProto(`
-	model
-		schema 1.1
-	type user
-	type team
-		relations
-			define member: [user,team#member]
-	type repo
-		relations
-			define admin: [user,team#member] or member from owner
-			define owner: [organization]
-	type organization
-		relations
-			define member: [user] `)
-	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: model.GetTypeDefinitions(),
-		Conditions:      model.GetConditions(),
-	})
-	require.NoError(b, err)
-
-	// add user:anne to many teams
-	for i := 0; i < 1000; i++ {
-		_, err = client.Write(ctx, &openfgav1.WriteRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: []*openfgav1.TupleKey{
-					{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
-				},
-			},
-		})
-		require.NoError(b, err)
-	}
-
-	// one of those teams gives access to the repo
-	_, err = client.Write(ctx, &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
-			},
-		},
-	})
-	require.NoError(b, err)
-
-	// also give user:anne direct access to the repo
-	_, err = client.Write(ctx, &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
-			},
-		},
-	})
-	require.NoError(b, err)
-
-	b.ResetTimer()
-
-	b.Run("race_between_direct_and_userset_check", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-				TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga", "admin", "user:anne"),
-			})
-
-			require.NoError(b, err)
-			require.True(b, checkResp.GetAllowed())
-		}
-	})
-
-	b.Run("userset_check_only", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-				// user:bob has no direct access, so we must check if is a member of a team
-				TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga", "admin", "user:bob"),
-			})
-
-			require.NoError(b, err)
-			require.False(b, checkResp.GetAllowed())
-		}
-	})
 }
 
 func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {

@@ -47,7 +47,7 @@ var (
 		Namespace:                       build.ProjectName,
 		Name:                            "tuples_cache_size",
 		Help:                            "The number of tuples cached.",
-		Buckets:                         []float64{1, 10, 100, 1000, 5000, 10000},
+		Buckets:                         []float64{0, 1, 10, 100, 1000, 5000, 10000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
