@@ -5892,27 +5892,18 @@ func TestBuildMapper(t *testing.T) {
 		}).Times(1)
 
 		commonData := &recursiveMatchUserUsersetCommonData{
-			dsCount:              nil,         // not used
-			userToUsersetMapping: nil,         // not used
-			concurrencyLimit:     10,          // not used
-			visitedUserset:       &sync.Map{}, // not used
-			typesys:              ts,
-			ds:                   mockDatastore,
-			tupleMapperKind:      NestedUsersetKind,
+			typesys:         ts,
+			ds:              mockDatastore,
+			tupleMapperKind: NestedUsersetKind,
 			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
 		}
 		res, err := buildMapper(ctx, &ResolveCheckRequest{
-			ContextualTuples:          nil,                  // not used
-			RequestMetadata:           nil,                  // not used
-			VisitedPaths:              nil,                  // not used
-			LastCacheInvalidationTime: time.Time{},          // not used
-			AuthorizationModelID:      ulid.Make().String(), // not used
-			StoreID:                   storeID,
-			TupleKey:                  tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context:                   testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
-			Consistency:               openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			StoreID:     storeID,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, commonData)
 		require.NoError(t, err)
 		_, ok := res.(*NestedUsersetMapper)
@@ -5927,26 +5918,16 @@ func TestBuildMapper(t *testing.T) {
 		}).Times(1)
 
 		commonData := &recursiveMatchUserUsersetCommonData{
-			dsCount:                     nil,         // not used
-			userToUsersetMapping:        nil,         // not used
-			concurrencyLimit:            10,          // not used
-			visitedUserset:              &sync.Map{}, // not used
-			allowedUserTypeRestrictions: nil,         // not used
-			tuplesetRelation:            "parent",
-			typesys:                     ts,
-			ds:                          mockDatastore,
-			tupleMapperKind:             NestedTTUKind,
+			tuplesetRelation: "parent",
+			typesys:          ts,
+			ds:               mockDatastore,
+			tupleMapperKind:  NestedTTUKind,
 		}
 		res, err := buildMapper(ctx, &ResolveCheckRequest{
-			AuthorizationModelID:      ulid.Make().String(), // not used
-			ContextualTuples:          nil,                  // not used
-			RequestMetadata:           nil,                  // not used
-			VisitedPaths:              nil,                  // not used
-			LastCacheInvalidationTime: time.Time{},          // not used
-			StoreID:                   storeID,
-			TupleKey:                  tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			Context:                   testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
-			Consistency:               openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			StoreID:     storeID,
+			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, commonData)
 		require.NoError(t, err)
 		_, ok := res.(*NestedTTUMapper)
@@ -5961,8 +5942,8 @@ func TestCheckTTU(t *testing.T) {
 
 	// model
 	//	schema 1.1
-	//type user
-	//type group
+	// type user
+	// type group
 	//	relations
 	//		define member: [user] or member from parent
 	//		define parent: [group]
@@ -6059,6 +6040,6 @@ func TestCheckTTU(t *testing.T) {
 		// assert
 		require.NoError(t, err)
 		require.NotNil(t, res)
-		require.False(t, res.GetAllowed())
+		require.False(t, res.GetAllowed()) // user:maria is not part of any group, and no parents for group:1
 	})
 }
