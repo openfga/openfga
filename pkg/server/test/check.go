@@ -402,10 +402,10 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				require.NoError(b, err)
 			}
 		})
-
-		// Now run the one benchmark that doesn't fit the table pattern
-		benchmarkCheckWithBypassUsersetReads(b, ds)
 	}
+
+	// Now run the one benchmark that doesn't fit the table pattern
+	benchmarkCheckWithBypassUsersetReads(b, ds)
 }
 
 // This benchmark test creates multiple authorization models so it doesn't fit into
