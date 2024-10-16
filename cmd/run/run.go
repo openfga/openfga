@@ -41,6 +41,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/gateway"
 
 	"github.com/openfga/openfga/assets"
@@ -49,7 +50,6 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -87,7 +87,15 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable.")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-check-optimizations`, `enable-access-control`")
+
+	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
+
+	flags.String("access-control-store-id", defaultConfig.AccessControl.StoreID, "the store ID of the OpenFGA store that will be used to access the access control store")
+
+	flags.String("access-control-model-id", defaultConfig.AccessControl.ModelID, "the model ID of the OpenFGA store that will be used to access the access control store")
+
+	cmd.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -128,6 +136,8 @@ func NewRunCommand() *cobra.Command {
 	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying the `iss` field of the JWTs.")
 
 	flags.StringSlice("authn-oidc-subjects", defaultConfig.Authn.Subjects, "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed")
+
+	flags.StringSlice("authn-oidc-client-id-claims", defaultConfig.Authn.ClientIDClaims, "the ClientID claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -425,7 +435,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects, config.Authn.ClientIDClaims)
 	default:
 		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -635,6 +645,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
+		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)
 
