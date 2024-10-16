@@ -349,19 +349,46 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			},
 			expected: true,
 		},
-		//`with_one_condition_with_many_parameters`: {
-		//	inputModel: `
-		//		model
-		//			schema 1.1
-		//		type user
-		//		type doc
-		//			relations
-		//				define viewer: [user with complex]
-		//		condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
-		//			b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
-		//	`,
-		//	tupleGenerator: func() []*openfgav1.TupleKey {},
-		//},
+		`with_one_condition_with_many_parameters`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type doc
+					relations
+						define viewer: [user with complex]
+				condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
+					b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
+				}
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				return []*openfgav1.TupleKey{
+					tuple.NewTupleKeyWithCondition(
+						"doc:x", "viewer", "user:maria", "complex", nil,
+					),
+				}
+			},
+			contextGenerator: func() *structpb.Struct {
+				s, err := structpb.NewStruct(map[string]interface{}{
+					"b":  true,
+					"s":  "s",
+					"i":  1,
+					"u":  1,
+					"d":  0.1,
+					"du": "1h",
+					"t":  "1972-01-01T10:00:20.021Z",
+					"ip": "127.0.0.1",
+				})
+				if err != nil {
+					panic(err)
+				}
+				return s
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{
+				Object: "doc:x", Relation: "viewer", User: "user:maria",
+			},
+			expected: true,
+		},
 	}
 
 	for name, bm := range benchmarkScenarios {
