@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -26,6 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -5086,18 +5086,7 @@ func TestStreamedLookupUsersetForUser(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			dsCount := &atomic.Uint32{}
-			commonData := &recursiveMatchUserUsersetCommonData{
-				typesys:                     ts,
-				ds:                          ds,
-				dsCount:                     dsCount,
-				userToUsersetMapping:        nil, // not used
-				concurrencyLimit:            tt.poolSize,
-				visitedUserset:              &sync.Map{},
-				allowedUserTypeRestrictions: nil, // not used
-			}
-
-			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, commonData, req)
+			userToUsersetMessageChan := streamedLookupUsersetForUser(cancellableCtx, req, ts, ds)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -5287,7 +5276,7 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				return
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, mapper)
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, mapper)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -5368,248 +5357,206 @@ func TestMatchUsersetFromUserAndUsersetFromObject(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	t.Run("non_cancel_context", func(t *testing.T) {
-		tests := []struct {
-			name                         string
-			userToUsersetMessages        []usersetMessage
-			objectToUsersetMessages      []usersetMessage
-			expectedResolveCheckResponse *ResolveCheckResponse
-			expectedUserToUserset        []string
-			expectedObjectToUserset      []string
-			expectedError                error
-		}{
-			{
-				name:                    "empty_lists",
-				userToUsersetMessages:   []usersetMessage{},
-				objectToUsersetMessages: []usersetMessage{},
-				expectedResolveCheckResponse: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
+	tests := []struct {
+		name                            string
+		readStartingWithUserTuples      []*openfgav1.Tuple
+		readStartingWithUserTuplesError error
+		objectToUsersetMessages         []usersetMessage
+		expectedResolveCheckResponse    *ResolveCheckResponse
+		expectedUserToUserset           []string
+		expectedObjectToUserset         []string
+		expectedError                   error
+	}{
+		{
+			name:                    "empty_lists",
+			objectToUsersetMessages: []usersetMessage{},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
 				},
-				expectedUserToUserset:   nil,
-				expectedObjectToUserset: nil,
-				expectedError:           nil,
 			},
-			{
-				name: "userToUsersetMessages_not_nil_but_object_nil",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:2",
-						err:     nil,
-					},
+			expectedUserToUserset:   nil,
+			expectedObjectToUserset: nil,
+			expectedError:           nil,
+		},
+		{
+			name:                            "objectToUsersetMessages_not_nil_but_user_nil",
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: nil,
+			objectToUsersetMessages: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
 				},
-				objectToUsersetMessages: []usersetMessage{},
-				expectedResolveCheckResponse: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-				expectedUserToUserset:   nil,
-				expectedObjectToUserset: nil,
-				expectedError:           nil,
 			},
-			{
-				name:                  "objectToUsersetMessages_not_nil_but_user_nil",
-				userToUsersetMessages: []usersetMessage{},
-				objectToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:2",
-						err:     nil,
-					},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+					CycleDetected:       false,
 				},
-				expectedResolveCheckResponse: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-				expectedUserToUserset:   nil,
-				expectedObjectToUserset: nil,
-				expectedError:           nil,
 			},
-			{
-				name: "userToUsersetMessages_error",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "",
-						err:     fmt.Errorf("mock_error"),
-					},
+			expectedUserToUserset:   nil,
+			expectedObjectToUserset: nil,
+			expectedError:           nil,
+		},
+		{
+			name:                            "userToUsersetMessages_error",
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: fmt.Errorf("mock_error"),
+			objectToUsersetMessages: []usersetMessage{
+				{
+					userset: "group:1",
+					err:     nil,
 				},
-				objectToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:1",
-						err:     nil,
-					},
-				},
-				expectedResolveCheckResponse: nil,
-				expectedUserToUserset:        nil,
-				expectedObjectToUserset:      nil,
-				expectedError:                fmt.Errorf("mock_error"),
 			},
-			{
-				name: "objectToUsersetMessages_error",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:3",
-						err:     nil,
-					},
+			expectedResolveCheckResponse: nil,
+			expectedUserToUserset:        nil,
+			expectedObjectToUserset:      nil,
+			expectedError:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "objectToUsersetMessages_error",
+			objectToUsersetMessages: []usersetMessage{
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
 				},
-				objectToUsersetMessages: []usersetMessage{
-					{
-						userset: "",
-						err:     fmt.Errorf("mock_error"),
-					},
-				},
-				expectedResolveCheckResponse: nil,
-				expectedUserToUserset:        nil,
-				expectedObjectToUserset:      nil,
-				expectedError:                fmt.Errorf("mock_error"),
 			},
-			{
-				name: "direct_assignment",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:1",
-						err:     nil,
-					},
+			expectedResolveCheckResponse: nil,
+			expectedUserToUserset:        nil,
+			expectedObjectToUserset:      nil,
+			expectedError:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "objectToUsersetMessages_subsequent_error",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
 				},
-				objectToUsersetMessages: []usersetMessage{},
-				expectedResolveCheckResponse: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-				expectedUserToUserset:   nil,
-				expectedObjectToUserset: nil,
-				expectedError:           nil,
 			},
-			{
-				name: "items_not_match",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:2",
-						err:     nil,
-					},
+			readStartingWithUserTuplesError: nil,
+			objectToUsersetMessages: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
 				},
-				objectToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:3",
-						err:     nil,
-					},
+				{
+					userset: "",
+					err:     fmt.Errorf("mock_error"),
 				},
-				expectedResolveCheckResponse: nil,
-				expectedUserToUserset:        []string{"group:2"},
-				expectedObjectToUserset:      []string{"group:3"},
-				expectedError:                nil,
 			},
-			{
-				name: "items_match",
-				userToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:2",
-						err:     nil,
-					},
+			expectedResolveCheckResponse: nil,
+			expectedUserToUserset:        nil,
+			expectedObjectToUserset:      nil,
+			expectedError:                fmt.Errorf("mock_error"),
+		},
+		{
+			name: "items_not_match",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
 				},
-				objectToUsersetMessages: []usersetMessage{
-					{
-						userset: "group:2",
-						err:     nil,
-					},
-				},
-				expectedResolveCheckResponse: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-				expectedUserToUserset:   nil,
-				expectedObjectToUserset: nil,
-				expectedError:           nil,
 			},
-		}
+			objectToUsersetMessages: []usersetMessage{
+				{
+					userset: "group:3",
+					err:     nil,
+				},
+			},
+			expectedResolveCheckResponse: nil,
+			expectedUserToUserset:        []string{"group:2"},
+			expectedObjectToUserset:      []string{"group:3"},
+			expectedError:                nil,
+		},
+		{
+			name: "items_match",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
+				},
+			},
+			objectToUsersetMessages: []usersetMessage{
+				{
+					userset: "group:2",
+					err:     nil,
+				},
+			},
+			expectedResolveCheckResponse: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 2,
+					CycleDetected:       false,
+				},
+			},
+			expectedUserToUserset:   nil,
+			expectedObjectToUserset: nil,
+			expectedError:           nil,
+		},
+	}
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-				userToUsersetMessagesChan := make(chan usersetMessage, 5)
-				objectToUsersetMessagesChan := make(chan usersetMessage, 5)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			objectToUsersetMessagesChan := make(chan usersetMessage, 5)
 
-				pool := concurrency.NewPool(context.Background(), 2)
-				pool.Go(func(ctx context.Context) error {
-					time.Sleep(1 * time.Millisecond)
+			pool := concurrency.NewPool(context.Background(), 1)
 
-					for _, userToUsersetMessage := range tt.userToUsersetMessages {
-						concurrency.TrySendThroughChannel(ctx, userToUsersetMessage, userToUsersetMessagesChan)
-					}
-					close(userToUsersetMessagesChan)
-					return nil
-				})
+			pool.Go(func(ctx context.Context) error {
+				time.Sleep(1 * time.Millisecond)
 
-				pool.Go(func(ctx context.Context) error {
-					time.Sleep(1 * time.Millisecond)
-
-					for _, objectToUsersetMessage := range tt.objectToUsersetMessages {
-						concurrency.TrySendThroughChannel(ctx, objectToUsersetMessage, objectToUsersetMessagesChan)
-					}
-					close(objectToUsersetMessagesChan)
-					return nil
-				})
-				ctx := context.Background()
-
-				req := &ResolveCheckRequest{
-					StoreID:              ulid.Make().String(),
-					AuthorizationModelID: ulid.Make().String(),
-					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-					RequestMetadata:      NewCheckRequestMetadata(20),
+				for _, objectToUsersetMessage := range tt.objectToUsersetMessages {
+					concurrency.TrySendThroughChannel(ctx, objectToUsersetMessage, objectToUsersetMessagesChan)
 				}
-
-				resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
-				_ = pool.Wait()
-				require.Equal(t, tt.expectedError, err)
-				require.Equal(t, tt.expectedResolveCheckResponse, resp)
-				if tt.expectedUserToUserset != nil {
-					require.Equal(t, tt.expectedUserToUserset, userToUserset.Values())
-				} else {
-					require.Nil(t, userToUserset)
-				}
-				if tt.expectedObjectToUserset != nil {
-					require.Equal(t, tt.expectedObjectToUserset, objectToUserset.Values())
-				} else {
-					require.Nil(t, objectToUserset)
-				}
+				close(objectToUsersetMessagesChan)
+				return nil
 			})
-		}
-	})
-	t.Run("cancel_context", func(t *testing.T) {
-		t.Parallel()
-		userToUsersetMessagesChan := make(chan usersetMessage)
-		objectToUsersetMessagesChan := make(chan usersetMessage)
-		ctx := context.Background()
-		ctx, cancel := context.WithCancel(ctx)
-		cancel()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-		req := &ResolveCheckRequest{
-			StoreID:              ulid.Make().String(),
-			AuthorizationModelID: ulid.Make().String(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(20),
-		}
+			req := &ResolveCheckRequest{
+				StoreID:              ulid.Make().String(),
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			}
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			if tt.readStartingWithUserTuples != nil || tt.readStartingWithUserTuplesError != nil {
+				ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+			}
+			model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
 
-		resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, userToUsersetMessagesChan, objectToUsersetMessagesChan)
-		require.ErrorIs(t, err, context.Canceled)
-		require.Nil(t, resp)
-		require.Nil(t, userToUserset)
-		require.Nil(t, objectToUserset)
-	})
+				type user
+				type group
+					relations
+						define member: [user, group#member]
+`)
+
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			resp, userToUserset, objectToUserset, err := matchUsersetFromUserAndUsersetFromObject(ctx, req, objectToUsersetMessagesChan, ts, ds)
+			_ = pool.Wait()
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expectedResolveCheckResponse, resp)
+			if tt.expectedUserToUserset != nil {
+				require.Equal(t, tt.expectedUserToUserset, userToUserset.Values())
+			} else {
+				require.Nil(t, userToUserset)
+			}
+			if tt.expectedObjectToUserset != nil {
+				require.Equal(t, tt.expectedObjectToUserset, objectToUserset.Values())
+			} else {
+				require.Nil(t, objectToUserset)
+			}
+		})
+	}
 }
 
 func TestNestedUsersetFastpath(t *testing.T) {
@@ -5729,27 +5676,6 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				},
 			},
 			{
-				name: "user_directly_assigned_to_main_group",
-				readStartingWithUserTuples: []*openfgav1.Tuple{
-					{
-						Key: tuple.NewTupleKey("group:1", "member", "user:maria"),
-					},
-					{
-						Key: tuple.NewTupleKey("group:2", "member", "user:maria"),
-					},
-				},
-				readUsersetTuples: [][]*openfgav1.Tuple{
-					{},
-				},
-				expected: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
-					},
-				},
-			},
-			{
 				name: "user_assigned_to_first_level_sub_group",
 				readStartingWithUserTuples: []*openfgav1.Tuple{
 					{
@@ -5835,6 +5761,11 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				readStartingWithUserTuples:      []*openfgav1.Tuple{},
 				readStartingWithUserTuplesError: fmt.Errorf("mock error"),
 				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+						},
+					},
 					{},
 				},
 				expected:      nil,
@@ -5925,5 +5856,100 @@ func TestNestedUsersetFastpath(t *testing.T) {
 		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, "", 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
+	})
+}
+
+func TestBuildMapper(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	ctx := context.Background()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]`)
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
+	t.Run("nested_userset", func(t *testing.T) {
+		mockDatastore.EXPECT().ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+			},
+		}, storage.ReadUsersetTuplesOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}).Times(1)
+
+		commonData := &recursiveMatchUserUsersetCommonData{
+			dsCount:              nil,         // not used
+			userToUsersetMapping: nil,         // not used
+			concurrencyLimit:     10,          // not used
+			visitedUserset:       &sync.Map{}, // not used
+			typesys:              ts,
+			ds:                   mockDatastore,
+			tupleMapperKind:      NestedUsersetKind,
+			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+			},
+		}
+		res, err := buildMapper(ctx, &ResolveCheckRequest{
+			ContextualTuples:          nil,                  // not used
+			RequestMetadata:           nil,                  // not used
+			VisitedPaths:              nil,                  // not used
+			LastCacheInvalidationTime: time.Time{},          // not used
+			AuthorizationModelID:      ulid.Make().String(), // not used
+			StoreID:                   storeID,
+			TupleKey:                  tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context:                   testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Consistency:               openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}, commonData)
+		require.NoError(t, err)
+		_, ok := res.(*NestedUsersetMapper)
+		require.True(t, ok)
+	})
+
+	t.Run("nested_ttu", func(t *testing.T) {
+		mockDatastore.EXPECT().Read(ctx, storeID, tuple.NewTupleKey("document:1", "parent", ""), storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}).Times(1)
+
+		commonData := &recursiveMatchUserUsersetCommonData{
+			dsCount:                     nil,         // not used
+			userToUsersetMapping:        nil,         // not used
+			concurrencyLimit:            10,          // not used
+			visitedUserset:              &sync.Map{}, // not used
+			allowedUserTypeRestrictions: nil,         // not used
+			tuplesetRelation:            "parent",
+			typesys:                     ts,
+			ds:                          mockDatastore,
+			tupleMapperKind:             NestedTTUKind,
+		}
+		res, err := buildMapper(ctx, &ResolveCheckRequest{
+			AuthorizationModelID:      ulid.Make().String(), // not used
+			ContextualTuples:          nil,                  // not used
+			RequestMetadata:           nil,                  // not used
+			VisitedPaths:              nil,                  // not used
+			LastCacheInvalidationTime: time.Time{},          // not used
+			StoreID:                   storeID,
+			TupleKey:                  tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context:                   testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
+			Consistency:               openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		}, commonData)
+		require.NoError(t, err)
+		_, ok := res.(*NestedTTUMapper)
+		require.True(t, ok)
 	})
 }
