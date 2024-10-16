@@ -376,7 +376,6 @@ func benchmarkAll(b *testing.B, engine string) {
 			goleak.IgnoreTopFunction("testing.(*B).doBench"),
 		)
 	})
-	b.Run("benchmarkCheckWithIntersectionAndExclusion", func(b *testing.B) { benchmarkCheckWithIntersectionAndExclusion(b, engine) })
 	b.Run("BenchmarkCheckWithComputed", func(b *testing.B) { benchmarkCheckWithComputed(b, engine) })
 	b.Run("benchmarkCheckWithUserset", func(b *testing.B) { benchmarkCheckWithUserset(b, engine) })
 	b.Run("BenchmarkCheckWithNestedUsersets", func(b *testing.B) { benchmarkCheckWithNestedUsersets(b, engine) })
@@ -510,68 +509,6 @@ func benchmarkCheckWithComputed(b *testing.B, engine string) {
 		require.NoError(b, err)
 		require.True(b, resp.GetAllowed())
 	}
-}
-
-func benchmarkCheckWithIntersectionAndExclusion(b *testing.B, engine string) {
-	client, cancel := setupBenchmarkTest(b, engine)
-	defer cancel()
-
-	storeID := ulid.Make().String()
-	model := parser.MustTransformDSLToProto(`
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define a: [user]
-					define b: [user]
-					define intersect: a and b
-					define exclude: a but not b`)
-	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   model.GetSchemaVersion(),
-		TypeDefinitions: model.GetTypeDefinitions(),
-		Conditions:      model.GetConditions(),
-	})
-	require.NoError(b, err)
-
-	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:1", "a", "user:anne"),
-				tuple.NewTupleKey("group:1", "b", "user:anne"),
-			},
-		},
-	})
-	require.NoError(b, err)
-
-	b.ResetTimer()
-
-	b.Run("intersection", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-				TupleKey:             tuple.NewCheckRequestTupleKey("group:1", "intersect", "user:anne"),
-			})
-			require.NoError(b, err)
-			require.True(b, resp.GetAllowed())
-		}
-	})
-
-	b.Run("exclusion", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
-				TupleKey:             tuple.NewCheckRequestTupleKey("group:1", "exclude", "user:anne"),
-			})
-			require.NoError(b, err)
-			require.False(b, resp.GetAllowed())
-		}
-	})
 }
 
 func benchmarkCheckWithTTUs(b *testing.B, engine string) {

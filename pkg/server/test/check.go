@@ -22,8 +22,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 	benchmarkScenarios := map[string]struct {
 		inputModel       string
 		tupleGenerator   func() []*openfgav1.TupleKey
-		checker          graph.CheckResolver
-		tupleKey         *openfgav1.CheckRequestTupleKey
+		tupleKeyToCheck  *openfgav1.CheckRequestTupleKey
 		contextStruct    *structpb.Struct
 		contextualTuples *openfgav1.ContextualTupleKeys
 		expected         bool
@@ -60,9 +59,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				}...)
 				return tuples
 			},
-
-			checker: graph.NewLocalChecker(),
-			tupleKey: &openfgav1.CheckRequestTupleKey{
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{
 				Object:   "repo:openfga",
 				Relation: "admin",
 				User:     "user:anne",
@@ -93,18 +90,60 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 						User:     "user:anne",
 					})
 				}
-
 				// Now give a team direct access
 				tuples = append(tuples, &openfgav1.TupleKey{Object: "repo:openfga", Relation: "admin", User: "team:123#member"})
 				return tuples
 			},
 
-			checker: graph.NewLocalChecker(),
 			// user:bob has no direct access, so we must check if he's a member of a team
-			tupleKey: &openfgav1.CheckRequestTupleKey{
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{
 				Object:   "repo:openfga",
 				Relation: "admin",
 				User:     "user:bob",
+			},
+			expected: false,
+		}, `with_intersection`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define a: [user]
+						define b: [user]
+						define intersect: a and b
+						define exclude: a but not b
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				return []*openfgav1.TupleKey{
+					{Object: "group:1", Relation: "a", User: "user:anne"},
+					{Object: "group:1", Relation: "b", User: "user:anne"},
+				}
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{
+				Object: "group:1", Relation: "intersect", User: "user:anne",
+			},
+			expected: true,
+		}, `with_exclusion`: {
+			inputModel: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define a: [user]
+						define b: [user]
+						define intersect: a and b
+						define exclude: a but not b
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				return []*openfgav1.TupleKey{
+					{Object: "group:1", Relation: "a", User: "user:anne"},
+					{Object: "group:1", Relation: "b", User: "user:anne"},
+				}
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{
+				Object: "group:1", Relation: "exclude", User: "user:anne",
 			},
 			expected: false,
 		},
@@ -137,7 +176,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 
 		checkQuery := commands.NewCheckCommand(
 			ds,
-			bm.checker,
+			graph.NewLocalChecker(),
 			typeSystem,
 			commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
 			commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
@@ -147,7 +186,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			for i := 0; i < b.N; i++ {
 				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
 					StoreId:          storeID,
-					TupleKey:         bm.tupleKey,
+					TupleKey:         bm.tupleKeyToCheck,
 					ContextualTuples: bm.contextualTuples,
 					Context:          bm.contextStruct,
 				})
