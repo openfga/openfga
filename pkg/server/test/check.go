@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/pkg/tuple"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -203,6 +204,66 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				return tuples
 			},
 			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "team:1", Relation: "member", User: "user:maria"},
+			expected:        true,
+		}, `with_simple_ttu`: {
+			inputModel: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define member_complex: [user, group#member_complex]
+			type folder
+				relations
+					define parent: [group]
+					define viewer: member from parent
+					define viewer_complex: member_complex from parent
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				tuplesToWrite := []*openfgav1.TupleKey{
+					tuple.NewTupleKey("group:999", "member", "user:maria"),
+					tuple.NewTupleKey("group:999", "member_complex", "user:maria"),
+				}
+				for i := 1; i < 1_000; i++ {
+					tuplesToWrite = append(tuplesToWrite, tuple.NewTupleKey(
+						"folder:x",
+						"parent",
+						fmt.Sprintf("group:%d", i)))
+				}
+				return tuplesToWrite
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "folder:x", Relation: "viewer", User: "user:maria"},
+			expected:        true,
+		}, `with_complex_ttu`: {
+			inputModel: `
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member: [user]
+					define member_complex: [user, group#member_complex]
+			type folder
+				relations
+					define parent: [group]
+					define viewer: member from parent
+					define viewer_complex: member_complex from parent
+			`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				tuplesToWrite := []*openfgav1.TupleKey{
+					tuple.NewTupleKey("group:999", "member", "user:maria"),
+					tuple.NewTupleKey("group:999", "member_complex", "user:maria"),
+				}
+				for i := 1; i < 1_000; i++ {
+					tuplesToWrite = append(tuplesToWrite, tuple.NewTupleKey(
+						"folder:x",
+						"parent",
+						fmt.Sprintf("group:%d", i)))
+				}
+				return tuplesToWrite
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "folder:x", Relation: "viewer_complex", User: "user:maria"},
 			expected:        true,
 		},
 	}
