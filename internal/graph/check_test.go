@@ -4115,7 +4115,8 @@ type parallelRecursiveTest struct {
 
 func (p *parallelRecursiveTest) testParallelizeRecursive(context.Context,
 	*ResolveCheckRequest,
-	*recursiveMatchUserUsersetCommonData) (*ResolveCheckResponse, error) {
+	*recursiveMatchUserUsersetCommonData,
+	TupleMapper) (*ResolveCheckResponse, error) {
 	if p.slowRequests {
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -4132,6 +4133,7 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 		tests := []struct {
 			name                  string
 			usersetItems          []string
+			usersetError          error
 			maxConcurrentReads    int
 			visitedItems          []string
 			parallelRecursiveTest parallelRecursiveTest
@@ -4508,15 +4510,33 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 				},
 				expectedError: nil,
 			},
+			{
+				name:               "mapper_build_error",
+				usersetItems:       []string{"group:1"},
+				usersetError:       fmt.Errorf("mock_error"),
+				maxConcurrentReads: 20,
+				parallelRecursiveTest: parallelRecursiveTest{
+					returnResolveCheckResponse: []*ResolveCheckResponse{},
+					returnError:                []error{},
+				},
+				expectedResponse: nil,
+				expectedError:    fmt.Errorf("mock_error"),
+			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				ds := mocks.NewMockRelationshipTupleReader(ctrl)
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(storage.NewStaticTupleIterator(nil), tt.usersetError)
 				commonParameters := &recursiveMatchUserUsersetCommonData{
 					concurrencyLimit: tt.maxConcurrentReads,
 					visitedUserset:   &sync.Map{},
 					dsCount:          &atomic.Uint32{},
+					ds:               ds,
+					tupleMapperKind:  NestedUsersetKind,
 				}
 				for _, item := range tt.visitedItems {
 					commonParameters.visitedUserset.Store(item, struct{}{})
@@ -4556,10 +4576,16 @@ func TestParallelizeRecursiveMatchUserUserset(t *testing.T) {
 
 				maxConcurrentRead := 20
 				numUsersetItem := 5000
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				ds := mocks.NewMockRelationshipTupleReader(ctrl)
+				ds.EXPECT().ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(storage.NewStaticTupleIterator(nil), nil)
 				commonParameters := &recursiveMatchUserUsersetCommonData{
 					concurrencyLimit: maxConcurrentRead,
 					visitedUserset:   &sync.Map{},
 					dsCount:          &atomic.Uint32{},
+					ds:               ds,
+					tupleMapperKind:  NestedUsersetKind,
 				}
 				commonParameters.dsCount.Store(15)
 
@@ -4824,6 +4850,7 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 				ds:                   ds,
 				dsCount:              &atomic.Uint32{},
 				concurrencyLimit:     10,
+				tupleMapperKind:      NestedUsersetKind,
 				userToUsersetMapping: userUsersetMapping,
 				visitedUserset:       &sync.Map{},
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
@@ -4835,8 +4862,13 @@ func TestRecursiveMatchUserUserset(t *testing.T) {
 					},
 				},
 			}
+			mapper, err := buildMapper(context.Background(), req, commonData)
+			if tt.tupleIteratorError != nil {
+				require.Equal(t, tt.tupleIteratorError, err)
+				return
+			}
 
-			result, err := recursiveMatchUserUserset(context.Background(), req, commonData)
+			result, err := recursiveMatchUserUserset(context.Background(), req, commonData, mapper)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, result)
 		})
@@ -5238,6 +5270,7 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				userToUsersetMapping: nil, // not used
 				concurrencyLimit:     tt.poolSize,
 				visitedUserset:       &sync.Map{},
+				tupleMapperKind:      NestedUsersetKind,
 				allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 					{
 						Type: "group",
@@ -5248,7 +5281,13 @@ func TestStreamedLookupUsersetForObject(t *testing.T) {
 				},
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, req)
+			mapper, err := buildMapper(context.Background(), req, commonData)
+			if tt.readUsersetTuplesError != nil {
+				require.Equal(t, tt.readUsersetTuplesError, err)
+				return
+			}
+
+			userToUsersetMessageChan := streamedLookupUsersetForObject(cancellableCtx, commonData, mapper)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -5750,7 +5789,10 @@ func TestNestedUsersetFastpath(t *testing.T) {
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				}
-				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
+
+				typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
+
+				result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, 10)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -5795,7 +5837,10 @@ func TestNestedUsersetFastpath(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata:      NewCheckRequestMetadata(20),
 		}
-		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, 10)
+
+		typeRes := []*openfgav1.RelationReference{typesystem.DirectRelationReference("group", "member")}
+
+		result, err := nestedUsersetFastpath(context.Background(), ts, ds, req, NestedUsersetKind, typeRes, 10)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})
