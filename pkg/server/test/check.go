@@ -424,8 +424,6 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 	`
 	storeID := ulid.Make().String()
 	modelOne := testutils.MustTransformDSLToProtoWithID(schemaOne)
-	//typeSystemOne, err := typesystem.NewAndValidate(context.Background(), modelOne)
-	//require.NoError(b, err)
 
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, modelOne)
 	require.NoError(b, err)
