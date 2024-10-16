@@ -182,6 +182,28 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			},
 			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "document:x", Relation: "viewer", User: "user:anne"},
 			expected:        true,
+		}, `with_nested_usersets`: {
+			inputModel: `
+					model
+						schema 1.1
+					type user
+					type team
+						relations
+							define member: [user,team#member]
+				`,
+			tupleGenerator: func() []*openfgav1.TupleKey {
+				tuples := []*openfgav1.TupleKey{{Object: "team:24", Relation: "member", User: "user:maria"}}
+				for i := 1; i < config.DefaultResolveNodeLimit; i++ {
+					tuples = append(tuples, &openfgav1.TupleKey{
+						Object:   fmt.Sprintf("team:%d", i),
+						Relation: "member",
+						User:     fmt.Sprintf("team:%d#member", i+1),
+					})
+				}
+				return tuples
+			},
+			tupleKeyToCheck: &openfgav1.CheckRequestTupleKey{Object: "team:1", Relation: "member", User: "user:maria"},
+			expected:        true,
 		},
 	}
 
