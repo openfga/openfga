@@ -14,6 +14,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("experimentals", flags.Lookup("experimentals"))
 		util.MustBindEnv("experimentals", "OPENFGA_EXPERIMENTALS")
 
+		util.MustBindPFlag("accessControl.enabled", flags.Lookup("access-control-enabled"))
+		util.MustBindEnv("accessControl.enabled", "OPENFGA_ACCESS_CONTROL_ENABLED")
+
+		util.MustBindPFlag("accessControl.storeId", flags.Lookup("access-control-store-id"))
+		util.MustBindEnv("accessControl.storeId", "OPENFGA_ACCESS_CONTROL_STORE_ID")
+
+		util.MustBindPFlag("accessControl.modelId", flags.Lookup("access-control-model-id"))
+		util.MustBindEnv("accessControl.modelId", "OPENFGA_ACCESS_CONTROL_MODEL_ID")
+
+		command.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
+
 		util.MustBindPFlag("grpc.addr", flags.Lookup("grpc-addr"))
 		util.MustBindEnv("grpc.addr", "OPENFGA_GRPC_ADDR")
 
@@ -71,6 +82,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("authn.oidc.subjects", flags.Lookup("authn-oidc-subjects"))
 		util.MustBindEnv("authn.oidc.subjects", "OPENFGA_AUTHN_OIDC_SUBJECTS")
+
+		util.MustBindPFlag("authn.oidc.clientIdClaims", flags.Lookup("authn-oidc-client-id-claims"))
+		util.MustBindEnv("authn.oidc.clientIdClaims", "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS")
 
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")

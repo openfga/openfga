@@ -182,6 +182,58 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			)
 		})
 	})
+
+	t.Run("invalid_access_control_setup", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, "", "", ""),
+			)
+		})
+	})
+
+	t.Run("errors_when_oidc_is_not_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control is enabled, but the authentication method is not OIDC. Access control is only supported with OIDC authentication", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), ""),
+			)
+		})
+	})
+
+	t.Run("errors_when_access_control_store_id_is_not_a_valid_ulid", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config '--access-control-store-id' must be a valid ULID", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, "not-a-valid-ulid", ulid.Make().String(), "oidc"),
+			)
+		})
+	})
+
+	t.Run("errors_when_access_control_model_id_is_not_a_valid_ulid", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config '--access-control-model-id' must be a valid ULID", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
+			)
+		})
+	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
@@ -991,7 +1043,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		Type:                 "repo",
 		Relation:             "r1",
 		User:                 "user:anne",
-	}, NewMockStreamServer())
+	}, NewMockStreamServer(context.Background()))
 	require.Error(t, err)
 	e, ok = status.FromError(err)
 	require.True(t, ok)
@@ -1384,14 +1436,18 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 type mockStreamServer struct {
 	grpc.ServerStream
+
+	ctx context.Context
 }
 
-func NewMockStreamServer() *mockStreamServer {
-	return &mockStreamServer{}
+func NewMockStreamServer(ctx context.Context) *mockStreamServer {
+	return &mockStreamServer{
+		ctx: ctx,
+	}
 }
 
 func (m *mockStreamServer) Context() context.Context {
-	return context.Background()
+	return m.ctx
 }
 
 func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
@@ -1459,7 +1515,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			Type:                 "repo",
 			Relation:             "viewer",
 			User:                 "user:bob",
-		}, NewMockStreamServer())
+		}, NewMockStreamServer(context.Background()))
 
 		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 	}
@@ -1530,7 +1586,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				Type:                 "document",
 				Relation:             "viewer",
 				User:                 "user:bob",
-			}, NewMockStreamServer())
+			}, NewMockStreamServer(context.Background()))
 
 			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
@@ -1595,7 +1651,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				Type:                 "document",
 				Relation:             "viewer",
 				User:                 "user:jon",
-			}, NewMockStreamServer())
+			}, NewMockStreamServer(context.Background()))
 
 			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 		})
@@ -1675,7 +1731,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			Type:                 "team",
 			Relation:             "member",
 			User:                 "user:anne",
-		}, NewMockStreamServer())
+		}, NewMockStreamServer(context.Background()))
 		require.Error(t, err)
 		e, ok := status.FromError(err)
 		require.True(t, ok)
@@ -2015,7 +2071,48 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 	})
 }
 
+func TestIsAccessControlEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New() // Datastore required for server instantiation
+	t.Cleanup(ds.Close)
+
+	t.Run("returns_false_if_experimentals_does_not_have_access_control", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+			WithAccessControlParams(true, "some-model-id", "some-store-id", ""),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsAccessControlEnabled())
+	})
+
+	t.Run("returns_false_if_access_control_is_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalAccessControlParams),
+			WithAccessControlParams(false, "some-model-id", "some-store-id", ""),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsAccessControlEnabled())
+	})
+
+	t.Run("returns_true_if_access_control_is_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalAccessControlParams),
+			WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), "oidc"),
+		)
+		t.Cleanup(s.Close)
+		require.True(t, s.IsAccessControlEnabled())
+	})
+}
+
 func TestServer_ThrottleUntilDeadline(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 

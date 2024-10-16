@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 * Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
+* Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
 
 ### Fixed
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)

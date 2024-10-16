@@ -591,10 +591,20 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	ctx, span := startTrace(ctx, "ListStores")
 	defer span.End()
 
+	var whereClause sq.Sqlizer
+	if len(options.IDs) > 0 {
+		whereClause = sq.And{
+			sq.Eq{"deleted_at": nil},
+			sq.Eq{"id": options.IDs},
+		}
+	} else {
+		whereClause = sq.Eq{"deleted_at": nil}
+	}
+
 	sb := s.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
-		Where(sq.Eq{"deleted_at": nil}).
+		Where(whereClause).
 		OrderBy("id")
 
 	if options.Pagination.From != "" {
