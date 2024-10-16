@@ -237,6 +237,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 
 	objectType := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
+	hasStartTimeFilter := !filter.StartTime.IsZero()
 
 	if typeInToken != "" && typeInToken != objectType {
 		return nil, nil, storage.ErrMismatchObjectType
@@ -246,7 +247,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	now := time.Now().UTC()
 	for _, change := range s.changes[store] {
 		if objectType == "" || (strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
-			if filter.StartTime != nil && change.GetTimestamp().AsTime().Before(*filter.StartTime) {
+			if hasStartTimeFilter && change.GetTimestamp().AsTime().Before(filter.StartTime) {
 				continue
 			}
 			if change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {

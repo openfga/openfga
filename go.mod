@@ -24,7 +24,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.6
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20241014160901-9d5cebeb6517
+	github.com/openfga/api/proto v0.0.0-20241016180701-6cb4c2950240
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20240926131254-992b301a003f
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/prometheus/client_golang v1.20.5
@@ -94,7 +94,6 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
-	github.com/openfga/api v0.0.0-20241016145948-63b9cf90e0a6 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

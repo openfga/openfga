@@ -63,10 +63,9 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
-	var startTime *time.Time
+	var startTime time.Time
 	if req.GetStartTime() != nil {
-		asTime := req.GetStartTime().AsTime()
-		startTime = &asTime
+		startTime = req.GetStartTime().AsTime()
 	}
 	opts := storage.ReadChangesOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),

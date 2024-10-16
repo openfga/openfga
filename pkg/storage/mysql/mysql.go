@@ -740,6 +740,7 @@ func (s *Datastore) ReadChanges(
 
 	objectTypeFilter := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
+	hasStartTimeFilter := !filter.StartTime.IsZero()
 
 	orderBy := "ulid asc"
 	if options.SortDesc {
@@ -771,8 +772,8 @@ func (s *Datastore) ReadChanges(
 		}
 
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
-	} else if filter.StartTime != nil {
-		ulidFrom := ulid.Timestamp(*filter.StartTime)
+	} else if hasStartTimeFilter {
+		ulidFrom := ulid.Timestamp(filter.StartTime)
 
 		sb = sqlcommon.AddFromUlid(sb, ulidFrom, options.SortDesc)
 	}
