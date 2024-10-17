@@ -39,8 +39,8 @@ var (
 	jwkRefreshInterval = 48 * time.Hour
 
 	errInvalidClaims = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
-	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
-	fetchJWKs = fetchJWK
+	errInvalidToken  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+	fetchJWKs        = fetchJWK
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
