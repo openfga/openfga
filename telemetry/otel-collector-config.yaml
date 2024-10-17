@@ -35,9 +35,6 @@ exporters:
       num_consumers: 10
       queue_size: 10000
       # this should work out to about 8M batches/second for 10s buffer
-  # Data sources: traces, metrics, logs
-  logging:
-    loglevel: debug
   # Data sources: metrics
   prometheus:
     endpoint: otel-collector:2113
