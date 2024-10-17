@@ -13,7 +13,6 @@ import (
 	reflect "reflect"
 	time "time"
 
-	storage "github.com/openfga/openfga/pkg/storage"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -53,10 +52,10 @@ func (mr *MockInMemoryCacheMockRecorder[T]) Delete(prefix any) *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockInMemoryCache[T]) Get(key string) *storage.CachedResult[T] {
+func (m *MockInMemoryCache[T]) Get(key string) T {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", key)
-	ret0, _ := ret[0].(*storage.CachedResult[T])
+	ret0, _ := ret[0].(T)
 	return ret0
 }
 

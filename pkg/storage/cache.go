@@ -4,6 +4,7 @@ package storage
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -24,18 +25,13 @@ const (
 type InMemoryCache[T any] interface {
 
 	// Get If the key exists, returns the value. If the key didn't exist, returns nil.
-	Get(key string) *CachedResult[T]
+	Get(key string) T
 	Set(key string, value T, ttl time.Duration)
 
 	Delete(prefix string)
 
 	// Stop cleans resources.
 	Stop()
-}
-
-type CachedResult[T any] struct {
-	Value   T
-	Expired bool
 }
 
 // Specific implementation
@@ -70,12 +66,18 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 	return t
 }
 
-func (i InMemoryLRUCache[T]) Get(key string) *CachedResult[T] {
+func (i InMemoryLRUCache[T]) Get(key string) T {
+	var zero T
 	item := i.ccache.Get(key)
-	if item != nil {
-		return &CachedResult[T]{Value: item.Value(), Expired: item.Expired()}
+	if item == nil {
+		return zero
 	}
-	return nil
+
+	if value, expired := item.Value(), item.Expired(); !reflect.ValueOf(value).IsZero() && !expired {
+		return value
+	}
+
+	return zero
 }
 
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
