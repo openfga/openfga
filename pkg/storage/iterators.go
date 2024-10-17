@@ -217,7 +217,7 @@ type filteredTupleKeyIterator struct {
 	mu     sync.Mutex
 }
 
-var _ TupleKeyIterator = &filteredTupleKeyIterator{}
+var _ TupleKeyIterator = (*filteredTupleKeyIterator)(nil)
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
@@ -286,7 +286,7 @@ type ConditionsFilteredTupleKeyIterator struct {
 	onceValid bool
 }
 
-var _ TupleKeyIterator = &ConditionsFilteredTupleKeyIterator{}
+var _ TupleKeyIterator = (*ConditionsFilteredTupleKeyIterator)(nil)
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
@@ -366,7 +366,7 @@ func (f *ConditionsFilteredTupleKeyIterator) Head(ctx context.Context) (*openfga
 
 // NewConditionsFilteredTupleKeyIterator returns a [TupleKeyIterator] that filters out all
 // [*openfgav1.Tuple](s) that don't meet the conditions of the provided [TupleKeyFilterFunc].
-func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyConditionFilterFunc) *ConditionsFilteredTupleKeyIterator {
+func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyConditionFilterFunc) TupleKeyIterator {
 	return &ConditionsFilteredTupleKeyIterator{
 		iter:   iter,
 		filter: filter,
