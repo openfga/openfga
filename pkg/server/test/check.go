@@ -19,7 +19,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// to prevent overwhelming server on expensive queries
+// to prevent overwhelming server on expensive queries.
 const maxConcurrentReads = 50
 
 // Some of the benchmark tests require context blocks to be built
@@ -491,8 +491,8 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 				TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 			})
 
-			require.False(b, response.GetAllowed())
 			require.NoError(b, err)
+			require.False(b, response.GetAllowed())
 		}
 	})
 }
