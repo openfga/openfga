@@ -1084,7 +1084,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	defer span.End()
 
 	// TODO what do i need to do for authz, just add it to the constants in authz.go?
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Check)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,6 +1100,10 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	if err != nil {
 		return nil, err
 	}
+
+	// call a batch check command
+	// that command will just manage concurrency, fan out the checks, and run the timer
+	commands.NewBatchCheckCommand()
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
