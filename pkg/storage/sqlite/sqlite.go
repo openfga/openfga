@@ -1015,7 +1015,7 @@ func (s *Datastore) ReadChanges(
 
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
 	} else if hasStartTimeFilter {
-		ulidFrom := ulid.Timestamp(filter.StartTime)
+		ulidFrom := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy()).String()
 
 		sb = sqlcommon.AddFromUlid(sb, ulidFrom, options.SortDesc)
 	}

@@ -247,8 +247,12 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	now := time.Now().UTC()
 	for _, change := range s.changes[store] {
 		if objectType == "" || (strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
-			if hasStartTimeFilter && change.GetTimestamp().AsTime().Before(filter.StartTime) {
-				continue
+			if hasStartTimeFilter {
+				if !options.SortDesc && change.GetTimestamp().AsTime().Before(filter.StartTime) {
+					continue
+				} else if options.SortDesc && change.GetTimestamp().AsTime().After(filter.StartTime) {
+					continue
+				}
 			}
 			if change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
 				break
