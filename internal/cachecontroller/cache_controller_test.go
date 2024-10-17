@@ -37,7 +37,8 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 	storeID := "id"
 
 	t.Run("cache_hit", func(t *testing.T) {
-		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(&storage.CachedResult[any]{Value: &storage.ChangelogCacheEntry{LastModified: time.Now()}})
+		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
+			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
 
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
 		require.NotZero(t, invalidationTime)

@@ -18,7 +18,6 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -30,6 +29,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"

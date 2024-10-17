@@ -162,8 +162,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	if tryCache {
 		checkCacheTotalCounter.Inc()
-		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil {
-			res := cachedResp.Value.(*CheckResponseCacheEntry)
+		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
+			res := cachedResp.(*CheckResponseCacheEntry)
 			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
 			span.SetAttributes(attribute.Bool("cached", isValid))
 			if isValid {
