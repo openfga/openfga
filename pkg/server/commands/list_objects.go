@@ -292,8 +292,8 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg.Add(1)
 		go func() {
-			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
 			defer wg.Done()
+			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),

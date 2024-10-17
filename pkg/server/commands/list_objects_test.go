@@ -132,6 +132,36 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			expectedThrottlingValue: 0,
 		},
 		{
+			name: "test_intersection_relation_check_dispatch",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type group
+					relations
+						define member: [user, group#member]
+
+				type folder
+					relations
+						define editor: [group#member]
+						define can_delete: [user] and editor
+			`,
+			tuples: []string{
+				"folder:C#can_delete@user:jon",
+				"folder:C#editor@group:fga#member",
+				"folder:C#editor@group:fga1#member",
+				"group:fga#member@user:jon",
+				"group:fga1#member@user:jon",
+			},
+			objectType:              "folder",
+			relation:                "can_delete",
+			user:                    "user:jon",
+			expectedDispatchCount:   3,
+			expectedThrottlingValue: 1,
+		},
+		{
 			name: "no_tuples",
 			model: `
 				model
