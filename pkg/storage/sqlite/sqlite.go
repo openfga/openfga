@@ -982,6 +982,7 @@ func (s *Datastore) ReadChanges(
 
 	objectTypeFilter := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
+	hasStartTimeFilter := !filter.StartTime.IsZero()
 
 	orderBy := "ulid asc"
 	if options.SortDesc {
@@ -1012,11 +1013,11 @@ func (s *Datastore) ReadChanges(
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		if options.SortDesc {
-			sb = sb.Where(sq.Lt{"ulid": token.Ulid})
-		} else {
-			sb = sb.Where(sq.Gt{"ulid": token.Ulid})
-		}
+		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
+	} else if hasStartTimeFilter {
+		ulidFrom := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy()).String()
+
+		sb = sqlcommon.AddFromUlid(sb, ulidFrom, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
