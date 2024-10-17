@@ -228,7 +228,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				}),
 			)
 			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
-			mockThrottler.EXPECT().Close().Times(1) //LO closes throttler during server close call.
+			mockThrottler.EXPECT().Close().Times(1) // LO closes throttler during server close call.
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
