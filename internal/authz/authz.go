@@ -172,6 +172,8 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return CanCallListObjects, nil
 	case Check:
 		return CanCallCheck, nil
+	case BatchCheck:
+		return CanCallBatchCheck, nil
 	case ListUsers:
 		return CanCallListUsers, nil
 	case WriteAssertions:

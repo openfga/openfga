@@ -37,6 +37,7 @@ func TestGetRelation(t *testing.T) {
 		{name: "ListObjects", expectedResult: CanCallListObjects},
 		{name: "StreamedListObjects", expectedResult: CanCallListObjects},
 		{name: "Check", expectedResult: CanCallCheck},
+		{name: "BatchCheck", expectedResult: CanCallBatchCheck},
 		{name: "ListUsers", expectedResult: CanCallListUsers},
 		{name: "WriteAssertions", expectedResult: CanCallWriteAssertions},
 		{name: "ReadAssertions", expectedResult: CanCallReadAssertions},
