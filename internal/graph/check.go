@@ -259,7 +259,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				span.RecordError(result.err)
+				telemetry.TraceError(span, result.err)
 				err = errors.Join(err, result.err)
 				continue
 			}
@@ -341,7 +341,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				span.RecordError(baseResult.err)
+				telemetry.TraceError(span, baseResult.err)
 				baseErr = baseResult.err
 				continue
 			}
@@ -361,7 +361,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				span.RecordError(subResult.err)
+				telemetry.TraceError(span, subResult.err)
 				subErr = subResult.err
 				continue
 			}
@@ -516,24 +516,15 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
+	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
-	reqContext := req.GetContext()
-	// filter out invalid tuples yielded by the database iterator
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(i),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, reqContext, typesys),
-	)
-	defer filteredIter.Stop()
+	defer iter.Stop()
 
-	allowed, err := checkutil.ObjectIDInSortedSet(ctx, filteredIter, objectIDs)
+	allowed, err := checkutil.ObjectIDInSortedSet(ctx, iter, objectIDs)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -559,7 +550,7 @@ type dispatchMsg struct {
 	dispatchParams *dispatchParams
 }
 
-func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
+func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -690,7 +681,7 @@ ConsumerLoop:
 
 // checkUsersetSlowPath will check userset or public wildcard path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
 
@@ -733,7 +724,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 // Finally, find the intersection between the two.
 // To use the fast path, we will need to ensure that the userset and all the children associated with the userset are
 // exclusively directly assignable. In our case, group member must be directly exclusively assignable.
-func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetFastPath")
 	defer span.End()
 	// Caller already verified typesys
@@ -772,7 +763,7 @@ type usersetsChannelType struct {
 // 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
 // 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
 // 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
-func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
@@ -889,7 +880,7 @@ ConsumerLoop:
 	return finalResult, nil
 }
 
-func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter *storage.ConditionsFilteredTupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) {
+func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan usersetsChannelType, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) {
 	ctx, span := tracer.Start(ctx, "produceUsersets")
 	defer span.End()
 
@@ -1117,7 +1108,7 @@ func streamedLookupUsersetForUser(ctx context.Context,
 			tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
 			nil)
 		if err != nil {
-			span.RecordError(err)
+			telemetry.TraceError(span, err)
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{
 				userset: "",
 				err:     err,
@@ -1125,24 +1116,17 @@ func streamedLookupUsersetForUser(ctx context.Context,
 			return
 		}
 
-		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
-			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-		)
-		defer filteredIter.Stop()
+		defer iter.Stop()
 
 		for {
-			t, err := filteredIter.Next(ctx)
+			t, err := iter.Next(ctx)
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				if storage.IterIsDoneOrCancelled(err) {
 					return
 				}
 
 				// error encountered.  No need to process further
-				span.RecordError(err)
+				telemetry.TraceError(span, err)
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{
 					userset: "",
 					err:     err,
@@ -1175,11 +1159,11 @@ func streamedLookupUsersetForObject(ctx context.Context, tupleMapper TupleMapper
 		for {
 			res, err := tupleMapper.Next(ctx)
 			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
 
-				span.RecordError(err)
+				telemetry.TraceError(span, err)
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{
 					userset: "",
 					err:     err,
@@ -1310,7 +1294,7 @@ func nestedUsersetFastpath(ctx context.Context,
 
 	mapper, err := buildMapper(ctx, req, recursiveCommonData)
 	if err != nil {
-		span.RecordError(err)
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -1319,7 +1303,7 @@ func nestedUsersetFastpath(ctx context.Context,
 	resp, usersetFromUser, usersetFromObject, err := matchUsersetFromUserAndUsersetFromObject(cancellable, req, objectToUsersetMessageChan, typesys, ds)
 
 	if err != nil {
-		span.RecordError(err)
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -1333,49 +1317,33 @@ func nestedUsersetFastpath(ctx context.Context,
 }
 
 func buildMapper(ctx context.Context, req *ResolveCheckRequest, common *recursiveMatchUserUsersetCommonData) (TupleMapper, error) {
+	var iter storage.TupleIterator
+	var err error
+	consistencyOpts := storage.ConsistencyOptions{
+		Preference: req.GetConsistency(),
+	}
 	switch common.tupleMapperKind {
 	case NestedUsersetKind:
-		iter, err := common.ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		iter, err = common.ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    req.GetTupleKey().GetRelation(),
 			AllowedUserTypeRestrictions: common.allowedUserTypeRestrictions,
-		}, storage.ReadUsersetTuplesOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.GetConsistency(),
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(common.typesys),
-			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), common.typesys),
-		)
-		return &NestedUsersetMapper{Iter: filteredIter}, nil
+		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
 	case NestedTTUKind:
-		iter, err := common.ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), common.tuplesetRelation, ""),
-			storage.ReadOptions{
-				Consistency: storage.ConsistencyOptions{
-					Preference: req.GetConsistency(),
-				},
-			})
-		if err != nil {
-			return nil, err
-		}
-		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-			storage.NewFilteredTupleKeyIterator(
-				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(common.typesys),
-			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), common.typesys),
-		)
-		return &NestedTTUMapper{Iter: filteredIter}, nil
+		iter, err = common.ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), common.tuplesetRelation, ""),
+			storage.ReadOptions{Consistency: consistencyOpts})
 	}
-
-	return nil, fmt.Errorf("unsupported mapper kind %v", common.tupleMapperKind)
+	if err != nil {
+		return nil, err
+	}
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(common.typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), common.typesys),
+	)
+	return wrapIterator(common.tupleMapperKind, filteredIter), nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
@@ -1540,7 +1508,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	}
 }
 
-func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter *storage.ConditionsFilteredTupleKeyIterator) {
+func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -1574,7 +1542,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 
 // checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
 	defer span.End()
 
@@ -1617,7 +1585,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 //
 // check(user, viewer, doc) will find the intersection of all group assigned to the doc's parent AND
 // all group where the user is a member of.
-func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter *storage.ConditionsFilteredTupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPath")
 	defer span.End()
 	// Caller already verified typesys

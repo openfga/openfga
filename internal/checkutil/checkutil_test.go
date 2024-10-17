@@ -268,6 +268,7 @@ type mockResolveCheckRequest struct {
 	StoreID     string
 	TupleKey    *openfgav1.TupleKey
 	Consistency openfgav1.ConsistencyPreference
+	Context     *structpb.Struct
 }
 
 func (m *mockResolveCheckRequest) GetStoreID() string {
@@ -280,6 +281,10 @@ func (m *mockResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
 
 func (m *mockResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
 	return m.Consistency
+}
+
+func (m *mockResolveCheckRequest) GetContext() *structpb.Struct {
+	return m.Context
 }
 
 func TestIteratorReadStartingFromUser(t *testing.T) {
