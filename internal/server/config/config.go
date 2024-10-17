@@ -36,6 +36,9 @@ const (
 
 	DefaultCacheLimit = 10000
 
+	DefaultCacheControllerEnabled = false
+	DefaultCacheControllerTTL     = 10 * time.Second
+
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
@@ -137,10 +140,11 @@ type AuthnConfig struct {
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
 type AuthnOIDCConfig struct {
-	Issuer        string
-	IssuerAliases []string
-	Subjects      []string
-	Audience      string
+	Issuer         string
+	IssuerAliases  []string
+	Subjects       []string
+	Audience       string
+	ClientIDClaims []string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
@@ -220,6 +224,13 @@ type DispatchThrottlingConfig struct {
 	MaxThreshold uint32
 }
 
+// AccessControlConfig is the configuration for the access control feature.
+type AccessControlConfig struct {
+	Enabled bool
+	StoreID string
+	ModelID string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -276,6 +287,9 @@ type Config struct {
 
 	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
 	Experimentals []string
+
+	// AccessControl is the configuration for the access control feature.
+	AccessControl AccessControlConfig
 
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query
 	// errors out.
@@ -547,6 +561,7 @@ func DefaultConfig() *Config {
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
+		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,

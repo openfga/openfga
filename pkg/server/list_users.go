@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 
@@ -50,6 +51,16 @@ func (s *Server) ListUsers(
 	}
 
 	const methodName = "listusers"
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  methodName,
+	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListUsers)
+	if err != nil {
+		return nil, err
+	}
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {

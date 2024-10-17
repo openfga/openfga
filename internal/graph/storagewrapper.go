@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/cespare/xxhash/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -50,15 +47,11 @@ var (
 		Namespace:                       build.ProjectName,
 		Name:                            "tuples_cache_size",
 		Help:                            "The number of tuples cached.",
-		Buckets:                         []float64{1, 10, 100, 1000, 5000, 10000},
+		Buckets:                         []float64{0, 1, 10, 100, 1000, 5000, 10000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	})
-)
-
-const (
-	QueryCachePrefix = "qc."
 )
 
 // iterFunc is a function closure that returns an iterator
@@ -114,7 +107,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 
 	var b strings.Builder
 	b.WriteString(
-		fmt.Sprintf("%srut/%s/%s#%s", QueryCachePrefix, store, filter.Object, filter.Relation),
+		storage.GetReadUsersetTuplesCacheKeyPrefix(store, filter.Object, filter.Relation),
 	)
 
 	var rb strings.Builder
@@ -138,7 +131,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 		b.WriteString(rb.String())
 	}
 
-	return c.newCachedIterator(ctx, iter, b.String())
+	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByObjectRelationCacheKey(store, filter.Object, filter.Relation))
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -159,41 +152,62 @@ func (c *CachedDatastore) Read(
 		return c.OpenFGADatastore.Read(ctx, store, tupleKey, options)
 	}
 
+	// this instance of Read is only called from TTU resolution path which always includes Object/Relation
+	if tupleKey.GetRelation() == "" || !tuple.IsValidObject(tupleKey.GetObject()) {
+		return iter(ctx)
+	}
+
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return iter(ctx)
 	}
 
 	var b strings.Builder
 	b.WriteString(
-		fmt.Sprintf("%sr%s/%s", QueryCachePrefix, store, tuple.TupleKeyToString(tupleKey)),
+		storage.GetReadCacheKey(store, tuple.TupleKeyToString(tupleKey)),
 	)
-	return c.newCachedIterator(ctx, iter, b.String())
+	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByObjectRelationCacheKey(store, tupleKey.GetObject(), tupleKey.GetRelation()))
+}
+
+func (c *CachedDatastore) findInCache(store, key, invalidEntityKey string) (*storage.TupleIteratorCacheEntry, bool) {
+	var tupleEntry *storage.TupleIteratorCacheEntry
+	if res := c.cache.Get(key); res != nil {
+		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
+	} else {
+		return nil, false
+	}
+	invalidCacheKey := storage.GetInvalidIteratorCacheKey(store)
+	if res := c.cache.Get(invalidCacheKey); res != nil {
+		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
+		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+			return nil, false
+		}
+	}
+	if res := c.cache.Get(invalidEntityKey); res != nil {
+		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
+		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+			return nil, false
+		}
+	}
+	return tupleEntry, true
 }
 
 // newCachedIterator either returns a cached static iterator for a cache hit, or
 // returns a new iterator that attempts to cache the results.
 func (c *CachedDatastore) newCachedIterator(
 	ctx context.Context,
+	store string,
 	dsIterFunc iterFunc,
-	key string,
+	cacheKey string,
+	invalidEntityKey string,
 ) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("cached_key", key))
+	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	tuplesCacheTotalCounter.Inc()
 
-	cacheKey := cacheKeyFor(key)
-
-	if cacheKey == "" {
-		return dsIterFunc(ctx)
-	}
-
-	cachedResp := c.cache.Get(cacheKey)
-	isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
-
-	if isCached {
+	if cacheEntry, ok := c.findInCache(store, cacheKey, invalidEntityKey); ok {
 		tuplesCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
-		return storage.NewStaticTupleIterator(cachedResp.Value.([]*openfgav1.Tuple)), nil
+		return storage.NewStaticTupleIterator(cacheEntry.Tuples), nil
 	}
 
 	iter, err := dsIterFunc(ctx)
@@ -202,13 +216,14 @@ func (c *CachedDatastore) newCachedIterator(
 	}
 
 	return &cachedIterator{
-		iter:          iter,
-		tuples:        make([]*openfgav1.Tuple, 0, c.maxResultSize),
-		cacheKey:      cacheKey,
-		cache:         c.cache,
-		maxResultSize: c.maxResultSize,
-		ttl:           c.ttl,
-		sf:            c.sf,
+		iter:             iter,
+		tuples:           make([]*openfgav1.Tuple, 0, c.maxResultSize),
+		cacheKey:         cacheKey,
+		invalidEntityKey: invalidEntityKey,
+		cache:            c.cache,
+		maxResultSize:    c.maxResultSize,
+		ttl:              c.ttl,
+		sf:               c.sf,
 	}, nil
 }
 
@@ -218,11 +233,12 @@ func (c *CachedDatastore) Close() {
 }
 
 type cachedIterator struct {
-	iter     storage.TupleIterator
-	tuples   []*openfgav1.Tuple
-	cacheKey string
-	cache    storage.InMemoryCache[any]
-	ttl      time.Duration
+	iter             storage.TupleIterator
+	tuples           []*openfgav1.Tuple
+	cacheKey         string
+	invalidEntityKey string
+	cache            storage.InMemoryCache[any]
+	ttl              time.Duration
 
 	// maxResultSize is the maximum number of tuples to cache. If the number
 	// of tuples found exceeds this value, it will not be cached.
@@ -260,7 +276,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 }
 
 // Stop terminates iteration over the underlying iterator.
-//   - If there are incomplete results, they will not cached.
+//   - If there are incomplete results, they will not be cached.
 //   - If the iterator is already fully consumed, it will be cached in the foreground.
 //   - If the iterator is not fully consumed, it will be drained in the background,
 //     and attempt will be made to cache its results.
@@ -284,9 +300,7 @@ func (c *cachedIterator) Stop() {
 			defer c.wg.Done()
 
 			// if cache is already set, we don't need to drain the iterator
-			cachedResp := c.cache.Get(c.cacheKey)
-			isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
-			if isCached {
+			if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
 				return
 			}
 
@@ -341,18 +355,7 @@ func (c *cachedIterator) flush() {
 	// with garbage collection.
 	tuples := make([]*openfgav1.Tuple, len(c.tuples))
 	copy(tuples, c.tuples)
-
-	c.cache.Set(c.cacheKey, tuples, c.ttl)
-
+	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: tuples, LastModified: time.Now()}, c.ttl)
+	c.cache.Delete(c.invalidEntityKey)
 	tuplesCacheSizeHistogram.Observe(float64(len(tuples)))
-}
-
-func cacheKeyFor(s string) string {
-	hasher := keys.NewCacheKeyHasher(xxhash.New())
-
-	if err := hasher.WriteString(s); err != nil {
-		return ""
-	}
-
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10)
 }

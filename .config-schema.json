@@ -115,10 +115,34 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": [""]
+                "enum": ["enable-check-optimizations", "enable-access-control"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "accessControl": {
+            "description": "the configuration needed for the access control store",
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable/disable the access control store.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_ENABLED"
+                },
+                "storeId": {
+                    "description": "The storeId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_STORE_ID"
+                },
+                "modelId": {
+                    "description": "The modelId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_MODEL_ID"
+                }
+            }
         },
         "playground": {
             "type": "object",
@@ -627,6 +651,14 @@
                         "type": "string"
                     },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_SUBJECTS"
+                },
+                "clientIdClaims": {
+                    "description": "the OIDC client id claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS"
                 }
             },
             "required": ["issuer", "audience"]

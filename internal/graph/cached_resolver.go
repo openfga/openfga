@@ -140,6 +140,11 @@ func (c *CachedCheckResolver) Close() {
 	}
 }
 
+type CheckResponseCacheEntry struct {
+	LastModified  time.Time
+	CheckResponse *ResolveCheckResponse
+}
+
 func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
@@ -157,15 +162,15 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	if tryCache {
 		checkCacheTotalCounter.Inc()
-
-		cachedResp := c.cache.Get(cacheKey)
-		isCached := cachedResp != nil && !cachedResp.Expired && cachedResp.Value != nil
-		span.SetAttributes(attribute.Bool("is_cached", isCached))
-		if isCached {
-			checkCacheHitCounter.Inc()
-
-			// return a copy to avoid races across goroutines
-			return cachedResp.Value.(*ResolveCheckResponse).clone(), nil
+		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
+			res := cachedResp.(*CheckResponseCacheEntry)
+			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
+			span.SetAttributes(attribute.Bool("cached", isValid))
+			if isValid {
+				checkCacheHitCounter.Inc()
+				// return a copy to avoid races across goroutines
+				return res.CheckResponse.clone(), nil
+			}
 		}
 	}
 
@@ -182,7 +187,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	clonedResp := resp.clone()
 	clonedResp.ResolutionMetadata.DatastoreQueryCount = 0
 
-	c.cache.Set(cacheKey, clonedResp, c.cacheTTL)
+	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
 	return resp, nil
 }
 
@@ -196,7 +201,8 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
 	tupleKey := req.GetTupleKey()
-	key := fmt.Sprintf("%s/%s/%s#%s@%s",
+	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
+		storage.SubproblemCachePrefix,
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
 		tupleKey.GetObject(),
