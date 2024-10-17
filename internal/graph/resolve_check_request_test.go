@@ -30,7 +30,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			},
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}
-		orig.GetRequestMetadata().DatastoreQueryCount++
 		orig.GetRequestMetadata().DispatchCounter.Add(2)
 
 		// First, assert the values of the orig
@@ -44,7 +43,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, "writer", orig.GetContextualTuples()[0].GetRelation())
 		require.Equal(t, "document:def", orig.GetContextualTuples()[0].GetObject())
 		require.Equal(t, contextStruct, orig.GetContext())
-		require.Equal(t, uint32(1), orig.GetRequestMetadata().DatastoreQueryCount)
 		require.Equal(t, uint32(20), orig.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(2), orig.GetRequestMetadata().DispatchCounter.Load())
 		require.False(t, orig.GetRequestMetadata().WasThrottled.Load())
@@ -54,7 +52,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 
 		// now, clone the orig and update the orig
 		cloned := orig.clone()
-		orig.GetRequestMetadata().DatastoreQueryCount++
 		orig.GetRequestMetadata().DispatchCounter.Add(5)
 		orig.VisitedPaths = map[string]struct{}{
 			"abc": {},
@@ -73,7 +70,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, "writer", orig.GetContextualTuples()[0].GetRelation())
 		require.Equal(t, "document:def", orig.GetContextualTuples()[0].GetObject())
 		require.Equal(t, contextStruct, orig.GetContext())
-		require.Equal(t, uint32(2), orig.GetRequestMetadata().DatastoreQueryCount)
 		require.Equal(t, uint32(20), orig.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(7), orig.GetRequestMetadata().DispatchCounter.Load())
 		require.True(t, orig.GetRequestMetadata().WasThrottled.Load())
@@ -92,7 +88,6 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, "writer", cloned.GetContextualTuples()[0].GetRelation())
 		require.Equal(t, "document:def", cloned.GetContextualTuples()[0].GetObject())
 		require.Equal(t, contextStruct, cloned.GetContext())
-		require.Equal(t, uint32(1), cloned.GetRequestMetadata().DatastoreQueryCount)
 		require.Equal(t, uint32(20), cloned.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(7), cloned.GetRequestMetadata().DispatchCounter.Load()) // note that it is intended to have the request metadata share the same dispatch counter
 		require.True(t, cloned.GetRequestMetadata().WasThrottled.Load())                // it is intended to share the same was throttled state

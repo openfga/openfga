@@ -34,7 +34,7 @@ type CheckQuery struct {
 	logger          logger.Logger
 	checkResolver   graph.CheckResolver
 	typesys         *typesystem.TypeSystem
-	datastore       storage.RelationshipTupleReader
+	datastore       *storagewrappers.MetricsOpenFGAStorage
 	cacheController cachecontroller.CacheController
 
 	resolveNodeLimit   uint32
@@ -70,7 +70,7 @@ func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption 
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
-		datastore:          datastore,
+		datastore:          storagewrappers.NewMetricsOpenFGAStorage(datastore),
 		checkResolver:      checkResolver,
 		typesys:            typesys,
 		cacheController:    cachecontroller.NewNoopCacheController(),
@@ -114,6 +114,9 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		return nil, nil, translateError(resolveCheckRequest.GetRequestMetadata(), err)
+	}
+	if resp != nil {
+		resp.GetResolutionMetadata().DatastoreQueryCount = uint32(c.datastore.GetMetrics().DatastoreQueryCount)
 	}
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }

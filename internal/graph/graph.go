@@ -48,9 +48,6 @@ type ResolveCheckRequestMetadata struct {
 	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
 	Depth uint32
 
-	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated so far, before this request is solved.
-	DatastoreQueryCount uint32
-
 	// DispatchCounter is the address to a shared counter that keeps track of how many calls to ResolveCheck we had to do
 	// to solve the root/parent problem.
 	// The contents of this counter will be written by concurrent goroutines.
@@ -63,21 +60,14 @@ type ResolveCheckRequestMetadata struct {
 
 func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
 	return &ResolveCheckRequestMetadata{
-		Depth:               maxDepth,
-		DatastoreQueryCount: 0,
-		DispatchCounter:     new(atomic.Uint32),
-		WasThrottled:        new(atomic.Bool),
+		Depth:           maxDepth,
+		DispatchCounter: new(atomic.Uint32),
+		WasThrottled:    new(atomic.Bool),
 	}
 }
 
 type ResolveCheckResponseMetadata struct {
-	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read accumulated after this request is solved.
-	// Thinking of a Check as a tree of evaluations,
-	// If the solution is "allowed=true", one path was found. This is the value in the leaf node of that path, plus the sum of the paths that were
-	// evaluated and potentially discarded
-	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreQueryCount uint32
-
 	// Indicates if the ResolveCheck subproblem that was evaluated involved
 	// a cycle in the evaluation.
 	CycleDetected bool
