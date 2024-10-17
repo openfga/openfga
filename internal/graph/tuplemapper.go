@@ -17,6 +17,8 @@ const (
 	NestedUsersetKind TupleMapperKind = iota
 	// NestedTTUKind is a mapper that returns the user field of the tuple.
 	NestedTTUKind
+	// ObjectIDKind is mapper that returns the object field of the tuple.
+	ObjectIDKind
 )
 
 // TupleMapper is an iterator that, on calls to Next and Head, returns a mapping of the tuple.
@@ -89,12 +91,44 @@ func (n NestedTTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	return t.GetUser(), nil
 }
 
+type ObjectIDMapper struct {
+	iter storage.TupleKeyIterator
+}
+
+var _ TupleMapper = (*ObjectIDMapper)(nil)
+
+func (n ObjectIDMapper) Next(ctx context.Context) (string, error) {
+	tupleRes, err := n.iter.Next(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.doMap(tupleRes)
+}
+
+func (n ObjectIDMapper) Stop() {
+	n.iter.Stop()
+}
+
+func (n ObjectIDMapper) Head(ctx context.Context) (string, error) {
+	tupleRes, err := n.iter.Head(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.doMap(tupleRes)
+}
+
+func (n ObjectIDMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+	return t.GetObject(), nil
+}
+
 func wrapIterator(kind TupleMapperKind, iter storage.TupleKeyIterator) TupleMapper {
 	switch kind {
 	case NestedUsersetKind:
 		return &NestedUsersetMapper{iter: iter}
 	case NestedTTUKind:
 		return &NestedTTUMapper{iter: iter}
+	case ObjectIDKind:
+		return &ObjectIDMapper{iter: iter}
 	}
 	return nil
 }

@@ -75,3 +75,30 @@ func TestNestedTTUTupleMapper(t *testing.T) {
 		require.Equal(t, "group:2#member", res)
 	})
 }
+
+func TestObjectIDTupleMapper(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("group:fga", "member", "group:2#member"),
+	}
+
+	innerIter := storage.NewStaticTupleKeyIterator(tks)
+
+	mapper := &ObjectIDMapper{innerIter}
+	require.NotNil(t, mapper)
+	defer mapper.Stop()
+
+	t.Run("head_success", func(t *testing.T) {
+		res, err := mapper.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "group:fga", res)
+	})
+
+	t.Run("map_success", func(t *testing.T) {
+		res, err := mapper.Next(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "group:fga", res)
+	})
+}
