@@ -9,6 +9,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ### Added
+* Refactoring the code in OIDC authenticator by removing unwanted error messages when validating a token. Token validation will now throw codes 1004 and 1005 
+for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
+
+### Added
 * Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
 * Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
