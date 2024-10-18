@@ -25,9 +25,13 @@ type RedBlackTreeSet struct {
 
 var _ SortedSet = (*RedBlackTreeSet)(nil)
 
-func NewSortedSet() *RedBlackTreeSet {
+func NewSortedSet(vals ...string) *RedBlackTreeSet {
 	c := &RedBlackTreeSet{
 		inner: redblacktree.NewWithStringComparator(),
+	}
+
+	for _, val := range vals {
+		c.Add(val)
 	}
 	return c
 }
