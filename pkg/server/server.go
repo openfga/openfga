@@ -1096,7 +1096,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 	// call a batch check command
 	// that command will just manage concurrency, fan out the checks, and run the timer
-	commands.NewBatchCheckCommand()
+	commands.NewBatchCheckCommand(
+		s.checkDatastore,
+		s.checkResolver,
+		typesys,
+		commands.WithCheckCommandCacheController(s.cacheController),
+		commands.WithBatchCheckCommandMaxConcurrentChecks(50), // TODO config variables somewhere
+	)
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
