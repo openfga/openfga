@@ -5155,8 +5155,7 @@ func TestNestedUsersetFastpath(t *testing.T) {
 				expected: &ResolveCheckResponse{
 					Allowed: true,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
+						CycleDetected: false,
 					},
 				},
 			},

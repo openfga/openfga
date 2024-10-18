@@ -291,7 +291,6 @@ func (q *ListObjectsQuery) evaluate(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
 			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
@@ -308,7 +307,9 @@ func (q *ListObjectsQuery) evaluate(
 			}
 			resolutionMetadata.DatastoreQueryCount.Add(reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
+			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
+				resolutionMetadata.WasThrottled.Store(true)
+			}
 		}()
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
@@ -367,7 +368,9 @@ func (q *ListObjectsQuery) evaluate(
 					}
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DispatchCounter.Add(checkRespMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled.Store(checkRespMetadata.WasThrottled.Load())
+					if !resolutionMetadata.WasThrottled.Load() && checkRespMetadata.WasThrottled.Load() {
+						resolutionMetadata.WasThrottled.Store(true)
+					}
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
