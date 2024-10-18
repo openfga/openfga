@@ -43,28 +43,6 @@ type doc
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	t.Run("validates_store_id", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, nil)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: "invalid",
-		})
-		require.ErrorContains(t, err, "invalid CheckRequest.StoreID: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
-	})
-
-	t.Run("validates_model_id", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, nil)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: ulid.Make().String(),
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     "user:1",
-				Relation: "viewer",
-				Object:   "invalid:1",
-			},
-			//AuthorizationModelId: "invalid",
-		})
-		require.ErrorContains(t, err, "invalid CheckRequest.AuthorizationModelId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
-	})
-
 	t.Run("validates_input_user", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{

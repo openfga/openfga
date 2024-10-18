@@ -1091,17 +1091,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
-	}
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
 	}
 
 	checkQuery := commands.NewCheckCommand(
