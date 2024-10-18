@@ -1098,8 +1098,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	const methodName = "check"
-	resp, checkRequestMetadata, err := commands.NewCheckCommand(
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	checkQuery := commands.NewCheckCommand(
 		s.checkDatastore,
 		s.checkResolver,
 		typesys,
@@ -1107,7 +1112,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithCacheController(s.cacheController),
-	).Execute(ctx, req)
+	)
+
+	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckRequestParams{
+		StoreID:          storeID,
+		TupleKey:         req.GetTupleKey(),
+		ContextualTuples: req.GetContextualTuples(),
+		Context:          req.GetContext(),
+		Consistency:      req.GetConsistency(),
+	})
+
+	const methodName = "check"
 	if err != nil {
 		telemetry.TraceError(span, err)
 		if errors.Is(err, serverErrors.ThrottledTimeout) {
