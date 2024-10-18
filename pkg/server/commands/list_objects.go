@@ -307,7 +307,9 @@ func (q *ListObjectsQuery) evaluate(
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
+			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
+				resolutionMetadata.WasThrottled.Store(true)
+			}
 			return nil
 		})
 
@@ -322,7 +324,11 @@ func (q *ListObjectsQuery) evaluate(
 				break ConsumerReadLoop
 			case res, channelOpen := <-reverseExpandResultsChan:
 				if !channelOpen {
-					// don't cancel here, we need to wait until all the inflight Checks finish
+					// don't cancel here. Reverse Expand has finished finding candidate object IDs
+					// but since we haven't collected "maxResults",
+					// we need to wait until all the inflight Checks finish in the hopes that
+					// we collect a few more object IDs.
+					// if we send a cancellation now, we might miss those.
 					break ConsumerReadLoop
 				}
 
@@ -358,7 +364,9 @@ func (q *ListObjectsQuery) evaluate(
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled.Store(checkRequestMetadata.WasThrottled.Load())
+					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
+						resolutionMetadata.WasThrottled.Store(true)
+					}
 
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
