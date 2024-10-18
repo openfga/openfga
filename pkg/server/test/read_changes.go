@@ -17,6 +17,7 @@ import (
 )
 
 func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
+	b.StopTimer()
 	inputModel := `
 				model
 					schema 1.1
@@ -42,6 +43,7 @@ func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
 	}
 
 	changesQuery := commands.NewReadChangesQuery(ds)
+	b.StartTimer()
 	b.Run("change_1st_page", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			response, err := changesQuery.Execute(ctx, &openfgav1.ReadChangesRequest{
@@ -53,12 +55,16 @@ func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
 			require.NotEmpty(b, response.GetChanges())
 		}
 	})
+	b.StopTimer()
+
 	response, err := changesQuery.Execute(ctx, &openfgav1.ReadChangesRequest{
 		StoreId:  storeID,
 		PageSize: wrapperspb.Int32(100),
 	})
 	require.NoError(b, err)
 	contToken := response.GetContinuationToken()
+	b.StartTimer()
+
 	b.Run("change_2nd_page", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			response, err := changesQuery.Execute(ctx, &openfgav1.ReadChangesRequest{
