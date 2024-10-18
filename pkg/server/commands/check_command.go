@@ -124,14 +124,14 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
-func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, ctxTuples *openfgav1.ContextualTupleKeys) error {
+func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
 		return serverErrors.ValidationError(err)
 	}
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
-	for _, ctxTuple := range ctxTuples.GetTupleKeys() {
+	for _, ctxTuple := range contextualTuples.GetTupleKeys() {
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
