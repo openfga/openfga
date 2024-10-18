@@ -126,8 +126,8 @@ Thanks @DanCech!
 
 ### Added
 * Performance improvements for Check API:
-  - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
-  - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
+   - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
+   - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
 * Logging number of cache hits for each subproblem of each authorization model for `Check` API calls. Enabled with the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
 * Aliases for issuers and subject validation in OIDC AuthN mode using `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` and `OPENFGA_AUTHN_OIDC_SUBJECTS` respectively [#1784](https://github.com/openfga/openfga/pull/1784) Thanks @Code2Life!
 * Dispatch Throttling for our `ListUsers` API. This can be enabled using `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED` and the env variables below.  [#1658](https://github.com/openfga/openfga/pull/1658)
@@ -341,8 +341,8 @@ If you implement your own data store, you will need to make the following change
 
 ```go
 func (...) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
-//...get model ID
-return modelID, nil
+  //...get model ID
+  return modelID, nil
 }
 ```
 
@@ -351,8 +351,8 @@ return modelID, nil
 
 ```go
 func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
-//...get model
-return model.(*openfgav1.AuthorizationModel), nil
+  //...get model
+  return model.(*openfgav1.AuthorizationModel), nil
 }
 ```
 
@@ -399,9 +399,9 @@ return model.(*openfgav1.AuthorizationModel), nil
 
 * Added `openfga` prefix to custom exported Prometheus metrics
 
-  > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
+   > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
 
-  Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
+   Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
 
 ### Added
 * Support for cancellation/timeouts when evaluating Conditions ([#1237](https://github.com/openfga/openfga/pull/1237))
@@ -1049,16 +1049,16 @@ This release comes with a few big changes:
 ### Support for [v1.1 JSON Schema](https://github.com/openfga/rfcs/blob/feat/add-type-restrictions-to-json-syntax/20220831-add-type-restrictions-to-json-syntax.md)
 
 - You can now write your models in the [new DSL](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md)
-  which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
-  JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
-  indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
+which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
+JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
+indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
   - This change also comes with breaking changes to how `*` and `<type>:*` are treated:
   - `<type>:*` is interpreted differently according to the model version. v1.0 will interpret it as a object of type
     `<type>` and id `*`, whereas v1.1 will interpret is as all objects of type `<type>`.
   - `*` is still supported in v1.0 models, but not supported in v1.1 models. A validation error will be thrown when
     used in checks or writes and it will be ignored when evaluating.
 - Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the model
-  instead of when issuing checks.
+instead of when issuing checks.
 
 :warning: Note that with this release **models with schema version 1.0 are now considered deprecated**, with the plan to
 drop support for them over the next couple of months, please migrate to version 1.1 when you can. Read more about
@@ -1189,9 +1189,9 @@ no tuple key instead.
 
   Server config will be loaded in the following order of precedence:
 
-  * CLI flags (e.g. `--datastore-engine`)
-  * env variables (e.g. `OPENFGA_DATASTORE_ENGINE`)
-  * `config.yaml`
+    * CLI flags (e.g. `--datastore-engine`)
+    * env variables (e.g. `OPENFGA_DATASTORE_ENGINE`)
+    * `config.yaml`
 
   If a `config.yaml` file is provided, the OpenFGA server will look for it in `"/etc/openfga"`, `"$HOME/.openfga"`, or `"."` (the current working directory), in that order.
 
