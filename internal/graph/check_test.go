@@ -4157,6 +4157,12 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 						DatastoreQueryCount: 3,
 					},
 				}},
+				{resp: &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{
+						DatastoreQueryCount: 0,
+					},
+				}},
 			},
 		},
 		{

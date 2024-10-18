@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"sync"
-	"sync/atomic"
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
@@ -26,6 +27,10 @@ import (
 var tracer = otel.Tracer("internal/graph/check")
 
 type setOperatorType int
+
+var (
+	ErrShortCircuit = errors.New("short circuit")
+)
 
 const (
 	unionSetOperator setOperatorType = iota
@@ -1004,7 +1009,6 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 		return
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
 	pool := concurrency.NewPool(ctx, int(c.concurrencyLimit))
 
 	mu := &sync.Mutex{}
@@ -1044,8 +1048,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 							DatastoreQueryCount: dsCount.Load(),
 						},
 					}}, checkOutcomeChan)
-					cancel() // signal concurrent routines to stop AND final flush
-					return nil
+					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
 				mu.Lock()
 				nextUsersetLevel = append(nextUsersetLevel, userset)
@@ -1055,7 +1058,11 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 		})
 	}
 	// wait for all checks to wrap up
-	_ = pool.Wait()
+	// if a match was found, clean up
+	if err := pool.Wait(); err != nil && errors.Is(err, ErrShortCircuit) {
+		close(checkOutcomeChan)
+		return
+	}
 
 	// keep track of dbCount in consumer
 	concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
@@ -1064,9 +1071,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 			DatastoreQueryCount: dsCount.Load(),
 		},
 	}}, checkOutcomeChan)
-
 	c.breadthFirstNestedMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
-	return
 }
 
 func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, currentLevelFromObject []string, usersetFromUser storage.SortedSet) (*ResolveCheckResponse, error) {
@@ -1105,7 +1110,7 @@ ConsumerLoop:
 			}
 			if outcome.err != nil {
 				finalErr = outcome.err
-				break //continue
+				break // continue
 			}
 
 			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -1184,7 +1189,6 @@ type nestedMapping struct {
 }
 
 func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *nestedMapping) (*ResolveCheckResponse, error) {
-
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
