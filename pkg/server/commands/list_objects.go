@@ -269,8 +269,10 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
+		metricsDs := storagewrappers.NewMetricsOpenFGAStorage(q.datastore)
 		ds := storagewrappers.NewCombinedTupleReader(
-			storagewrappers.NewBoundedConcurrencyTupleReader(q.datastore, q.maxConcurrentReads),
+			storagewrappers.NewBoundedConcurrencyTupleReader(
+				metricsDs, q.maxConcurrentReads),
 			req.GetContextualTuples().GetTupleKeys(),
 		)
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
@@ -305,7 +307,6 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 			}
-			resolutionMetadata.DatastoreQueryCount.Add(reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
@@ -390,6 +391,7 @@ func (q *ListObjectsQuery) evaluate(
 		cancel()
 		wg.Wait()
 		close(resultsChan)
+		resolutionMetadata.DatastoreQueryCount.Add(uint32(metricsDs.GetMetrics().DatastoreQueryCount))
 	}
 
 	go handler()
