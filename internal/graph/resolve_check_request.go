@@ -26,10 +26,9 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	origRequestMetadata := r.GetRequestMetadata()
 	if origRequestMetadata != nil {
 		requestMetadata = &ResolveCheckRequestMetadata{
-			DispatchCounter:     origRequestMetadata.DispatchCounter,
-			Depth:               origRequestMetadata.Depth,
-			DatastoreQueryCount: origRequestMetadata.DatastoreQueryCount,
-			WasThrottled:        origRequestMetadata.WasThrottled,
+			DispatchCounter: origRequestMetadata.DispatchCounter,
+			Depth:           origRequestMetadata.Depth,
+			WasThrottled:    origRequestMetadata.WasThrottled,
 		}
 	}
 
