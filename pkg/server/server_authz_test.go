@@ -596,6 +596,13 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
+		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
+
+			err := openfga.checkCreateStoreAuthz(ctx)
+			require.NoError(t, err)
+		})
+
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkCreateStoreAuthz(context.Background())
 			require.Error(t, err)
@@ -700,6 +707,80 @@ func TestCheckAuthz(t *testing.T) {
 	})
 }
 
+func TestGetAccessibleStores(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("check_no_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		_, err := openfga.getAccessibleStores(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("check_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
+
+			_, err := openfga.getAccessibleStores(ctx)
+			require.NoError(t, err)
+		})
+
+		t.Run("error_with_no_client_id_found", func(t *testing.T) {
+			_, err := openfga.getAccessibleStores(context.Background())
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+		})
+
+		t.Run("error_with_empty_client_id", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
+			_, err := openfga.getAccessibleStores(ctx)
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+		})
+
+		t.Run("error_when_AuthorizeListStores_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.getAccessibleStores(ctx)
+			require.Error(t, err)
+			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		})
+
+		t.Run("authz_is_valid", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.rootData.id,
+				AuthorizationModelId: settings.rootData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("system:fga", authz.CanCallListStores, fmt.Sprintf("application:%s", settings.clientID)),
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			_, err = openfga.getAccessibleStores(ctx)
+			require.NoError(t, err)
+		})
+	})
+}
+
 func TestCheckWriteAuthz(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -741,6 +822,13 @@ func TestCheckWriteAuthz(t *testing.T) {
 		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
+
+			err := openfga.checkWriteAuthz(ctx, &openfgav1.WriteRequest{}, typesys)
+			require.NoError(t, err)
+		})
 
 		t.Run("error_when_GetModulesForWriteRequest_errors", func(t *testing.T) {
 			err := openfga.checkWriteAuthz(context.Background(), &openfgav1.WriteRequest{
