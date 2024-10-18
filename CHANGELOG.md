@@ -126,8 +126,8 @@ Thanks @DanCech!
 
 ### Added
 * Performance improvements for Check API:
-   - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
-   - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
+  - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
+  - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
 * Logging number of cache hits for each subproblem of each authorization model for `Check` API calls. Enabled with the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
 * Aliases for issuers and subject validation in OIDC AuthN mode using `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` and `OPENFGA_AUTHN_OIDC_SUBJECTS` respectively [#1784](https://github.com/openfga/openfga/pull/1784) Thanks @Code2Life!
 * Dispatch Throttling for our `ListUsers` API. This can be enabled using `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED` and the env variables below.  [#1658](https://github.com/openfga/openfga/pull/1658)
@@ -341,8 +341,8 @@ If you implement your own data store, you will need to make the following change
 
 ```go
 func (...) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
-  //...get model ID
-  return modelID, nil
+//...get model ID
+return modelID, nil
 }
 ```
 
@@ -351,8 +351,8 @@ func (...) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (
 
 ```go
 func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
-  //...get model
-  return model.(*openfgav1.AuthorizationModel), nil
+//...get model
+return model.(*openfgav1.AuthorizationModel), nil
 }
 ```
 
@@ -399,9 +399,9 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 
 * Added `openfga` prefix to custom exported Prometheus metrics
 
-   > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
+  > ⚠️ This change may impact existing deployments of OpenFGA if you're integrating with the metrics reported by OpenFGA.
 
-   Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
+  Custom metrics reported by the OpenFGA server are now prefixed with `openfga_`. For example, `request_duration_by_query_count_ms `  is now exported as `openfga_request_duration_by_query_count_ms`.
 
 ### Added
 * Support for cancellation/timeouts when evaluating Conditions ([#1237](https://github.com/openfga/openfga/pull/1237))
@@ -421,9 +421,9 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 ### Changed
 * Enable support for Conditional Relationship Tuples by default. ([#1220](https://github.com/openfga/openfga/pull/1220))
 
-* Added stricter gRPC server max userset size constraints ([#1222](https://github.com/openfga/openfga/pull/1222))
+* Added stricter gRPC server max message size constraints ([#1222](https://github.com/openfga/openfga/pull/1222))
 
-  We changed the default gRPC max userset size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max userset size should be much smaller than 512KB given our other input constraints.
+  We changed the default gRPC max message size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max message size should be much smaller than 512KB given our other input constraints.
 
 ## [1.3.10] - 2023-12-08
 
@@ -573,7 +573,7 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 
 ### Fixed
 
-* Incorrect string in model validation error userset ([#1057](https://github.com/openfga/openfga/pull/1057))
+* Incorrect string in model validation error message ([#1057](https://github.com/openfga/openfga/pull/1057))
 * Incorrect results can be returned by Check API when passing in contextual tuples and the `check-query-cache` experimental flag is turned on ([#1059](https://github.com/openfga/openfga/pull/1059))
 
 ### Changed
@@ -926,7 +926,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
   * We've improved the attributes of various trace spans and made sure that trace span names align with the functions they decorate.
 
-  * Our logging has been enhanced with more logged fields including request level logging which includes a `request_id` and `store_id` field in the log userset.
+  * Our logging has been enhanced with more logged fields including request level logging which includes a `request_id` and `store_id` field in the log message.
 
   These features will allow operators of OpenFGA to improve their monitoring and observability processes.
 
@@ -1049,16 +1049,16 @@ This release comes with a few big changes:
 ### Support for [v1.1 JSON Schema](https://github.com/openfga/rfcs/blob/feat/add-type-restrictions-to-json-syntax/20220831-add-type-restrictions-to-json-syntax.md)
 
 - You can now write your models in the [new DSL](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md)
-which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
-JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
-indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
+  which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
+  JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
+  indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
   - This change also comes with breaking changes to how `*` and `<type>:*` are treated:
   - `<type>:*` is interpreted differently according to the model version. v1.0 will interpret it as a object of type
     `<type>` and id `*`, whereas v1.1 will interpret is as all objects of type `<type>`.
   - `*` is still supported in v1.0 models, but not supported in v1.1 models. A validation error will be thrown when
     used in checks or writes and it will be ignored when evaluating.
 - Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the model
-instead of when issuing checks.
+  instead of when issuing checks.
 
 :warning: Note that with this release **models with schema version 1.0 are now considered deprecated**, with the plan to
 drop support for them over the next couple of months, please migrate to version 1.1 when you can. Read more about
@@ -1101,7 +1101,7 @@ no tuple key instead.
 
 ### Fixed
 * TLS certificate config path mappings ([#285](https://github.com/openfga/openfga/pull/285))
-* Error userset when a `user` field is invalid ([#278](https://github.com/openfga/openfga/pull/278))
+* Error message when a `user` field is invalid ([#278](https://github.com/openfga/openfga/pull/278))
 * host:port mapping with unspecified host ([#275](https://github.com/openfga/openfga/pull/275))
 * Wait for connection to postgres before starting ([#270](https://github.com/openfga/openfga/pull/270))
 
@@ -1189,9 +1189,9 @@ no tuple key instead.
 
   Server config will be loaded in the following order of precedence:
 
-    * CLI flags (e.g. `--datastore-engine`)
-    * env variables (e.g. `OPENFGA_DATASTORE_ENGINE`)
-    * `config.yaml`
+  * CLI flags (e.g. `--datastore-engine`)
+  * env variables (e.g. `OPENFGA_DATASTORE_ENGINE`)
+  * `config.yaml`
 
   If a `config.yaml` file is provided, the OpenFGA server will look for it in `"/etc/openfga"`, `"$HOME/.openfga"`, or `"."` (the current working directory), in that order.
 

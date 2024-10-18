@@ -753,7 +753,7 @@ Copyright remains Eric Young's, and as such any Copyright notices in
 the code are not to be removed.
 If this package is used in a product, Eric Young should be given attribution
 as the author of the parts of the library used.
-This can be in the form of a textual userset at program startup or
+This can be in the form of a textual message at program startup or
 in documentation (online or textual) provided with the package.
 
 Redistribution and use in source and binary forms, with or without
