@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -286,19 +285,14 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithLogger(q.logger),
 		)
 
+		reverseExpandDoneWithError := make(chan struct{}, 1)
 		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		pool := concurrency.NewPool(cancelCtx, int(1+q.resolveNodeBreadthLimit))
 
-		wg := sync.WaitGroup{}
-
-		errChan := make(chan error, 1)
-
-		reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
+		pool.Go(func(ctx context.Context) error {
+			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
+			err := reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
@@ -308,29 +302,32 @@ func (q *ListObjectsQuery) evaluate(
 				Consistency:      req.GetConsistency(),
 			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
-				errChan <- err
+				reverseExpandDoneWithError <- struct{}{}
+				return err
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
 			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
-		}()
-
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		ctx := storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
+			return nil
+		})
 
 	ConsumerReadLoop:
 		for {
 			select {
+			case <-reverseExpandDoneWithError:
+				cancel() // cancel any inflight work if e.g. model too complex
+				break ConsumerReadLoop
 			case <-ctx.Done():
+				cancel() // cancel any inflight work if e.g. deadline exceeded
 				break ConsumerReadLoop
 			case res, channelOpen := <-reverseExpandResultsChan:
 				if !channelOpen {
+					// don't cancel here, we need to wait until all the inflight Checks finish
 					break ConsumerReadLoop
 				}
 
 				if !(maxResults == 0) && objectsFound.Load() >= maxResults {
+					cancel() // cancel any inflight work if we already found enough results
 					break ConsumerReadLoop
 				}
 
@@ -342,17 +339,11 @@ func (q *ListObjectsQuery) evaluate(
 
 				furtherEvalRequiredCounter.Inc()
 
-				wg.Add(1)
-				go func(res *reverseexpand.ReverseExpandResult) {
-					defer func() {
-						<-concurrencyLimiterCh
-						wg.Done()
-					}()
-
-					concurrency.TrySendThroughChannel(ctx, struct{}{}, concurrencyLimiterCh)
-
+				pool.Go(func(ctx context.Context) error {
 					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
 
+					ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+					ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 						StoreID:              req.GetStoreId(),
 						AuthorizationModelID: req.GetAuthorizationModelId(),
@@ -363,33 +354,27 @@ func (q *ListObjectsQuery) evaluate(
 						Consistency:          req.GetConsistency(),
 					})
 					if err != nil {
-						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-							err = serverErrors.AuthorizationModelResolutionTooComplex
-						}
-						concurrency.TrySendThroughChannel(ctx, ListObjectsResult{Err: err}, resultsChan)
-						return
+						return err
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
+					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
+					resolutionMetadata.WasThrottled.Store(checkRequestMetadata.WasThrottled.Load())
 
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					}
-				}(res)
-
-			case err := <-errChan:
-				if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-					err = serverErrors.AuthorizationModelResolutionTooComplex
-				}
-
-				concurrency.TrySendThroughChannel(ctx, ListObjectsResult{Err: err}, resultsChan)
-				break ConsumerReadLoop
+					return nil
+				})
 			}
 		}
 
-		cancel()
-		wg.Wait()
+		err := pool.Wait()
+		if err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+				resultsChan <- ListObjectsResult{Err: err}
+			}
+			// TODO set header to indicate "deadline exceeded"
+		}
 		close(resultsChan)
 	}
 
@@ -439,16 +424,12 @@ func (q *ListObjectsQuery) Execute(
 
 	for result := range resultsChan {
 		if result.Err != nil {
-			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-				return nil, result.Err
+			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
+				return nil, serverErrors.AuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
 				errs = errors.Join(errs, result.Err)
-				continue
-			}
-
-			if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
 				continue
 			}
 
@@ -492,8 +473,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	for result := range resultsChan {
 		if result.Err != nil {
-			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-				return nil, result.Err
+			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
+				return nil, serverErrors.AuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {

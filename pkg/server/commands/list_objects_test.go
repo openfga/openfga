@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -129,7 +132,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			objectType:              "folder",
 			relation:                "can_delete",
 			user:                    "user:jon",
-			expectedDispatchCount:   2,
+			expectedDispatchCount:   1,
 			expectedThrottlingValue: 0,
 		},
 		{
@@ -355,4 +358,50 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, resp.Objects, 2)
+}
+
+func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type folder
+			relations
+				define viewer: [user] but not blocked
+				define blocked: [user]`
+	tuples := []string{
+		"folder:x#viewer@user:maria",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(nil, errors.ErrUnknown).
+		Times(1)
+
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:maria",
+	})
+
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, errors.ErrUnknown)
 }
