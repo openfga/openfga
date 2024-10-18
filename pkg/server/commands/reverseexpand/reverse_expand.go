@@ -597,15 +597,10 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 			resultStatus = RequiresFurtherEvalStatus
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case candidateChan <- &ReverseExpandResult{
+		concurrency.TrySendThroughChannel(ctx, &ReverseExpandResult{
 			Object:       candidateObject,
 			ResultStatus: resultStatus,
-		}:
-			span.SetAttributes(attribute.Bool("sent", true))
-		}
+		}, candidateChan)
 	}
 
 	return nil

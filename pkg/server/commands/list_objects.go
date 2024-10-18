@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/concurrency"
+
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -334,7 +336,7 @@ func (q *ListObjectsQuery) evaluate(
 
 				if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
 					noFurtherEvalRequiredCounter.Inc()
-					trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+					trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					continue
 				}
 
@@ -347,7 +349,8 @@ func (q *ListObjectsQuery) evaluate(
 						wg.Done()
 					}()
 
-					concurrencyLimiterCh <- struct{}{}
+					concurrency.TrySendThroughChannel(ctx, struct{}{}, concurrencyLimiterCh)
+
 					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
 
 					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
@@ -360,12 +363,7 @@ func (q *ListObjectsQuery) evaluate(
 						Consistency:          req.GetConsistency(),
 					})
 					if err != nil {
-						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
-							return
-						}
-
-						resultsChan <- ListObjectsResult{Err: err}
+						concurrency.TrySendThroughChannel(ctx, ListObjectsResult{Err: err}, resultsChan)
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
@@ -373,7 +371,7 @@ func (q *ListObjectsQuery) evaluate(
 					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
 
 					if resp.Allowed {
-						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					}
 				}(res)
 
@@ -382,7 +380,7 @@ func (q *ListObjectsQuery) evaluate(
 					err = serverErrors.AuthorizationModelResolutionTooComplex
 				}
 
-				resultsChan <- ListObjectsResult{Err: err}
+				concurrency.TrySendThroughChannel(ctx, ListObjectsResult{Err: err}, resultsChan)
 				break ConsumerReadLoop
 			}
 		}
@@ -397,13 +395,13 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+func trySendObject(ctx context.Context, object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
 	if !(maxResults == 0) {
 		if objectsFound.Add(1) > maxResults {
 			return
 		}
 	}
-	resultsChan <- ListObjectsResult{ObjectID: object}
+	concurrency.TrySendThroughChannel(ctx, ListObjectsResult{ObjectID: object}, resultsChan)
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
