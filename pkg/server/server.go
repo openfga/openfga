@@ -1114,7 +1114,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCacheController(s.cacheController),
 	)
 
-	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckRequestParams{
+	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
 		StoreID:          storeID,
 		TupleKey:         req.GetTupleKey(),
 		ContextualTuples: req.GetContextualTuples(),

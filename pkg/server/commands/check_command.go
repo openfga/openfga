@@ -39,7 +39,7 @@ type CheckQuery struct {
 	maxConcurrentReads uint32
 }
 
-type CheckRequestParams struct {
+type CheckCommandParams struct {
 	StoreID          string
 	TupleKey         *openfgav1.CheckRequestTupleKey
 	ContextualTuples *openfgav1.ContextualTupleKeys
@@ -90,7 +90,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	return cmd
 }
 
-func (c *CheckQuery) Execute(ctx context.Context, params *CheckRequestParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
 	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err

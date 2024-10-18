@@ -45,7 +45,7 @@ type doc
 
 	t.Run("validates_input_user", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "invalid:1",
@@ -58,7 +58,7 @@ type doc
 
 	t.Run("validates_input_relation", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
@@ -71,7 +71,7 @@ type doc
 
 	t.Run("validates_input_object", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
@@ -84,7 +84,7 @@ type doc
 
 	t.Run("validates_input_contextual_tuple", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
@@ -98,7 +98,7 @@ type doc
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
@@ -116,7 +116,7 @@ type doc
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
 			Return(nil, nil)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
@@ -126,7 +126,7 @@ type doc
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
@@ -139,7 +139,7 @@ type doc
 			require.Zero(t, req.GetLastCacheInvalidationTime())
 			return nil, nil
 		})
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:     ulid.Make().String(),
 			TupleKey:    tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
@@ -157,7 +157,7 @@ type doc
 			return nil, nil
 		})
 		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
-		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
