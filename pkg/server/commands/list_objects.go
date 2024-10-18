@@ -363,6 +363,9 @@ func (q *ListObjectsQuery) evaluate(
 						Consistency:          req.GetConsistency(),
 					})
 					if err != nil {
+						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+							err = serverErrors.AuthorizationModelResolutionTooComplex
+						}
 						concurrency.TrySendThroughChannel(ctx, ListObjectsResult{Err: err}, resultsChan)
 						return
 					}
