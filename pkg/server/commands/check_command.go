@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"google.golang.org/protobuf/types/known/structpb"
 	"math"
 	"time"
 
@@ -84,7 +85,16 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	return cmd
 }
 
-func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+type CheckRequestParams struct {
+	StoreID          string
+	TupleKey         *openfgav1.CheckRequestTupleKey
+	ContextualTuples []*openfgav1.TupleKey
+	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
+}
+
+// func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+func (c *CheckQuery) Execute(ctx context.Context, requestParams CheckRequestParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
 	err := validateCheckRequest(ctx, req, c.typesys)
 	if err != nil {
 		return nil, nil, err
@@ -92,19 +102,19 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 
 	cacheInvalidationTime := time.Time{}
 
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
+	if requestParams.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, requestParams.StoreID)
 	}
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
+		StoreID:              requestParams.StoreID,
 		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		Context:              req.GetContext(),
+		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(requestParams.TupleKey),
+		ContextualTuples:     requestParams.ContextualTuples,
+		Context:              requestParams.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
-		Consistency:          req.GetConsistency(),
+		Consistency:          requestParams.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}

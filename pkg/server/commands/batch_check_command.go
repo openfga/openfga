@@ -71,10 +71,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, req *openfgav1.BatchChec
 		cacheInvalidationTime = bq.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
 	}
 
-	// for validation:
-	// validate the overall batch check request
-	// then within each loop validate the check itself
-	// you get the validate check request for free from check, probably just have to refactor
 	// it a bit since it relies on a request instead of a struct
 	//err := validateCheckRequest(ctx, req, c.typesys)
 	// if fail write to an errors chan and return the error in the resultant map
