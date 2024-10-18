@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
