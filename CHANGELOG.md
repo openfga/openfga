@@ -420,9 +420,9 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 ### Changed
 * Enable support for Conditional Relationship Tuples by default. ([#1220](https://github.com/openfga/openfga/pull/1220))
 
-* Added stricter gRPC server max message size constraints ([#1222](https://github.com/openfga/openfga/pull/1222))
+* Added stricter gRPC server max userset size constraints ([#1222](https://github.com/openfga/openfga/pull/1222))
 
-  We changed the default gRPC max message size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max message size should be much smaller than 512KB given our other input constraints.
+  We changed the default gRPC max userset size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max userset size should be much smaller than 512KB given our other input constraints.
 
 ## [1.3.10] - 2023-12-08
 
@@ -572,7 +572,7 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 
 ### Fixed
 
-* Incorrect string in model validation error message ([#1057](https://github.com/openfga/openfga/pull/1057))
+* Incorrect string in model validation error userset ([#1057](https://github.com/openfga/openfga/pull/1057))
 * Incorrect results can be returned by Check API when passing in contextual tuples and the `check-query-cache` experimental flag is turned on ([#1059](https://github.com/openfga/openfga/pull/1059))
 
 ### Changed
@@ -925,7 +925,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
   * We've improved the attributes of various trace spans and made sure that trace span names align with the functions they decorate.
 
-  * Our logging has been enhanced with more logged fields including request level logging which includes a `request_id` and `store_id` field in the log message.
+  * Our logging has been enhanced with more logged fields including request level logging which includes a `request_id` and `store_id` field in the log userset.
 
   These features will allow operators of OpenFGA to improve their monitoring and observability processes.
 
@@ -1100,7 +1100,7 @@ no tuple key instead.
 
 ### Fixed
 * TLS certificate config path mappings ([#285](https://github.com/openfga/openfga/pull/285))
-* Error message when a `user` field is invalid ([#278](https://github.com/openfga/openfga/pull/278))
+* Error userset when a `user` field is invalid ([#278](https://github.com/openfga/openfga/pull/278))
 * host:port mapping with unspecified host ([#275](https://github.com/openfga/openfga/pull/275))
 * Wait for connection to postgres before starting ([#270](https://github.com/openfga/openfga/pull/270))
 
