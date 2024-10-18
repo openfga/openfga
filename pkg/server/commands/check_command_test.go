@@ -47,7 +47,6 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
 			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "invalid:1",
 				Relation: "viewer",
@@ -61,7 +60,6 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
 			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
 				Relation: "invalid",
@@ -75,7 +73,6 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
 			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
 				Relation: "viewer",
@@ -88,8 +85,7 @@ type doc
 	t.Run("validates_input_contextual_tuple", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
+			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
@@ -103,8 +99,7 @@ type doc
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
+			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
@@ -122,8 +117,7 @@ type doc
 			Times(1).
 			Return(nil, nil)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
+			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
@@ -133,8 +127,7 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
+			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.ErrorIs(t, err, errors.ErrUnknown)
@@ -147,8 +140,7 @@ type doc
 			return nil, nil
 		})
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: ulid.Make().String(),
-			//AuthorizationModelId: ulid.Make().String(),
+			StoreID:     ulid.Make().String(),
 			TupleKey:    tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
@@ -166,8 +158,7 @@ type doc
 		})
 		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
 		_, _, err := cmd.Execute(context.Background(), &CheckRequestParams{
-			StoreID: storeID,
-			//AuthorizationModelId: ulid.Make().String(),
+			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
