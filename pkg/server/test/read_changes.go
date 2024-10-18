@@ -2,16 +2,18 @@ package test
 
 import (
 	"context"
+	"strconv"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/wrapperspb"
-	"strconv"
-	"testing"
 )
 
 func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
@@ -69,5 +71,4 @@ func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
 			require.NotEmpty(b, response.GetChanges())
 		}
 	})
-
 }
