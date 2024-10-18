@@ -263,8 +263,8 @@ func TestListObjects(t *testing.T) {
 				Relation:             "guest",
 				User:                 "user:ben",
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_list_objects", func(t *testing.T) {
@@ -341,9 +341,8 @@ func TestStreamedListObjects(t *testing.T) {
 				Relation:             "guest",
 				User:                 "user:ben",
 			}, server)
-			require.Error(t, err)
 
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_streamed_list_objects", func(t *testing.T) {
@@ -421,8 +420,8 @@ func TestRead(t *testing.T) {
 					Object:   "workspace:1",
 				},
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_read", func(t *testing.T) {
@@ -495,8 +494,8 @@ func TestWrite(t *testing.T) {
 					},
 				},
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_write", func(t *testing.T) {
@@ -528,8 +527,8 @@ func TestWrite(t *testing.T) {
 					},
 				},
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_write_for_modules", func(t *testing.T) {
@@ -608,22 +607,22 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkCreateStoreAuthz(context.Background())
-			require.Error(t, err)
-			require.ErrorAs(t, err, &ErrInvalidClientID)
+
+			require.EqualError(t, err, ErrInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkCreateStoreAuthz(ctx)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &ErrInvalidClientID)
+
+			require.EqualError(t, err, ErrInvalidClientID.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkCreateStoreAuthz(ctx)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -675,29 +674,29 @@ func TestCheckAuthz(t *testing.T) {
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkAuthz(context.Background(), settings.testData.id, authz.Check)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &ErrInvalidClientID)
+
+			require.EqualError(t, err, ErrInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &ErrInvalidClientID)
+
+			require.EqualError(t, err, ErrInvalidClientID.Error())
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "ID"})
 			err := openfga.checkAuthz(ctx, settings.testData.id, "invalid api method")
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnknownAPIMethod)
+
+			require.ErrorIs(t, err, authz.ErrUnknownAPIMethod)
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -747,22 +746,22 @@ func TestGetAccessibleStores(t *testing.T) {
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			_, err := openfga.getAccessibleStores(context.Background())
-			require.Error(t, err)
-			require.ErrorAs(t, err, &ErrInvalidClientID)
+
+			require.EqualError(t, err, ErrInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			_, err := openfga.getAccessibleStores(ctx)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &ErrInvalidClientID)
+
+			require.EqualError(t, err, ErrInvalidClientID.Error())
 		})
 
 		t.Run("error_when_AuthorizeListStores_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.getAccessibleStores(ctx)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -855,8 +854,8 @@ func TestCheckWriteAuthz(t *testing.T) {
 					},
 				},
 			}, typesys)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -929,8 +928,8 @@ func TestCheck(t *testing.T) {
 					Object:   fmt.Sprintf("store:%s", settings.testData.id),
 				},
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_check", func(t *testing.T) {
@@ -1052,8 +1051,8 @@ func TestExpand(t *testing.T) {
 					Object:   "workspace:1",
 				},
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_expand", func(t *testing.T) {
@@ -1138,8 +1137,8 @@ func TestReadAuthorizationModel(t *testing.T) {
 					Id:      settings.testData.modelID,
 				},
 			)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readAuthorizationModel", func(t *testing.T) {
@@ -1207,8 +1206,8 @@ func TestReadAuthorizationModels(t *testing.T) {
 					StoreId: settings.testData.id,
 				},
 			)
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readAuthorizationModels", func(t *testing.T) {
@@ -1295,8 +1294,8 @@ func TestWriteAssertions(t *testing.T) {
 				AuthorizationModelId: settings.testData.modelID,
 				Assertions:           assertions,
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_writeAssertions", func(t *testing.T) {
@@ -1379,8 +1378,8 @@ func TestReadAssertions(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readAssertions", func(t *testing.T) {
@@ -1452,8 +1451,8 @@ func TestReadChanges(t *testing.T) {
 				Type:     "user",
 				PageSize: wrapperspb.Int32(50),
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readChanges", func(t *testing.T) {
@@ -1519,8 +1518,8 @@ func TestCreateStore(t *testing.T) {
 			_, err := openfga.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 				Name: name,
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_createStore", func(t *testing.T) {
@@ -1577,8 +1576,8 @@ func TestDeleteStore(t *testing.T) {
 			_, err := openfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
 				StoreId: settings.testData.id,
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_deleteStore", func(t *testing.T) {
@@ -1634,8 +1633,8 @@ func TestGetStore(t *testing.T) {
 			_, err := openfga.GetStore(ctx, &openfgav1.GetStoreRequest{
 				StoreId: settings.testData.id,
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_getStore", func(t *testing.T) {
@@ -1693,8 +1692,8 @@ func TestListStores(t *testing.T) {
 				PageSize:          wrapperspb.Int32(1),
 				ContinuationToken: "",
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_listStores", func(t *testing.T) {
@@ -1776,8 +1775,8 @@ func TestListUsers(t *testing.T) {
 					{Type: "user"},
 				},
 			})
-			require.Error(t, err)
-			require.ErrorAs(t, err, &authz.ErrUnauthorizedResponse)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_listUsers", func(t *testing.T) {
