@@ -351,8 +351,8 @@ func (q *ListObjectsQuery) evaluate(
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
 					).
-						Execute(ctx, &openfgav1.CheckRequest{
-							StoreId:          req.GetStoreId(),
+						Execute(ctx, &CheckCommandParams{
+							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 							ContextualTuples: req.GetContextualTuples(),
 							Context:          req.GetContext(),

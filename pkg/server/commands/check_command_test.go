@@ -43,33 +43,10 @@ type doc
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	t.Run("validates_store_id", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, nil)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId: "invalid",
-		})
-		require.ErrorContains(t, err, "invalid CheckRequest.StoreId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
-	})
-
-	t.Run("validates_model_id", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, nil)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId: ulid.Make().String(),
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     "user:1",
-				Relation: "viewer",
-				Object:   "invalid:1",
-			},
-			AuthorizationModelId: "invalid",
-		})
-		require.ErrorContains(t, err, "invalid CheckRequest.AuthorizationModelId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
-	})
-
 	t.Run("validates_input_user", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "invalid:1",
 				Relation: "viewer",
@@ -81,9 +58,8 @@ type doc
 
 	t.Run("validates_input_relation", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
 				Relation: "invalid",
@@ -95,9 +71,8 @@ type doc
 
 	t.Run("validates_input_object", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
 				Relation: "viewer",
@@ -109,10 +84,9 @@ type doc
 
 	t.Run("validates_input_contextual_tuple", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("invalid:1", "viewer", "user:1"),
@@ -124,10 +98,9 @@ type doc
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
 					// this isn't a tuple that you can write
@@ -143,10 +116,9 @@ type doc
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
 			Return(nil, nil)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 	})
@@ -162,10 +134,9 @@ type doc
 					ResolutionMetadata: &graph.ResolveCheckResponseMetadata{},
 				}, nil
 			})
-		checkResp, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
@@ -174,10 +145,9 @@ type doc
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.ErrorIs(t, err, errors.ErrUnknown)
 	})
@@ -188,11 +158,10 @@ type doc
 			require.Zero(t, req.GetLastCacheInvalidationTime())
 			return nil, nil
 		})
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              ulid.Make().String(),
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
-			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:     ulid.Make().String(),
+			TupleKey:    tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 	})
@@ -207,10 +176,9 @@ type doc
 			return nil, nil
 		})
 		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
-		_, _, err := cmd.Execute(context.Background(), &openfgav1.CheckRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: ulid.Make().String(),
-			TupleKey:             tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  storeID,
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 	})
