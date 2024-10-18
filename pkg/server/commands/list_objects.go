@@ -290,11 +290,10 @@ func (q *ListObjectsQuery) evaluate(
 
 		errChan := make(chan error, 1)
 
-		reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
-
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
@@ -310,7 +309,9 @@ func (q *ListObjectsQuery) evaluate(
 			}
 			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
+			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
+				resolutionMetadata.WasThrottled.Store(true)
+			}
 		}()
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -369,8 +370,10 @@ func (q *ListObjectsQuery) evaluate(
 						return
 					}
 					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
+					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
+					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
+						resolutionMetadata.WasThrottled.Store(true)
+					}
 
 					if resp.Allowed {
 						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
