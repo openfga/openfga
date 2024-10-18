@@ -2399,5 +2399,4 @@ func TestCheckValidatesModelID(t *testing.T) {
 	})
 
 	require.ErrorContains(t, err, "invalid CheckRequest.AuthorizationModelId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
-
 }
