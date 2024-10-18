@@ -1597,17 +1597,24 @@ func (s *Server) validateAccessControlEnabled() error {
 
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	if !authclaims.SkipAuthzCheckFromContext(ctx) {
-		err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
-		if err != nil {
-			return err
-		}
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil
 	}
+
+	err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
 func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil
+	}
+
 	err := s.authorizer.AuthorizeCreateStore(ctx)
 	if err != nil {
 		return err
@@ -1618,24 +1625,29 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 // getAccessibleStores checks whether the caller has permission to list stores and if so,
 // returns the list of stores that the user has access to.
 func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
-	if s.authorizer != nil {
-		err := s.authorizer.AuthorizeListStores(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		list, err := s.authorizer.ListAuthorizedStores(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		return list, nil
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil, nil
 	}
-	return nil, nil
+
+	err := s.authorizer.AuthorizeListStores(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.authorizer.ListAuthorizedStores(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, nil
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
 func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil
+	}
+
 	modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
 	if err != nil {
 		return err
