@@ -13,8 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -30,6 +28,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
