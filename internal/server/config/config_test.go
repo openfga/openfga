@@ -328,7 +328,6 @@ func TestVerifyConfig(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "none"
 
-		// Capture the output of fmt.Println
 		oldStdout := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
@@ -353,7 +352,6 @@ func TestVerifyConfig(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "info"
 
-		// Capture the output of fmt.Println
 		oldStdout := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
@@ -615,7 +613,6 @@ func TestVerifyServerSettings(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "info"
 
-		// Capture the output of fmt.Println
 		oldStdout := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
@@ -762,41 +759,25 @@ func TestVerifyBinarySettings(t *testing.T) {
 	})
 
 	t.Run("prints_warning_when_log_level_is_none", func(t *testing.T) {
-
 		cfg := DefaultConfig()
-
 		cfg.Log.Level = "none"
-
-		// Capture the output of fmt.Println
-
 		oldStdout := os.Stdout
-
 		r, w, _ := os.Pipe()
-
 		os.Stdout = w
 
 		defer func() {
-
 			// Restore the original stdout
-
 			os.Stdout = oldStdout
-
 			w.Close()
-
 		}()
 
 		cfg.VerifyBinarySettings()
-
 		w.Close()
-
 		// Read the captured output
-
 		var buf bytes.Buffer
 
 		io.Copy(&buf, r)
-
 		require.Contains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
-
 	})
 }
 
