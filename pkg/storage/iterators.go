@@ -230,7 +230,6 @@ type TupleKeyFilterFunc func(tupleKey *openfgav1.TupleKey) bool
 type filteredTupleKeyIterator struct {
 	iter   TupleKeyIterator
 	filter TupleKeyFilterFunc
-	mu     *sync.Mutex
 	once   *sync.Once
 }
 
@@ -286,7 +285,6 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 	return &filteredTupleKeyIterator{
 		iter,
 		filter,
-		&sync.Mutex{},
 		&sync.Once{},
 	}
 }
