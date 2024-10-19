@@ -41,8 +41,8 @@ type TupleIterator = Iterator[*openfgav1.Tuple]
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
 type combinedIterator[T any] struct {
-	mu      sync.Mutex
-	once    sync.Once
+	mu      *sync.Mutex
+	once    *sync.Once
 	pending []Iterator[T]
 	done    []Iterator[T]
 }
@@ -122,7 +122,7 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 			pending = append(pending, iter)
 		}
 	}
-	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending))}
+	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending)), once: &sync.Once{}, mu: &sync.Mutex{}}
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
@@ -145,17 +145,14 @@ func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator
 
 type tupleKeyIterator struct {
 	iter TupleIterator
-	mu   sync.Mutex
-	once sync.Once
+	once *sync.Once
 }
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 
 // Next see [Iterator.Next].
 func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
-	t.mu.Lock()
 	tuple, err := t.iter.Next(ctx)
-	t.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -171,9 +168,7 @@ func (t *tupleKeyIterator) Stop() {
 
 // Head see [Iterator.Head].
 func (t *tupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
-	t.mu.Lock()
 	tuple, err := t.iter.Head(ctx)
-	t.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +178,7 @@ func (t *tupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error
 // NewTupleKeyIteratorFromTupleIterator takes a [TupleIterator] and yields
 // all the [*openfgav1.TupleKey](s) from it as a [TupleKeyIterator].
 func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
-	return &tupleKeyIterator{iter, sync.Mutex{}, sync.Once{}}
+	return &tupleKeyIterator{iter, &sync.Once{}}
 }
 
 type staticIterator[T any] struct {
@@ -235,8 +230,8 @@ type TupleKeyFilterFunc func(tupleKey *openfgav1.TupleKey) bool
 type filteredTupleKeyIterator struct {
 	iter   TupleKeyIterator
 	filter TupleKeyFilterFunc
-	mu     sync.Mutex
-	once   sync.Once
+	mu     *sync.Mutex
+	once   *sync.Once
 }
 
 var _ TupleKeyIterator = (*filteredTupleKeyIterator)(nil)
@@ -291,8 +286,8 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 	return &filteredTupleKeyIterator{
 		iter,
 		filter,
-		sync.Mutex{},
-		sync.Once{},
+		&sync.Mutex{},
+		&sync.Once{},
 	}
 }
 

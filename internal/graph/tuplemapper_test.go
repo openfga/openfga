@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -25,7 +24,7 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := &NestedUsersetMapper{innerIter, &sync.Once{}}
+	mapper := wrapIterator(NestedUsersetKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 
@@ -60,7 +59,7 @@ func TestNestedTTUTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := &NestedTTUMapper{innerIter, &sync.Once{}}
+	mapper := wrapIterator(NestedTTUKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 
@@ -87,7 +86,7 @@ func TestObjectIDTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := &ObjectIDMapper{innerIter, &sync.Once{}}
+	mapper := wrapIterator(ObjectIDKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 
