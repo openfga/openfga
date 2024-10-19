@@ -261,8 +261,6 @@ func (f *filteredTupleKeyIterator) Stop() {
 // the filter function this iterator was constructed with.
 // Note: the underlying iterator for unmatched filter may advance until filter is satisfied.
 func (f *filteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	for {
 		tuple, err := f.iter.Head(ctx)
 		if err != nil {
