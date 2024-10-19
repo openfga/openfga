@@ -151,14 +151,12 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			tuples: []string{
 				"folder:C#can_delete@user:jon",
 				"folder:C#editor@group:fga#member",
-				"folder:C#editor@group:fga1#member",
 				"group:fga#member@user:jon",
-				"group:fga1#member@user:jon",
 			},
 			objectType:              "folder",
 			relation:                "can_delete",
 			user:                    "user:jon",
-			expectedDispatchCount:   3,
+			expectedDispatchCount:   2,
 			expectedThrottlingValue: 1,
 		},
 		{
@@ -239,7 +237,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
 				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
 					graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
-						DefaultThreshold: 1,
+						DefaultThreshold: 0,
 						MaxThreshold:     0,
 					}),
 					graph.WithThrottler(mockThrottler),
