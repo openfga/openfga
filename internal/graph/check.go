@@ -1033,6 +1033,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 			continue
 		}
 		pool.Go(func(ctx context.Context) error {
+			defer mapper.Stop()
 			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
 			dsCount.Add(1)
 			for usersetMsg := range objectToUsersetMessageChan {
@@ -1152,7 +1153,6 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 
 	go func() {
 		defer func() {
-			tupleMapper.Stop()
 			close(usersetMessageChan)
 		}()
 
@@ -1160,7 +1160,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 			res, err := tupleMapper.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					break
+					return
 				}
 				telemetry.TraceError(span, err)
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
@@ -1172,8 +1172,8 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 	return usersetMessageChan
 }
 
-// processUsersetMessage will add the userset's userset in the primarySortedSet.
-// In addition, it returns whether the userset's userset exists in secondarySortedSet.
+// processUsersetMessage will add the userset in the primarySortedSet.
+// In addition, it returns whether the userset exists in secondarySortedSet.
 // This is used to find the intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
 	primarySortedSet storage.SortedSet,
@@ -1198,7 +1198,7 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	objectToUsersetIter := wrapIterator(mapping.kind, iter)
-	// .stop is being called by streamedLookupUsersetFromIterator
+	defer objectToUsersetIter.Stop()
 	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
 
 	res := &ResolveCheckResponse{
@@ -1227,7 +1227,7 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	}
 	res.GetResolutionMetadata().DatastoreQueryCount++
 	usersetFromUserIter := wrapIterator(ObjectIDKind, userIter)
-	// .stop is being called by streamedLookupUsersetFromIterator
+	defer usersetFromUserIter.Stop()
 	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, usersetFromUserIter)
 
 	userToUsersetDone := false

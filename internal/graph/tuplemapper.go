@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -28,6 +29,7 @@ type TupleMapper interface {
 
 type NestedUsersetMapper struct {
 	iter storage.TupleKeyIterator
+	once *sync.Once
 }
 
 var _ TupleMapper = (*NestedUsersetMapper)(nil)
@@ -41,7 +43,9 @@ func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
 }
 
 func (n NestedUsersetMapper) Stop() {
-	n.iter.Stop()
+	n.once.Do(func() {
+		n.iter.Stop()
+	})
 }
 
 func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
@@ -63,6 +67,7 @@ func (n NestedUsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 
 type NestedTTUMapper struct {
 	iter storage.TupleKeyIterator
+	once *sync.Once
 }
 
 var _ TupleMapper = (*NestedTTUMapper)(nil)
@@ -76,7 +81,9 @@ func (n NestedTTUMapper) Next(ctx context.Context) (string, error) {
 }
 
 func (n NestedTTUMapper) Stop() {
-	n.iter.Stop()
+	n.once.Do(func() {
+		n.iter.Stop()
+	})
 }
 
 func (n NestedTTUMapper) Head(ctx context.Context) (string, error) {
@@ -93,6 +100,7 @@ func (n NestedTTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 
 type ObjectIDMapper struct {
 	iter storage.TupleKeyIterator
+	once *sync.Once
 }
 
 var _ TupleMapper = (*ObjectIDMapper)(nil)
@@ -106,7 +114,9 @@ func (n ObjectIDMapper) Next(ctx context.Context) (string, error) {
 }
 
 func (n ObjectIDMapper) Stop() {
-	n.iter.Stop()
+	n.once.Do(func() {
+		n.iter.Stop()
+	})
 }
 
 func (n ObjectIDMapper) Head(ctx context.Context) (string, error) {
@@ -124,11 +134,11 @@ func (n ObjectIDMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 func wrapIterator(kind TupleMapperKind, iter storage.TupleKeyIterator) TupleMapper {
 	switch kind {
 	case NestedUsersetKind:
-		return &NestedUsersetMapper{iter: iter}
+		return &NestedUsersetMapper{iter: iter, once: &sync.Once{}}
 	case NestedTTUKind:
-		return &NestedTTUMapper{iter: iter}
+		return &NestedTTUMapper{iter: iter, once: &sync.Once{}}
 	case ObjectIDKind:
-		return &ObjectIDMapper{iter: iter}
+		return &ObjectIDMapper{iter: iter, once: &sync.Once{}}
 	}
 	return nil
 }
