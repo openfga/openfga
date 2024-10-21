@@ -22,7 +22,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var ErrInvalidClientID = errors.New("rpc error: code = InvalidArgument desc = client ID not found in context")
+var errInvalidClientID = errors.New("rpc error: code = InvalidArgument desc = client ID not found in context")
 
 type storeAndModel struct {
 	id      string
@@ -608,14 +608,14 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkCreateStoreAuthz(context.Background())
 
-			require.EqualError(t, err, ErrInvalidClientID.Error())
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkCreateStoreAuthz(ctx)
 
-			require.EqualError(t, err, ErrInvalidClientID.Error())
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
@@ -675,14 +675,14 @@ func TestCheckAuthz(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkAuthz(context.Background(), settings.testData.id, authz.Check)
 
-			require.EqualError(t, err, ErrInvalidClientID.Error())
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 
-			require.EqualError(t, err, ErrInvalidClientID.Error())
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {
@@ -747,14 +747,14 @@ func TestGetAccessibleStores(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			_, err := openfga.getAccessibleStores(context.Background())
 
-			require.EqualError(t, err, ErrInvalidClientID.Error())
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			_, err := openfga.getAccessibleStores(ctx)
 
-			require.EqualError(t, err, ErrInvalidClientID.Error())
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_when_AuthorizeListStores_errors", func(t *testing.T) {
