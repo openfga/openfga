@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -12,7 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const defaultMaxConcurrentChecksPerBatch = 50
+const defaultMaxConcurrentChecksPerBatch = 25
 
 type BatchCheckQuery struct {
 	cacheController            cachecontroller.CacheController
@@ -30,6 +31,13 @@ type BatchCheckCommandParams struct {
 	Checks               []*openfgav1.BatchCheckItem
 	Consistency          openfgav1.ConsistencyPreference
 	StoreID              string
+}
+
+type BatchCheckOutcome struct {
+	CorrelationID string
+	CheckResponse *graph.ResolveCheckResponse
+	Duration      time.Duration
+	Err           error
 }
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
@@ -82,23 +90,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 // Execute here needs new return types as well.
 // TODO
 func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	//cacheInvalidationTime := time.Time{}
-	//
-	//if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-	//	cacheInvalidationTime = bq.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
-	//}
-
-	// for validation:
-	// validate the overall batch check request
-	// then within each loop validate the check itself
-	// you get the validate check request for free from check, probably just have to refactor
-	// it a bit since it relies on a request instead of a struct
-	//err := validateCheckRequest(ctx, req, c.typesys)
-	// if fail write to an errors chan and return the error in the resultant map
-
-	//checkCommand := NewCheckCommand(
-	//	)
-	// Spin up 1 check command
+	// This check query will be run against every check in the batch
 	checkQuery := NewCheckCommand(
 		bq.datastore,
 		bq.checkResolver,
@@ -109,10 +101,38 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 		WithCheckCommandResolveNodeLimit(bq.resolveNodeLimit),
 	)
 
-	// but then execute in many goroutines and accumulate results
-	resultsChan := make(chan graph.ResolveCheckResponse, len(params.Checks))
-	errorsChan := make(chan error, len(params.Checks))
-	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
+	resultsChan := make(chan BatchCheckOutcome, len(params.Checks))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	checkQuery.Execute(ctx, req)
+	// Kick off all checks concurrently allowing contextPool to manage limits
+	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
+	for _, check := range params.Checks {
+		pool.Go(func(ctx context.Context) error {
+			checkParams := &CheckCommandParams{
+				StoreID:          params.StoreID,
+				TupleKey:         check.TupleKey,
+				ContextualTuples: check.ContextualTuples,
+				Context:          check.Context,
+				Consistency:      params.Consistency,
+			}
+			start := time.Now()
+
+			response, _, err := checkQuery.Execute(ctx, checkParams)
+			concurrency.TrySendThroughChannel(ctx, BatchCheckOutcome{
+				CorrelationID: check.CorrelationId,
+				CheckResponse: response,
+				Duration:      time.Since(start),
+				Err:           err,
+			}, resultsChan)
+
+			return nil
+		})
+	}
+
+	_ = pool.Wait()
+
+	// now all checks have completed, drain the channel and compile the response
+
+	return nil, nil, nil
 }
