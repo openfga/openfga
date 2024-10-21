@@ -24,7 +24,7 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := &NestedUsersetMapper{innerIter}
+	mapper := wrapIterator(NestedUsersetKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 
@@ -59,7 +59,7 @@ func TestNestedTTUTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := &NestedTTUMapper{innerIter}
+	mapper := wrapIterator(NestedTTUKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 
@@ -73,5 +73,32 @@ func TestNestedTTUTupleMapper(t *testing.T) {
 		res, err := mapper.Next(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, "group:2#member", res)
+	})
+}
+
+func TestObjectIDTupleMapper(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("group:fga", "member", "group:2#member"),
+	}
+
+	innerIter := storage.NewStaticTupleKeyIterator(tks)
+
+	mapper := wrapIterator(ObjectIDKind, innerIter)
+	require.NotNil(t, mapper)
+	defer mapper.Stop()
+
+	t.Run("head_success", func(t *testing.T) {
+		res, err := mapper.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "group:fga", res)
+	})
+
+	t.Run("map_success", func(t *testing.T) {
+		res, err := mapper.Next(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "group:fga", res)
 	})
 }
