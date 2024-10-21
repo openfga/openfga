@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cespare/xxhash/v2"
 
 	"golang.org/x/sync/singleflight"
 
@@ -81,6 +84,48 @@ func NewCachedDatastore(
 		ttl:              ttl,
 		sf:               &singleflight.Group{},
 	}
+}
+
+func (c *CachedDatastore) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter storage.ReadStartingWithUserFilter,
+	options storage.ReadStartingWithUserOptions,
+) (storage.TupleIterator, error) {
+	ctx, span := tracer.Start(
+		ctx,
+		"cache.ReadStartingWithUser",
+		trace.WithAttributes(attribute.Bool("cached", false)),
+	)
+	defer span.End()
+
+	iter := func(ctx context.Context) (storage.TupleIterator, error) {
+		return c.OpenFGADatastore.ReadStartingWithUser(ctx, store, filter, options)
+	}
+
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return iter(ctx)
+	}
+
+	var b strings.Builder
+	b.WriteString(
+		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
+	)
+
+	for _, objectRel := range filter.UserFilter {
+		b.WriteString(fmt.Sprintf("/%s", tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())))
+	}
+
+	hasher := xxhash.New()
+	for _, oid := range filter.ObjectIDs.Values() {
+		if _, err := hasher.WriteString(oid); err != nil {
+			return nil, err
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
+
+	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByObjectTypeRelationCacheKey(store, filter.ObjectType, filter.Relation))
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
@@ -262,9 +307,7 @@ type cachedIterator struct {
 func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
-		if !errors.Is(err, storage.ErrIteratorDone) &&
-			!errors.Is(err, context.Canceled) &&
-			!errors.Is(err, context.DeadlineExceeded) {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			c.tuples = nil // don't store results that are incomplete
 		}
 		return nil, err

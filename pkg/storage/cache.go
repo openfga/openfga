@@ -111,7 +111,11 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 }
 
 func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
-	return fmt.Sprintf("%s%s/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)
+	return fmt.Sprintf("%s%s-or/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)
+}
+
+func GetInvalidIteratorByObjectTypeRelationCacheKey(storeID, objectType, relation string) string {
+	return fmt.Sprintf("%s%s-otr/%s:#%s", invalidIteratorCachePrefix, storeID, objectType, relation)
 }
 
 type TupleIteratorCacheEntry struct {
@@ -121,6 +125,10 @@ type TupleIteratorCacheEntry struct {
 
 func GetReadUsersetTuplesCacheKeyPrefix(store, object, relation string) string {
 	return fmt.Sprintf("%srut/%s/%s#%s", iteratorCachePrefix, store, object, relation)
+}
+
+func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) string {
+	return fmt.Sprintf("%srtwu/%s/%s#%s", iteratorCachePrefix, store, objectType, relation)
 }
 
 func GetReadCacheKey(store, tuple string) string {

@@ -5,6 +5,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/openfga/openfga/pkg/tuple"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -156,7 +158,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		// only a subset of changes are new, revoke the respective ones
 		lastModified := time.Now()
 		for ; idx >= 0; idx-- {
-			c.invalidateIteratorCacheByObjectRelation(storeID, changes[idx].GetTupleKey().GetObject(), changes[idx].GetTupleKey().GetRelation(), lastModified)
+			t := changes[idx].GetTupleKey()
+			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
+			c.invalidateIteratorCacheByObjectTypeRelation(storeID, tuple.GetType(t.GetObject()), t.GetRelation(), lastModified)
 		}
 	}
 
@@ -171,4 +175,9 @@ func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
 	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+}
+
+func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, objectType, relation string, ts time.Time) {
+	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
+	c.cache.Set(storage.GetInvalidIteratorByObjectTypeRelationCacheKey(storeID, objectType, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
