@@ -35,7 +35,7 @@ type BatchCheckCommandParams struct {
 }
 
 type BatchCheckOutcome struct {
-	CorrelationID string
+	//CorrelationID string
 	CheckResponse *graph.ResolveCheckResponse
 	Duration      time.Duration
 	Err           error
@@ -89,7 +89,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 }
 
 // Execute here needs new return types as well.
-func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommandParams) ([]*BatchCheckOutcome, error) {
+func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[string]*BatchCheckOutcome, error) {
 	// This check query will be run against every check in the batch
 	checkQuery := NewCheckCommand(
 		bq.datastore,
@@ -101,7 +101,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 		WithCheckCommandResolveNodeLimit(bq.resolveNodeLimit),
 	)
 
-	var resultSlice = make([]*BatchCheckOutcome, 0, len(params.Checks))
+	// the keys to this map are the correlation_id associated with each check
+	var resultMap = map[string]*BatchCheckOutcome{}
 	lock := sync.Mutex{}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -122,14 +123,13 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
-			// lock the results slice and append
+			// lock the results map and add a new entry
 			lock.Lock()
-			resultSlice = append(resultSlice, &BatchCheckOutcome{
-				CorrelationID: check.CorrelationId,
+			resultMap[check.CorrelationId] = &BatchCheckOutcome{
 				CheckResponse: response,
 				Duration:      time.Since(start),
 				Err:           err,
-			})
+			}
 			lock.Unlock()
 
 			return nil
@@ -139,5 +139,5 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 	_ = pool.Wait()
 
 	// TODO will there ever be an actual error condition in this command?
-	return resultSlice, nil
+	return resultMap, nil
 }
