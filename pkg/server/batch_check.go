@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/authz"
@@ -12,6 +13,7 @@ import (
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
+	// TODO all necessary telemetry / logging
 	ctx, span := tracer.Start(ctx, authz.Read, trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
@@ -44,7 +46,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 	// call a batch check command
 	// that command will just manage concurrency, fan out the checks, and run the timer
-	commands.NewBatchCheckCommand(
+	query := commands.NewBatchCheckCommand(
 		s.checkDatastore,
 		s.checkResolver,
 		typesys,
@@ -56,4 +58,45 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		commands.WithBatchCheckCommandMaxConcurrentChecks(50),
 		commands.WithBatchCheckCommandLogger(s.logger),
 	)
+
+	result, err := query.Execute(ctx, &commands.BatchCheckCommandParams{
+		AuthorizationModelID: req.GetAuthorizationModelId(),
+		Checks:               req.GetChecks(),
+		Consistency:          req.GetConsistency(),
+		StoreID:              storeID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	response := &openfgav1.BatchCheckResponse{}
+	response.Result = transformCheckResultToRPC(result)
+
+	return response, nil
+}
+
+func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
+	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
+	for k, v := range checkResults {
+		singleResult := &openfgav1.BatchCheckSingleResult{}
+		singleResult.QueryDurationMs = wrapperspb.Int32(int32(v.Duration.Milliseconds()))
+
+		if v.Err != nil {
+			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Error{
+				// TODO error transformation logic, see what all the possible check errors are
+				Error: &openfgav1.CheckError{
+					Code:    nil,
+					Message: "",
+				},
+			}
+		} else {
+			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
+				Allowed: v.CheckResponse.Allowed,
+			}
+		}
+
+		batchResult[k] = singleResult
+	}
+
+	return batchResult
 }
