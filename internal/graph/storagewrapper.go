@@ -116,14 +116,16 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		b.WriteString(fmt.Sprintf("/%s", tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())))
 	}
 
-	hasher := xxhash.New()
-	for _, oid := range filter.ObjectIDs.Values() {
-		if _, err := hasher.WriteString(oid); err != nil {
-			return nil, err
+	if filter.ObjectIDs != nil {
+		hasher := xxhash.New()
+		for _, oid := range filter.ObjectIDs.Values() {
+			if _, err := hasher.WriteString(oid); err != nil {
+				return nil, err
+			}
 		}
-	}
 
-	b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
+		b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
+	}
 
 	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByObjectTypeRelationCacheKey(store, filter.ObjectType, filter.Relation))
 }
