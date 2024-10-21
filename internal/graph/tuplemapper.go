@@ -25,11 +25,13 @@ type TupleMapper interface {
 }
 
 type NestedUsersetMapper struct {
-	Iter storage.TupleKeyIterator
+	iter storage.TupleKeyIterator
 }
 
+var _ TupleMapper = (*NestedUsersetMapper)(nil)
+
 func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
-	tupleRes, err := n.Iter.Next(ctx)
+	tupleRes, err := n.iter.Next(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -37,11 +39,11 @@ func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
 }
 
 func (n NestedUsersetMapper) Stop() {
-	n.Iter.Stop()
+	n.iter.Stop()
 }
 
 func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
-	tupleRes, err := n.Iter.Head(ctx)
+	tupleRes, err := n.iter.Head(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -55,4 +57,44 @@ func (n NestedUsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 		return "", fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
 	}
 	return usersetName, nil
+}
+
+type NestedTTUMapper struct {
+	iter storage.TupleKeyIterator
+}
+
+var _ TupleMapper = (*NestedTTUMapper)(nil)
+
+func (n NestedTTUMapper) Next(ctx context.Context) (string, error) {
+	tupleRes, err := n.iter.Next(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.doMap(tupleRes)
+}
+
+func (n NestedTTUMapper) Stop() {
+	n.iter.Stop()
+}
+
+func (n NestedTTUMapper) Head(ctx context.Context) (string, error) {
+	tupleRes, err := n.iter.Head(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.doMap(tupleRes)
+}
+
+func (n NestedTTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+	return t.GetUser(), nil
+}
+
+func wrapIterator(kind TupleMapperKind, iter storage.TupleKeyIterator) TupleMapper {
+	switch kind {
+	case NestedUsersetKind:
+		return &NestedUsersetMapper{iter: iter}
+	case NestedTTUKind:
+		return &NestedTTUMapper{iter: iter}
+	}
+	return nil
 }

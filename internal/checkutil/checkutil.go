@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/openfga/openfga/internal/validation"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -38,9 +40,9 @@ func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 }
 
 // ObjectIDInSortedSet returns whether any of the object IDs in the tuples given by the iterator is in the input set of objectIDs.
-func ObjectIDInSortedSet(ctx context.Context, filteredIter *storage.ConditionsFilteredTupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
+func ObjectIDInSortedSet(ctx context.Context, iter storage.TupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
 	for {
-		t, err := filteredIter.Next(ctx)
+		t, err := iter.Next(ctx)
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return false, nil
 		}
@@ -72,10 +74,13 @@ func userFilter(hasPubliclyAssignedType bool,
 	}
 }
 
+// TODO: These (graph.ResolveCheckRequest, graph.ResolveCheckResponse) should be moved to a shared package to avoid having
+// to duplicate across, and have better composition.
 type resolveCheckRequest interface {
 	GetStoreID() string
 	GetTupleKey() *openfgav1.TupleKey
 	GetConsistency() openfgav1.ConsistencyPreference
+	GetContext() *structpb.Struct
 }
 
 // IteratorReadStartingFromUser returns storage iterator for
@@ -86,7 +91,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	ds storage.RelationshipTupleReader,
 	req resolveCheckRequest,
 	objectRel string,
-	objectIDs storage.SortedSet) (storage.TupleIterator, error) {
+	objectIDs storage.SortedSet) (storage.TupleKeyIterator, error) {
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
@@ -104,13 +109,24 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	relationReference := typesystem.DirectRelationReference(objectType, relation)
 	hasPubliclyAssignedType, _ := typesys.IsPubliclyAssignable(relationReference, userType)
 
-	return ds.ReadStartingWithUser(ctx, storeID,
+	iter, err := ds.ReadStartingWithUser(ctx, storeID,
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: userFilter(hasPubliclyAssignedType, user, userType),
 			ObjectIDs:  objectIDs,
 		}, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+	), nil
 }
 
 func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
