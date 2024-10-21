@@ -160,7 +160,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
 			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
-			c.invalidateIteratorCacheByObjectTypeRelation(storeID, tuple.GetType(t.GetObject()), t.GetRelation(), lastModified)
+			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
 
@@ -174,10 +174,11 @@ func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
 	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
-	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+	// GetInvalidIteratorByObjectRelationCacheKeys returns only 1 instance
+	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
-func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, objectType, relation string, ts time.Time) {
+func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, user, objectType string, ts time.Time) {
 	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
-	c.cache.Set(storage.GetInvalidIteratorByObjectTypeRelationCacheKey(storeID, objectType, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

@@ -110,12 +110,16 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 	return fmt.Sprintf("%s%s", invalidIteratorCachePrefix, storeID)
 }
 
-func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
-	return fmt.Sprintf("%s%s-or/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)
+func GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation string) []string {
+	return []string{fmt.Sprintf("%s%s-or/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)}
 }
 
-func GetInvalidIteratorByObjectTypeRelationCacheKey(storeID, objectType, relation string) string {
-	return fmt.Sprintf("%s%s-otr/%s:#%s", invalidIteratorCachePrefix, storeID, objectType, relation)
+func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
+	res := make([]string, 0, len(users))
+	for _, user := range users {
+		res = append(res, fmt.Sprintf("%s%s-otr/%s|%s", invalidIteratorCachePrefix, storeID, user, objectType))
+	}
+	return res
 }
 
 type TupleIteratorCacheEntry struct {

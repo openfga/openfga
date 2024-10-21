@@ -175,8 +175,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("5"),
-				storage.GetInvalidIteratorByObjectRelationCacheKey("5", "test:5", "viewer"),
-				storage.GetInvalidIteratorByObjectTypeRelationCacheKey("5", "test", "viewer")},
+				storage.GetInvalidIteratorByObjectRelationCacheKeys("5", "test:5", "viewer")[0],
+				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0]},
 		},
 		{
 			name:    "last_change_is_halfway_in_the_newest_batch",
@@ -221,8 +221,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("6"),
-				storage.GetInvalidIteratorByObjectRelationCacheKey("6", "test:5", "viewer"),
-				storage.GetInvalidIteratorByObjectTypeRelationCacheKey("6", "test", "viewer")},
+				storage.GetInvalidIteratorByObjectRelationCacheKeys("6", "test:5", "viewer")[0],
+				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0]},
 		},
 		{
 			name:               "last_change_not_in_newest_batch",
