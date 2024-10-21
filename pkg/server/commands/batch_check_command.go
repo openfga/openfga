@@ -2,31 +2,34 @@ package commands
 
 import (
 	"context"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"time"
-
-	"github.com/openfga/openfga/pkg/logger"
 )
 
-//const (
-//	defaultResolveNodeLimit           = 25
-//	defaultMaxConcurrentReadsForCheck = math.MaxUint32
-//)
+const defaultMaxConcurrentChecksPerBatch = 50
 
 type BatchCheckQuery struct {
-	logger          logger.Logger
-	checkResolver   graph.CheckResolver
-	typesys         *typesystem.TypeSystem
-	datastore       storage.RelationshipTupleReader
-	cacheController cachecontroller.CacheController
+	cacheController            cachecontroller.CacheController
+	checkResolver              graph.CheckResolver
+	datastore                  storage.RelationshipTupleReader
+	logger                     logger.Logger
+	maxConcurrentChecks        uint32
+	maxConcurrentReadsPerCheck uint32
+	resolveNodeLimit           uint32
+	typesys                    *typesystem.TypeSystem
+}
 
-	//resolveNodeLimit    uint32
-	maxConcurrentChecks uint32
-	//maxConcurrentReads  uint32
+type BatchCheckCommandParams struct {
+	AuthorizationModelID string
+	Checks               []*openfgav1.BatchCheckItem
+	Consistency          openfgav1.ConsistencyPreference
+	StoreID              string
 }
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
@@ -37,19 +40,37 @@ func WithBatchCheckCommandMaxConcurrentChecks(m uint32) BatchCheckQueryOption {
 	}
 }
 
-func WithCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
+func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
 		bq.cacheController = cc
 	}
+}
 
+func WithBatchCheckResolveNodeLimit(resolveLimit uint32) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.resolveNodeLimit = resolveLimit
+	}
+}
+
+func WithBatchCheckMaxConcurrentReadsPerCheck(maxReads uint32) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.maxConcurrentReadsPerCheck = maxReads
+	}
+}
+
+func WithBatchCheckCommandLogger(l logger.Logger) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.logger = l
+	}
 }
 
 func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
-		logger:        logger.NewNoopLogger(),
-		datastore:     datastore,
-		checkResolver: checkResolver,
-		typesys:       typesys,
+		logger:              logger.NewNoopLogger(),
+		datastore:           datastore,
+		checkResolver:       checkResolver,
+		typesys:             typesys,
+		maxConcurrentChecks: defaultMaxConcurrentChecksPerBatch,
 	}
 
 	for _, opt := range opts {
@@ -59,17 +80,13 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 }
 
 // Execute here needs new return types as well.
-func (bq *BatchCheckQuery) Execute(ctx context.Context, req *openfgav1.BatchCheckRequest) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := req.Validate()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	cacheInvalidationTime := time.Time{}
-
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = bq.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
-	}
+// TODO
+func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+	//cacheInvalidationTime := time.Time{}
+	//
+	//if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+	//	cacheInvalidationTime = bq.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
+	//}
 
 	// for validation:
 	// validate the overall batch check request
@@ -81,14 +98,21 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, req *openfgav1.BatchChec
 
 	//checkCommand := NewCheckCommand(
 	//	)
-	resp, checkRequestMetadata, err := NewCheckCommand(
+	// Spin up 1 check command
+	checkQuery := NewCheckCommand(
 		bq.datastore,
 		bq.checkResolver,
 		bq.typesys,
-		WithCheckCommandLogger(s.logger), // logger?
-		WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck), // these?
-		WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),             // these?
-		WithCacheController(s.cacheController),                           // these?
-	).Execute(ctx, req)
+		WithCheckCommandLogger(bq.logger),
+		WithCacheController(bq.cacheController),
+		WithCheckCommandMaxConcurrentReads(bq.maxConcurrentReadsPerCheck),
+		WithCheckCommandResolveNodeLimit(bq.resolveNodeLimit),
+	)
 
+	// but then execute in many goroutines and accumulate results
+	resultsChan := make(chan graph.ResolveCheckResponse, len(params.Checks))
+	errorsChan := make(chan error, len(params.Checks))
+	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
+
+	checkQuery.Execute(ctx, req)
 }
