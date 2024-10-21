@@ -18,7 +18,7 @@ type hashableValue interface {
 	Append(hasher) error
 }
 
-// strinHasher implements the hashableValue interface for string types.
+// stringHasher implements the hashableValue interface for string types.
 type stringHasher string
 
 var _ hashableValue = (*stringHasher)(nil)
