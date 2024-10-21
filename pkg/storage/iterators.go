@@ -41,6 +41,8 @@ type TupleIterator = Iterator[*openfgav1.Tuple]
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
 type combinedIterator[T any] struct {
+	mu      *sync.Mutex
+	once    *sync.Once
 	pending []Iterator[T]
 	done    []Iterator[T]
 }
@@ -53,28 +55,36 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 		return val, ErrIteratorDone
 	}
 
+	c.mu.Lock()
 	iter := c.pending[0]
 	val, err := iter.Next(ctx)
 	if err != nil {
 		if errors.Is(err, ErrIteratorDone) {
 			c.pending = c.pending[1:]
 			c.done = append(c.done, iter)
+			c.mu.Unlock()
 			return c.Next(ctx)
 		}
+		c.mu.Unlock()
 		return val, err
 	}
 
+	c.mu.Unlock()
 	return val, nil
 }
 
 // Stop see [Iterator.Stop].
 func (c *combinedIterator[T]) Stop() {
-	for _, iter := range c.done {
-		iter.Stop()
-	}
-	for _, iter := range c.pending {
-		iter.Stop()
-	}
+	c.once.Do(func() {
+		c.mu.Lock()
+		for _, iter := range c.done {
+			iter.Stop()
+		}
+		for _, iter := range c.pending {
+			iter.Stop()
+		}
+		c.mu.Unlock()
+	})
 }
 
 // Head see [Iterator.Head].
@@ -85,17 +95,20 @@ func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
 		return val, ErrIteratorDone
 	}
 
+	c.mu.Lock()
 	iter := c.pending[0]
 	val, err := iter.Head(ctx)
 	if err != nil {
 		if errors.Is(err, ErrIteratorDone) {
 			c.pending = c.pending[1:]
 			c.done = append(c.done, iter)
+			c.mu.Unlock()
 			return c.Head(ctx)
 		}
+		c.mu.Unlock()
 		return val, err
 	}
-
+	c.mu.Unlock()
 	return val, nil
 }
 
@@ -109,7 +122,7 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 			pending = append(pending, iter)
 		}
 	}
-	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending))}
+	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending)), once: &sync.Once{}, mu: &sync.Mutex{}}
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
@@ -132,6 +145,7 @@ func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator
 
 type tupleKeyIterator struct {
 	iter TupleIterator
+	once *sync.Once
 }
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
@@ -147,7 +161,9 @@ func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error
 
 // Stop see [Iterator.Stop].
 func (t *tupleKeyIterator) Stop() {
-	t.iter.Stop()
+	t.once.Do(func() {
+		t.iter.Stop()
+	})
 }
 
 // Head see [Iterator.Head].
@@ -162,7 +178,7 @@ func (t *tupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error
 // NewTupleKeyIteratorFromTupleIterator takes a [TupleIterator] and yields
 // all the [*openfgav1.TupleKey](s) from it as a [TupleKeyIterator].
 func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
-	return &tupleKeyIterator{iter}
+	return &tupleKeyIterator{iter, &sync.Once{}}
 }
 
 type staticIterator[T any] struct {
@@ -214,7 +230,7 @@ type TupleKeyFilterFunc func(tupleKey *openfgav1.TupleKey) bool
 type filteredTupleKeyIterator struct {
 	iter   TupleKeyIterator
 	filter TupleKeyFilterFunc
-	mu     sync.Mutex
+	once   *sync.Once
 }
 
 var _ TupleKeyIterator = (*filteredTupleKeyIterator)(nil)
@@ -236,15 +252,15 @@ func (f *filteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKe
 
 // Stop see [Iterator.Stop].
 func (f *filteredTupleKeyIterator) Stop() {
-	f.iter.Stop()
+	f.once.Do(func() {
+		f.iter.Stop()
+	})
 }
 
 // Head returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
 // Note: the underlying iterator for unmatched filter may advance until filter is satisfied.
 func (f *filteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
 	for {
 		tuple, err := f.iter.Head(ctx)
 		if err != nil {
@@ -267,7 +283,7 @@ func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFun
 	return &filteredTupleKeyIterator{
 		iter,
 		filter,
-		sync.Mutex{},
+		&sync.Once{},
 	}
 }
 
@@ -284,6 +300,7 @@ type ConditionsFilteredTupleKeyIterator struct {
 	filter    TupleKeyConditionFilterFunc
 	lastError error
 	onceValid bool
+	once      *sync.Once
 }
 
 var _ TupleKeyIterator = (*ConditionsFilteredTupleKeyIterator)(nil)
@@ -321,7 +338,9 @@ func (f *ConditionsFilteredTupleKeyIterator) Next(ctx context.Context) (*openfga
 
 // Stop see [Iterator.Stop].
 func (f *ConditionsFilteredTupleKeyIterator) Stop() {
-	f.iter.Stop()
+	f.once.Do(func() {
+		f.iter.Stop()
+	})
 }
 
 // Head returns the next most tuple in the underlying iterator that meets
@@ -370,6 +389,7 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 	return &ConditionsFilteredTupleKeyIterator{
 		iter:   iter,
 		filter: filter,
+		once:   &sync.Once{},
 	}
 }
 
