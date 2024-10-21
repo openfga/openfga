@@ -21,6 +21,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 * Fixed incorrect dispatch counts in List Objects [2013](https://github.com/openfga/openfga/pull/2013)
 
+### Breaking changes
+* ListStores now expects an options parameter [#1913](https://github.com/openfga/openfga/pull/1913)
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
