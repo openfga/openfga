@@ -19,8 +19,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	))
 	defer span.End()
 
+	err := req.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	// TODO what do i need to do for authz, just add it to the constants in authz.go?
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
+	err = s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +48,12 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.checkDatastore,
 		s.checkResolver,
 		typesys,
-		commands.WithCheckCommandCacheController(s.cacheController),
-		commands.WithBatchCheckCommandMaxConcurrentChecks(50), // TODO config variables somewhere
+		commands.WithBatchCheckCommandCacheController(s.cacheController),
+		//commands.WithBatchCheckMaxConcurrentReadsPerCheck()
+		//commands.WithBatchCheckResolveNodeLimit(),
+		// TODO config variables somewhere
+		// or does this belong as an execute param?
+		commands.WithBatchCheckCommandMaxConcurrentChecks(50),
+		commands.WithBatchCheckCommandLogger(s.logger),
 	)
 }
