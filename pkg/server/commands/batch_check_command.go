@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -88,8 +89,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 }
 
 // Execute here needs new return types as well.
-// TODO
-func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommandParams) ([]*BatchCheckOutcome, error) {
 	// This check query will be run against every check in the batch
 	checkQuery := NewCheckCommand(
 		bq.datastore,
@@ -101,7 +101,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 		WithCheckCommandResolveNodeLimit(bq.resolveNodeLimit),
 	)
 
-	resultsChan := make(chan BatchCheckOutcome, len(params.Checks))
+	var resultSlice = make([]*BatchCheckOutcome, 0, len(params.Checks))
+	lock := sync.Mutex{}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -119,12 +121,16 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 			start := time.Now()
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
-			concurrency.TrySendThroughChannel(ctx, BatchCheckOutcome{
+
+			// lock the results slice and append
+			lock.Lock()
+			resultSlice = append(resultSlice, &BatchCheckOutcome{
 				CorrelationID: check.CorrelationId,
 				CheckResponse: response,
 				Duration:      time.Since(start),
 				Err:           err,
-			}, resultsChan)
+			})
+			lock.Unlock()
 
 			return nil
 		})
@@ -132,7 +138,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params BatchCheckCommand
 
 	_ = pool.Wait()
 
-	// now all checks have completed, drain the channel and compile the response
-
-	return nil, nil, nil
+	// TODO will there ever be an actual error condition in this command?
+	return resultSlice, nil
 }
