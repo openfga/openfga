@@ -2,14 +2,13 @@ package server
 
 import (
 	"context"
-	"google.golang.org/protobuf/types/known/wrapperspb"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -86,7 +85,7 @@ func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutco
 				// TODO error transformation logic, see what all the possible check errors are
 				Error: &openfgav1.CheckError{
 					Code:    nil,
-					Message: "",
+					Message: v.Err.Error(),
 				},
 			}
 		} else {

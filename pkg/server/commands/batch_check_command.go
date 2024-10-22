@@ -97,8 +97,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		bq.typesys,
 		WithCheckCommandLogger(bq.logger),
 		WithCacheController(bq.cacheController),
-		WithCheckCommandMaxConcurrentReads(bq.maxConcurrentReadsPerCheck),
-		WithCheckCommandResolveNodeLimit(bq.resolveNodeLimit),
+		//needs a default or it'll break
+		//WithCheckCommandMaxConcurrentReads(bq.maxConcurrentReadsPerCheck),
 	)
 
 	// the keys to this map are the correlation_id associated with each check
