@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -63,6 +64,8 @@ func runValidate(_ *cobra.Command, _ []string) error {
 		db, err = mysql.New(uri, sqlcommon.NewConfig())
 	case "postgres":
 		db, err = postgres.New(uri, sqlcommon.NewConfig())
+	case "sqlite":
+		db, err = sqlite.New(uri, sqlcommon.NewConfig())
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	case "memory":

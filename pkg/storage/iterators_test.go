@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -20,56 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
-
-func TestEmptyIterator(t *testing.T) {
-	t.Run("next", func(t *testing.T) {
-		iter := emptyTupleIterator{}
-		defer iter.Stop()
-
-		tk, err := iter.Next(context.Background())
-		require.ErrorIs(t, err, ErrIteratorDone)
-		require.Nil(t, tk)
-	})
-	t.Run("head", func(t *testing.T) {
-		iter := emptyTupleIterator{}
-		defer iter.Stop()
-
-		tk, err := iter.Head(context.Background())
-		require.ErrorIs(t, err, ErrIteratorDone)
-		require.Nil(t, tk)
-	})
-	t.Run("cancelled", func(t *testing.T) {
-		tests := []struct {
-			name  string
-			mixed bool
-		}{
-			{
-				name:  "next_only",
-				mixed: false,
-			},
-			{
-				name:  "mixed",
-				mixed: true,
-			},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				iter := emptyTupleIterator{}
-				defer iter.Stop()
-				ctx, cancel := context.WithCancel(context.Background())
-
-				cancel()
-				var err error
-				if tt.mixed {
-					_, err = iter.Next(ctx)
-				} else {
-					_, err = iter.Head(ctx)
-				}
-				require.ErrorIs(t, err, context.Canceled)
-			})
-		}
-	})
-}
 
 func TestStaticTupleKeyIterator(t *testing.T) {
 	t.Run("next", func(t *testing.T) {
@@ -212,6 +163,24 @@ func TestStaticTupleIterator(t *testing.T) {
 	})
 }
 
+type mockStoppedIterator[T any] struct {
+	stopped bool
+}
+
+func (c *mockStoppedIterator[T]) Next(ctx context.Context) (T, error) {
+	var val T
+	return val, ErrIteratorDone
+}
+
+func (c *mockStoppedIterator[T]) Stop() {
+	c.stopped = true
+}
+
+func (c *mockStoppedIterator[T]) Head(ctx context.Context) (T, error) {
+	var val T
+	return val, nil
+}
+
 func TestCombinedIterator(t *testing.T) {
 	t.Run("next", func(t *testing.T) {
 		expected := []*openfgav1.TupleKey{
@@ -322,6 +291,23 @@ func TestCombinedIterator(t *testing.T) {
 
 		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("stop", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		iter1 := &mockStoppedIterator[openfgav1.TupleKey]{}
+		iter2 := &mockStoppedIterator[openfgav1.TupleKey]{}
+
+		iter := NewCombinedIterator(iter1, iter2)
+
+		_, _ = iter.Next(context.Background())
+
+		iter.Stop()
+
+		require.True(t, iter1.stopped)
+		require.True(t, iter2.stopped)
 	})
 }
 
@@ -904,4 +890,36 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestIterIsDoneOrCancelled(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+	}{
+		{
+			err:      ErrIteratorDone,
+			expected: true,
+		},
+		{
+			err:      context.Canceled,
+			expected: true,
+		},
+		{
+			err:      context.DeadlineExceeded,
+			expected: true,
+		},
+		{
+			err:      fmt.Errorf("some error"),
+			expected: false,
+		},
+		{
+			err:      nil,
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		output := IterIsDoneOrCancelled(tt.err)
+		require.Equal(t, tt.expected, output)
+	}
 }

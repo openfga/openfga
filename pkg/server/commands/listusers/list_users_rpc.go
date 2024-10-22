@@ -18,7 +18,6 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -30,6 +29,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -47,6 +47,7 @@ type listUsersQuery struct {
 	maxConcurrentReads      uint32
 	deadline                time.Duration
 	dispatchThrottlerConfig threshold.Config
+	wasThrottled            *atomic.Bool
 }
 
 type expandResponse struct {
@@ -139,6 +140,7 @@ func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32
 		attribute.Bool("is_throttled", shouldThrottle))
 
 	if shouldThrottle {
+		l.wasThrottled.Store(true)
 		l.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
 }
@@ -159,6 +161,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 		deadline:                serverconfig.DefaultListUsersDeadline,
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasThrottled:            new(atomic.Bool),
 	}
 
 	for _, opt := range opts {
@@ -173,7 +176,9 @@ func (l *listUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*listUsersResponse, error) {
-	ctx, span := tracer.Start(ctx, "ListUsers")
+	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreId()),
+	))
 	defer span.End()
 
 	cancellableCtx, cancelCtx := context.WithCancel(ctx)
@@ -193,9 +198,9 @@ func (l *listUsersQuery) ListUsers(
 	}
 
 	userFilter := req.GetUserFilters()[0]
-	isReflexiveUserset := userFilter.GetType() == req.GetObject().GetType() && userFilter.GetRelation() == req.GetRelation()
+	userset := tuple.ToObjectRelationString(tuple.ObjectKey(req.GetObject()), req.GetRelation())
 
-	if !isReflexiveUserset {
+	if !tuple.UsersetMatchTypeAndRelation(userset, userFilter.GetRelation(), userFilter.GetType()) {
 		hasPossibleEdges, err := doesHavePossibleEdges(typesys, req)
 		if err != nil {
 			return nil, err
@@ -207,6 +212,7 @@ func (l *listUsersQuery) ListUsers(
 				Metadata: listUsersResponseMetadata{
 					DatastoreQueryCount: 0,
 					DispatchCounter:     new(atomic.Uint32),
+					WasThrottled:        new(atomic.Bool),
 				},
 			}, nil
 		}
@@ -287,6 +293,7 @@ func (l *listUsersQuery) ListUsers(
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: datastoreQueryCount.Load(),
 			DispatchCounter:     &dispatchCount,
+			WasThrottled:        l.wasThrottled,
 		},
 	}, nil
 }
@@ -348,7 +355,7 @@ func (l *listUsersQuery) expand(
 
 	for _, userFilter := range req.GetUserFilters() {
 		if reqObjectType == userFilter.GetType() && reqRelation == userFilter.GetRelation() {
-			trySendResult(ctx, foundUser{
+			concurrency.TrySendThroughChannel(ctx, foundUser{
 				user: &openfgav1.User{
 					User: &openfgav1.User_Userset{
 						Userset: &openfgav1.UsersetUser{
@@ -491,7 +498,7 @@ LoopOnIterator:
 				if f.GetType() == userObjectType {
 					user := tuple.StringToUserProto(tuple.BuildObject(userObjectType, userObjectID))
 
-					trySendResult(ctx, foundUser{
+					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user: user,
 					}, foundUsersChan)
 				}
@@ -616,7 +623,7 @@ func (l *listUsersQuery) expandIntersection(
 				user:          tuple.StringToUserProto(key),
 				excludedUsers: excludedUsers,
 			}
-			trySendResult(ctx, fu, foundUsersChan)
+			concurrency.TrySendThroughChannel(ctx, fu, foundUsersChan)
 		}
 	}
 
@@ -700,7 +707,7 @@ func (l *listUsersQuery) expandUnion(
 			user:          tuple.StringToUserProto(key),
 			excludedUsers: excludedUsers,
 		}
-		trySendResult(ctx, fu, foundUsersChan)
+		concurrency.TrySendThroughChannel(ctx, fu, foundUsersChan)
 	}
 
 	return expandResponse{
@@ -771,7 +778,7 @@ func (l *listUsersQuery) expandExclusion(
 		switch {
 		case baseWildcardExists:
 			if !userIsSubtracted && !wildcardSubtracted {
-				trySendResult(ctx, foundUser{
+				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user: tuple.StringToUserProto(userKey),
 				}, foundUsersChan)
 			}
@@ -779,7 +786,7 @@ func (l *listUsersQuery) expandExclusion(
 			for subtractedUserKey, subtractedFu := range subtractFoundUsersMap {
 				if tuple.IsTypedWildcard(subtractedUserKey) {
 					if !userIsSubtracted {
-						trySendResult(ctx, foundUser{
+						concurrency.TrySendThroughChannel(ctx, foundUser{
 							user:               tuple.StringToUserProto(userKey),
 							relationshipStatus: NoRelationship,
 						}, foundUsersChan)
@@ -788,7 +795,7 @@ func (l *listUsersQuery) expandExclusion(
 				}
 
 				if subtractedFu.relationshipStatus == NoRelationship {
-					trySendResult(ctx, foundUser{
+					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user:               tuple.StringToUserProto(subtractedUserKey),
 						relationshipStatus: HasRelationship,
 					}, foundUsersChan)
@@ -797,7 +804,7 @@ func (l *listUsersQuery) expandExclusion(
 				// a found user under the subtracted branch causes the subtracted user to have a negated relationship with respect
 				// to the base relation and is excluded since a wildcard is contained under the base branch.
 				if subtractedFu.relationshipStatus == HasRelationship {
-					trySendResult(ctx, foundUser{
+					concurrency.TrySendThroughChannel(ctx, foundUser{
 						user:               tuple.StringToUserProto(subtractedUserKey),
 						relationshipStatus: NoRelationship,
 						excludedUsers: []*openfgav1.User{
@@ -808,21 +815,21 @@ func (l *listUsersQuery) expandExclusion(
 			}
 		case subtractWildcardExists, userIsSubtracted:
 			if subtractedUser.relationshipStatus == HasRelationship {
-				trySendResult(ctx, foundUser{
+				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: NoRelationship,
 				}, foundUsersChan)
 			}
 
 			if subtractedUser.relationshipStatus == NoRelationship {
-				trySendResult(ctx, foundUser{
+				concurrency.TrySendThroughChannel(ctx, foundUser{
 					user:               tuple.StringToUserProto(userKey),
 					relationshipStatus: HasRelationship,
 				}, foundUsersChan)
 			}
 
 		default:
-			trySendResult(ctx, foundUser{
+			concurrency.TrySendThroughChannel(ctx, foundUser{
 				user:               tuple.StringToUserProto(userKey),
 				relationshipStatus: fu.relationshipStatus,
 			}, foundUsersChan)
@@ -941,15 +948,6 @@ func (l *listUsersQuery) buildResultsChannel() chan foundUser {
 	}
 
 	return foundUsersCh
-}
-
-func trySendResult(ctx context.Context, user foundUser, foundUsersCh chan<- foundUser) {
-	select {
-	case <-ctx.Done():
-		return
-	case foundUsersCh <- user:
-		return
-	}
 }
 
 func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *typesystem.TypeSystem, t *openfgav1.TupleKey) (bool, error) {

@@ -14,6 +14,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("experimentals", flags.Lookup("experimentals"))
 		util.MustBindEnv("experimentals", "OPENFGA_EXPERIMENTALS")
 
+		util.MustBindPFlag("accessControl.enabled", flags.Lookup("access-control-enabled"))
+		util.MustBindEnv("accessControl.enabled", "OPENFGA_ACCESS_CONTROL_ENABLED")
+
+		util.MustBindPFlag("accessControl.storeId", flags.Lookup("access-control-store-id"))
+		util.MustBindEnv("accessControl.storeId", "OPENFGA_ACCESS_CONTROL_STORE_ID")
+
+		util.MustBindPFlag("accessControl.modelId", flags.Lookup("access-control-model-id"))
+		util.MustBindEnv("accessControl.modelId", "OPENFGA_ACCESS_CONTROL_MODEL_ID")
+
+		command.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
+
 		util.MustBindPFlag("grpc.addr", flags.Lookup("grpc-addr"))
 		util.MustBindEnv("grpc.addr", "OPENFGA_GRPC_ADDR")
 
@@ -71,6 +82,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("authn.oidc.subjects", flags.Lookup("authn-oidc-subjects"))
 		util.MustBindEnv("authn.oidc.subjects", "OPENFGA_AUTHN_OIDC_SUBJECTS")
+
+		util.MustBindPFlag("authn.oidc.clientIdClaims", flags.Lookup("authn-oidc-client-id-claims"))
+		util.MustBindEnv("authn.oidc.clientIdClaims", "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS")
 
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
@@ -189,11 +203,18 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listUsersMaxResults", flags.Lookup("listUsers-max-results"))
 		util.MustBindEnv("listUsersMaxResults", "OPENFGA_LIST_USERS_MAX_RESULTS", "OPENFGA_LISTUSERSMAXRESULTS")
 
+		// TODO: make breaking change for cache limit
+		util.MustBindPFlag("cache.limit", flags.Lookup("check-query-cache-limit"))
+		util.MustBindEnv("cache.limit", "OPENFGA_CHECK_QUERY_CACHE_LIMIT")
+
+		util.MustBindPFlag("checkIteratorCache.enabled", flags.Lookup("check-iterator-cache-enabled"))
+		util.MustBindEnv("checkIteratorCache.enabled", "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED")
+
+		util.MustBindPFlag("checkIteratorCache.maxResults", flags.Lookup("check-iterator-cache-max-results"))
+		util.MustBindEnv("checkIteratorCache.maxResults", "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS")
+
 		util.MustBindPFlag("checkQueryCache.enabled", flags.Lookup("check-query-cache-enabled"))
 		util.MustBindEnv("checkQueryCache.enabled", "OPENFGA_CHECK_QUERY_CACHE_ENABLED")
-
-		util.MustBindPFlag("checkQueryCache.limit", flags.Lookup("check-query-cache-limit"))
-		util.MustBindEnv("checkQueryCache.limit", "OPENFGA_CHECK_QUERY_CACHE_LIMIT")
 
 		util.MustBindPFlag("checkQueryCache.ttl", flags.Lookup("check-query-cache-ttl"))
 		util.MustBindEnv("checkQueryCache.ttl", "OPENFGA_CHECK_QUERY_CACHE_TTL")
@@ -258,8 +279,5 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
-
-		util.MustBindPFlag("checkTrackerEnabled", flags.Lookup("check-tracker-enabled"))
-		util.MustBindEnv("checkTrackerEnabled", "OPENFGA_CHECK_TRACKER_ENABLED")
 	}
 }

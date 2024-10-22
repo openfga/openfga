@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -123,14 +126,41 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			`,
 			tuples: []string{
 				"folder:C#can_delete@user:jon",
-				"folder:B#viewer@user:jon",
-				"folder:A#viewer@user:jon",
+				"folder:C#editor@user:jon",
+			},
+			objectType:              "folder",
+			relation:                "can_delete",
+			user:                    "user:jon",
+			expectedDispatchCount:   1,
+			expectedThrottlingValue: 0,
+		},
+		{
+			name: "test_intersection_relation_check_dispatch",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type group
+					relations
+						define member: [user, group#member]
+
+				type folder
+					relations
+						define editor: [group#member]
+						define can_delete: [user] and editor
+			`,
+			tuples: []string{
+				"folder:C#can_delete@user:jon",
+				"folder:C#editor@group:fga#member",
+				"group:fga#member@user:jon",
 			},
 			objectType:              "folder",
 			relation:                "can_delete",
 			user:                    "user:jon",
 			expectedDispatchCount:   2,
-			expectedThrottlingValue: 0,
+			expectedThrottlingValue: 1,
 		},
 		{
 			name: "no_tuples",
@@ -208,6 +238,13 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
+				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
+					graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+						DefaultThreshold: 0,
+						MaxThreshold:     0,
+					}),
+					graph.WithThrottler(mockThrottler),
+				}...),
 				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
 			t.Cleanup(checkResolverCloser)
 
@@ -222,6 +259,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				}),
 			)
 			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
+			mockThrottler.EXPECT().Close().Times(1) // LO closes throttler during server close call.
 
 			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:  storeID,
@@ -266,7 +304,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	checkCache := storage.NewInMemoryLRUCache[*graph.ResolveCheckResponse]()
+	checkCache := storage.NewInMemoryLRUCache[any]()
 	defer checkCache.Stop()
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
@@ -281,9 +319,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	cacheKey, err := graph.CheckRequestCacheKey(req)
 	require.NoError(t, err)
 
-	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
-		Allowed: false,
-	}, 10*time.Second)
+	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
+		LastModified: time.Now(),
+		CheckResponse: &graph.ResolveCheckResponse{
+			Allowed: false,
+		}}, 10*time.Second)
 
 	require.NoError(t, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
@@ -337,9 +377,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.Len(t, resp.Objects, 3)
 
 	// Now set the third item as `allowed: false` in the cache and run with `UNSPECIFIED`, it should use the cache and only return two item
-	checkCache.Set(cacheKey, &graph.ResolveCheckResponse{
-		Allowed: false,
-	}, 10*time.Second)
+	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
+		LastModified: time.Now(),
+		CheckResponse: &graph.ResolveCheckResponse{
+			Allowed: false,
+		}}, 10*time.Second)
 
 	resp, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:     storeID,
@@ -351,4 +393,50 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, resp.Objects, 2)
+}
+
+func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type folder
+			relations
+				define viewer: [user] but not blocked
+				define blocked: [user]`
+	tuples := []string{
+		"folder:x#viewer@user:maria",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(nil, errors.ErrUnknown).
+		Times(1)
+
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:maria",
+	})
+
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, errors.ErrUnknown)
 }

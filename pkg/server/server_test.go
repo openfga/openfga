@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
@@ -29,7 +30,6 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -38,7 +38,9 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	storageTest "github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -55,7 +57,7 @@ func init() {
 }
 
 func ExampleNewServerWithOpts() {
-	datastore := memory.New() // other supported datastores include Postgres and MySQL
+	datastore := memory.New() // other supported datastores include Postgres, MySQL and SQLite
 	defer datastore.Close()
 
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
@@ -180,9 +182,62 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			)
 		})
 	})
+
+	t.Run("invalid_access_control_setup", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control parameters are not enabled. They can be enabled for experimental use by passing the `--experimentals enable-access-control` configuration option when running OpenFGA server. Additionally, the `--access-control-store-id` and `--access-control-model-id` parameters must not be empty", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, "", "", ""),
+			)
+		})
+	})
+
+	t.Run("errors_when_oidc_is_not_enabled", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: access control is enabled, but the authentication method is not OIDC. Access control is only supported with OIDC authentication", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), ""),
+			)
+		})
+	})
+
+	t.Run("errors_when_access_control_store_id_is_not_a_valid_ulid", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config '--access-control-store-id' must be a valid ULID", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, "not-a-valid-ulid", ulid.Make().String(), "oidc"),
+			)
+		})
+	})
+
+	t.Run("errors_when_access_control_model_id_is_not_a_valid_ulid", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: config '--access-control-model-id' must be a valid ULID", func() {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithExperimentals(ExperimentalAccessControlParams),
+				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
+			)
+		})
+	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
+	// skipping sqlite here because the lowest supported schema revision is 4
 	engines := []string{"postgres", "mysql"}
 
 	for _, engine := range engines {
@@ -334,6 +389,15 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	)
 	require.NoError(t, err)
 	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithSQLiteDatastore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
 
 	test.RunAllTests(t, ds)
 }
@@ -694,7 +758,8 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 
 		type group
 			relations
-				define member: [user, group#member]
+				define other: [user]
+				define member: [user, group#member] or other
 		`)
 
 	writeAuthModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
@@ -768,6 +833,16 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
+		require.NoError(b, err)
+		b.Cleanup(ds.Close)
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkSQLiteDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
+
+		uri := testDatastore.GetConnectionURI(true)
+		ds, err := sqlite.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -1034,7 +1109,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		Type:                 "repo",
 		Relation:             "r1",
 		User:                 "user:anne",
-	}, NewMockStreamServer())
+	}, NewMockStreamServer(context.Background()))
 	require.Error(t, err)
 	e, ok = status.FromError(err)
 	require.True(t, ok)
@@ -1188,7 +1263,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCheckQueryCacheEnabled(true),
-		WithCheckQueryCacheLimit(10),
+		WithCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
 	t.Cleanup(func() {
@@ -1427,14 +1502,18 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 type mockStreamServer struct {
 	grpc.ServerStream
+
+	ctx context.Context
 }
 
-func NewMockStreamServer() *mockStreamServer {
-	return &mockStreamServer{}
+func NewMockStreamServer(ctx context.Context) *mockStreamServer {
+	return &mockStreamServer{
+		ctx: ctx,
+	}
 }
 
 func (m *mockStreamServer) Context() context.Context {
-	return context.Background()
+	return m.ctx
 }
 
 func (m *mockStreamServer) Send(*openfgav1.StreamedListObjectsResponse) error {
@@ -1502,7 +1581,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			Type:                 "repo",
 			Relation:             "viewer",
 			User:                 "user:bob",
-		}, NewMockStreamServer())
+		}, NewMockStreamServer(context.Background()))
 
 		require.EqualError(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 	}
@@ -1573,7 +1652,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				Type:                 "document",
 				Relation:             "viewer",
 				User:                 "user:bob",
-			}, NewMockStreamServer())
+			}, NewMockStreamServer(context.Background()))
 
 			require.EqualError(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")).Error())
 		})
@@ -1638,7 +1717,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				Type:                 "document",
 				Relation:             "viewer",
 				User:                 "user:jon",
-			}, NewMockStreamServer())
+			}, NewMockStreamServer(context.Background()))
 
 			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 		})
@@ -1718,7 +1797,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			Type:                 "team",
 			Relation:             "member",
 			User:                 "user:anne",
-		}, NewMockStreamServer())
+		}, NewMockStreamServer(context.Background()))
 		require.Error(t, err)
 		e, ok := status.FromError(err)
 		require.True(t, ok)
@@ -1830,41 +1909,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, ok)
 	})
 
-	t.Run("tracker_check_resolver", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		cfg := serverconfig.DefaultConfig()
-		cfg.CheckTrackerEnabled = true
-
-		require.False(t, cfg.CheckDispatchThrottling.Enabled)
-		require.False(t, cfg.DispatchThrottling.Enabled)
-		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
-		require.True(t, cfg.CheckTrackerEnabled)
-
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithCheckTrackerEnabled(true),
-			WithContext(ctx),
-			WithLogger(logger.NewNoopLogger()),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.checkDispatchThrottlingEnabled)
-		require.False(t, s.checkQueryCacheEnabled)
-
-		require.NotNil(t, s.checkResolver)
-
-		trackCheckResolver, ok := s.checkResolver.(*graph.TrackerCheckResolver)
-		require.True(t, ok)
-
-		localCheckResolver, ok := trackCheckResolver.GetDelegate().(*graph.LocalChecker)
-		require.True(t, ok)
-
-		_, ok = localCheckResolver.GetDelegate().(*graph.TrackerCheckResolver)
-		require.True(t, ok)
-	})
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
@@ -2091,4 +2135,334 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 		t.Cleanup(s.Close)
 		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
 	})
+}
+
+func TestIsAccessControlEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New() // Datastore required for server instantiation
+	t.Cleanup(ds.Close)
+
+	t.Run("returns_false_if_experimentals_does_not_have_access_control", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+			WithAccessControlParams(true, "some-model-id", "some-store-id", ""),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsAccessControlEnabled())
+	})
+
+	t.Run("returns_false_if_access_control_is_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalAccessControlParams),
+			WithAccessControlParams(false, "some-model-id", "some-store-id", ""),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.IsAccessControlEnabled())
+	})
+
+	t.Run("returns_true_if_access_control_is_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithExperimentals(ExperimentalAccessControlParams),
+			WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), "oidc"),
+		)
+		t.Cleanup(s.Close)
+		require.True(t, s.IsAccessControlEnabled())
+	})
+}
+
+func TestServer_ThrottleUntilDeadline(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	modelStr := `
+		model
+			schema 1.1
+		type user
+
+		type group
+		relations
+			define other: [user]
+			define member: [user, group#member, group#other]
+
+		type document
+		relations
+			define viewer: [user, group#member]`
+
+	tuples := []string{
+		"document:1#viewer@user:jon", // Observed before first dispatch
+		"document:1#viewer@group:eng#member",
+		"group:eng#member@group:backend#member",
+		"group:backend#member@user:tyler", // Requires two dispatches, gets throttled
+
+		"document:2#viewer@user:tyler",
+	}
+
+	storeID, model := storageTest.BootstrapFGAStore(t, ds, modelStr, tuples)
+	t.Cleanup(ds.Close)
+
+	deadline := 50 * time.Millisecond
+
+	s := MustNewServerWithOpts(
+		WithDatastore(ds),
+
+		WithDispatchThrottlingCheckResolverEnabled(true),
+		WithDispatchThrottlingCheckResolverFrequency(3*deadline), // Forces time-out when throttling occurs
+		WithDispatchThrottlingCheckResolverThreshold(1),          // Applies throttling after first dispatch
+
+		WithListObjectsDeadline(deadline),
+		WithListObjectsDispatchThrottlingEnabled(true),
+		WithListObjectsDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+		WithListObjectsDispatchThrottlingFrequency(3*deadline), // Forces time-out when throttling occurs
+
+		WithListUsersDeadline(deadline),
+		WithListUsersDispatchThrottlingEnabled(true),
+		WithListUsersDispatchThrottlingThreshold(1),          // Applies throttling after first dispatch
+		WithListUsersDispatchThrottlingFrequency(2*deadline), // Forces time-out when throttling occurs
+	)
+	t.Cleanup(s.Close)
+
+	ctx := context.Background()
+
+	t.Run("list_users_return_no_error_and_partial_results", func(t *testing.T) {
+		resp, err := s.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{
+				{Type: "user"},
+			},
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetUsers(), 1)
+	})
+
+	t.Run("list_objects_return_no_error_and_partial_results", func(t *testing.T) {
+		resp, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			User:                 "user:tyler",
+			Relation:             "viewer",
+			Type:                 "document",
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Len(t, resp.GetObjects(), 1)
+	})
+}
+
+func TestServerCheckCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("query_cache_enabled_iterator_cache_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(true),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.cache)
+		require.NotEqual(t, s.datastore, s.checkDatastore)
+	})
+
+	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(false),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(true),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.cache)
+		require.NotEqual(t, s.datastore, s.checkDatastore)
+	})
+
+	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(false),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.cache)
+		require.Equal(t, s.datastore, s.checkDatastore)
+	})
+
+	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(false),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCacheLimit(10),
+			WithCheckIteratorCacheEnabled(false),
+			WithCheckIteratorCacheMaxResults(10),
+		)
+		t.Cleanup(s.Close)
+
+		require.Nil(t, s.cache)
+		require.Equal(t, s.datastore, s.checkDatastore)
+	})
+}
+
+func TestCheckWithCachedIterator(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := language.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type company
+			relations
+				define viewer: [user]
+		type license
+			relations
+				define viewer: [user, user:*, company#viewer]`).GetTypeDefinitions()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		Times(1).
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if tk.GetObject() == "company:1" {
+					return &openfgav1.Tuple{
+						Key:       tk,
+						Timestamp: timestamppb.Now(),
+					}, nil
+				}
+
+				return nil, storage.ErrNotFound
+			})
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(10),
+	)
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	// Sleep for a while to ensure that the iterator is cached
+	time.Sleep(1 * time.Millisecond)
+
+	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:2"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+}
+
+func TestCheckValidatesStoreID(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	s := MustNewServerWithOpts(WithDatastore(mockDatastore))
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	_, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:  "not a ulid",
+		TupleKey: tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
+	})
+
+	require.ErrorContains(t, err, "invalid CheckRequest.StoreId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
+}
+
+func TestCheckValidatesModelID(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	s := MustNewServerWithOpts(WithDatastore(mockDatastore))
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	_, err := s.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              "01JAGC4TMBSVGFJ7TR18KGBVD6",
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
+		AuthorizationModelId: "not a ulid",
+	})
+
+	require.ErrorContains(t, err, "invalid CheckRequest.AuthorizationModelId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
 }

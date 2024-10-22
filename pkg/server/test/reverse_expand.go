@@ -1309,7 +1309,10 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				opts = append(opts, reverseexpand.WithResolveNodeLimit(test.resolveNodeLimit))
 			}
 
-			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, typesystem.New(model), opts...)
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, ts, opts...)
 
 			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)
 

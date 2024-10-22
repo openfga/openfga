@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 
@@ -50,6 +51,16 @@ func (s *Server) ListUsers(
 	}
 
 	const methodName = "listusers"
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  methodName,
+	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListUsers)
+	if err != nil {
+		return nil, err
+	}
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -116,6 +127,11 @@ func (s *Server) ListUsers(
 		utils.Bucketize(uint(dispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
+
+	wasRequestThrottled := resp.GetMetadata().WasThrottled.Load()
+	if wasRequestThrottled {
+		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+	}
 
 	return &openfgav1.ListUsersResponse{
 		Users: resp.GetUsers(),

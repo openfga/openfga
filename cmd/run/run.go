@@ -14,6 +14,7 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -40,6 +41,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/gateway"
 
 	"github.com/openfga/openfga/assets"
@@ -48,7 +50,6 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -65,6 +66,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
@@ -85,7 +87,15 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-check-optimizations`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-check-optimizations`, `enable-access-control`")
+
+	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
+
+	flags.String("access-control-store-id", defaultConfig.AccessControl.StoreID, "the store ID of the OpenFGA store that will be used to access the access control store")
+
+	flags.String("access-control-model-id", defaultConfig.AccessControl.ModelID, "the model ID of the OpenFGA store that will be used to access the access control store")
+
+	cmd.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -126,6 +136,8 @@ func NewRunCommand() *cobra.Command {
 	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying the `iss` field of the JWTs.")
 
 	flags.StringSlice("authn-oidc-subjects", defaultConfig.Authn.Subjects, "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed")
+
+	flags.StringSlice("authn-oidc-client-id-claims", defaultConfig.Authn.ClientIDClaims, "the ClientID claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -205,9 +217,13 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listUsers-max-results", defaultConfig.ListUsersMaxResults, "the maximum results to return in ListUsers API responses. If 0, all results can be returned")
 
+	flags.Bool("check-iterator-cache-enabled", defaultConfig.CheckIteratorCache.Enabled, "enable caching of datastore iterators of Check requests.")
+
+	flags.Uint32("check-iterator-cache-max-results", defaultConfig.CheckIteratorCache.MaxResults, "if caching of datastore iterators of Check requests is enabled, this is the limit of rows to cache per query.")
+
 	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "enable caching of Check requests. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs.")
 
-	flags.Uint32("check-query-cache-limit", defaultConfig.CheckQueryCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
+	flags.Uint32("check-query-cache-limit", defaultConfig.Cache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
 
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
@@ -257,8 +273,6 @@ func NewRunCommand() *cobra.Command {
 	Define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum`)
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
-
-	flags.Bool("check-tracker-enabled", defaultConfig.CheckTrackerEnabled, "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -395,6 +409,11 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
+	case "sqlite":
+		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
+		if err != nil {
+			return nil, fmt.Errorf("initialize sqlite datastore: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
@@ -416,7 +435,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects, config.Authn.ClientIDClaims)
 	default:
 		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -429,7 +448,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 // Run returns an error if the server was unable to start successfully.
 // If it started and terminated successfully, it returns a nil error.
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer stop()
 
 	tracerProviderCloser := s.telemetryConfig(config)
@@ -605,8 +624,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
 		server.WithMaxConcurrentReadsForListUsers(config.MaxConcurrentReadsForListUsers),
+		server.WithCacheLimit(config.Cache.Limit),
+		server.WithCheckIteratorCacheEnabled(config.CheckIteratorCache.Enabled),
+		server.WithCheckIteratorCacheMaxResults(config.CheckIteratorCache.MaxResults),
 		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
-		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
@@ -624,8 +645,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
 		server.WithExperimentals(experimentals...),
+		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
-		server.WithCheckTrackerEnabled(config.CheckTrackerEnabled),
 	)
 
 	s.Logger.Info(

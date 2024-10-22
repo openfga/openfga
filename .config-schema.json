@@ -115,19 +115,32 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-consistency-params", "enable-check-optimizations"]
+                "enum": ["enable-check-optimizations", "enable-access-control"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
-        "checkTrackerEnabled": {
+        "accessControl": {
+            "description": "the configuration needed for the access control store",
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "Enable logging of statistics for Check requests. For every Check request, log the number of hits that each node in the graph of the authorization model receives. The logs are flushed every 500 milliseconds. These statistics will be used to improve the strategy used to cache Check sub-problems.",
+                    "description": "Enable/disable the access control store.",
                     "type": "boolean",
                     "default": false,
-                    "x-env-variable": "OPENFGA_CHECK_TRACKER_ENABLED"
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_ENABLED"
+                },
+                "storeId": {
+                    "description": "The storeId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_STORE_ID"
+                },
+                "modelId": {
+                    "description": "The modelId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_MODEL_ID"
                 }
             }
         },
@@ -171,7 +184,7 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres", "mysql"],
+                    "enum": ["memory", "postgres", "mysql", "sqlite"],
                     "default": "memory",
                     "x-env-variable": "OPENFGA_DATASTORE_ENGINE"
                 },
@@ -180,7 +193,8 @@
                     "type": "string",
                     "examples": [
                         "postgres://user:pass@host:port/datastore?opts",
-                        "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts"
+                        "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts",
+                        "file:/path/to/sqlite.db"
                     ],
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
@@ -444,6 +458,23 @@
                 }
             }
         },
+        "checkIteratorCache": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable caching of datastore iterators of Check requests",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED"
+                },
+                "maxResults": {
+                    "description": "if caching of datastore iterators of Check requests is enabled, this is the limit of rows to cache per query",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS"
+                }
+            }
+        },
         "checkQueryCache": {
             "type": "object",
             "properties": {
@@ -620,6 +651,14 @@
                         "type": "string"
                     },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_SUBJECTS"
+                },
+                "clientIdClaims": {
+                    "description": "the OIDC client id claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS"
                 }
             },
             "required": ["issuer", "audience"]

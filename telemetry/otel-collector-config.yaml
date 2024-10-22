@@ -35,9 +35,6 @@ exporters:
       num_consumers: 10
       queue_size: 10000
       # this should work out to about 8M batches/second for 10s buffer
-  # Data sources: traces, metrics, logs
-  logging:
-    loglevel: debug
   # Data sources: metrics
   prometheus:
     endpoint: otel-collector:2113
@@ -53,14 +50,7 @@ processors:
     timeout: 2s
     send_batch_max_size: 32768
 
-# Tasks that do not involve processing telemetry data. Configuring an extension does not enable it.
-extensions:
-  memory_ballast:
-    # https://github.com/open-telemetry/opentelemetry-collector/blob/main/extension/ballastextension/README.md
-    size_in_percentage: 10
-
 service:
-  extensions: [memory_ballast]
   pipelines:
     traces:
       receivers: [otlp]

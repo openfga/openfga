@@ -568,3 +568,107 @@ func TestParseTupleString(t *testing.T) {
 		})
 	}
 }
+
+func TestFromUserParts(t *testing.T) {
+	require.Equal(t, "jon", FromUserParts("", "jon", ""))
+	require.Equal(t, "user:jon", FromUserParts("user", "jon", ""))
+	require.Equal(t, "user:*", FromUserParts("user", "*", ""))
+	require.Equal(t, "group:eng#member", FromUserParts("group", "eng", "member"))
+}
+
+func TestToUserParts(t *testing.T) {
+	userObjectType, userObjectID, userRelation := ToUserParts("jon")
+	require.Equal(t, "", userObjectType)
+	require.Equal(t, "jon", userObjectID)
+	require.Equal(t, "", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserParts("user:jon")
+	require.Equal(t, "user", userObjectType)
+	require.Equal(t, "jon", userObjectID)
+	require.Equal(t, "", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserParts("user:*")
+	require.Equal(t, "user", userObjectType)
+	require.Equal(t, "*", userObjectID)
+	require.Equal(t, "", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserParts("group:eng#member")
+	require.Equal(t, "group", userObjectType)
+	require.Equal(t, "eng", userObjectID)
+	require.Equal(t, "member", userRelation)
+}
+
+func TestToUserPartsFromObjectRelation(t *testing.T) {
+	userObjectType, userObjectID, userRelation := ToUserPartsFromObjectRelation(&openfgav1.ObjectRelation{Object: "group:eng", Relation: "member"})
+	require.Equal(t, "group", userObjectType)
+	require.Equal(t, "eng", userObjectID)
+	require.Equal(t, "member", userRelation)
+
+	userObjectType, userObjectID, userRelation = ToUserPartsFromObjectRelation(&openfgav1.ObjectRelation{Object: "user:*"})
+	require.Equal(t, "user", userObjectType)
+	require.Equal(t, "*", userObjectID)
+	require.Equal(t, "", userRelation)
+}
+
+func TestIsSelfDefining(t *testing.T) {
+	testCases := map[string]struct {
+		tuples       []string
+		selfDefining bool
+	}{
+		`true`: {
+			selfDefining: true,
+			tuples: []string{
+				"group:1#member@group:1#member",
+			},
+		},
+		`false`: {
+			selfDefining: false,
+			tuples: []string{
+				"group:2#member@group:1#member",
+				"group:1#member@group:2#member",
+				"document:1#member@group:1#member",
+				"group:1#member@document:1#member",
+				"group:1#member@group:1#viewer",
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			for _, tuple := range tc.tuples {
+				tupleKey := MustParseTupleString(tuple)
+				require.Equal(t, tc.selfDefining, IsSelfDefining(tupleKey), tupleKey)
+			}
+		})
+	}
+}
+
+func TestUsersetMatchesTypeAndRelation(t *testing.T) {
+	testCases := map[string]struct {
+		inputs  [][]string // userset, relation, type
+		matches bool
+	}{
+		`true`: {
+			matches: true,
+			inputs: [][]string{
+				{"group:1#member", "member", "group"},
+			},
+		},
+		`false`: {
+			matches: false,
+			inputs: [][]string{
+				{"group:1#member", "unknown", "group"},
+				{"group:1#member", "member", "unknown"},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			for _, input := range tc.inputs {
+				actual := UsersetMatchTypeAndRelation(input[0], input[1], input[2])
+				require.Equal(t, tc.matches, actual, input)
+			}
+		})
+	}
+}

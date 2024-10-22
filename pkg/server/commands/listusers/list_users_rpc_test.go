@@ -2561,7 +2561,8 @@ func TestListUsersCycleDetection(t *testing.T) {
 			relations
 				define viewer: [user]
 		`)
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 	t.Run("enters_loop_detection", func(t *testing.T) {
@@ -2921,7 +2922,8 @@ func TestListUsersStorageErrors(t *testing.T) {
 						define union: a or b
 						define exclusion: a but not b
 						define intersection: a and b`)
-			typesys := typesystem.New(model)
+			typesys, err := typesystem.New(model)
+			require.NoError(t, err)
 
 			l := NewListUsersQuery(mockDatastore)
 
@@ -3137,9 +3139,11 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 				define parent: [org]
 		`)
 
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(
 		context.Background(),
-		typesystem.New(model),
+		ts,
 	)
 
 	tests := []struct {
@@ -3765,7 +3769,8 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 		channelWithResults := make(chan foundUser)
 		channelWithError := make(chan error, 1)
 
-		typesys := typesystem.New(model)
+		typesys, err := typesystem.New(model)
+		require.NoError(t, err)
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
 		relation, err := typesys.GetRelation("document", "viewer")
@@ -3863,6 +3868,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
 		q.throttle(ctx, uint32(190))
+		require.False(t, q.wasThrottled.Load())
 	})
 
 	t.Run("above_threshold_should_call_throttle", func(t *testing.T) {
@@ -3878,6 +3884,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
 		q.throttle(ctx, uint32(201))
+		require.True(t, q.wasThrottled.Load())
 	})
 
 	t.Run("zero_max_should_interpret_as_default", func(t *testing.T) {
@@ -3893,6 +3900,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
 		q.throttle(ctx, uint32(190))
+		require.False(t, q.wasThrottled.Load())
 	})
 
 	t.Run("dispatch_should_use_request_threshold_if_available", func(t *testing.T) {
@@ -3911,6 +3919,7 @@ func TestListUsersThrottle(t *testing.T) {
 		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 200)
 
 		q.throttle(ctx, dispatchCountValue)
+		require.True(t, q.wasThrottled.Load())
 	})
 
 	t.Run("should_respect_max_threshold", func(t *testing.T) {
@@ -3929,6 +3938,7 @@ func TestListUsersThrottle(t *testing.T) {
 		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
 
 		q.throttle(ctx, dispatchCountValue)
+		require.True(t, q.wasThrottled.Load())
 	})
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.uber.org/goleak"
 
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
@@ -37,7 +38,6 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -794,6 +794,9 @@ func TestServerMetricsReporting(t *testing.T) {
 	t.Run("postgres", func(t *testing.T) {
 		testServerMetricsReporting(t, "postgres")
 	})
+	t.Run("sqlite", func(t *testing.T) {
+		testServerMetricsReporting(t, "sqlite")
+	})
 }
 
 func testServerMetricsReporting(t *testing.T, engine string) {
@@ -1159,7 +1162,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.checkQueryCache.properties.limit.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckQueryCache.Limit)
+	require.EqualValues(t, val.Int(), cfg.Cache.Limit)
 
 	val = res.Get("properties.checkQueryCache.properties.ttl.default")
 	require.True(t, val.Exists())
@@ -1286,7 +1289,6 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 func TestParseConfig(t *testing.T) {
 	config := `checkQueryCache:
     enabled: true
-    limit: 100
     TTL: 5s
 requestDurationDatastoreQueryCountBuckets: [33,44]
 requestDurationDispatchCountBuckets: [32,42]
@@ -1305,7 +1307,6 @@ requestDurationDispatchCountBuckets: [32,42]
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
 	require.True(t, cfg.CheckQueryCache.Enabled)
-	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
 	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 	require.Equal(t, []string{"32", "42"}, cfg.RequestDurationDispatchCountBuckets)
@@ -1328,6 +1329,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 	t.Setenv("OPENFGA_MAX_CONDITION_EVALUATION_COST", "120")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_ENABLED", "true")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_MODEL_ID", "67891")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1345,6 +1349,9 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
 		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
+		require.True(t, viper.GetBool("access-control-enabled"))
+		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
+		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
 
 		return nil
 	}

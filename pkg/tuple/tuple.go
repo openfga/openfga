@@ -315,14 +315,8 @@ func IsWildcard(s string) bool {
 // IsTypedWildcard returns true if the string 's' is a typed wildcard. A typed wildcard
 // has the form 'type:*'.
 func IsTypedWildcard(s string) bool {
-	if IsValidObject(s) {
-		_, id := SplitObject(s)
-		if id == Wildcard {
-			return true
-		}
-	}
-
-	return false
+	t, id := SplitObject(s)
+	return t != "" && id == Wildcard
 }
 
 // TypedPublicWildcard returns the string tuple representation for a given object type (ex: "user:*").
@@ -389,4 +383,41 @@ func ParseTupleString(s string) (*openfgav1.TupleKey, error) {
 		Relation: relation,
 		User:     user,
 	}, nil
+}
+
+func ToUserPartsFromObjectRelation(u *openfgav1.ObjectRelation) (string, string, string) {
+	userObjectType, userObjectID := SplitObject(u.GetObject())
+	return userObjectType, userObjectID, u.GetRelation()
+}
+
+func ToUserParts(user string) (string, string, string) {
+	userObject, userRelation := SplitObjectRelation(user) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
+
+	userObjectType, userObjectID := SplitObject(userObject)
+
+	return userObjectType, userObjectID, userRelation
+}
+
+func FromUserParts(userObjectType, userObjectID, userRelation string) string {
+	user := userObjectID
+	if userObjectType != "" {
+		user = fmt.Sprintf("%s:%s", userObjectType, userObjectID)
+	}
+	if userRelation != "" {
+		user = fmt.Sprintf("%s#%s", user, userRelation)
+	}
+	return user
+}
+
+// IsSelfDefining returns true if the tuple is reflexive/self-defining. E.g. Document:1#viewer@document:1#viewer.
+// See https://github.com/openfga/rfcs/blob/main/20240328-queries-with-usersets.md
+func IsSelfDefining(tuple *openfgav1.TupleKey) bool {
+	userObject, userRelation := SplitObjectRelation(tuple.GetUser())
+	return tuple.GetRelation() == userRelation && tuple.GetObject() == userObject
+}
+
+// UsersetMatchTypeAndRelation returns true if the type and relation of a userset match the inputs.
+func UsersetMatchTypeAndRelation(userset, relation, typee string) bool {
+	userObjectType, _, userRelation := ToUserParts(userset)
+	return relation == userRelation && typee == userObjectType
 }

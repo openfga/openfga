@@ -83,6 +83,8 @@ type ReadAuthorizationModelsOptions struct {
 // ListStoresOptions represents the options that can
 // be used with the ListStores method.
 type ListStoresOptions struct {
+	// IDs is a list of store IDs to filter the results.
+	IDs        []string
 	Pagination PaginationOptions
 }
 
@@ -90,6 +92,7 @@ type ListStoresOptions struct {
 // be used with the ReadChanges method.
 type ReadChangesOptions struct {
 	Pagination PaginationOptions
+	SortDesc   bool
 }
 
 // ReadPageOptions represents the options that can
@@ -296,6 +299,11 @@ type AssertionsBackend interface {
 	ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error)
 }
 
+type ReadChangesFilter struct {
+	ObjectType    string
+	HorizonOffset time.Duration
+}
+
 // ChangelogBackend is an interface for interacting with and managing changelogs.
 type ChangelogBackend interface {
 	// ReadChanges returns the writes and deletes that have occurred for tuples within a store,
@@ -305,7 +313,7 @@ type ChangelogBackend interface {
 	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
-	ReadChanges(ctx context.Context, store, objectType string, options ReadChangesOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
+	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error)
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting

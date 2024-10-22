@@ -8,15 +8,116 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+* Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+* Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
+* Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
+
+### Performance
+* Improve check performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2025](https://github.com/openfga/openfga/pull/2025)
+
+### Fixed
+* Goroutine leak when ListObjects or StreamedListObjects call cannot be completed within REQUEST_TIMEOUT. [#2030](https://github.com/openfga/openfga/pull/2030)
+* Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
+* Fixed incorrect dispatch counts in List Objects [2013](https://github.com/openfga/openfga/pull/2013)
+
+## [1.6.2] - 2024-10-03
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
+
+### Added
+* Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
+* Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
+* Add a cache for datastore iterators on Check API. [#1924](https://github.com/openfga/openfga/pull/1924).
+
+  Can be configured via `OPENFGA_CHECK_ITERATOR_CACHE_ENABLED` and `OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS`.
+
+### Changed
+* `ReadChanges` now supports sorting. [#1976](https://github.com/openfga/openfga/pull/1976).
+
+  This is a breaking change related to the storage interface. If you are not implementing a storage adaptor, then these changes should not impact you.
+
+
+### Removed
+
+* Removed deprecated opentelemetry-connector `memory_ballast` extension. [#1942](https://github.com/openfga/openfga/pull/1942).
+* Removed experimental logging of cache hits for each subproblem in `Check` API calls. [#1960](https://github.com/openfga/openfga/pull/1960).
+
+### Fixed
+
+* Handle all permutations of SQLite busy / locked errors [#1936](https://github.com/openfga/openfga/pull/1936). Thanks @DanCech!
+* Goroutine leak in Check API introduced in v1.6.1 [#1962](https://github.com/openfga/openfga/pull/1962).
+* Broken migration from v.1.4.3 to v1.5.4 (https://github.com/openfga/openfga/issues/1668) [#1980](https://github.com/openfga/openfga/issues/1980) and [#1986](https://github.com/openfga/openfga/issues/1986).
+* Upgrade go from 1.22.6 to 1.22.7 to address CVE-2024-34156 [#1987](https://github.com/openfga/openfga/pull/1987). Thanks @golanglemonade!
+
+### Performance
+* Improve check performance in the case that the query involves resolving nested userset. Enable via experimental flag `enable-check-optimizations`. [#1945](https://github.com/openfga/openfga/issues/1945)
+
+## [1.6.1] - 2024-09-12
+
 ### Changed
 
-* Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options feature PR](https://github.com/openfga/openfga/pull/1764) for usage details. [#1889](https://github.com/openfga/openfga/pull/1889)
+* Support context in assertions [#1907](https://github.com/openfga/openfga/pull/1907)
+
+### Added
+
+* Support for graceful shutdown on `SIGTERM` signal, improving termination handling in containerized environments [#1928](https://github.com/openfga/openfga/pull/1928). Thanks @flex-seongbok @Siddhant-K-code
+* Stack trace when logging panics [#1904](https://github.com/openfga/openfga/pull/1904)
+* Throttling metric `throttled_requests_count` for observing the number of throttled requests for a given throttling configuration [#1863](https://github.com/openfga/openfga/pull/1863)
+* New metric on number of allowed vs. non-allowed Check responses [#1911](https://github.com/openfga/openfga/pull/1911)
+
+#### New datastore engine: SQLite (beta) [#1615](https://github.com/openfga/openfga/pull/1615)
+
+```
+openfga migrate --datastore-engine sqlite --datastore-uri openfga.sqlite
+openfga run --datastore-engine sqlite --datastore-uri openfga.sqlite
+```
+
+Thanks @DanCech!
+
+### Fixed
+
+* When a request gets cancelled by a client, throw a 4xx, not a 5xx. [#1905](https://github.com/openfga/openfga/pull/1905)
+* Makes the `pkg.logger.Logger.With` immutable by creating a child logger instead of mutating the delegate one to prevent side effects [1906](https://github.com/openfga/openfga/pull/1906)
+* Extend request timeout to 10s for slow tests [1926](https://github.com/openfga/openfga/pull/1926)
+
+### Performance
+
+* Improve performance of Check API in the case that the query involves resolving a tuple to userset and/or a userset, by streaming intermediate results. [#1888](https://github.com/openfga/openfga/pull/1888)
+
+## [1.6.0] - 2024-08-30
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.5.9...v1.6.0)
+
+### Changed
+
+* Consistency options experimental flag has been removed and is now enabled by default. Refer to the [consistency options documentation](https://openfga.dev/docs/interacting/consistency) for details. [#1889](https://github.com/openfga/openfga/pull/1889)
+* Require at least Go 1.22.6 [#1831](https://github.com/openfga/openfga/pull/1831). Thanks @tranngoclam
+* Add a "query_duration_ms" field on each log [#1807](https://github.com/openfga/openfga/pull/1831). Thanks @lalalalatt
+* Default logging to stdout instead of stderr [#1830](https://github.com/openfga/openfga/pull/1830)
+
+### Fixed
+
+* Check API: internal fixes [#1843](https://github.com/openfga/openfga/pull/1843)
+* Correct docker file syntax [#1852](https://github.com/openfga/openfga/pull/1852)
+
+### Performance
+
+* Performance improvements for Check API:
+  - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
+  - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
+  - performance improvement in wildcard scenarios [#1848](https://github.com/openfga/openfga/pull/1848)
+* Performance improvement in tuple validation on reads [#1825](https://github.com/openfga/openfga/pull/1825)
+
+### Breaking changes
+
+* Set a maximum limit on bytes to the WriteAssertions API: 64 KB [#1847](https://github.com/openfga/openfga/pull/1847)
 
 ## [1.5.9] - 2024-08-13
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.5.8...v1.5.9)
 
-## Security
+### Security
 
 * Address [CVE-2024-42473](https://github.com/openfga/openfga/security/advisories/GHSA-3f6g-m4hr-59h8) - a critical issue where Check API can return incorrect responses. Please see the CVE report for more details.
 
@@ -658,42 +759,42 @@ func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*o
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.1...v1.1.0)
 
-## Added
+### Added
 * Streaming ListObjects has no limit in number of results returned ([#733](https://github.com/openfga/openfga/pull/733))
 * Add Homebrew release stage to goreleaser's release process ([#716](https://github.com/openfga/openfga/pull/716))
 
-## Fixed
+### Fixed
 * Avoid DB connection churning in unoptimized ListObjects ([#711](https://github.com/openfga/openfga/pull/711))
 * Ensure ListObjects respects configurable ListObjectsDeadline ([#704](https://github.com/openfga/openfga/pull/704))
 * In Write, throw 400 instead of 500 error if auth model ID not found ([#725](https://github.com/openfga/openfga/pull/725))
 * Performance improvements when loading the authorization model ([#726](https://github.com/openfga/openfga/pull/726))
 * Ensure Check evaluates deterministically on the eval boundary case ([#732](https://github.com/openfga/openfga/pull/732))
 
-## Changed
+### Changed
 * [BREAKING] The flags to turn on writing and evaluation of `v1.0` models have been dropped ([#763](https://github.com/openfga/openfga/pull/763))
 
 ## [1.0.1] - 2023-04-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.0...v1.0.1)
 
-## Fixed
+### Fixed
 * Correct permission and location for gRPC health probe in Docker image (#697)
 
 ## [1.0.0] - 2023-04-14
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
 
-## Ready for Production with Postgres
+### Ready for Production with Postgres
 OpenFGA with Postgres is now considered stable and ready for production usage.
 
-## Fixed
+### Fixed
 * MySQL migration script errors during downgrade (#664)
 
 ## [0.4.3] - 2023-04-12
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.2...v0.4.3)
 
-## Added
+### Added
 * Release artifacts are now signed and include a Software Bill of Materials (SBOM) ([#683](https://github.com/openfga/openfga/pull/683))
 
   The SBOM (Software Bill of Materials) is included in each GitHub release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
@@ -734,13 +835,13 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
 
 * The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces ([#652](https://github.com/openfga/openfga/pull/652)) - thanks @jmiettinen
 
-## Fixed
+### Fixed
 * Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This can improve read query performance on larger OpenFGA stores ([#677](https://github.com/openfga/openfga/pull/677))
 * Synchronize concurrent access to in-memory storage iterators ([#587](https://github.com/openfga/openfga/pull/587))
 * Improve error logging in the `openfga migrate` command ([#663](https://github.com/openfga/openfga/pull/663))
 * Fix middleware ordering so that `requestid` middleware is registered earlier ([#662](https://github.com/openfga/openfga/pull/662))
 
-## Changed
+### Changed
 * Bumped up to Go version 1.20 ([#664](https://github.com/openfga/openfga/pull/664))
 * Default model schema versions to 1.1 ([#669](https://github.com/openfga/openfga/pull/669))
 
@@ -1149,7 +1250,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.5.9...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/openfga/openfga/releases/tag/v1.6.2
+[1.6.1]: https://github.com/openfga/openfga/releases/tag/v1.6.1
+[1.6.0]: https://github.com/openfga/openfga/releases/tag/v1.6.0
 [1.5.9]: https://github.com/openfga/openfga/releases/tag/v1.5.9
 [1.5.8]: https://github.com/openfga/openfga/releases/tag/v1.5.8
 [1.5.7]: https://github.com/openfga/openfga/releases/tag/v1.5.7
