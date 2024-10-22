@@ -96,7 +96,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(key).
 				Return(&storage.TupleIteratorCacheEntry{Tuples: []*openfgav1.Tuple{}, LastModified: time.Now()}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
-			mockCache.EXPECT().Get(invalidEntityKeys).
+			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 		)
 		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
