@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/emirpasic/gods/sets/hashset"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -996,7 +997,9 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
 
-func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, visitedUserset *sync.Map, currentUsersetLevel []string, usersetFromUser storage.SortedSet, checkOutcomeChan chan checkOutcome) {
+func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, visitedUserset *sync.Map, currentUsersetLevel []string, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
+	ctx, span := tracer.Start(ctx, "breadthFirstNestedMatch")
+	defer span.End()
 	req.GetRequestMetadata().Depth--
 	if req.GetRequestMetadata().Depth == 0 {
 		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
@@ -1042,7 +1045,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 					return nil
 				}
 				userset := usersetMsg.userset
-				if usersetFromUser.Exists(userset) {
+				if usersetFromUser.Contains(userset) {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
 						Allowed: true,
 						ResolutionMetadata: &ResolveCheckResponseMetadata{
@@ -1075,7 +1078,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 	c.breadthFirstNestedMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
-func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, currentLevelFromObject []string, usersetFromUser storage.SortedSet) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, currentLevelFromObject []string, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
 	defer span.End()
 	checkOutcomeChan := make(chan checkOutcome, c.concurrencyLimit)
@@ -1149,7 +1152,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	defer span.End()
 
-	usersetMessageChan := make(chan usersetMessage)
+	usersetMessageChan := make(chan usersetMessage, 10)
 
 	go func() {
 		defer func() {
@@ -1172,14 +1175,14 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 	return usersetMessageChan
 }
 
-// processUsersetMessage will add the userset in the primarySortedSet.
-// In addition, it returns whether the userset exists in secondarySortedSet.
+// processUsersetMessage will add the userset in the primarySet.
+// In addition, it returns whether the userset exists in secondarySet.
 // This is used to find the intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
-	primarySortedSet storage.SortedSet,
-	secondarySortedSet storage.SortedSet) bool {
-	primarySortedSet.Add(userset)
-	return secondarySortedSet.Exists(userset)
+	primarySet *hashset.Set,
+	secondarySet *hashset.Set) bool {
+	primarySet.Add(userset)
+	return secondarySet.Contains(userset)
 }
 
 type nestedMapping struct {
@@ -1192,8 +1195,8 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	usersetFromUser := storage.NewSortedSet()
-	usersetFromObject := storage.NewSortedSet()
+	usersetFromUser := hashset.New()
+	usersetFromObject := hashset.New()
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1271,7 +1274,13 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	}
 
 	req.GetRequestMetadata().DatastoreQueryCount = res.GetResolutionMetadata().DatastoreQueryCount
-	return c.recursiveMatchUserUserset(ctx, req, mapping, usersetFromObject.Values(), usersetFromUser)
+
+	firstLevel := make([]string, 0, usersetFromObject.Size())
+	for _, v := range usersetFromObject.Values() {
+		firstLevel = append(firstLevel, v.(string))
+	}
+
+	return c.recursiveMatchUserUserset(ctx, req, mapping, firstLevel, usersetFromUser)
 }
 
 func (c *LocalChecker) nestedTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emirpasic/gods/sets/hashset"
+
 	"github.com/openfga/openfga/internal/checkutil"
 
 	"github.com/openfga/openfga/internal/mocks"
@@ -4113,20 +4115,20 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 	tests := []struct {
 		name                 string
 		currentLevelUsersets []string
-		usersetFromUser      storage.SortedSet
+		usersetFromUser      *hashset.Set
 		readMocks            [][]*openfgav1.Tuple
 		expectedOutcomes     []checkOutcome
 	}{
 		{
 			name:                 "empty_userset",
 			currentLevelUsersets: []string{},
-			usersetFromUser:      storage.NewSortedSet(),
+			usersetFromUser:      hashset.New(),
 			expectedOutcomes:     []checkOutcome{},
 		},
 		{
 			name:                 "duplicates_no_match_no_recursion",
 			currentLevelUsersets: []string{"group:1", "group:2", "group:3", "group:1"},
-			usersetFromUser:      storage.NewSortedSet(),
+			usersetFromUser:      hashset.New(),
 			readMocks: [][]*openfgav1.Tuple{
 				{{}},
 				{{}},
@@ -4144,7 +4146,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		{
 			name:                 "duplicates_no_match_with_recursion",
 			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
-			usersetFromUser:      storage.NewSortedSet(),
+			usersetFromUser:      hashset.New(),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
 				{{Key: tuple.NewTupleKey("group:3", "parent", "group:2")}},
@@ -4168,7 +4170,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		{
 			name:                 "duplicates_match_with_recursion",
 			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
-			usersetFromUser:      storage.NewSortedSet("group:4"),
+			usersetFromUser:      hashset.New("group:4"),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
@@ -4186,7 +4188,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		{
 			name:                 "duplicates_match_with_recursion",
 			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
-			usersetFromUser:      storage.NewSortedSet("group:4"),
+			usersetFromUser:      hashset.New("group:4"),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
@@ -4204,7 +4206,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		{
 			name:                 "no_duplicates_no_match_counts",
 			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
-			usersetFromUser:      storage.NewSortedSet(),
+			usersetFromUser:      hashset.New(),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:4")}},
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:5")}},
@@ -4509,8 +4511,8 @@ func TestProcessUsersetMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			inputSortedSet := storage.NewSortedSet()
-			matchingSortedSet := storage.NewSortedSet()
+			inputSortedSet := hashset.New()
+			matchingSortedSet := hashset.New()
 			for _, match := range tt.matchingUserset {
 				matchingSortedSet.Add(match)
 			}
