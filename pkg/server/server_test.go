@@ -596,21 +596,28 @@ func TestRequestContextPropagation(t *testing.T) {
 
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-			mockDatastore.EXPECT().
-				ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-				AnyTimes().
-				Return(&openfgav1.AuthorizationModel{}, nil)
+			model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user
+
+			type repo
+				relations
+					define reader: [user]`)
 
 			mockDatastore.EXPECT().
 				ReadAuthorizationModel(gomock.Any(), gomock.Eq(storeID), gomock.Eq(modelID)).
-				AnyTimes().
-				DoAndReturn(func(ctx context.Context, _, _ string) (*openfgav1.AuthorizationModel, error) {
+				Return(model, nil)
+
+			mockDatastore.EXPECT().
+				ReadUserTuple(gomock.Any(), gomock.Eq(storeID), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _, _, _ any) (*openfgav1.Tuple, error) {
 					cancelParentCtx()
-					e := ctx.Err()
 					if tc.shouldPropagateContext {
-						require.ErrorIs(t, e, context.Canceled, "storage context must get cancelled if the request context is propagate context")
+						require.ErrorIs(t, ctx.Err(), context.Canceled, "storage context must get cancelled if the request context is propagated")
 					} else {
-						require.NoError(t, e, "storage context must not get canceled if request context is is disable propagate context")
+						require.NoError(t, ctx.Err(), "storage context must not get canceled if request context propagation is disabled")
 					}
 					// Return dummy error, we don't care about the check result for this testcase
 					return nil, storage.ErrNotFound
@@ -618,7 +625,7 @@ func TestRequestContextPropagation(t *testing.T) {
 
 			s := MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithRequestContextPropagation(tc.shouldPropagateContext),
+				WithContextPropagationToDatastore(tc.shouldPropagateContext),
 			)
 			t.Cleanup(func() {
 				mockDatastore.EXPECT().Close().Times(1)
