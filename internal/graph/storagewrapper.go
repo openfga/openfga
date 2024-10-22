@@ -112,6 +112,8 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
 	)
 
+	// NOTE: while `storagewrapper` is only used in Check there is no need to limit the length of this
+	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
 		subject := tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
