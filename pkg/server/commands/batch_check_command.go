@@ -2,8 +2,11 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
+
+	"github.com/openfga/openfga/pkg/server/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -65,6 +68,12 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 }
 
 func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[string]*BatchCheckOutcome, error) {
+	if len(params.Checks) > int(bq.maxChecksAllowed) {
+		return nil, errors.ValidationError(
+			fmt.Errorf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
+		)
+	}
+
 	// This check query will be run against every check in the batch
 	checkQuery := NewCheckCommand(
 		bq.datastore,
