@@ -4114,20 +4114,20 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		currentLevelUsersets []string
+		currentLevelUsersets *hashset.Set
 		usersetFromUser      *hashset.Set
 		readMocks            [][]*openfgav1.Tuple
 		expectedOutcomes     []checkOutcome
 	}{
 		{
 			name:                 "empty_userset",
-			currentLevelUsersets: []string{},
+			currentLevelUsersets: hashset.New(),
 			usersetFromUser:      hashset.New(),
 			expectedOutcomes:     []checkOutcome{},
 		},
 		{
 			name:                 "duplicates_no_match_no_recursion",
-			currentLevelUsersets: []string{"group:1", "group:2", "group:3", "group:1"},
+			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3", "group:1"),
 			usersetFromUser:      hashset.New(),
 			readMocks: [][]*openfgav1.Tuple{
 				{{}},
@@ -4145,7 +4145,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		},
 		{
 			name:                 "duplicates_no_match_with_recursion",
-			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
+			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
 			usersetFromUser:      hashset.New(),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
@@ -4169,7 +4169,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		},
 		{
 			name:                 "duplicates_match_with_recursion",
-			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
+			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
 			usersetFromUser:      hashset.New("group:4"),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
@@ -4187,7 +4187,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		},
 		{
 			name:                 "duplicates_match_with_recursion",
-			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
+			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
 			usersetFromUser:      hashset.New("group:4"),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
@@ -4205,7 +4205,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 		},
 		{
 			name:                 "no_duplicates_no_match_counts",
-			currentLevelUsersets: []string{"group:1", "group:2", "group:3"},
+			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
 			usersetFromUser:      hashset.New(),
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:4")}},

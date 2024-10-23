@@ -997,16 +997,14 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
 
-func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, visitedUserset *sync.Map, currentUsersetLevel []string, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
-	ctx, span := tracer.Start(ctx, "breadthFirstNestedMatch")
-	defer span.End()
+func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
 	req.GetRequestMetadata().Depth--
 	if req.GetRequestMetadata().Depth == 0 {
 		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
 		close(checkOutcomeChan)
 		return
 	}
-	if len(currentUsersetLevel) == 0 || ctx.Err() != nil {
+	if currentUsersetLevel.Size() == 0 || ctx.Err() != nil {
 		// nothing else to search for or upstream cancellation
 		close(checkOutcomeChan)
 		return
@@ -1016,12 +1014,13 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 
 	mu := &sync.Mutex{}
 	dsCount := &atomic.Uint32{}
-	nextUsersetLevel := make([]string, 0)
+	nextUsersetLevel := hashset.New()
 
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 
-	for _, userset := range currentUsersetLevel {
+	for _, usersetInterface := range currentUsersetLevel.Values() {
+		userset := usersetInterface.(string)
 		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
 		if visited {
 			continue
@@ -1035,8 +1034,9 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 			// TODO: TBD if we hard exit here, if yes, the channel needs to be closed
 			continue
 		}
+		// if the pool is short-circuited, the iterator should be stopped
+		defer mapper.Stop()
 		pool.Go(func(ctx context.Context) error {
-			defer mapper.Stop()
 			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
 			dsCount.Add(1)
 			for usersetMsg := range objectToUsersetMessageChan {
@@ -1055,7 +1055,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
 				mu.Lock()
-				nextUsersetLevel = append(nextUsersetLevel, userset)
+				nextUsersetLevel.Add(userset)
 				mu.Unlock()
 			}
 			return nil
@@ -1078,8 +1078,11 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 	c.breadthFirstNestedMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
-func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, currentLevelFromObject []string, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset")
+func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, currentLevelFromObject *hashset.Set, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset", trace.WithAttributes(
+		attribute.Int("first_level_size", currentLevelFromObject.Size()),
+		attribute.Int("terminal_type_size", usersetFromUser.Size()),
+	))
 	defer span.End()
 	checkOutcomeChan := make(chan checkOutcome, c.concurrencyLimit)
 
@@ -1197,7 +1200,6 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
-	firstLevel := make([]string, 0)
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1271,13 +1273,11 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 				res.Allowed = true
 				return res, nil
 			}
-			firstLevel = append(firstLevel, objectToUsersetMessage.userset)
 		}
 	}
 
 	req.GetRequestMetadata().DatastoreQueryCount = res.GetResolutionMetadata().DatastoreQueryCount
-
-	return c.recursiveMatchUserUserset(ctx, req, mapping, firstLevel, usersetFromUser)
+	return c.recursiveMatchUserUserset(ctx, req, mapping, usersetFromObject, usersetFromUser)
 }
 
 func (c *LocalChecker) nestedTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
