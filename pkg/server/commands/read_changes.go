@@ -76,12 +76,15 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		if ulidBytes, err := q.backend.CreateContinuationToken(tokenUlid, req.GetType()); err == nil {
 			token = string(ulidBytes)
 		} else {
-			return nil, serverErrors.HandleError(serverErrors.InvalidStartTime.Error(), err)
+			return nil, serverErrors.HandleError("", err)
 		}
 	}
 
 	opts := storage.ReadChangesOptions{
-		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), token),
+		Pagination: storage.NewPaginationOptions(
+			req.GetPageSize().GetValue(),
+			token,
+		),
 	}
 	filter := storage.ReadChangesFilter{
 		ObjectType:    req.GetType(),
