@@ -65,6 +65,9 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	return response, nil
 }
 
+// transformCheckResultToRPC takes about 150ns per check, or 0.00015ms.
+// If batch sizes ever increase into the thousands, we may want to
+// refactor this to work concurrently alongside the checks themselves.
 func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for k, v := range checkResults {
