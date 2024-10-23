@@ -13,6 +13,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
 * Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
 
+### Changed
+* Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
+  Note: In assertions, they are still restricted to `20` per assertion
+
 ### Performance
 * Improve check performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2025](https://github.com/openfga/openfga/pull/2025)
 * Extend Iterator Cache with ReadStartingWithUser results and corresponding invalidations in the Cache Controller. [#2035](https://github.com/openfga/openfga/pull/2035)
