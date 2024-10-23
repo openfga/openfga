@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Performance
 * Improve check performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2025](https://github.com/openfga/openfga/pull/2025)
+* Extend Iterator Cache with ReadStartingWithUser results and corresponding invalidations in the Cache Controller. [#2035](https://github.com/openfga/openfga/pull/2035)
 
 ### Fixed
 * Goroutine leak when ListObjects or StreamedListObjects call cannot be completed within REQUEST_TIMEOUT. [#2030](https://github.com/openfga/openfga/pull/2030)
