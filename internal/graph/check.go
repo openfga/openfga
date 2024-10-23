@@ -1152,7 +1152,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	defer span.End()
 
-	usersetMessageChan := make(chan usersetMessage, 10)
+	usersetMessageChan := make(chan usersetMessage, 100)
 
 	go func() {
 		defer func() {
@@ -1197,6 +1197,7 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
+	firstLevel := make([]string, 0)
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1270,15 +1271,11 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 				res.Allowed = true
 				return res, nil
 			}
+			firstLevel = append(firstLevel, objectToUsersetMessage.userset)
 		}
 	}
 
 	req.GetRequestMetadata().DatastoreQueryCount = res.GetResolutionMetadata().DatastoreQueryCount
-
-	firstLevel := make([]string, 0, usersetFromObject.Size())
-	for _, v := range usersetFromObject.Values() {
-		firstLevel = append(firstLevel, v.(string))
-	}
 
 	return c.recursiveMatchUserUserset(ctx, req, mapping, firstLevel, usersetFromUser)
 }

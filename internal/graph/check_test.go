@@ -4518,7 +4518,11 @@ func TestProcessUsersetMessage(t *testing.T) {
 			}
 			output := processUsersetMessage(tt.userset, inputSortedSet, matchingSortedSet)
 			require.Equal(t, tt.expectedFound, output)
-			require.Equal(t, tt.expectedInputUserset, inputSortedSet.Values())
+			res := make([]string, 0, inputSortedSet.Size())
+			for _, v := range inputSortedSet.Values() {
+				res = append(res, v.(string))
+			}
+			require.Equal(t, tt.expectedInputUserset, res)
 		})
 	}
 }
