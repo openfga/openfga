@@ -12,7 +12,6 @@ import (
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
-	// TODO all necessary telemetry / logging
 	ctx, span := tracer.Start(ctx, authz.Read, trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
@@ -25,7 +24,6 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	// TODO what do i need to do for authz, just add it to the constants in authz.go?
 	err = s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
 	if err != nil {
 		return nil, err
@@ -43,22 +41,15 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	// call a batch check command
-	// that command will just manage concurrency, fan out the checks, and run the timer
-	query := commands.NewBatchCheckCommand(
+	cmd := commands.NewBatchCheckCommand(
 		s.checkDatastore,
 		s.checkResolver,
 		typesys,
 		commands.WithBatchCheckCommandCacheController(s.cacheController),
-		//commands.WithBatchCheckMaxConcurrentReadsPerCheck()
-		//commands.WithBatchCheckResolveNodeLimit(),
-		// TODO config variables somewhere
-		// or does this belong as an execute param?
-		commands.WithBatchCheckCommandMaxConcurrentChecks(50),
 		commands.WithBatchCheckCommandLogger(s.logger),
 	)
 
-	result, err := query.Execute(ctx, &commands.BatchCheckCommandParams{
+	result, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
 		AuthorizationModelID: req.GetAuthorizationModelId(),
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),
