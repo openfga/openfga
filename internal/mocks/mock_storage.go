@@ -670,6 +670,21 @@ func (m *MockChangelogBackend) EXPECT() *MockChangelogBackendMockRecorder {
 	return m.recorder
 }
 
+// CreateContinuationToken mocks base method.
+func (m *MockChangelogBackend) CreateContinuationToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateContinuationToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateContinuationToken indicates an expected call of CreateContinuationToken.
+func (mr *MockChangelogBackendMockRecorder) CreateContinuationToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateContinuationToken", reflect.TypeOf((*MockChangelogBackend)(nil).CreateContinuationToken), ulid, objType)
+}
+
 // ReadChanges mocks base method.
 func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
@@ -719,6 +734,21 @@ func (m *MockOpenFGADatastore) Close() {
 func (mr *MockOpenFGADatastoreMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockOpenFGADatastore)(nil).Close))
+}
+
+// CreateContinuationToken mocks base method.
+func (m *MockOpenFGADatastore) CreateContinuationToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateContinuationToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateContinuationToken indicates an expected call of CreateContinuationToken.
+func (mr *MockOpenFGADatastoreMockRecorder) CreateContinuationToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateContinuationToken", reflect.TypeOf((*MockOpenFGADatastore)(nil).CreateContinuationToken), ulid, objType)
 }
 
 // CreateStore mocks base method.

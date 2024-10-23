@@ -3,13 +3,10 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/oklog/ulid/v2"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
@@ -456,7 +453,7 @@ func (s *Datastore) ReadAuthorizationModels(
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > options.Pagination.PageSize {
 		numModelIDs = options.Pagination.PageSize
-		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
+		token, err = sqlcommon.MarshallContToken(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -647,7 +644,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if len(stores) > options.Pagination.PageSize {
-		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
+		contToken, err := sqlcommon.MarshallContToken(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -740,7 +737,6 @@ func (s *Datastore) ReadChanges(
 
 	objectTypeFilter := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
-	hasStartTimeFilter := !filter.StartTime.IsZero()
 
 	orderBy := "ulid asc"
 	if options.SortDesc {
@@ -772,10 +768,6 @@ func (s *Datastore) ReadChanges(
 		}
 
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
-	} else if hasStartTimeFilter {
-		ulidFrom := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy()).String()
-
-		sb = sqlcommon.AddFromUlid(sb, ulidFrom, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -839,7 +831,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(sqlcommon.NewContToken(ulid, objectTypeFilter))
+	contToken, err := s.CreateContinuationToken(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -869,4 +861,8 @@ func HandleSQLError(err error, args ...interface{}) error {
 	}
 
 	return fmt.Errorf("sql error: %w", err)
+}
+
+func (s *Datastore) CreateContinuationToken(ulid string, objType string) ([]byte, error) {
+	return sqlcommon.MarshallContToken(sqlcommon.NewContToken(ulid, objType))
 }

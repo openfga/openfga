@@ -103,8 +103,8 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			}
 		})
 
-		t.Run("start_time_page_size_2", func(t *testing.T) {
-			changes := readChangesWithStartTime(t, datastore, storeID, 2, startTime, false)
+		t.Run("start_time_page_size_default", func(t *testing.T) {
+			changes := readChangesWithStartTime(t, datastore, storeID, storage.DefaultPageSize, startTime, false)
 			assert.Len(t, changes, len(writtenTuplesAfter))
 			for _, change := range changes {
 				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
@@ -118,7 +118,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 		t.Run("start_time_desc", func(t *testing.T) {
 			changes := readChangesWithStartTime(t, datastore, storeID, 1, startTime, true)
-			assert.Len(t, changes, len(writtenTuplesAfter))
+			assert.Len(t, changes, len(writtenTuplesBefore))
 			for _, change := range changes {
 				assert.Equal(t, "user:before", change.GetTupleKey().GetUser())
 			}
@@ -1714,7 +1714,7 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 			break
 		}
 		// Not strict equal because there may be less changes than the page size
-		require.LessOrEqual(t, len(tupleChanges), pageSize)
+		require.LessOrEqual(t, len(tupleChanges), pageSize, "len(tupleChanges)=%d, pageSize=%d, tuples=%v", len(tupleChanges), pageSize, tupleChanges)
 		seenChanges = append(seenChanges, tupleChanges...)
 		if len(tupleChanges) == 0 {
 			require.Empty(t, continuationToken)
@@ -1728,6 +1728,7 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 
 // readChanges calls ReadChanges. It reads everything from the store, pageSize changes at a time.
 // Along the way, it makes assertions on the changes seen. It returns all changes seen.
+// It reads changes starting from a specific time, by converting the timestamp into a continuation token.
 func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID string, pageSize int, startTime time.Time, desc bool) []*openfgav1.TupleChange {
 	t.Helper()
 	var (
@@ -1736,24 +1737,25 @@ func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID
 		continuationToken []byte
 		err               error
 	)
+	if !startTime.IsZero() {
+		ulidST := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy())
+		continuationToken, _ = ds.CreateContinuationToken(ulidST.String(), "")
+	}
 	for {
 		opts := storage.ReadChangesOptions{
-			Pagination: storage.PaginationOptions{
-				PageSize: pageSize,
-				From:     string(continuationToken),
-			},
+			Pagination: storage.NewPaginationOptions(
+				int32(pageSize),
+				string(continuationToken),
+			),
 			SortDesc: desc,
 		}
-		readChangesFilter := storage.ReadChangesFilter{
-			StartTime: startTime,
-		}
-		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, readChangesFilter, opts)
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
 		if err != nil {
 			require.ErrorIs(t, err, storage.ErrNotFound)
 			break
 		}
 		// Not strict equal because there may be less changes than the page size
-		require.LessOrEqual(t, len(tupleChanges), pageSize)
+		require.LessOrEqual(t, len(tupleChanges), pageSize, "len(tupleChanges)=%d, pageSize=%d, tuples=%v", len(tupleChanges), pageSize, tupleChanges)
 		seenChanges = append(seenChanges, tupleChanges...)
 		if len(tupleChanges) == 0 {
 			require.Empty(t, continuationToken)

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openfga/openfga/pkg/server/errors"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -128,7 +130,7 @@ type MemoryBackend struct {
 
 	// ChangelogBackend
 	// map: store => set of changes
-	changes map[string][]*openfgav1.TupleChange // GUARDED_BY(mutexTuples).
+	changes map[string][]*TupleChangeRec // GUARDED_BY(mutexTuples).
 
 	// AuthorizationModelBackend
 	// map: store = > map: type definition id => type definition
@@ -160,7 +162,7 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 		maxTuplesPerWrite:             defaultMaxTuplesPerWrite,
 		maxTypesPerAuthorizationModel: defaultMaxTypesPerAuthorizationModel,
 		tuples:                        make(map[string][]*storage.TupleRecord, 0),
-		changes:                       make(map[string][]*openfgav1.TupleChange, 0),
+		changes:                       make(map[string][]*TupleChangeRec, 0),
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgav1.Store, 0),
 		assertions:                    make(map[string][]*openfgav1.Assertion, 0),
@@ -219,45 +221,43 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	s.mutexTuples.RLock()
 	defer s.mutexTuples.RUnlock()
 
-	var err error
-	var from int64
+	var from *ulid.ULID
 	var typeInToken string
-	var continuationToken string
 	if options.Pagination.From != "" {
 		tokens := strings.Split(options.Pagination.From, "|")
 		if len(tokens) == 2 {
 			concreteToken := tokens[0]
 			typeInToken = tokens[1]
-			from, err = strconv.ParseInt(concreteToken, 10, 32)
+			parsed, err := ulid.Parse(concreteToken)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, errors.InvalidContinuationToken
 			}
+			from = &parsed
 		}
 	}
 
 	objectType := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
-	hasStartTimeFilter := !filter.StartTime.IsZero()
 
 	if typeInToken != "" && typeInToken != objectType {
 		return nil, nil, storage.ErrMismatchObjectType
 	}
 
-	var allChanges []*openfgav1.TupleChange
+	var allChanges []*TupleChangeRec
 	now := time.Now().UTC()
-	for _, change := range s.changes[store] {
-		if objectType == "" || (strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
-			if hasStartTimeFilter {
-				if !options.SortDesc && change.GetTimestamp().AsTime().Before(filter.StartTime) {
+	for _, changeRec := range s.changes[store] {
+		if objectType == "" || (strings.HasPrefix(changeRec.Change.GetTupleKey().GetObject(), objectType+":")) {
+			if changeRec.Change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
+				break
+			}
+			if from != nil {
+				if !options.SortDesc && changeRec.Ulid.Compare(*from) <= 0 {
 					continue
-				} else if options.SortDesc && change.GetTimestamp().AsTime().After(filter.StartTime) {
+				} else if options.SortDesc && changeRec.Ulid.Compare(*from) >= 0 {
 					continue
 				}
 			}
-			if change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
-				break
-			}
-			allChanges = append(allChanges, change)
+			allChanges = append(allChanges, changeRec)
 		}
 	}
 	if len(allChanges) == 0 {
@@ -271,22 +271,26 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	if options.SortDesc {
 		slices.Reverse(allChanges)
 	}
-	to := int(from) + pageSize
+
+	to := pageSize
 	if len(allChanges) < to {
 		to = len(allChanges)
 	}
-	res := allChanges[from:to]
-	if len(res) == 0 {
+	if to == 0 {
 		return nil, nil, storage.ErrNotFound
 	}
 
-	continuationToken = strconv.Itoa(len(allChanges))
-	if to != len(allChanges) {
-		continuationToken = strconv.Itoa(to)
-	}
-	continuationToken += fmt.Sprintf("|%s", objectType)
+	res := make([]*openfgav1.TupleChange, 0, to)
 
-	return res, []byte(continuationToken), nil
+	var last ulid.ULID
+	for _, change := range allChanges[:to] {
+		res = append(res, change.Change)
+		last = change.Ulid
+	}
+
+	continuationToken, _ := s.CreateContinuationToken(last.String(), objectType)
+
+	return res, continuationToken, nil
 }
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
@@ -335,6 +339,11 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	return &staticIterator{records: matches}, nil
 }
 
+type TupleChangeRec struct {
+	Change *openfgav1.TupleChange
+	Ulid   ulid.ULID
+}
+
 // Write see [storage.RelationshipTupleWriter].Write.
 func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
 	_, span := tracer.Start(ctx, "memory.Write")
@@ -358,10 +367,13 @@ Delete:
 			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
 				s.changes[store] = append(
 					s.changes[store],
-					&openfgav1.TupleChange{
-						TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
-						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-						Timestamp: now,
+					&TupleChangeRec{
+						Change: &openfgav1.TupleChange{
+							TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
+							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+							Timestamp: now,
+						},
+						Ulid: ulid.Make(),
 					},
 				)
 				continue Delete
@@ -407,10 +419,13 @@ Write:
 			conditionContext,
 		)
 
-		s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{
-			TupleKey:  tk,
-			Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-			Timestamp: now,
+		s.changes[store] = append(s.changes[store], &TupleChangeRec{
+			Change: &openfgav1.TupleChange{
+				TupleKey:  tk,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				Timestamp: now,
+			},
+			Ulid: ulid.Make(),
 		})
 	}
 	s.tuples[store] = records
@@ -841,4 +856,8 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 // IsReady see [storage.OpenFGADatastore].IsReady.
 func (s *MemoryBackend) IsReady(context.Context) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{IsReady: true}, nil
+}
+
+func (s *MemoryBackend) CreateContinuationToken(next string, objType string) ([]byte, error) {
+	return []byte(fmt.Sprintf("%s|%s", next, objType)), nil
 }

@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -680,7 +679,7 @@ func (s *Datastore) ReadAuthorizationModels(
 		}
 
 		if options.Pagination.PageSize > 0 && len(models) >= options.Pagination.PageSize {
-			token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
+			token, err = sqlcommon.MarshallContToken(sqlcommon.NewContToken(modelID, ""))
 			if err != nil {
 				return nil, nil, err
 			}
@@ -886,7 +885,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if len(stores) > options.Pagination.PageSize {
-		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
+		contToken, err := sqlcommon.MarshallContToken(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -982,7 +981,6 @@ func (s *Datastore) ReadChanges(
 
 	objectTypeFilter := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
-	hasStartTimeFilter := !filter.StartTime.IsZero()
 
 	orderBy := "ulid asc"
 	if options.SortDesc {
@@ -1014,10 +1012,6 @@ func (s *Datastore) ReadChanges(
 		}
 
 		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
-	} else if hasStartTimeFilter {
-		ulidFrom := ulid.MustNew(ulid.Timestamp(filter.StartTime), ulid.DefaultEntropy()).String()
-
-		sb = sqlcommon.AddFromUlid(sb, ulidFrom, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -1083,7 +1077,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(sqlcommon.NewContToken(ulid, objectTypeFilter))
+	contToken, err := s.CreateContinuationToken(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1157,4 +1151,8 @@ func isBusyError(err error) bool {
 
 	_, ok := busyErrors[sqliteErr.Code()]
 	return ok
+}
+
+func (s *Datastore) CreateContinuationToken(ulid string, objType string) ([]byte, error) {
+	return sqlcommon.MarshallContToken(sqlcommon.NewContToken(ulid, objType))
 }

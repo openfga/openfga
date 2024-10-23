@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -63,17 +65,27 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+	token := string(decodedContToken)
+
 	var startTime time.Time
 	if req.GetStartTime() != nil {
 		startTime = req.GetStartTime().AsTime()
 	}
+	if token == "" && !startTime.IsZero() {
+		tokenUlid := ulid.MustNew(ulid.Timestamp(startTime), nil).String()
+		if ulidBytes, err := q.backend.CreateContinuationToken(tokenUlid, req.GetType()); err == nil {
+			token = string(ulidBytes)
+		} else {
+			return nil, serverErrors.HandleError(serverErrors.InvalidStartTime.Error(), err)
+		}
+	}
+
 	opts := storage.ReadChangesOptions{
-		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), token),
 	}
 	filter := storage.ReadChangesFilter{
 		ObjectType:    req.GetType(),
 		HorizonOffset: q.horizonOffset,
-		StartTime:     startTime,
 	}
 	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), filter, opts)
 	if err != nil {
