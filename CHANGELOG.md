@@ -21,6 +21,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 * Fixed incorrect dispatch counts in List Objects [2013](https://github.com/openfga/openfga/pull/2013)
 
+### Breaking changes
+* The storage adapter `ListStores`'s parameter ListStoresOptions allows filtering by `IDs` [#1913](https://github.com/openfga/openfga/pull/1913)
+  If you are using a custom storage adapter, `ListStores` now expects `ListStoresOptions` parameter that accepts passing in a list of IDs.
+  See the following adapter [change](https://github.com/openfga/openfga/pull/1913/files#diff-8b98b331c5d4acbeb7274c68973d20900daaed47c8d8f3e62ba39284379166bbR86-R87) and the following [change](https://github.com/openfga/openfga/pull/1913/files#diff-087f50fca2d7eab21b8d342dbbf8fb0de6d405f85b51334b3801d2c34d810ff9L582-L587) for a sample storage adapter implementation.
+  If you are not using OpenFGA as a library with a custom storage adapter, this will not affect you. (for example, if you are using OpenFGA through our published docker images, you are not affected).
+
 ## [1.6.2] - 2024-10-03
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
