@@ -13,17 +13,13 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const defaultMaxConcurrentChecksPerBatch = 25
-
 type BatchCheckQuery struct {
-	cacheController            cachecontroller.CacheController
-	checkResolver              graph.CheckResolver
-	datastore                  storage.RelationshipTupleReader
-	logger                     logger.Logger
-	maxConcurrentChecks        uint32
-	maxConcurrentReadsPerCheck uint32
-	resolveNodeLimit           uint32
-	typesys                    *typesystem.TypeSystem
+	cacheController  cachecontroller.CacheController
+	checkResolver    graph.CheckResolver
+	datastore        storage.RelationshipTupleReader
+	logger           logger.Logger
+	maxChecksAllowed uint32
+	typesys          *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -53,13 +49,13 @@ func WithBatchCheckCommandLogger(l logger.Logger) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, maxChecksAllowed uint32, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
-		logger:              logger.NewNoopLogger(),
-		datastore:           datastore,
-		checkResolver:       checkResolver,
-		typesys:             typesys,
-		maxConcurrentChecks: defaultMaxConcurrentChecksPerBatch,
+		logger:           logger.NewNoopLogger(),
+		datastore:        datastore,
+		checkResolver:    checkResolver,
+		typesys:          typesys,
+		maxChecksAllowed: maxChecksAllowed,
 	}
 
 	for _, opt := range opts {

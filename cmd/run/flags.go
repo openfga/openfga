@@ -161,6 +161,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("metrics.enableRPCHistograms", flags.Lookup("metrics-enable-rpc-histograms"))
 		util.MustBindEnv("metrics.enableRPCHistograms", "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS")
 
+		util.MustBindPFlag("maxChecksPerBatchCheck", flags.Lookup("max-checks-per-batch-check"))
+		util.MustBindEnv("maxChecksPerBatchCheck", "OPENFGA_MAX_CHECKS_PER_BATCH_CHECK")
+
 		util.MustBindPFlag("maxTuplesPerWrite", flags.Lookup("max-tuples-per-write"))
 		util.MustBindEnv("maxTuplesPerWrite", "OPENFGA_MAX_TUPLES_PER_WRITE", "OPENFGA_MAXTUPLESPERWRITE")
 
