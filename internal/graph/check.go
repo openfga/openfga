@@ -1153,13 +1153,12 @@ type usersetMessage struct {
 // the object to the usersetMessageChan channel.
 func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
-	defer span.End()
-
 	usersetMessageChan := make(chan usersetMessage, 100)
 
 	go func() {
 		defer func() {
 			close(usersetMessageChan)
+			span.End()
 		}()
 
 		for {
