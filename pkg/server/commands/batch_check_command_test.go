@@ -6,7 +6,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/cachecontroller"
-	"log"
 	"testing"
 
 	"github.com/openfga/openfga/internal/graph"
@@ -18,6 +17,7 @@ import (
 )
 
 func TestBatchCheckCommand(t *testing.T) {
+	maxChecks := 50
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	ds := mockstorage.NewMockOpenFGADatastore(mockController)
@@ -38,41 +38,65 @@ func TestBatchCheckCommand(t *testing.T) {
 		ds,
 		mockCheckResolver,
 		ts,
-		50,
+		uint32(maxChecks),
 		WithBatchCheckCommandCacheController(cachecontroller.NewNoopCacheController()),
 	)
 
-	numChecks := 10
-	checks := make([]*openfgav1.BatchCheckItem, numChecks)
-	for i := 0; i < numChecks; i++ {
-		checks[i] = &openfgav1.BatchCheckItem{
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				Object:   "doc:doc1",
-				Relation: "viewer",
-				User:     "user:justin",
-			},
-			CorrelationId: fmt.Sprintf("fakeid%d", i),
+	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
+		numChecks := 50
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: fmt.Sprintf("fakeid%d", i),
+			}
 		}
-	}
 
-	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-		Times(numChecks).
-		Return(nil, nil)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(numChecks).
+			Return(nil, nil)
 
-	t.Run("first test", func(t *testing.T) {
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			Checks:               checks,
-			// Can i get a store id without a server?
-			// I need the mock datastore to return something here
-			StoreID: ulid.Make().String(),
+			StoreID:              ulid.Make().String(),
 		}
 
 		result, err := cmd.Execute(context.Background(), params)
 		//err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
-		log.Printf("justin results: %+v", result)
-		log.Printf("justin results1: %+v", result["fakeid1"])
+		//log.Printf("justin results: %+v", result)
+		//log.Printf("justin results1: %+v", result["fakeid1"])
 		require.NoError(t, err)
+		require.Equal(t, len(result), numChecks)
+	})
+
+	t.Run("fails_with_validation_error_if_too_many_tuples", func(t *testing.T) {
+		numChecks := maxChecks + 1
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: fmt.Sprintf("fakeid%d", i),
+			}
+		}
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		_, err := cmd.Execute(context.Background(), params)
+		require.Error(t, err)
+
 	})
 }
 
