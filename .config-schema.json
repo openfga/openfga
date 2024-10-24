@@ -110,6 +110,12 @@
             "default": [50, 200],
             "x-env-variable": "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS"
         },
+        "contextPropagationToDatastore": {
+            "description": "Propagate a requests context to the datastore implementation. Settings this parameter can result in connection pool draining on request aborts and timeouts.",
+            "type": "boolean",
+            "default": false,
+            "x-env-variable": "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE"
+        },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",

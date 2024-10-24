@@ -187,7 +187,8 @@ type Server struct {
 
 	authorizer authz.AuthorizerInterface
 
-	ctx context.Context
+	ctx                           context.Context
+	contextPropagationToDatastore bool
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -491,6 +492,17 @@ func WithDispatchThrottlingCheckResolverMaxThreshold(maxThreshold uint32) OpenFG
 	}
 }
 
+// WithContextPropagationToDatastore determines whether the request context is propagated to the datastore.
+// When enabled, the datastore receives cancellation signals when an API request is cancelled.
+// When disabled, datastore operations continue even if the original request context is cancelled.
+// Disabling context propagation is normally desirable to avoid unnecessary database connection churn.
+// If not specified, the default value is false (separate storage and request contexts).
+func WithContextPropagationToDatastore(enable bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.contextPropagationToDatastore = enable
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -688,7 +700,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}
 	}
 
-	s.datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(s.datastore), s.maxAuthorizationModelCacheSize)
+	if !s.contextPropagationToDatastore {
+		// Creates a new [storagewrappers.ContextTracerWrapper] that will execute datastore queries using
+		// a new background context with the current trace context.
+		s.datastore = storagewrappers.NewContextWrapper(s.datastore)
+	}
+	s.datastore = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
 
 	if s.cacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
 		s.cache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
