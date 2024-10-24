@@ -998,7 +998,6 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 }
 
 func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
-
 	_101tuples := make([]*openfgav1.TupleKey, 101)
 	for i := 0; i < 101; i++ {
 		_101tuples[i] = tuple.NewTupleKey(
