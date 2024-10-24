@@ -22,7 +22,6 @@ import (
 type MockTupleBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockTupleBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockTupleBackendMockRecorder is the mock recorder for MockTupleBackend.
@@ -150,7 +149,6 @@ func (mr *MockTupleBackendMockRecorder) Write(ctx, store, d, w any) *gomock.Call
 type MockRelationshipTupleReader struct {
 	ctrl     *gomock.Controller
 	recorder *MockRelationshipTupleReaderMockRecorder
-	isgomock struct{}
 }
 
 // MockRelationshipTupleReaderMockRecorder is the mock recorder for MockRelationshipTupleReader.
@@ -250,7 +248,6 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store,
 type MockRelationshipTupleWriter struct {
 	ctrl     *gomock.Controller
 	recorder *MockRelationshipTupleWriterMockRecorder
-	isgomock struct{}
 }
 
 // MockRelationshipTupleWriterMockRecorder is the mock recorder for MockRelationshipTupleWriter.
@@ -302,7 +299,6 @@ func (mr *MockRelationshipTupleWriterMockRecorder) Write(ctx, store, d, w any) *
 type MockAuthorizationModelReadBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAuthorizationModelReadBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockAuthorizationModelReadBackendMockRecorder is the mock recorder for MockAuthorizationModelReadBackend.
@@ -372,7 +368,6 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModels
 type MockTypeDefinitionWriteBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockTypeDefinitionWriteBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockTypeDefinitionWriteBackendMockRecorder is the mock recorder for MockTypeDefinitionWriteBackend.
@@ -424,7 +419,6 @@ func (mr *MockTypeDefinitionWriteBackendMockRecorder) WriteAuthorizationModel(ct
 type MockAuthorizationModelBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAuthorizationModelBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockAuthorizationModelBackendMockRecorder is the mock recorder for MockAuthorizationModelBackend.
@@ -522,7 +516,6 @@ func (mr *MockAuthorizationModelBackendMockRecorder) WriteAuthorizationModel(ctx
 type MockStoresBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockStoresBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockStoresBackendMockRecorder is the mock recorder for MockStoresBackend.
@@ -606,7 +599,6 @@ func (mr *MockStoresBackendMockRecorder) ListStores(ctx, options any) *gomock.Ca
 type MockAssertionsBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAssertionsBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockAssertionsBackendMockRecorder is the mock recorder for MockAssertionsBackend.
@@ -659,7 +651,6 @@ func (mr *MockAssertionsBackendMockRecorder) WriteAssertions(ctx, store, modelID
 type MockChangelogBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockChangelogBackendMockRecorder
-	isgomock struct{}
 }
 
 // MockChangelogBackendMockRecorder is the mock recorder for MockChangelogBackend.
@@ -695,11 +686,25 @@ func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, filter, opti
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockChangelogBackend)(nil).ReadChanges), ctx, store, filter, options)
 }
 
+// SerializeReadChangesContToken mocks base method.
+func (m *MockChangelogBackend) SerializeReadChangesContToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SerializeReadChangesContToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SerializeReadChangesContToken indicates an expected call of SerializeReadChangesContToken.
+func (mr *MockChangelogBackendMockRecorder) SerializeReadChangesContToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChangesContToken", reflect.TypeOf((*MockChangelogBackend)(nil).SerializeReadChangesContToken), ulid, objType)
+}
+
 // MockOpenFGADatastore is a mock of OpenFGADatastore interface.
 type MockOpenFGADatastore struct {
 	ctrl     *gomock.Controller
 	recorder *MockOpenFGADatastoreMockRecorder
-	isgomock struct{}
 }
 
 // MockOpenFGADatastoreMockRecorder is the mock recorder for MockOpenFGADatastore.
@@ -985,6 +990,21 @@ func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store stri
 func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter, options)
+}
+
+// SerializeReadChangesContToken mocks base method.
+func (m *MockOpenFGADatastore) SerializeReadChangesContToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SerializeReadChangesContToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SerializeReadChangesContToken indicates an expected call of SerializeReadChangesContToken.
+func (mr *MockOpenFGADatastoreMockRecorder) SerializeReadChangesContToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChangesContToken", reflect.TypeOf((*MockOpenFGADatastore)(nil).SerializeReadChangesContToken), ulid, objType)
 }
 
 // Write mocks base method.

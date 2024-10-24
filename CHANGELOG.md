@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
 * Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
+* Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
 
 ### Changed
 * Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)

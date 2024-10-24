@@ -159,6 +159,11 @@ func NewContToken(ulid, objectType string) *ContToken {
 	}
 }
 
+// MarshallContToken takes a ContToken struct and attempts to marshal it into a string.
+func MarshallContToken(from *ContToken) ([]byte, error) {
+	return json.Marshal(from)
+}
+
 // UnmarshallContToken takes a string representation of a continuation
 // token and attempts to unmarshal it into a ContToken struct.
 func UnmarshallContToken(from string) (*ContToken, error) {
@@ -703,4 +708,11 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{
 		IsReady: true,
 	}, nil
+}
+
+func AddFromUlid(sb sq.SelectBuilder, fromUlid string, sortDescending bool) sq.SelectBuilder {
+	if sortDescending {
+		return sb.Where(sq.Lt{"ulid": fromUlid})
+	}
+	return sb.Where(sq.Gt{"ulid": fromUlid})
 }
