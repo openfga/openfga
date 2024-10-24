@@ -135,6 +135,7 @@ type Server struct {
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
 	maxChecksPerBatchCheck           uint32
+	maxConcurrentChecksPerBatch      uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
 	maxConcurrentReadsForListUsers   uint32
@@ -587,6 +588,14 @@ func WithListUsersDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGASer
 	}
 }
 
+// WithMaxConcurrentChecksPerBatchCheck defines the maximum number of checks
+// allowed to be processed concurrently in a single batch request.
+func WithMaxConcurrentChecksPerBatchCheck(maxConcurrentChecks uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentChecksPerBatch = maxConcurrentChecks
+	}
+}
+
 // WithMaxChecksPerBatchCheck defines the maximum number of checks allowed to be sent
 // in a single BatchCheck request
 func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
@@ -610,6 +619,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxChecksPerBatchCheck:           serverconfig.DefaultMaxChecksPerBatchCheck,
+		maxConcurrentChecksPerBatch:      serverconfig.DefaultMaxConcurrentChecksPerBatchCheck,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
