@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -997,6 +998,14 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 }
 
 func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+
+	_101tuples := make([]*openfgav1.TupleKey, 101)
+	for i := 0; i < 101; i++ {
+		_101tuples[i] = tuple.NewTupleKey(
+			fmt.Sprintf("document:%d", i), "user", fmt.Sprintf("user:%d", i),
+		)
+	}
+
 	tests := []struct {
 		name              string
 		input             *openfgav1.ListUsersRequest
@@ -1189,30 +1198,8 @@ func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceCl
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-				ContextualTuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "user", "user:1"),
-					tuple.NewTupleKey("document:1", "user", "user:2"),
-					tuple.NewTupleKey("document:1", "user", "user:3"),
-					tuple.NewTupleKey("document:1", "user", "user:4"),
-					tuple.NewTupleKey("document:1", "user", "user:5"),
-					tuple.NewTupleKey("document:1", "user", "user:6"),
-					tuple.NewTupleKey("document:1", "user", "user:7"),
-					tuple.NewTupleKey("document:1", "user", "user:8"),
-					tuple.NewTupleKey("document:1", "user", "user:9"),
-					tuple.NewTupleKey("document:1", "user", "user:10"),
-					tuple.NewTupleKey("document:1", "user", "user:11"),
-					tuple.NewTupleKey("document:1", "user", "user:12"),
-					tuple.NewTupleKey("document:1", "user", "user:13"),
-					tuple.NewTupleKey("document:1", "user", "user:14"),
-					tuple.NewTupleKey("document:1", "user", "user:15"),
-					tuple.NewTupleKey("document:1", "user", "user:16"),
-					tuple.NewTupleKey("document:1", "user", "user:17"),
-					tuple.NewTupleKey("document:1", "user", "user:18"),
-					tuple.NewTupleKey("document:1", "user", "user:19"),
-					tuple.NewTupleKey("document:1", "user", "user:20"),
-					tuple.NewTupleKey("document:1", "user", "user:21"),
-				},
+				UserFilters:      []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: _101tuples,
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},
