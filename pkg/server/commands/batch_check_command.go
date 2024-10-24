@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/server/config"
 	"sync"
 	"time"
 
@@ -17,12 +19,13 @@ import (
 )
 
 type BatchCheckQuery struct {
-	cacheController  cachecontroller.CacheController
-	checkResolver    graph.CheckResolver
-	datastore        storage.RelationshipTupleReader
-	logger           logger.Logger
-	maxChecksAllowed uint32
-	typesys          *typesystem.TypeSystem
+	cacheController     cachecontroller.CacheController
+	checkResolver       graph.CheckResolver
+	datastore           storage.RelationshipTupleReader
+	logger              logger.Logger
+	maxChecksAllowed    uint32
+	maxConcurrentChecks uint32
+	typesys             *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -52,13 +55,26 @@ func WithBatchCheckCommandLogger(l logger.Logger) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, maxChecksAllowed uint32, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func WithBatchCheckMaxConcurrentChecks(maxConcurrentChecks uint32) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.maxConcurrentChecks = maxConcurrentChecks
+	}
+}
+
+func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.maxChecksAllowed = maxChecks
+	}
+}
+
+func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
-		logger:           logger.NewNoopLogger(),
-		datastore:        datastore,
-		checkResolver:    checkResolver,
-		typesys:          typesys,
-		maxChecksAllowed: maxChecksAllowed,
+		logger:              logger.NewNoopLogger(),
+		datastore:           datastore,
+		checkResolver:       checkResolver,
+		typesys:             typesys,
+		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
+		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 	}
 
 	for _, opt := range opts {
@@ -92,11 +108,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	// Kick off all checks concurrently, there is no limit here
 	// Concurrency limiting is left to check's ResolveNodeLimit and MaxConcurrentReads
-	var wg sync.WaitGroup
+	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for _, check := range params.Checks {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		pool.Go(func(ctx context.Context) error {
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.TupleKey,
@@ -104,11 +118,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Context:          check.Context,
 				Consistency:      params.Consistency,
 			}
+
 			start := time.Now()
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
-			// lock the results map and add a new entry
 			lock.Lock()
 			resultMap[check.CorrelationId] = &BatchCheckOutcome{
 				CheckResponse: response,
@@ -116,9 +130,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Err:           err,
 			}
 			lock.Unlock()
-		}()
+
+			return nil
+		})
 	}
-	wg.Wait()
+
+	_ = pool.Wait()
 
 	return resultMap, nil
 }
