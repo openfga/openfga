@@ -133,7 +133,7 @@ func TestReadChangesQuery(t *testing.T) {
 
 		filter := storage.ReadChangesFilter{}
 
-		mockDatastore.EXPECT().CreateContinuationToken(gomock.Cond(func(actualUlid string) bool {
+		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true
@@ -179,7 +179,7 @@ func TestReadChangesQuery(t *testing.T) {
 
 		filter := storage.ReadChangesFilter{}
 
-		mockDatastore.EXPECT().CreateContinuationToken(gomock.Any(), "").Times(0)
+		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Any(), "").Times(0)
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
@@ -212,7 +212,7 @@ func TestReadChangesQuery(t *testing.T) {
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		expectedUlid := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy()).String()
 
-		mockDatastore.EXPECT().CreateContinuationToken(gomock.Cond(func(actualUlid string) bool {
+		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true

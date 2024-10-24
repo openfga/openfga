@@ -288,7 +288,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		last = change.Ulid
 	}
 
-	continuationToken, _ := s.CreateContinuationToken(last.String(), objectType)
+	continuationToken, _ := s.SerializeReadChangesContToken(last.String(), objectType)
 
 	return res, continuationToken, nil
 }
@@ -858,6 +858,6 @@ func (s *MemoryBackend) IsReady(context.Context) (storage.ReadinessStatus, error
 	return storage.ReadinessStatus{IsReady: true}, nil
 }
 
-func (s *MemoryBackend) CreateContinuationToken(next string, objType string) ([]byte, error) {
+func (s *MemoryBackend) SerializeReadChangesContToken(next string, objType string) ([]byte, error) {
 	return []byte(fmt.Sprintf("%s|%s", next, objType)), nil
 }

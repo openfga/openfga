@@ -1739,7 +1739,7 @@ func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID
 	)
 	if !startTime.IsZero() {
 		ulidST := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy())
-		continuationToken, _ = ds.CreateContinuationToken(ulidST.String(), "")
+		continuationToken, _ = ds.SerializeReadChangesContToken(ulidST.String(), "")
 	}
 	for {
 		opts := storage.ReadChangesOptions{

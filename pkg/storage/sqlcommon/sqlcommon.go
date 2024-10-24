@@ -150,12 +150,6 @@ type ContToken struct {
 	ObjectType string `json:"ObjectType"`
 }
 
-// ContToken represents a continuation token structure used in pagination.
-type ContTokenLegacy struct {
-	Ulid       string `json:"sk"`
-	ObjectType string `json:"type"`
-}
-
 // NewContToken creates a new instance of ContToken
 // with the provided ULID and object type.
 func NewContToken(ulid, objectType string) *ContToken {

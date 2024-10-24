@@ -1077,7 +1077,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := s.CreateContinuationToken(ulid, objectTypeFilter)
+	contToken, err := s.SerializeReadChangesContToken(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1153,6 +1153,6 @@ func isBusyError(err error) bool {
 	return ok
 }
 
-func (s *Datastore) CreateContinuationToken(ulid string, objType string) ([]byte, error) {
+func (s *Datastore) SerializeReadChangesContToken(ulid string, objType string) ([]byte, error) {
 	return sqlcommon.MarshallContToken(sqlcommon.NewContToken(ulid, objType))
 }

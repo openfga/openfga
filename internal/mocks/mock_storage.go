@@ -670,21 +670,6 @@ func (m *MockChangelogBackend) EXPECT() *MockChangelogBackendMockRecorder {
 	return m.recorder
 }
 
-// CreateContinuationToken mocks base method.
-func (m *MockChangelogBackend) CreateContinuationToken(ulid, objType string) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateContinuationToken", ulid, objType)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateContinuationToken indicates an expected call of CreateContinuationToken.
-func (mr *MockChangelogBackendMockRecorder) CreateContinuationToken(ulid, objType any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateContinuationToken", reflect.TypeOf((*MockChangelogBackend)(nil).CreateContinuationToken), ulid, objType)
-}
-
 // ReadChanges mocks base method.
 func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
@@ -699,6 +684,21 @@ func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store string, fi
 func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockChangelogBackend)(nil).ReadChanges), ctx, store, filter, options)
+}
+
+// SerializeReadChangesContToken mocks base method.
+func (m *MockChangelogBackend) SerializeReadChangesContToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SerializeReadChangesContToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SerializeReadChangesContToken indicates an expected call of SerializeReadChangesContToken.
+func (mr *MockChangelogBackendMockRecorder) SerializeReadChangesContToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChangesContToken", reflect.TypeOf((*MockChangelogBackend)(nil).SerializeReadChangesContToken), ulid, objType)
 }
 
 // MockOpenFGADatastore is a mock of OpenFGADatastore interface.
@@ -734,21 +734,6 @@ func (m *MockOpenFGADatastore) Close() {
 func (mr *MockOpenFGADatastoreMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockOpenFGADatastore)(nil).Close))
-}
-
-// CreateContinuationToken mocks base method.
-func (m *MockOpenFGADatastore) CreateContinuationToken(ulid, objType string) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateContinuationToken", ulid, objType)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateContinuationToken indicates an expected call of CreateContinuationToken.
-func (mr *MockOpenFGADatastoreMockRecorder) CreateContinuationToken(ulid, objType any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateContinuationToken", reflect.TypeOf((*MockOpenFGADatastore)(nil).CreateContinuationToken), ulid, objType)
 }
 
 // CreateStore mocks base method.
@@ -1005,6 +990,21 @@ func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store stri
 func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter, options)
+}
+
+// SerializeReadChangesContToken mocks base method.
+func (m *MockOpenFGADatastore) SerializeReadChangesContToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SerializeReadChangesContToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SerializeReadChangesContToken indicates an expected call of SerializeReadChangesContToken.
+func (mr *MockOpenFGADatastoreMockRecorder) SerializeReadChangesContToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChangesContToken", reflect.TypeOf((*MockOpenFGADatastore)(nil).SerializeReadChangesContToken), ulid, objType)
 }
 
 // Write mocks base method.

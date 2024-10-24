@@ -318,8 +318,8 @@ type ChangelogBackend interface {
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
 	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error)
 
-	// CreateContinuationToken creates a continuation token for the given ULID and object type.
-	CreateContinuationToken(ulid string, objType string) ([]byte, error)
+	// SerializeReadChangesContToken serializes the continuation token into a format readable by ReadChanges
+	SerializeReadChangesContToken(ulid string, objType string) ([]byte, error)
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting
