@@ -72,8 +72,11 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		startTime = req.GetStartTime().AsTime()
 	}
 	if token == "" && !startTime.IsZero() {
-		tokenUlid := ulid.MustNew(ulid.Timestamp(startTime), nil).String()
-		if ulidBytes, err := q.backend.SerializeReadChangesContToken(tokenUlid, req.GetType()); err == nil {
+		tokenUlid, ulidErr := ulid.New(ulid.Timestamp(startTime), nil)
+		if ulidErr != nil {
+			return nil, serverErrors.HandleError("", ulidErr)
+		}
+		if ulidBytes, err := q.backend.SerializeReadChangesContToken(tokenUlid.String(), req.GetType()); err == nil {
 			token = string(ulidBytes)
 		} else {
 			return nil, serverErrors.HandleError("", err)
