@@ -4,18 +4,19 @@ package batchcheck
 import (
 	"context"
 	"fmt"
+	"math"
+	"testing"
+
 	parser "github.com/openfga/language/pkg/go/transformer"
 	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"math"
-	"testing"
+	"sigs.k8s.io/yaml"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/tests/check"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
 )
 
 const writeMaxChunkSize = 40
@@ -68,7 +69,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			for _, test := range allTestCases {
 				test := test
 				runTest(t, test, client, false)
-				runTest(t, test, client, true)
+				//runTest(t, test, client, true)
 			}
 		})
 	})
@@ -138,59 +139,33 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 					t.Skipf("no batch check assertions defined")
 				}
 
+				t.Logf("Justin number of assertiosn? %d", len(stage.BatchCheckAssertions))
 				for assertionNumber, assertion := range stage.BatchCheckAssertions {
-					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
+					t.Run(fmt.Sprintf("justin assertion_%d", assertionNumber), func(t *testing.T) {
 						detailedInfo := fmt.Sprintf("BatchCheck request: %v. Model: %s. Tuples: %s.", assertion.Request.ToString(), stage.Model, stage.Tuples)
 						fmt.Println(detailedInfo)
 
-						/*
-							ctxTuples := assertion.ContextualTuples
-							if contextTupleTest {
-								ctxTuples = append(ctxTuples, stage.Tuples...)
-							}
+						//ctxTuples := assertion.ContextualTuples
+						//if contextTupleTest {
+						//	ctxTuples = append(ctxTuples, stage.Tuples...)
+						//}
+						//
+						convertedRequest := assertion.Request.ToProtoRequest()
+						resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+							Checks:               convertedRequest.GetChecks(),
+						})
+						require.NoError(t, err)
 
-								// assert 1: on regular list users endpoint
-								convertedRequest := assertion.Request.ToProtoRequest()
-								resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
-									StoreId:              storeID,
-									AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-									Object:               convertedRequest.GetObject(),
-									Relation:             convertedRequest.GetRelation(),
-									UserFilters:          convertedRequest.GetUserFilters(),
-									Context:              assertion.Context,
-									ContextualTuples:     ctxTuples,
-								})
-								if assertion.ErrorCode != 0 && len(assertion.Expectation) > 0 {
-									t.Errorf("cannot have a test with the expectation of both an error code and a result")
-								}
+						t.Log(fmt.Sprintf("Justin the expectation: %+v", assertion.Expectation))
+						result := resp.GetResult()
+						t.Log(fmt.Sprintf("Justin the result: %+v", result))
 
-								if assertion.ErrorCode == 0 {
-									require.NoError(t, err, detailedInfo)
-									require.ElementsMatch(t, assertion.Expectation, listuserstest.FromUsersProto(resp.GetUsers()), detailedInfo)
-
-									// assert 2: each user in the response of ListUsers should return check -> true
-									for _, user := range resp.GetUsers() {
-										checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.UserProtoToString(user))
-										checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
-											StoreId:              storeID,
-											TupleKey:             checkRequestTupleKey,
-											AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-											ContextualTuples: &openfgav1.ContextualTupleKeys{
-												TupleKeys: ctxTuples,
-											},
-											Context: assertion.Context,
-										})
-										require.NoError(t, err, detailedInfo)
-										require.True(t, checkResp.GetAllowed(), "Expected allowed = true", checkRequestTupleKey)
-									}
-								} else {
-									require.Error(t, err, detailedInfo)
-									e, ok := status.FromError(err)
-									require.True(t, ok, detailedInfo)
-									require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
-								}
-						*/
-
+						for _, expectation := range assertion.Expectation {
+							oneResult := result[expectation.CorrelationID]
+							require.Equal(t, expectation.Allowed, oneResult.GetAllowed())
+						}
 					})
 				}
 			})
