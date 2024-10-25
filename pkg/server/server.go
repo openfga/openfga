@@ -1125,12 +1125,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	const methodName = "check"
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, serverErrors.ThrottledTimeout) {
+		finalErr := translateCheckError(err)
+		if errors.Is(finalErr, serverErrors.ThrottledTimeout) {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
 		// and add a wrapper helper that automatically injects the service name tag?
-		return nil, err
+		return nil, finalErr
 	}
 
 	span.SetAttributes(
@@ -1176,6 +1177,33 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	return res, nil
+}
+
+func translateCheckError(err error) error {
+	invalidRelationError := &commands.InvalidRelationError{}
+	if errors.As(err, &invalidRelationError) {
+		return serverErrors.ValidationError(err)
+	}
+
+	invalidTupleError := &commands.InvalidTupleError{}
+	if errors.As(err, &invalidTupleError) {
+		return serverErrors.HandleTupleValidateError(err)
+	}
+
+	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+		return serverErrors.AuthorizationModelResolutionTooComplex
+	}
+
+	if errors.Is(err, condition.ErrEvaluationFailed) {
+		return serverErrors.ValidationError(err)
+	}
+
+	throttledError := &commands.ThrottledError{}
+	if errors.As(err, &throttledError) {
+		return serverErrors.ThrottledTimeout
+	}
+
+	return serverErrors.HandleError("", err)
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
