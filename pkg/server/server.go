@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/pkg/tuple"
 	"net/http"
 	"slices"
 	"sort"
@@ -1180,14 +1181,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 }
 
 func translateCheckError(err error) error {
-	invalidRelationError := &commands.InvalidRelationError{}
+	var invalidRelationError *commands.InvalidRelationError
 	if errors.As(err, &invalidRelationError) {
 		return serverErrors.ValidationError(err)
 	}
 
-	invalidTupleError := &commands.InvalidTupleError{}
+	var invalidTupleError *commands.InvalidTupleError
 	if errors.As(err, &invalidTupleError) {
-		return serverErrors.HandleTupleValidateError(err)
+		tupleError := tuple.InvalidTupleError{Cause: err}
+		return serverErrors.HandleTupleValidateError(&tupleError)
 	}
 
 	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
@@ -1198,7 +1200,7 @@ func translateCheckError(err error) error {
 		return serverErrors.ValidationError(err)
 	}
 
-	throttledError := &commands.ThrottledError{}
+	var throttledError *commands.ThrottledError
 	if errors.As(err, &throttledError) {
 		return serverErrors.ThrottledTimeout
 	}
