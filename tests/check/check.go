@@ -29,13 +29,13 @@ import (
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
 
-type individualTest struct {
+type IndividualTest struct {
 	Name   string
 	Stages []*stage
 }
 
-type checkTests struct {
-	Tests []individualTest
+type CheckTests struct {
+	Tests []IndividualTest
 }
 
 type testParams struct {
@@ -75,7 +75,7 @@ func runTests(t *testing.T, params testParams) {
 		"tests/abac_tests.yaml",
 	}
 
-	var allTestCases []individualTest
+	var allTestCases []IndividualTest
 
 	for _, file := range files {
 		var b []byte
@@ -86,7 +86,7 @@ func runTests(t *testing.T, params testParams) {
 		}
 		require.NoError(t, err)
 
-		var testCases checkTests
+		var testCases CheckTests
 		err = yaml.Unmarshal(b, &testCases)
 		require.NoError(t, err)
 
@@ -100,7 +100,7 @@ func runTests(t *testing.T, params testParams) {
 	}
 }
 
-func runTest(t *testing.T, test individualTest, params testParams, contextTupleTest bool) {
+func runTest(t *testing.T, test IndividualTest, params testParams, contextTupleTest bool) {
 	schemaVersion := params.schemaVersion
 	client := params.client
 	name := test.Name
@@ -206,7 +206,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 	})
 }
 
-var matrix = individualTest{
+var matrix = IndividualTest{
 	Name: "complete_testing_model",
 	Stages: []*stage{
 		{

@@ -4,36 +4,27 @@ package batchcheck
 import (
 	"context"
 	"fmt"
-	parser "github.com/openfga/language/pkg/go/transformer"
-	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"math"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
+
+	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
+
+	parser "github.com/openfga/language/pkg/go/transformer"
+	"sigs.k8s.io/yaml"
+
+	"github.com/openfga/openfga/pkg/typesystem"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/tests/check"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
+
+	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/tests/check"
 )
 
 const writeMaxChunkSize = 40
-
-type individualTest struct {
-	Name   string
-	Stages []*stage
-}
-
-type batchCheckTests struct {
-	Tests []individualTest
-}
-
-type stage struct {
-	Model                string
-	Tuples               []*openfgav1.TupleKey
-	BatchCheckAssertions []*batchchecktest.Assertion `json:"batchCheckAssertions"`
-}
 
 type ClientInterface interface {
 	check.ClientInterface
@@ -47,10 +38,10 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			t.Parallel()
 			files := []string{
 				"tests/consolidated_1_1_tests.yaml",
-				//"tests/abac_tests.yaml",
+				"tests/abac_tests.yaml",
 			}
 
-			var allTestCases []individualTest
+			var allTestCases []check.IndividualTest
 
 			for _, file := range files {
 				var b []byte
@@ -58,7 +49,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 				b, err = assets.EmbedTests.ReadFile(file)
 				require.NoError(t, err)
 
-				var testCases batchCheckTests
+				var testCases check.CheckTests
 				err = yaml.Unmarshal(b, &testCases)
 				require.NoError(t, err)
 
@@ -68,13 +59,14 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			for _, test := range allTestCases {
 				test := test
 				runTest(t, test, client, false)
-				runTest(t, test, client, true)
+				// TODO: context tuple tests
+				// runTest(t, test, client, true)
 			}
 		})
 	})
 }
 
-func runTest(t *testing.T, test individualTest, client ClientInterface, contextTupleTest bool) {
+func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, contextTupleTest bool) {
 	ctx := context.Background()
 	name := test.Name
 
@@ -96,6 +88,8 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 		storeID := resp.GetId()
 
 		for stageNumber, stage := range test.Stages {
+			// don't need to run each assertion individually
+			// TODO: skip ones with error codes, that'll be different and custom
 			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
 				if contextTupleTest && len(stage.Tuples) > 20 {
 					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
@@ -133,71 +127,46 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 					}
 				}
 
-				// This is how you skip non necessary ones
-				if len(stage.BatchCheckAssertions) == 0 {
-					t.Skipf("no batch check assertions defined")
+				if len(stage.CheckAssertions) == 0 {
+					t.Skipf("no check assertions defined")
 				}
 
-				for assertionNumber, assertion := range stage.BatchCheckAssertions {
-					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
-						detailedInfo := fmt.Sprintf("BatchCheck request: %v. Model: %s. Tuples: %s.", assertion.Request.ToString(), stage.Model, stage.Tuples)
-						fmt.Println(detailedInfo)
+				// map of correlation_id to result
+				expectedResults := map[string]bool{}
 
-						/*
-							ctxTuples := assertion.ContextualTuples
-							if contextTupleTest {
-								ctxTuples = append(ctxTuples, stage.Tuples...)
-							}
+				// checks to be passed into batch check request
+				protoChecks := make([]*openfgav1.BatchCheckItem, 0, len(stage.CheckAssertions))
 
-								// assert 1: on regular list users endpoint
-								convertedRequest := assertion.Request.ToProtoRequest()
-								resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
-									StoreId:              storeID,
-									AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-									Object:               convertedRequest.GetObject(),
-									Relation:             convertedRequest.GetRelation(),
-									UserFilters:          convertedRequest.GetUserFilters(),
-									Context:              assertion.Context,
-									ContextualTuples:     ctxTuples,
-								})
-								if assertion.ErrorCode != 0 && len(assertion.Expectation) > 0 {
-									t.Errorf("cannot have a test with the expectation of both an error code and a result")
-								}
+				for _, assertion := range stage.CheckAssertions {
+					if assertion.ErrorCode != 0 {
+						t.Skipf("batch check integration error testing is handled in ____")
+					}
 
-								if assertion.ErrorCode == 0 {
-									require.NoError(t, err, detailedInfo)
-									require.ElementsMatch(t, assertion.Expectation, listuserstest.FromUsersProto(resp.GetUsers()), detailedInfo)
+					correlationID := ulid.Make().String()
+					require.NoError(t, err)
 
-									// assert 2: each user in the response of ListUsers should return check -> true
-									for _, user := range resp.GetUsers() {
-										checkRequestTupleKey := tuple.NewCheckRequestTupleKey(assertion.Request.Object, assertion.Request.Relation, tuple.UserProtoToString(user))
-										checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
-											StoreId:              storeID,
-											TupleKey:             checkRequestTupleKey,
-											AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-											ContextualTuples: &openfgav1.ContextualTupleKeys{
-												TupleKeys: ctxTuples,
-											},
-											Context: assertion.Context,
-										})
-										require.NoError(t, err, detailedInfo)
-										require.True(t, checkResp.GetAllowed(), "Expected allowed = true", checkRequestTupleKey)
-									}
-								} else {
-									require.Error(t, err, detailedInfo)
-									e, ok := status.FromError(err)
-									require.True(t, ok, detailedInfo)
-									require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
-								}
-						*/
+					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationID)
+					protoChecks = append(protoChecks, item)
+					expectedResults[correlationID] = assertion.Expectation
+				}
 
-					})
+				resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+					Checks:               protoChecks,
+				})
+				require.NoError(t, err)
+
+				result := resp.GetResult()
+
+				for correlationID, expected := range expectedResults {
+					allowed := result[correlationID].GetAllowed()
+					require.Equal(t, expected, allowed)
 				}
 			})
 		}
 	})
 }
 
-// assert that keys are correct based on received request
-// assert that specific checks ahve the right result
 // assert that some bits can error while others may not
+// needs its own yaml setup
