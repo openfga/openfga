@@ -359,6 +359,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	}
 
 	var records []*storage.TupleRecord
+	entropy := ulid.DefaultEntropy()
 Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
@@ -373,7 +374,7 @@ Delete:
 							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 							Timestamp: now,
 						},
-						Ulid: ulid.Make(),
+						Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
 					},
 				)
 				continue Delete
@@ -425,7 +426,7 @@ Write:
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 				Timestamp: now,
 			},
-			Ulid: ulid.Make(),
+			Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
 		})
 	}
 	s.tuples[store] = records
