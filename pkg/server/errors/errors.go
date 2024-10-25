@@ -126,6 +126,8 @@ func HandleError(public string, err error) error {
 		return WriteFailedDueToInvalidInput(err)
 	case errors.Is(err, storage.ErrInvalidContinuationToken):
 		return InvalidContinuationToken
+	case errors.Is(err, storage.ErrInvalidStartTime):
+		return InvalidStartTime
 	case errors.Is(err, storage.ErrMismatchObjectType):
 		return MismatchObjectType
 	case errors.Is(err, context.Canceled):
