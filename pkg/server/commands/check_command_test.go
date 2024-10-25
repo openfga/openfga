@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,11 +13,9 @@ import (
 
 	"github.com/openfga/openfga/pkg/testutils"
 
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -199,52 +196,4 @@ type doc
 	// second layer is the combined tuple reader
 	_, ok = bctr.RelationshipTupleReader.(*storagewrappers.CombinedTupleReader)
 	require.True(t, ok)
-}
-
-func TestTranslateError(t *testing.T) {
-	throttledRequestMetadata := &graph.ResolveCheckRequestMetadata{
-		WasThrottled: &atomic.Bool{},
-	}
-	throttledRequestMetadata.WasThrottled.Store(true)
-
-	nonThrottledRequestMedata := &graph.ResolveCheckRequestMetadata{
-		WasThrottled: &atomic.Bool{},
-	}
-	nonThrottledRequestMedata.WasThrottled.Store(false)
-
-	testcases := map[string]struct {
-		inputError    error
-		reqMetadata   *graph.ResolveCheckRequestMetadata
-		expectedError error
-	}{
-		`1`: {
-			inputError:    graph.ErrResolutionDepthExceeded,
-			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
-		},
-		`2`: {
-			inputError:    condition.ErrEvaluationFailed,
-			expectedError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
-		},
-		`3`: {
-			inputError:    context.DeadlineExceeded,
-			reqMetadata:   throttledRequestMetadata,
-			expectedError: serverErrors.ThrottledTimeout,
-		},
-		`4`: {
-			inputError:    context.DeadlineExceeded,
-			reqMetadata:   nonThrottledRequestMedata,
-			expectedError: serverErrors.RequestDeadlineExceeded,
-		},
-		`5`: {
-			inputError:    errors.ErrUnknown,
-			expectedError: errors.ErrUnknown,
-		},
-	}
-
-	for name, test := range testcases {
-		t.Run(name, func(t *testing.T) {
-			actualError := translateError(test.reqMetadata, test.inputError)
-			require.ErrorIs(t, actualError, test.expectedError)
-		})
-	}
 }

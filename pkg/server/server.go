@@ -5,12 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/pkg/tuple"
 	"net/http"
 	"slices"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/openfga/openfga/pkg/tuple"
 
 	"github.com/oklog/ulid/v2"
 

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/condition"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	language "github.com/openfga/language/pkg/go/transformer"
@@ -27,6 +29,7 @@ import (
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -2399,4 +2402,47 @@ func TestCheckValidatesModelID(t *testing.T) {
 	})
 
 	require.ErrorContains(t, err, "invalid CheckRequest.AuthorizationModelId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
+}
+
+func TestTranslateCheckError(t *testing.T) {
+	testcases := map[string]struct {
+		inputError    error
+		expectedError error
+	}{
+		`1`: {
+			inputError:    &commands.InvalidRelationError{Message: "oh no"},
+			expectedError: serverErrors.ValidationError(&commands.InvalidRelationError{Message: "oh no"}),
+		},
+		`2`: {
+			inputError: &commands.InvalidTupleError{Message: "oh no"},
+			expectedError: serverErrors.HandleTupleValidateError(
+				&tuple.InvalidTupleError{
+					Cause: &commands.InvalidTupleError{Message: "oh no"},
+				},
+			),
+		},
+		`3`: {
+			inputError:    graph.ErrResolutionDepthExceeded,
+			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
+		},
+		`4`: {
+			inputError:    condition.ErrEvaluationFailed,
+			expectedError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
+		},
+		`5`: {
+			inputError:    &commands.ThrottledError{},
+			expectedError: serverErrors.ThrottledTimeout,
+		},
+		`6`: {
+			inputError:    ofga_errors.ErrUnknown,
+			expectedError: ofga_errors.ErrUnknown,
+		},
+	}
+
+	for name, testCase := range testcases {
+		t.Run(name, func(t *testing.T) {
+			actualError := translateCheckError(testCase.inputError)
+			require.ErrorIs(t, actualError, testCase.expectedError)
+		})
+	}
 }
