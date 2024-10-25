@@ -11,10 +11,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -181,20 +179,4 @@ func buildCheckContext(ctx context.Context, typesys *typesystem.TypeSystem, data
 		),
 	)
 	return ctx
-}
-
-func translateError(reqMetadata *graph.ResolveCheckRequestMetadata, err error) error {
-	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		return serverErrors.AuthorizationModelResolutionTooComplex
-	}
-
-	if errors.Is(err, condition.ErrEvaluationFailed) {
-		return serverErrors.ValidationError(err)
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) && reqMetadata.WasThrottled.Load() {
-		return serverErrors.ThrottledTimeout
-	}
-
-	return serverErrors.HandleError("", err)
 }
