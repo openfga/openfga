@@ -789,6 +789,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(t, err)
 
+			ts, err := typesystem.NewAndValidate(ctx, test.model)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			require.NoError(t, err)
+
 			err = datastore.Write(
 				ctx,
 				store,
@@ -949,6 +953,10 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			// arrange
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
+			require.NoError(t, err)
+
+			ts, err := typesystem.NewAndValidate(ctx, test.model)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			require.NoError(t, err)
 
 			err = datastore.Write(
