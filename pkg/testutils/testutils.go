@@ -241,8 +241,8 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	grpcPort, grpcPortReleaser := TCPRandomPort()
 	defer grpcPortReleaser()
 
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	config.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
 
 	return config
 }
@@ -250,7 +250,7 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 // TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
 // It is the responsibility of the caller to call the release function right before trying to listen on the given port.
 func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
+	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
 	}

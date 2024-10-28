@@ -158,7 +158,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now()),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:5",
 						Relation: "viewer",
 						User:     "test",
 					},
@@ -167,7 +167,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().UTC().Add(-50 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:5",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -175,7 +175,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("5"),
-				storage.GetInvalidIteratorByObjectRelationCacheKey("5", "test", "viewer")},
+				storage.GetInvalidIteratorByObjectRelationCacheKeys("5", "test:5", "viewer")[0],
+				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0]},
 		},
 		{
 			name:    "last_change_is_halfway_in_the_newest_batch",
@@ -185,7 +186,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now()),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:5",
 						Relation: "viewer",
 						User:     "test",
 					},
@@ -194,7 +195,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().Add(-10 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:6",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -203,7 +204,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().Add(-11 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:7",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -212,7 +213,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().Add(-12 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:8",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -220,7 +221,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("6"),
-				storage.GetInvalidIteratorByObjectRelationCacheKey("6", "test", "viewer")},
+				storage.GetInvalidIteratorByObjectRelationCacheKeys("6", "test:5", "viewer")[0],
+				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0]},
 		},
 		{
 			name:               "last_change_not_in_newest_batch",

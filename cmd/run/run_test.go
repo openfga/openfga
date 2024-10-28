@@ -814,7 +814,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	metricsPort, metricsPortReleaser := testutils.TCPRandomPort()
 	metricsPortReleaser()
 
-	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
+	cfg.Metrics.Addr = fmt.Sprintf("localhost:%d", metricsPort)
 
 	cfg.MaxConcurrentReadsForCheck = 30
 	cfg.MaxConcurrentReadsForListObjects = 30
