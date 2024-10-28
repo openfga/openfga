@@ -46,6 +46,8 @@ func (e *ThrottledError) Error() string {
 	return e.Unwrap().Error()
 }
 
+// CheckCommandErrorToServerError converts internal errors thrown during the
+// check_command into consumer-facing errors to be sent over the wire.
 func CheckCommandErrorToServerError(err error) error {
 	var invalidRelationError *InvalidRelationError
 	if errors.As(err, &invalidRelationError) {
