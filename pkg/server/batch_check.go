@@ -103,19 +103,21 @@ func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckE
 
 	err := &openfgav1.CheckError{Message: cmdErr.Error()}
 
-	if errors.As(cmdErr, &invalidRelationError) {
+	// switch to map the possible errors to their specific GRPC codes in the proto definition
+	switch {
+	case errors.As(cmdErr, &invalidRelationError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	} else if errors.As(cmdErr, &invalidTupleError) {
+	case errors.As(cmdErr, &invalidTupleError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
-	} else if errors.Is(cmdErr, graph.ErrResolutionDepthExceeded) {
+	case errors.Is(cmdErr, graph.ErrResolutionDepthExceeded):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
-	} else if errors.Is(cmdErr, condition.ErrEvaluationFailed) {
+	case errors.Is(cmdErr, condition.ErrEvaluationFailed):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	} else if errors.As(cmdErr, &throttledError) {
+	case errors.As(cmdErr, &throttledError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	} else if errors.Is(cmdErr, context.DeadlineExceeded) {
+	case errors.Is(cmdErr, context.DeadlineExceeded):
 		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
-	} else {
+	default:
 		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
 	}
 
