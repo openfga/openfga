@@ -23,6 +23,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   Learn more about this feature and how to enable it [here](https://openfga.dev/docs/getting-started/setup-openfga/access-control)
   If you do try it out, please provide feedback in the [GitHub Discussion](https://github.com/orgs/openfga/discussions)
 * Document OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+* Add `BatchCheck` api endpoint [#2039](https://github.com/openfga/openfga/pull/2039)
 
 ### Changed
 * Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
