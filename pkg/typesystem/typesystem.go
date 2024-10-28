@@ -508,9 +508,9 @@ func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, user
 		return false
 	}
 	// FIXME: for now, we will disable fastpath for cases where publicly wildcard can be assigned to recursive userset.
-	return t.verifyNodeEdgesOptimizable(curAuthorizationModelNode,
+	return !t.hasPublicWildcardNode(curAuthorizationModelNode) && t.verifyNodeEdgesOptimizable(curAuthorizationModelNode,
 		expectedEdgeAndNodeType{expectedNodeForObjectRel: curAuthorizationModelNode, expectedEdgeType: graph.DirectEdge},
-		userType) && !t.hasPublicWildcardNode(curAuthorizationModelNode)
+		userType)
 }
 
 // recursiveTTUNodeCanFastpath is a helper function to determine whether the node (object#relation) has
