@@ -2,8 +2,12 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/internal/condition"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -13,7 +17,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/testutils"
 
-	"github.com/openfga/openfga/internal/errors"
+	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -122,12 +126,12 @@ type doc
 
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, ofga_errors.ErrUnknown)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
-		require.ErrorIs(t, err, errors.ErrUnknown)
+		require.ErrorIs(t, err, ofga_errors.ErrUnknown)
 	})
 
 	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
@@ -196,4 +200,51 @@ type doc
 	// second layer is the combined tuple reader
 	_, ok = bctr.RelationshipTupleReader.(*storagewrappers.CombinedTupleReader)
 	require.True(t, ok)
+}
+
+func TestCheckCommandErrorToServerError(t *testing.T) {
+	testcases := map[string]struct {
+		inputError    error
+		expectedError error
+	}{
+		`1`: {
+			inputError:    graph.ErrResolutionDepthExceeded,
+			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
+		},
+		`2`: {
+			inputError:    condition.ErrEvaluationFailed,
+			expectedError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
+		},
+		`3`: {
+			inputError:    &ThrottledError{},
+			expectedError: serverErrors.ThrottledTimeout,
+		},
+		`4`: {
+			inputError:    context.DeadlineExceeded,
+			expectedError: serverErrors.RequestDeadlineExceeded,
+		},
+		`5`: {
+			inputError: &InvalidTupleError{Cause: errors.New("oh no")},
+			expectedError: serverErrors.HandleTupleValidateError(
+				&tuple.InvalidTupleError{
+					Cause: &InvalidTupleError{Cause: errors.New("oh no")},
+				},
+			),
+		},
+		`6`: {
+			inputError:    &InvalidRelationError{Cause: errors.New("oh no")},
+			expectedError: serverErrors.ValidationError(&InvalidRelationError{Cause: errors.New("oh no")}),
+		},
+		`7`: {
+			inputError:    ofga_errors.ErrUnknown,
+			expectedError: ofga_errors.ErrUnknown,
+		},
+	}
+
+	for name, testCase := range testcases {
+		t.Run(name, func(t *testing.T) {
+			actualError := CheckCommandErrorToServerError(testCase.inputError)
+			require.ErrorIs(t, actualError, testCase.expectedError)
+		})
+	}
 }

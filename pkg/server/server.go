@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/openfga/openfga/pkg/tuple"
-
 	"github.com/oklog/ulid/v2"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -1127,7 +1125,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	const methodName = "check"
 	if err != nil {
 		telemetry.TraceError(span, err)
-		finalErr := translateCheckError(err)
+		finalErr := commands.CheckCommandErrorToServerError(err)
 		if errors.Is(finalErr, serverErrors.ThrottledTimeout) {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 		}
@@ -1179,34 +1177,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	return res, nil
-}
-
-func translateCheckError(err error) error {
-	var invalidRelationError *commands.InvalidRelationError
-	if errors.As(err, &invalidRelationError) {
-		return serverErrors.ValidationError(err)
-	}
-
-	var invalidTupleError *commands.InvalidTupleError
-	if errors.As(err, &invalidTupleError) {
-		tupleError := tuple.InvalidTupleError{Cause: err}
-		return serverErrors.HandleTupleValidateError(&tupleError)
-	}
-
-	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		return serverErrors.AuthorizationModelResolutionTooComplex
-	}
-
-	if errors.Is(err, condition.ErrEvaluationFailed) {
-		return serverErrors.ValidationError(err)
-	}
-
-	var throttledError *commands.ThrottledError
-	if errors.As(err, &throttledError) {
-		return serverErrors.ThrottledTimeout
-	}
-
-	return serverErrors.HandleError("", err)
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {

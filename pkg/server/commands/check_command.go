@@ -26,30 +26,6 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
-type InvalidTupleError struct {
-	Message string
-}
-
-func (e *InvalidTupleError) Error() string {
-	return e.Message
-}
-
-type InvalidRelationError struct {
-	Message string
-}
-
-func (e *InvalidRelationError) Error() string {
-	return e.Message
-}
-
-type ThrottledError struct {
-	Message string
-}
-
-func (e *ThrottledError) Error() string {
-	return e.Message
-}
-
 type CheckQuery struct {
 	logger          logger.Logger
 	checkResolver   graph.CheckResolver
@@ -142,7 +118,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			return nil, nil, &ThrottledError{Message: err.Error()}
+			return nil, nil, &ThrottledError{Cause: err}
 		}
 
 		return nil, nil, err
@@ -153,13 +129,13 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
-		return &InvalidRelationError{Message: err.Error()}
+		return &InvalidRelationError{Cause: err}
 	}
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
 	for _, ctxTuple := range contextualTuples.GetTupleKeys() {
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-			return &InvalidTupleError{Message: err.Error()}
+			return &InvalidTupleError{Cause: err}
 		}
 	}
 	return nil
