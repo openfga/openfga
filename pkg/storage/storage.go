@@ -4,6 +4,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -317,9 +318,24 @@ type ChangelogBackend interface {
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
 	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error)
+}
 
+type ReadChangesTokenSerializer interface {
 	// SerializeReadChangesContToken serializes the continuation token into a format readable by ReadChanges
 	SerializeReadChangesContToken(ulid string, objType string) ([]byte, error)
+}
+
+// StringReadChangesTokenSerializer is a ReadChangesTokenSerializer that serializes the continuation token as a string.
+type StringReadChangesTokenSerializer struct{}
+
+// NewStringReadChangesTokenSerializer returns a new instance of StringReadChangesTokenSerializer.
+func NewStringReadChangesTokenSerializer() ReadChangesTokenSerializer {
+	return &StringReadChangesTokenSerializer{}
+}
+
+// SerializeReadChangesContToken serializes the continuation token into a format readable by ReadChanges
+func (ts *StringReadChangesTokenSerializer) SerializeReadChangesContToken(ulid string, objType string) ([]byte, error) {
+	return []byte(fmt.Sprintf("%s|%s", ulid, objType)), nil
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting

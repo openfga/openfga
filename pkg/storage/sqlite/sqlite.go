@@ -42,6 +42,7 @@ type Datastore struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	logger                 logger.Logger
+	tokenSerializer        storage.ReadChangesTokenSerializer
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
@@ -118,6 +119,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		stbl:                   stbl,
 		db:                     db,
 		logger:                 cfg.Logger,
+		tokenSerializer:        cfg.TokenSerializer,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
@@ -1077,7 +1079,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := s.SerializeReadChangesContToken(ulid, objectTypeFilter)
+	contToken, err := s.tokenSerializer.SerializeReadChangesContToken(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1151,8 +1153,4 @@ func isBusyError(err error) bool {
 
 	_, ok := busyErrors[sqliteErr.Code()]
 	return ok
-}
-
-func (s *Datastore) SerializeReadChangesContToken(ulid string, objType string) ([]byte, error) {
-	return sqlcommon.MarshallContToken(sqlcommon.NewContToken(ulid, objType))
 }

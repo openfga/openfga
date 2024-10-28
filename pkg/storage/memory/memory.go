@@ -130,7 +130,7 @@ type MemoryBackend struct {
 
 	// ChangelogBackend
 	// map: store => set of changes
-	changes map[string][]*TupleChangeRec // GUARDED_BY(mutexTuples).
+	changes map[string][]*tupleChangeRec // GUARDED_BY(mutexTuples).
 
 	// AuthorizationModelBackend
 	// map: store = > map: type definition id => type definition
@@ -144,6 +144,9 @@ type MemoryBackend struct {
 	// map: store id | authz model id => assertions
 	assertions      map[string][]*openfgav1.Assertion // GUARDED_BY(mutexAssertions).
 	mutexAssertions sync.RWMutex
+
+	// ReadChangesTokenSerializer required to serialize the token
+	tokenSerializer storage.ReadChangesTokenSerializer
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
@@ -162,10 +165,11 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 		maxTuplesPerWrite:             defaultMaxTuplesPerWrite,
 		maxTypesPerAuthorizationModel: defaultMaxTypesPerAuthorizationModel,
 		tuples:                        make(map[string][]*storage.TupleRecord, 0),
-		changes:                       make(map[string][]*TupleChangeRec, 0),
+		changes:                       make(map[string][]*tupleChangeRec, 0),
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgav1.Store, 0),
 		assertions:                    make(map[string][]*openfgav1.Assertion, 0),
+		tokenSerializer:               storage.NewStringReadChangesTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -187,6 +191,11 @@ func WithMaxTuplesPerWrite(n int) StorageOption {
 // ensuring that models remain manageable and within predefined resource constraints.
 func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
+}
+
+// WithReadChangeTokenSerializer returns a [StorageOption] that sets the token serializer for the [MemoryBackend].
+func WithReadChangeTokenSerializer(tokenSerializer storage.ReadChangesTokenSerializer) StorageOption {
+	return func(ds *MemoryBackend) { ds.tokenSerializer = tokenSerializer }
 }
 
 // Close does not do anything for [MemoryBackend].
@@ -243,7 +252,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		return nil, nil, storage.ErrMismatchObjectType
 	}
 
-	var allChanges []*TupleChangeRec
+	var allChanges []*tupleChangeRec
 	now := time.Now().UTC()
 	for _, changeRec := range s.changes[store] {
 		if objectType == "" || (strings.HasPrefix(changeRec.Change.GetTupleKey().GetObject(), objectType+":")) {
@@ -288,7 +297,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		last = change.Ulid
 	}
 
-	continuationToken, _ := s.SerializeReadChangesContToken(last.String(), objectType)
+	continuationToken, _ := s.tokenSerializer.SerializeReadChangesContToken(last.String(), objectType)
 
 	return res, continuationToken, nil
 }
@@ -339,7 +348,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	return &staticIterator{records: matches}, nil
 }
 
-type TupleChangeRec struct {
+type tupleChangeRec struct {
 	Change *openfgav1.TupleChange
 	Ulid   ulid.ULID
 }
@@ -368,7 +377,7 @@ Delete:
 			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
 				s.changes[store] = append(
 					s.changes[store],
-					&TupleChangeRec{
+					&tupleChangeRec{
 						Change: &openfgav1.TupleChange{
 							TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
 							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
@@ -420,7 +429,7 @@ Write:
 			conditionContext,
 		)
 
-		s.changes[store] = append(s.changes[store], &TupleChangeRec{
+		s.changes[store] = append(s.changes[store], &tupleChangeRec{
 			Change: &openfgav1.TupleChange{
 				TupleKey:  tk,
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
@@ -857,8 +866,4 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 // IsReady see [storage.OpenFGADatastore].IsReady.
 func (s *MemoryBackend) IsReady(context.Context) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{IsReady: true}, nil
-}
-
-func (s *MemoryBackend) SerializeReadChangesContToken(next string, objType string) ([]byte, error) {
-	return []byte(fmt.Sprintf("%s|%s", next, objType)), nil
 }

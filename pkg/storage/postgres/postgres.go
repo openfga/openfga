@@ -40,6 +40,7 @@ type Datastore struct {
 	db                     *sql.DB
 	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
+	tokenSerializer        storage.ReadChangesTokenSerializer
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
@@ -136,6 +137,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		db:                     db,
 		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
+		tokenSerializer:        cfg.TokenSerializer,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
@@ -822,7 +824,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := s.SerializeReadChangesContToken(ulid, objectTypeFilter)
+	contToken, err := s.tokenSerializer.SerializeReadChangesContToken(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -852,8 +854,4 @@ func HandleSQLError(err error, args ...interface{}) error {
 	}
 
 	return fmt.Errorf("sql error: %w", err)
-}
-
-func (s *Datastore) SerializeReadChangesContToken(ulid string, objType string) ([]byte, error) {
-	return sqlcommon.MarshallContToken(sqlcommon.NewContToken(ulid, objType))
 }

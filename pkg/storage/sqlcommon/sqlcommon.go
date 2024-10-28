@@ -28,6 +28,7 @@ type Config struct {
 	Username               string
 	Password               string
 	Logger                 logger.Logger
+	TokenSerializer        storage.ReadChangesTokenSerializer
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
 
@@ -61,6 +62,12 @@ func WithPassword(password string) DatastoreOption {
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.Logger = l
+	}
+}
+
+func WithTokenSerializer(tokenSerializer storage.ReadChangesTokenSerializer) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.TokenSerializer = tokenSerializer
 	}
 }
 
@@ -133,6 +140,10 @@ func NewConfig(opts ...DatastoreOption) *Config {
 		cfg.Logger = logger.NewNoopLogger()
 	}
 
+	if cfg.TokenSerializer == nil {
+		cfg.TokenSerializer = NewSQLReadChangesTokenSerializer()
+	}
+
 	if cfg.MaxTuplesPerWriteField == 0 {
 		cfg.MaxTuplesPerWriteField = storage.DefaultMaxTuplesPerWrite
 	}
@@ -172,6 +183,16 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 		return nil, storage.ErrInvalidContinuationToken
 	}
 	return &token, nil
+}
+
+func NewSQLReadChangesTokenSerializer() storage.ReadChangesTokenSerializer {
+	return &SQLReadChangesTokenSerializer{}
+}
+
+type SQLReadChangesTokenSerializer struct{}
+
+func (s *SQLReadChangesTokenSerializer) SerializeReadChangesContToken(ulid string, objType string) ([]byte, error) {
+	return MarshallContToken(NewContToken(ulid, objType))
 }
 
 // SQLTupleIterator is a struct that implements the storage.TupleIterator

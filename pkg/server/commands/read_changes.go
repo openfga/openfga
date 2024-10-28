@@ -17,10 +17,11 @@ import (
 )
 
 type ReadChangesQuery struct {
-	backend       storage.ChangelogBackend
-	logger        logger.Logger
-	encoder       encoder.Encoder
-	horizonOffset time.Duration
+	backend         storage.ChangelogBackend
+	logger          logger.Logger
+	encoder         encoder.Encoder
+	tokenSerializer storage.ReadChangesTokenSerializer
+	horizonOffset   time.Duration
 }
 
 type ReadChangesQueryOption func(*ReadChangesQuery)
@@ -44,13 +45,21 @@ func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption 
 	}
 }
 
+// WithReadChangesQueryTokenSerializer specifies the token serializer to be used.
+func WithReadChangesQueryTokenSerializer(s storage.ReadChangesTokenSerializer) ReadChangesQueryOption {
+	return func(rq *ReadChangesQuery) {
+		rq.tokenSerializer = s
+	}
+}
+
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`.
 func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
 	rq := &ReadChangesQuery{
-		backend:       backend,
-		logger:        logger.NewNoopLogger(),
-		encoder:       encoder.NewBase64Encoder(),
-		horizonOffset: time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+		backend:         backend,
+		logger:          logger.NewNoopLogger(),
+		encoder:         encoder.NewBase64Encoder(),
+		horizonOffset:   time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+		tokenSerializer: &storage.StringReadChangesTokenSerializer{},
 	}
 
 	for _, opt := range opts {
@@ -76,7 +85,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		if ulidErr != nil {
 			return nil, serverErrors.HandleError(ulidErr.Error(), storage.ErrInvalidStartTime)
 		}
-		if ulidBytes, err := q.backend.SerializeReadChangesContToken(tokenUlid.String(), req.GetType()); err == nil {
+		if ulidBytes, err := q.tokenSerializer.SerializeReadChangesContToken(tokenUlid.String(), req.GetType()); err == nil {
 			token = string(ulidBytes)
 		} else {
 			return nil, serverErrors.HandleError("", err)
