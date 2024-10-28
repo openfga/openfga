@@ -63,14 +63,12 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		Consistency:          req.GetConsistency(),
 		StoreID:              storeID,
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	response := &openfgav1.BatchCheckResponse{}
-	response.Result = transformCheckResultToRPC(result)
-
-	return response, nil
+	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToRPC(result)}, nil
 }
 
 // transformCheckResultToRPC takes about 150ns per check, or 0.00015ms.
@@ -84,7 +82,7 @@ func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutco
 
 		if v.Err != nil {
 			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Error{
-				Error: transformCheckErrorToBatchCheckError(v.Err),
+				Error: transformCheckCommandErrorToBatchCheckError(v.Err),
 			}
 		} else {
 			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
@@ -98,28 +96,28 @@ func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutco
 	return batchResult
 }
 
-func transformCheckErrorToBatchCheckError(err error) *openfgav1.CheckError {
+func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckError {
 	var invalidRelationError *commands.InvalidRelationError
 	var invalidTupleError *commands.InvalidTupleError
 	var throttledError *commands.ThrottledError
 
-	checkError := &openfgav1.CheckError{Message: err.Error()}
+	err := &openfgav1.CheckError{Message: cmdErr.Error()}
 
-	if errors.As(err, &invalidRelationError) {
-		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	} else if errors.As(err, &invalidTupleError) {
-		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
-	} else if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
-	} else if errors.Is(err, condition.ErrEvaluationFailed) {
-		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	} else if errors.As(err, &throttledError) {
-		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	} else if errors.Is(err, context.DeadlineExceeded) {
-		checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
+	if errors.As(cmdErr, &invalidRelationError) {
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+	} else if errors.As(cmdErr, &invalidTupleError) {
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
+	} else if errors.Is(cmdErr, graph.ErrResolutionDepthExceeded) {
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
+	} else if errors.Is(cmdErr, condition.ErrEvaluationFailed) {
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+	} else if errors.As(cmdErr, &throttledError) {
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+	} else if errors.Is(cmdErr, context.DeadlineExceeded) {
+		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
 	} else {
-		checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
+		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
 	}
 
-	return checkError
+	return err
 }
