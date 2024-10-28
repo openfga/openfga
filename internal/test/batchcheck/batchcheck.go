@@ -3,8 +3,11 @@ package batchchecktest
 import (
 	"fmt"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	checktest "github.com/openfga/openfga/internal/test/check"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+// TODO: justin use this file
 
 type Assertion struct {
 	Request     *TestBatchCheckRequest
@@ -55,4 +58,46 @@ func (t *TestBatchCheckRequest) ToProtoRequest() *openfgav1.BatchCheckRequest {
 
 func (t *TestBatchCheckRequest) ToString() string {
 	return fmt.Sprintf("Justin test ToString for now")
+}
+
+// TODO: this should also return the results map
+func BatchChecksFromCheckAssertion(assertions []*checktest.Assertion) []*openfgav1.BatchCheckItem {
+	checks := make([]*openfgav1.BatchCheckItem, 0, len(assertions))
+	for _, assertion := range assertions {
+		item := &openfgav1.BatchCheckItem{
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				Object:   assertion.Tuple.Object,
+				Relation: assertion.Tuple.Relation,
+				User:     assertion.Tuple.User,
+			},
+			Context: assertion.Context,
+			ContextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: assertion.ContextualTuples,
+			},
+		}
+		checks = append(checks, item)
+	}
+
+	return checks
+}
+
+func BatchCheckItemFromAssertion(assertion *checktest.Assertion, correlationId string) *openfgav1.BatchCheckItem {
+	item := &openfgav1.BatchCheckItem{
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			Object:   assertion.Tuple.Object,
+			Relation: assertion.Tuple.Relation,
+			User:     assertion.Tuple.User,
+		},
+		Context: assertion.Context,
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: assertion.ContextualTuples,
+		},
+		CorrelationId: correlationId,
+	}
+
+	return item
+}
+
+func ExpectedResultFromAssertion(assertion *checktest.Assertion) *openfgav1.BatchCheckSingleResult_Allowed {
+
 }

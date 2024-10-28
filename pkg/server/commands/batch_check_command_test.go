@@ -17,7 +17,7 @@ import (
 )
 
 func TestBatchCheckCommand(t *testing.T) {
-	maxChecks := 50
+	maxChecks := uint32(50)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	ds := mockstorage.NewMockOpenFGADatastore(mockController)
@@ -38,7 +38,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		ds,
 		mockCheckResolver,
 		ts,
-		uint32(maxChecks),
+		WithBatchCheckMaxChecksPerBatch(maxChecks),
 		WithBatchCheckCommandCacheController(cachecontroller.NewNoopCacheController()),
 	)
 
@@ -75,7 +75,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("fails_with_validation_error_if_too_many_tuples", func(t *testing.T) {
-		numChecks := maxChecks + 1
+		numChecks := int(maxChecks) + 1
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
 			checks[i] = &openfgav1.BatchCheckItem{

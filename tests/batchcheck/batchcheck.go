@@ -4,11 +4,12 @@ package batchcheck
 import (
 	"context"
 	"fmt"
+	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
 	"math"
+	"regexp"
 	"testing"
 
 	parser "github.com/openfga/language/pkg/go/transformer"
-	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"sigs.k8s.io/yaml"
 
@@ -20,21 +21,6 @@ import (
 )
 
 const writeMaxChunkSize = 40
-
-type individualTest struct {
-	Name   string
-	Stages []*stage
-}
-
-type batchCheckTests struct {
-	Tests []individualTest
-}
-
-type stage struct {
-	Model                string
-	Tuples               []*openfgav1.TupleKey
-	BatchCheckAssertions []*batchchecktest.Assertion `json:"batchCheckAssertions"`
-}
 
 type ClientInterface interface {
 	check.ClientInterface
@@ -51,7 +37,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 				//"tests/abac_tests.yaml",
 			}
 
-			var allTestCases []individualTest
+			var allTestCases []check.IndividualTest
 
 			for _, file := range files {
 				var b []byte
@@ -59,7 +45,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 				b, err = assets.EmbedTests.ReadFile(file)
 				require.NoError(t, err)
 
-				var testCases batchCheckTests
+				var testCases check.CheckTests
 				err = yaml.Unmarshal(b, &testCases)
 				require.NoError(t, err)
 
@@ -67,6 +53,10 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			}
 
 			for _, test := range allTestCases {
+				if test.Name != "this" {
+					continue
+				}
+				fmt.Printf("Justin Running: %s\n", test.Name)
 				test := test
 				runTest(t, test, client, false)
 				//runTest(t, test, client, true)
@@ -75,7 +65,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 	})
 }
 
-func runTest(t *testing.T, test individualTest, client ClientInterface, contextTupleTest bool) {
+func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, contextTupleTest bool) {
 	ctx := context.Background()
 	name := test.Name
 
@@ -97,6 +87,8 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 		storeID := resp.GetId()
 
 		for stageNumber, stage := range test.Stages {
+			// don't need to run each assertion individually
+			// TODO: skip ones with error codes, that'll be different and custom
 			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
 				if contextTupleTest && len(stage.Tuples) > 20 {
 					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
@@ -134,40 +126,58 @@ func runTest(t *testing.T, test individualTest, client ClientInterface, contextT
 					}
 				}
 
-				// This is how you skip non necessary ones
-				if len(stage.BatchCheckAssertions) == 0 {
-					t.Skipf("no batch check assertions defined")
+				if len(stage.CheckAssertions) == 0 {
+					t.Skipf("no check assertions defined")
 				}
 
-				t.Logf("Justin number of assertiosn? %d", len(stage.BatchCheckAssertions))
-				for assertionNumber, assertion := range stage.BatchCheckAssertions {
-					t.Run(fmt.Sprintf("justin assertion_%d", assertionNumber), func(t *testing.T) {
-						detailedInfo := fmt.Sprintf("BatchCheck request: %v. Model: %s. Tuples: %s.", assertion.Request.ToString(), stage.Model, stage.Tuples)
-						fmt.Println(detailedInfo)
+				expectedResults := map[string]*openfgav1.BatchCheckSingleResult_Allowed{}
+				// here you need to loop through check assertions, create correlation ids
+				// map that correlation id to the expectation in the assertion, and compare
+				// to the actual result
+				for _, assertion := range stage.CheckAssertions {
 
-						//ctxTuples := assertion.ContextualTuples
-						//if contextTupleTest {
-						//	ctxTuples = append(ctxTuples, stage.Tuples...)
-						//}
-						//
-						convertedRequest := assertion.Request.ToProtoRequest()
-						resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-							Checks:               convertedRequest.GetChecks(),
-						})
-						require.NoError(t, err)
+					// build key
+					// attach result
+					// build Checks() for request
+					// then after loop run the batch and assert
 
-						t.Log(fmt.Sprintf("Justin the expectation: %+v", assertion.Expectation))
-						result := resp.GetResult()
-						t.Log(fmt.Sprintf("Justin the result: %+v", result))
+					// TODO: put this in another location
+					key := fmt.Sprintf("%s_%s_%s", assertion.Tuple.Object, assertion.Tuple.Relation, assertion.Tuple.User)
+					re, err := regexp.Compile(`\W`)
+					require.NoError(t, err) // to pass batch check grpc validation
+					correlationId := re.ReplaceAllString(key, "")
 
-						for _, expectation := range assertion.Expectation {
-							oneResult := result[expectation.CorrelationID]
-							require.Equal(t, expectation.Allowed, oneResult.GetAllowed())
-						}
-					})
+					// TODO: add these items to a request in the higher-level scope
+					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationId)
+
+					expectedResults[correlationId] = &openfgav1.BatchCheckSingleResult_Allowed{
+						Allowed: assertion.Expectation,
+					}
+
+					//ctxTuples := assertion.ContextualTuples
+					//if contextTupleTest {
+					//	ctxTuples = append(ctxTuples, stage.Tuples...)
+					//}
+					//
+					//convertedRequest := assertion.Request.ToProtoRequest()
+					//resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+					//	StoreId:              storeID,
+					//	AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+					//	Checks:               convertedRequest.GetChecks(),
+					//})
+					//require.NoError(t, err)
+
+					//t.Log(fmt.Sprintf("Justin the expectation: %+v", assertion.Expectation))
+					//result := resp.GetResult()
+					//t.Log(fmt.Sprintf("Justin the result: %+v", result))
+
+					//for _, expectation := range assertion.Expectation {
+					//	oneResult := result[expectation.CorrelationID]
+					//	require.Equal(t, expectation.Allowed, oneResult.GetAllowed())
+					//}
+					//})
 				}
+				fmt.Printf("\nfinal map %+v\n", expectedResults)
 			})
 		}
 	})
