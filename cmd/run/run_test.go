@@ -1358,7 +1358,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("access-control-enabled"))
 		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
 		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
-		require.Equal(t, true, viper.GetBool("context-propagation-to-datastore"))
+		require.True(t, viper.GetBool("context-propagation-to-datastore"))
 
 		return nil
 	}
