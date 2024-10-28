@@ -68,8 +68,12 @@ const (
 )
 
 var (
-	ErrUnauthorizedResponse = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
-	ErrUnknownAPIMethod     = errors.New("unknown API method")
+	// MaxModulesInRequest Max number of modules a user is allowed to write in a single request if they do not have write permissions to the store.
+	MaxModulesInRequest = 1
+
+	ErrUnauthorizedResponse                  = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
+	ErrBadRequestMaxModulesInRequestExceeded = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), fmt.Sprintf("the principal cannot write tuples of more than %v module(s) in a single request", MaxModulesInRequest))
+	ErrUnknownAPIMethod                      = errors.New("unknown API method")
 
 	SystemObjectID = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
 	tracer         = otel.Tracer("internal/authz")
@@ -220,17 +224,24 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 		},
 	}
 
-	// Check if there is top-level authorization first, before checking modules
-	err = a.individualAuthorize(ctx, claims.ClientID, relation, StoreIDType(storeID).String(), &contextualTuples)
-	if err == nil {
-		return nil
-	}
-
-	if len(modules) > 0 {
+	// If the user has modules and they are within the limit, check those (if the user has store access, this will still pass)
+	// Having a limit helps ensure we do not run too many checks on every write when there are modules
+	if len(modules) > 0 && len(modules) <= MaxModulesInRequest {
 		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
 	}
-	// If there are no modules to check, return the top-level authorization error
-	return err
+
+	// If no modules, or the number of modules exceeds the limit, Check if there is top-level authorization
+	err = a.individualAuthorize(ctx, claims.ClientID, relation, StoreIDType(storeID).String(), &contextualTuples)
+	if err != nil {
+		// If there is no top level authorization, but the max modules limit is exceeded, return an error regarding that limit
+		if len(modules) > MaxModulesInRequest {
+			return fmt.Errorf("%v (modules in request: %v)", ErrBadRequestMaxModulesInRequestExceeded, len(modules))
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // AuthorizeCreateStore checks if the user has access to create a store.

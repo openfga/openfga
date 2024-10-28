@@ -506,6 +506,8 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("errors_when_not_authorized_for_all_modules", func(t *testing.T) {
+			authz.MaxModulesInRequest = 2
+
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
 
@@ -532,6 +534,8 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("successfully_call_write_for_modules", func(t *testing.T) {
+			authz.MaxModulesInRequest = 2
+
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
 			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module2), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
@@ -565,6 +569,54 @@ func TestWrite(t *testing.T) {
 					},
 				},
 			})
+			require.NoError(t, err)
+		})
+
+		t.Run("errors_when_sending_more_than_max_modules", func(t *testing.T) {
+			authz.MaxModulesInRequest = 1
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					},
+				},
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{
+							User:     "user:ben",
+							Relation: "commenter",
+							Object:   "channel:1",
+						},
+					},
+				},
+			})
+
+			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, 2), err)
+		})
+
+		t.Run("success_when_sending_more_than_max_modules_with_store_level_write_permission", func(t *testing.T) {
+			authz.MaxModulesInRequest = 1
+
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("store:%s", settings.testData.id), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("workspace:2", "guest", "user:ben"),
+						tuple.NewTupleKey("channel:2", "commenter", "user:ben"),
+					},
+				},
+			})
+
 			require.NoError(t, err)
 		})
 	})
