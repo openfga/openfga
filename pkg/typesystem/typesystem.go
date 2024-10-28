@@ -425,6 +425,22 @@ type expectedEdgeAndNodeType struct {
 	expectedEdgeType         graph.EdgeType
 }
 
+func (t *TypeSystem) hasPublicWildcardNode(originalNode *graph.AuthorizationModelNode) bool {
+	neighbourNodes := t.authorizationModelGraph.To(originalNode.ID())
+	for neighbourNodes.Next() {
+		curNode := neighbourNodes.Node()
+		curNeighbourAuthorizationModelNode, ok := curNode.(*graph.AuthorizationModelNode)
+		if !ok {
+			// Note: this should not happen, but adding the guard nonetheless
+			return false
+		}
+		if curNeighbourAuthorizationModelNode.NodeType() == graph.SpecificTypeWildcard {
+			return true
+		}
+	}
+	return false
+}
+
 // verifyNodeEdgesOptimizable returns whether the specified node has
 //   - only one edge to node with type#relation and that node is expectedNodeForObjectRel
 //   - all other edges are linked to node of terminal type. These nodes cannot be algebraic operation (i.e., union/intersection/exclusion) and one
@@ -491,9 +507,10 @@ func (t *TypeSystem) RecursiveUsersetCanFastPath(objectTypeRelation string, user
 		// this means the node cannot be found. The safe thing to do is to use the slow path.
 		return false
 	}
+	// FIXME: for now, we will disable fastpath for cases where publicly wildcard can be assigned to recursive userset.
 	return t.verifyNodeEdgesOptimizable(curAuthorizationModelNode,
 		expectedEdgeAndNodeType{expectedNodeForObjectRel: curAuthorizationModelNode, expectedEdgeType: graph.DirectEdge},
-		userType)
+		userType) && !t.hasPublicWildcardNode(curAuthorizationModelNode)
 }
 
 // recursiveTTUNodeCanFastpath is a helper function to determine whether the node (object#relation) has
