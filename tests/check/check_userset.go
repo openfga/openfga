@@ -544,7 +544,11 @@ var usersetCompleteTestingModelTest = []*stage{
 			{Object: "usersets-user:userset_recursive_public_multi_level_3", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_multi_level_4#userset_recursive_public"},
 			{Object: "usersets-user:userset_recursive_public_multi_level_4", Relation: "userset_recursive_public", User: "user:userset_recursive_user_public_multi_level"},
 			{Object: "usersets-user:userset_recursive_public_invalid_object", Relation: "userset_recursive_public", User: "user:userset_recursive_user_public_invalid_object"},
-			{Object: "usersets-user:userset_recursive_public_public", Relation: "userset_recursive_public", User: "user:*"},
+			{Object: "usersets-user:userset_recursive_public_public_multi_level", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_1#userset_recursive_public"},
+			{Object: "usersets-user:userset_recursive_public_public_multi_level_1", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_2#userset_recursive_public"},
+			{Object: "usersets-user:userset_recursive_public_public_multi_level_2", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_3#userset_recursive_public"},
+			{Object: "usersets-user:userset_recursive_public_public_multi_level_3", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_4#userset_recursive_public"},
+			{Object: "usersets-user:userset_recursive_public_public_multi_level_4", Relation: "userset_recursive_public", User: "user:*"},
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
@@ -584,17 +588,114 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 			{
 				Name:        "invalid_object",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive", User: "user:userset_recursive_user_public_invalid_object"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1", Relation: "userset_recursive_public", User: "user:userset_recursive_user_public_invalid_object"},
 				Expectation: false,
 			},
 			{
 				Name:        "invalid_object_multi_level",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_multi_level", Relation: "userset_recursive", User: "user:userset_recursive_user_public_invalid_object"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_multi_level", Relation: "userset_recursive_public", User: "user:userset_recursive_user_public_invalid_object"},
 				Expectation: false,
 			},
 			{
-				Name:        "public_user",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public", Relation: "userset_recursive_public", User: "user:any"},
+				Name:        "valid_user_multi_level_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level", Relation: "userset_recursive_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_4_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level_4", Relation: "userset_recursive_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_3_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level_3", Relation: "userset_recursive_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_2_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level_2", Relation: "userset_recursive_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_1_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level_1", Relation: "userset_recursive_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level_2_public_relation",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_2#userset_recursive_public"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level_3_public_relation",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_3#userset_recursive_public"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level_4_public_relation",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_public_multi_level", Relation: "userset_recursive_public", User: "usersets-user:userset_recursive_public_public_multi_level_4#userset_recursive_public"},
+				Expectation: true,
+			},
+		},
+	},
+	{
+		Name: "usersets_userset_recursive_public_only",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:userset_recursive_public_only_multi_level", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_1#userset_recursive_public_only"},
+			{Object: "usersets-user:userset_recursive_public_only_multi_level_1", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_2#userset_recursive_public_only"},
+			{Object: "usersets-user:userset_recursive_public_only_multi_level_2", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_3#userset_recursive_public_only"},
+			{Object: "usersets-user:userset_recursive_public_only_multi_level_3", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_4#userset_recursive_public_only"},
+			{Object: "usersets-user:userset_recursive_public_only_multi_level_4", Relation: "userset_recursive_public_only", User: "user:*"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "invalid_object",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_invalid_object", Relation: "userset_recursive_public_only", User: "user:userset_recursive_user_public_invalid_object"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_object_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_invalid_multi_level", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_invalid_multi_level_root#userset_recursive_public_only"},
+				Expectation: false,
+			},
+			{
+				Name:        "valid_user_multi_level_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level", Relation: "userset_recursive_public_only", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_4_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level_4", Relation: "userset_recursive_public_only", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_3_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level_3", Relation: "userset_recursive_public_only", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_2_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level_2", Relation: "userset_recursive_public_only", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_multi_level_1_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level_1", Relation: "userset_recursive_public_only", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level_2_public_relation",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_2#userset_recursive_public_only"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level_3_public_relation",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_3#userset_recursive_public_only"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_userset_multi_level_4_public_relation",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_multi_level", Relation: "userset_recursive_public_only", User: "usersets-user:userset_recursive_public_only_multi_level_4#userset_recursive_public_only"},
 				Expectation: true,
 			},
 		},
