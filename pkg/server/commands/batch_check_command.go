@@ -108,8 +108,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Kick off all checks concurrently, there is no limit here
-	// Concurrency limiting is left to check's ResolveNodeLimit and MaxConcurrentReads
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {

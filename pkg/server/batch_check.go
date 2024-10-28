@@ -2,6 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
+
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -80,11 +84,7 @@ func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutco
 
 		if v.Err != nil {
 			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Error{
-				// TODO error transformation logic, see what all the possible check errors are
-				Error: &openfgav1.CheckError{
-					Code:    nil,
-					Message: v.Err.Error(),
-				},
+				Error: transformCheckErrorToBatchCheckError(v.Err),
 			}
 		} else {
 			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
@@ -96,4 +96,46 @@ func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutco
 	}
 
 	return batchResult
+}
+
+func transformCheckErrorToBatchCheckError(err error) *openfgav1.CheckError {
+	checkError := &openfgav1.CheckError{Message: err.Error()}
+
+	var invalidRelationError *commands.InvalidRelationError
+	if errors.As(err, &invalidRelationError) {
+		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+		return checkError
+	}
+
+	var invalidTupleError *commands.InvalidTupleError
+	if errors.As(err, &invalidTupleError) {
+		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
+		return checkError
+	}
+
+	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+		checkError.Code = &openfgav1.CheckError_InputError{
+			InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex,
+		}
+		return checkError
+	}
+
+	if errors.Is(err, condition.ErrEvaluationFailed) {
+		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+		return checkError
+	}
+
+	var throttledError *commands.ThrottledError
+	if errors.As(err, &throttledError) {
+		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+		return checkError
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
+		return checkError
+	}
+
+	checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
+	return checkError
 }
