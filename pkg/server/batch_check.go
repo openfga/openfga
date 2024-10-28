@@ -99,43 +99,27 @@ func transformCheckResultToRPC(checkResults map[string]*commands.BatchCheckOutco
 }
 
 func transformCheckErrorToBatchCheckError(err error) *openfgav1.CheckError {
+	var invalidRelationError *commands.InvalidRelationError
+	var invalidTupleError *commands.InvalidTupleError
+	var throttledError *commands.ThrottledError
+
 	checkError := &openfgav1.CheckError{Message: err.Error()}
 
-	var invalidRelationError *commands.InvalidRelationError
 	if errors.As(err, &invalidRelationError) {
 		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-		return checkError
-	}
-
-	var invalidTupleError *commands.InvalidTupleError
-	if errors.As(err, &invalidTupleError) {
+	} else if errors.As(err, &invalidTupleError) {
 		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
-		return checkError
-	}
-
-	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		checkError.Code = &openfgav1.CheckError_InputError{
-			InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex,
-		}
-		return checkError
-	}
-
-	if errors.Is(err, condition.ErrEvaluationFailed) {
+	} else if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
+	} else if errors.Is(err, condition.ErrEvaluationFailed) {
 		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-		return checkError
-	}
-
-	var throttledError *commands.ThrottledError
-	if errors.As(err, &throttledError) {
+	} else if errors.As(err, &throttledError) {
 		checkError.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-		return checkError
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) {
+	} else if errors.Is(err, context.DeadlineExceeded) {
 		checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
-		return checkError
+	} else {
+		checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
 	}
 
-	checkError.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
 	return checkError
 }
