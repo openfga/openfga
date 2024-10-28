@@ -2,13 +2,15 @@ package server
 
 import (
 	"context"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/authz"
-	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {

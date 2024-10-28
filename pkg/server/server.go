@@ -604,7 +604,7 @@ func WithMaxConcurrentChecksPerBatchCheck(maxConcurrentChecks uint32) OpenFGASer
 }
 
 // WithMaxChecksPerBatchCheck defines the maximum number of checks allowed to be sent
-// in a single BatchCheck request
+// in a single BatchCheck request.
 func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxChecksPerBatchCheck = maxChecks

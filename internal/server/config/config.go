@@ -54,7 +54,7 @@ const (
 	DefaultCheckDispatchThrottlingDefaultThreshold = 100
 	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
-	// Batch Check
+	// Batch Check.
 	DefaultMaxChecksPerBatchCheck           = 50
 	DefaultMaxConcurrentChecksPerBatchCheck = 50
 

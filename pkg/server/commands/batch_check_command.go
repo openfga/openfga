@@ -3,14 +3,16 @@ package commands
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/server/config"
 	"sync"
 	"time"
+
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/server/config"
 
 	"github.com/openfga/openfga/pkg/server/errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
@@ -113,9 +115,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		pool.Go(func(ctx context.Context) error {
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
-				TupleKey:         check.TupleKey,
-				ContextualTuples: check.ContextualTuples,
-				Context:          check.Context,
+				TupleKey:         check.GetTupleKey(),
+				ContextualTuples: check.GetContextualTuples(),
+				Context:          check.GetContext(),
 				Consistency:      params.Consistency,
 			}
 
@@ -124,7 +126,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
 			lock.Lock()
-			resultMap[check.CorrelationId] = &BatchCheckOutcome{
+			resultMap[check.GetCorrelationId()] = &BatchCheckOutcome{
 				CheckResponse: response,
 				Duration:      time.Since(start),
 				Err:           err,
