@@ -159,6 +159,7 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("error_when_modules_errors", func(t *testing.T) {
+		MaxModulesInRequest = 4
 		modules := []string{"module1", "module2", "module3"}
 		errorMessage := fmt.Errorf("error")
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
