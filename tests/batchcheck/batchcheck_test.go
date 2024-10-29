@@ -16,6 +16,18 @@ func TestBatchCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
 }
 
+func TestCheckPostgres(t *testing.T) {
+	testRunAll(t, "postgres")
+}
+
+func TestCheckMySQL(t *testing.T) {
+	testRunAll(t, "mysql")
+}
+
+func TestCheckSQLite(t *testing.T) {
+	testRunAll(t, "sqlite")
+}
+
 func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
