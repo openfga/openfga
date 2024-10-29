@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/pkg/middleware/validator"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/pkg/middleware/validator"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
