@@ -39,35 +39,35 @@ func (m *MetricsOpenFGAStorage) increase() {
 
 // Read see [storage.RelationshipTupleReader.ReadUserTuple].
 func (m *MetricsOpenFGAStorage) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
-	defer m.increase()
+	m.increase()
 
 	return m.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
 func (m *MetricsOpenFGAStorage) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
-	defer m.increase()
+	m.increase()
 
 	return m.RelationshipTupleReader.ReadPage(ctx, store, tupleKey, options)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (m *MetricsOpenFGAStorage) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
-	defer m.increase()
+	m.increase()
 
 	return m.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey, options)
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (m *MetricsOpenFGAStorage) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-	defer m.increase()
+	m.increase()
 
 	return m.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
 func (m *MetricsOpenFGAStorage) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-	defer m.increase()
+	m.increase()
 
 	return m.RelationshipTupleReader.ReadStartingWithUser(ctx, store, opts, options)
 }
