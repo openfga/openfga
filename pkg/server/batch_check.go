@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/openfga/openfga/pkg/middleware/validator"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
@@ -25,12 +28,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	))
 	defer span.End()
 
-	err := req.Validate()
-	if err != nil {
-		return nil, err
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
 	}
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
 	if err != nil {
 		return nil, err
 	}
