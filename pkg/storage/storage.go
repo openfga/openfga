@@ -346,6 +346,7 @@ type OpenFGADatastore interface {
 	StoresBackend
 	AssertionsBackend
 	ChangelogBackend
+	ReadChangesTokenSerializer
 
 	// IsReady reports whether the datastore is ready to accept traffic.
 	IsReady(ctx context.Context) (ReadinessStatus, error)

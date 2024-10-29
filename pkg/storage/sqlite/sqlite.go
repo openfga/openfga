@@ -1154,3 +1154,8 @@ func isBusyError(err error) bool {
 	_, ok := busyErrors[sqliteErr.Code()]
 	return ok
 }
+
+// SerializeReadChangesContToken see [storage.ReadChangesTokenSerializer].SerializeReadChangesContToken.
+func (s *Datastore) SerializeReadChangesContToken(token string, objectType string) ([]byte, error) {
+	return s.tokenSerializer.SerializeReadChangesContToken(token, objectType)
+}

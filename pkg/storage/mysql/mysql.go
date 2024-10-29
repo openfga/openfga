@@ -864,3 +864,8 @@ func HandleSQLError(err error, args ...interface{}) error {
 
 	return fmt.Errorf("sql error: %w", err)
 }
+
+// SerializeReadChangesContToken see [storage.ReadChangesTokenSerializer].SerializeReadChangesContToken.
+func (s *Datastore) SerializeReadChangesContToken(token string, objectType string) ([]byte, error) {
+	return s.tokenSerializer.SerializeReadChangesContToken(token, objectType)
+}

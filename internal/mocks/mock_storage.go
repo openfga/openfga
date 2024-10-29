@@ -1015,6 +1015,21 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter, options)
 }
 
+// SerializeReadChangesContToken mocks base method.
+func (m *MockOpenFGADatastore) SerializeReadChangesContToken(ulid, objType string) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SerializeReadChangesContToken", ulid, objType)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SerializeReadChangesContToken indicates an expected call of SerializeReadChangesContToken.
+func (mr *MockOpenFGADatastoreMockRecorder) SerializeReadChangesContToken(ulid, objType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChangesContToken", reflect.TypeOf((*MockOpenFGADatastore)(nil).SerializeReadChangesContToken), ulid, objType)
+}
+
 // Write mocks base method.
 func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes) error {
 	m.ctrl.T.Helper()

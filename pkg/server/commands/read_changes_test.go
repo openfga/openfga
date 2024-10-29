@@ -133,14 +133,19 @@ func TestReadChangesQuery(t *testing.T) {
 
 		filter := storage.ReadChangesFilter{}
 
-		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Cond(func(actualUlid string) bool {
+		tokenSerializer := mocks.NewMockReadChangesTokenSerializer(mockController)
+		tokenSerializer.EXPECT().SerializeReadChangesContToken(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true
 		}), "").Return([]byte(startTimeToken), nil).Times(1)
+
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
-		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
+		cmd := NewReadChangesQuery(mockDatastore,
+			WithReadChangesQueryEncoder(mockEncoder),
+			WithReadChangesQueryTokenSerializer(tokenSerializer),
+		)
 
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
 			StoreId:           reqStore,

@@ -867,3 +867,8 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 func (s *MemoryBackend) IsReady(context.Context) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{IsReady: true}, nil
 }
+
+// SerializeReadChangesContToken see [storage.ReadChangesTokenSerializer].SerializeReadChangesContToken.
+func (s *MemoryBackend) SerializeReadChangesContToken(token string, objectType string) ([]byte, error) {
+	return s.tokenSerializer.SerializeReadChangesContToken(token, objectType)
+}
