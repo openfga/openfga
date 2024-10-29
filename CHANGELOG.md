@@ -8,10 +8,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.7.0] - 2024-10-29
+
 ### Added
 * Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
-* Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
+* Add an experimental access control feature [#1913](https://github.com/openfga/openfga/pull/1913)
+  Learn more about this feature and how to enable it [here](https://openfga.dev/docs/getting-started/setup-openfga/access-control)
+  If you do try it out, please provide feedback in the [GitHub Discussion](https://github.com/orgs/openfga/discussions/378)
 
 ### Changed
 * Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
@@ -1262,7 +1266,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/openfga/openfga/releases/tag/v1.7.0
 [1.6.2]: https://github.com/openfga/openfga/releases/tag/v1.6.2
 [1.6.1]: https://github.com/openfga/openfga/releases/tag/v1.6.1
 [1.6.0]: https://github.com/openfga/openfga/releases/tag/v1.6.0
