@@ -16,6 +16,9 @@ type MetricsOpenFGAStorage struct {
 	counter atomic.Uint32
 }
 
+// NewMetricsOpenFGAStorage creates a new instance of MetricsOpenFGAStorage that wraps the specified datastore and maintains metrics per request.
+// MetricsOpenFGAStorage is thread-safe but should not be shared across multiple requests.
+// It is crucial that the wrapped object does NOT return results from an in-memory cache for this object to return accurate metrics.
 func NewMetricsOpenFGAStorage(wrapped storage.RelationshipTupleReader) *MetricsOpenFGAStorage {
 	return &MetricsOpenFGAStorage{
 		RelationshipTupleReader: wrapped,

@@ -13,18 +13,19 @@ import (
 )
 
 func TestMetricsOpenFGAStorage(t *testing.T) {
-	const clonesCount = 100
+	const dbReadsCount = 100
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().Read(gomock.Any(), "", nil, storage.ReadOptions{}).Return(nil, nil).Times(clonesCount)
+	mockDatastore.EXPECT().Read(gomock.Any(), "", nil, storage.ReadOptions{}).Return(nil, nil).
+		Times(dbReadsCount)
 	dut := NewMetricsOpenFGAStorage(mockDatastore)
 
 	var wg sync.WaitGroup
-	wg.Add(clonesCount)
+	wg.Add(dbReadsCount)
 
-	for range clonesCount {
+	for range dbReadsCount {
 		go func() {
 			defer wg.Done()
 			_, _ = dut.Read(context.Background(), "", nil, storage.ReadOptions{})
@@ -33,5 +34,5 @@ func TestMetricsOpenFGAStorage(t *testing.T) {
 
 	wg.Wait()
 
-	require.Equal(t, clonesCount, dut.GetMetrics().DatastoreQueryCount)
+	require.Equal(t, dbReadsCount, dut.GetMetrics().DatastoreQueryCount)
 }
