@@ -2,9 +2,12 @@ package commands
 
 import (
 	"context"
-	"sync/atomic"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/openfga/openfga/internal/condition"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -14,11 +17,9 @@ import (
 
 	"github.com/openfga/openfga/pkg/testutils"
 
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/errors"
+	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -125,12 +126,12 @@ type doc
 
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, errors.ErrUnknown)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, ofga_errors.ErrUnknown)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
-		require.ErrorIs(t, err, errors.ErrUnknown)
+		require.ErrorIs(t, err, ofga_errors.ErrUnknown)
 	})
 
 	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
@@ -201,20 +202,9 @@ type doc
 	require.True(t, ok)
 }
 
-func TestTranslateError(t *testing.T) {
-	throttledRequestMetadata := &graph.ResolveCheckRequestMetadata{
-		WasThrottled: &atomic.Bool{},
-	}
-	throttledRequestMetadata.WasThrottled.Store(true)
-
-	nonThrottledRequestMedata := &graph.ResolveCheckRequestMetadata{
-		WasThrottled: &atomic.Bool{},
-	}
-	nonThrottledRequestMedata.WasThrottled.Store(false)
-
+func TestCheckCommandErrorToServerError(t *testing.T) {
 	testcases := map[string]struct {
 		inputError    error
-		reqMetadata   *graph.ResolveCheckRequestMetadata
 		expectedError error
 	}{
 		`1`: {
@@ -226,25 +216,35 @@ func TestTranslateError(t *testing.T) {
 			expectedError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
 		},
 		`3`: {
-			inputError:    context.DeadlineExceeded,
-			reqMetadata:   throttledRequestMetadata,
+			inputError:    &ThrottledError{},
 			expectedError: serverErrors.ThrottledTimeout,
 		},
 		`4`: {
 			inputError:    context.DeadlineExceeded,
-			reqMetadata:   nonThrottledRequestMedata,
 			expectedError: serverErrors.RequestDeadlineExceeded,
 		},
 		`5`: {
-			inputError:    errors.ErrUnknown,
-			expectedError: errors.ErrUnknown,
+			inputError: &InvalidTupleError{Cause: errors.New("oh no")},
+			expectedError: serverErrors.HandleTupleValidateError(
+				&tuple.InvalidTupleError{
+					Cause: &InvalidTupleError{Cause: errors.New("oh no")},
+				},
+			),
+		},
+		`6`: {
+			inputError:    &InvalidRelationError{Cause: errors.New("oh no")},
+			expectedError: serverErrors.ValidationError(&InvalidRelationError{Cause: errors.New("oh no")}),
+		},
+		`7`: {
+			inputError:    ofga_errors.ErrUnknown,
+			expectedError: ofga_errors.ErrUnknown,
 		},
 	}
 
-	for name, test := range testcases {
+	for name, testCase := range testcases {
 		t.Run(name, func(t *testing.T) {
-			actualError := translateError(test.reqMetadata, test.inputError)
-			require.ErrorIs(t, actualError, test.expectedError)
+			actualError := CheckCommandErrorToServerError(testCase.inputError)
+			require.ErrorIs(t, actualError, testCase.expectedError)
 		})
 	}
 }

@@ -26,6 +26,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Goroutine leak when ListObjects or StreamedListObjects call cannot be completed within REQUEST_TIMEOUT. [#2030](https://github.com/openfga/openfga/pull/2030)
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 * Fixed incorrect dispatch counts in List Objects [2013](https://github.com/openfga/openfga/pull/2013)
+* Internal error for check where model has nested userset with publicly assignable wildcard. [#2049](https://github.com/openfga/openfga/pull/2049) 
 
 ### Breaking changes
 * The storage adapter `ListStores`'s parameter ListStoresOptions allows filtering by `IDs` [#1913](https://github.com/openfga/openfga/pull/1913)
