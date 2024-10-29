@@ -4,9 +4,9 @@ package batchcheck
 import (
 	"context"
 	"fmt"
+	"github.com/oklog/ulid/v2"
 	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
 	"math"
-	"regexp"
 	"testing"
 
 	parser "github.com/openfga/language/pkg/go/transformer"
@@ -34,7 +34,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			t.Parallel()
 			files := []string{
 				"tests/consolidated_1_1_tests.yaml",
-				//"tests/abac_tests.yaml",
+				"tests/abac_tests.yaml",
 			}
 
 			var allTestCases []check.IndividualTest
@@ -53,12 +53,9 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			}
 
 			for _, test := range allTestCases {
-				if test.Name != "this" {
-					continue
-				}
-				fmt.Printf("Justin Running: %s\n", test.Name)
 				test := test
 				runTest(t, test, client, false)
+				// TODO: context tuple tests
 				//runTest(t, test, client, true)
 			}
 		})
@@ -130,59 +127,42 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 					t.Skipf("no check assertions defined")
 				}
 
-				expectedResults := map[string]*openfgav1.BatchCheckSingleResult_Allowed{}
-				// here you need to loop through check assertions, create correlation ids
-				// map that correlation id to the expectation in the assertion, and compare
-				// to the actual result
+				// map of correlation_id to result
+				expectedResults := map[string]bool{}
+
+				// checks to be passed into batch check request
+				protoChecks := make([]*openfgav1.BatchCheckItem, 0, len(stage.CheckAssertions))
+
 				for _, assertion := range stage.CheckAssertions {
-
-					// build key
-					// attach result
-					// build Checks() for request
-					// then after loop run the batch and assert
-
-					// TODO: put this in another location
-					key := fmt.Sprintf("%s_%s_%s", assertion.Tuple.Object, assertion.Tuple.Relation, assertion.Tuple.User)
-					re, err := regexp.Compile(`\W`)
-					require.NoError(t, err) // to pass batch check grpc validation
-					correlationId := re.ReplaceAllString(key, "")
-
-					// TODO: add these items to a request in the higher-level scope
-					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationId)
-
-					expectedResults[correlationId] = &openfgav1.BatchCheckSingleResult_Allowed{
-						Allowed: assertion.Expectation,
+					if assertion.ErrorCode != 0 {
+						t.Skipf("batch check integration error testing is handled in ____")
 					}
 
-					//ctxTuples := assertion.ContextualTuples
-					//if contextTupleTest {
-					//	ctxTuples = append(ctxTuples, stage.Tuples...)
-					//}
-					//
-					//convertedRequest := assertion.Request.ToProtoRequest()
-					//resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
-					//	StoreId:              storeID,
-					//	AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-					//	Checks:               convertedRequest.GetChecks(),
-					//})
-					//require.NoError(t, err)
+					correlationId := ulid.Make().String()
+					require.NoError(t, err)
 
-					//t.Log(fmt.Sprintf("Justin the expectation: %+v", assertion.Expectation))
-					//result := resp.GetResult()
-					//t.Log(fmt.Sprintf("Justin the result: %+v", result))
-
-					//for _, expectation := range assertion.Expectation {
-					//	oneResult := result[expectation.CorrelationID]
-					//	require.Equal(t, expectation.Allowed, oneResult.GetAllowed())
-					//}
-					//})
+					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationId)
+					protoChecks = append(protoChecks, item)
+					expectedResults[correlationId] = assertion.Expectation
 				}
-				fmt.Printf("\nfinal map %+v\n", expectedResults)
+
+				resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+					Checks:               protoChecks,
+				})
+				require.NoError(t, err)
+
+				result := resp.GetResult()
+
+				for correlationId, expected := range expectedResults {
+					allowed := result[correlationId].GetAllowed()
+					require.Equal(t, allowed, expected)
+				}
 			})
 		}
 	})
 }
 
-// assert that keys are correct based on received request
-// assert that specific checks ahve the right result
 // assert that some bits can error while others may not
+// needs its own yaml setup
