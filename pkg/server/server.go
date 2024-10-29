@@ -124,7 +124,7 @@ type Server struct {
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
 	checkDatastore                   storage.OpenFGADatastore
-	tokenSerializer                  storage.ContinuationTokenSerializer
+	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
@@ -201,7 +201,7 @@ func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	}
 }
 
-func WithTokenSerializer(ds storage.ContinuationTokenSerializer) OpenFGAServiceV1Option {
+func WithContinuationTokenSerializer(ds encoder.ContinuationTokenSerializer) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.tokenSerializer = ds
 	}

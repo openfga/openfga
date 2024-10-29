@@ -1,0 +1,34 @@
+package encoder
+
+import (
+	"fmt"
+	"strings"
+)
+
+type ContinuationTokenSerializer interface {
+	// Serialize serializes the continuation token into a format readable by ReadChanges
+	Serialize(ulid string, objType string) (token []byte, err error)
+
+	// Deserialize deserializes the continuation token into a format readable by ReadChanges
+	Deserialize(token string) (ulid string, objType string, err error)
+}
+
+// StringContinuationTokenSerializer is a ContinuationTokenSerializer that serializes the continuation token as a string.
+type StringContinuationTokenSerializer struct{}
+
+// NewStringContinuationTokenSerializer returns a new instance of StringContinuationTokenSerializer.
+// Serializes the continuation token into a string, as ulid & type concatenated by a pipe.
+func NewStringContinuationTokenSerializer() ContinuationTokenSerializer {
+	return &StringContinuationTokenSerializer{}
+}
+
+// Serialize serializes the continuation token into a string, as ulid & type concatenated by a pipe.
+func (ts *StringContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
+	return []byte(fmt.Sprintf("%s|%s", ulid, objType)), nil
+}
+
+// Deserialize deserializes the continuation token from a string, as ulid & type concatenated by a pipe.
+func (ts *StringContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
+	tokenParts := strings.Split(continuationToken, "|")
+	return tokenParts[0], tokenParts[1], nil
+}

@@ -20,7 +20,7 @@ type ReadChangesQuery struct {
 	backend         storage.ChangelogBackend
 	logger          logger.Logger
 	encoder         encoder.Encoder
-	tokenSerializer storage.ContinuationTokenSerializer
+	tokenSerializer encoder.ContinuationTokenSerializer
 	horizonOffset   time.Duration
 }
 
@@ -46,7 +46,7 @@ func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption 
 }
 
 // WithContinuationTokenSerializer specifies the token serializer to be used.
-func WithContinuationTokenSerializer(tokenSerializer storage.ContinuationTokenSerializer) ReadChangesQueryOption {
+func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) ReadChangesQueryOption {
 	return func(rq *ReadChangesQuery) {
 		rq.tokenSerializer = tokenSerializer
 	}
@@ -84,7 +84,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		if ulidErr != nil {
 			return nil, serverErrors.HandleError(ulidErr.Error(), storage.ErrInvalidStartTime)
 		}
-		if ulidBytes, err := q.tokenSerializer.SerializeContinuationToken(tokenUlid.String(), req.GetType()); err == nil {
+		if ulidBytes, err := q.tokenSerializer.Serialize(tokenUlid.String(), req.GetType()); err == nil {
 			token = string(ulidBytes)
 		} else {
 			return nil, serverErrors.HandleError("", err)

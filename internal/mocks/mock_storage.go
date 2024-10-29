@@ -686,60 +686,6 @@ func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, filter, opti
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadChanges", reflect.TypeOf((*MockChangelogBackend)(nil).ReadChanges), ctx, store, filter, options)
 }
 
-// MockContinuationTokenSerializer is a mock of ContinuationTokenSerializer interface.
-type MockContinuationTokenSerializer struct {
-	ctrl     *gomock.Controller
-	recorder *MockContinuationTokenSerializerMockRecorder
-}
-
-// MockContinuationTokenSerializerMockRecorder is the mock recorder for MockContinuationTokenSerializer.
-type MockContinuationTokenSerializerMockRecorder struct {
-	mock *MockContinuationTokenSerializer
-}
-
-// NewMockContinuationTokenSerializer creates a new mock instance.
-func NewMockContinuationTokenSerializer(ctrl *gomock.Controller) *MockContinuationTokenSerializer {
-	mock := &MockContinuationTokenSerializer{ctrl: ctrl}
-	mock.recorder = &MockContinuationTokenSerializerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockContinuationTokenSerializer) EXPECT() *MockContinuationTokenSerializerMockRecorder {
-	return m.recorder
-}
-
-// DeserializeContinuationToken mocks base method.
-func (m *MockContinuationTokenSerializer) DeserializeContinuationToken(continuationToken string) (string, string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeserializeContinuationToken", continuationToken)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(string)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// DeserializeContinuationToken indicates an expected call of DeserializeContinuationToken.
-func (mr *MockContinuationTokenSerializerMockRecorder) DeserializeContinuationToken(continuationToken any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeserializeContinuationToken", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).DeserializeContinuationToken), continuationToken)
-}
-
-// SerializeContinuationToken mocks base method.
-func (m *MockContinuationTokenSerializer) SerializeContinuationToken(ulid, objType string) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SerializeContinuationToken", ulid, objType)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// SerializeContinuationToken indicates an expected call of SerializeContinuationToken.
-func (mr *MockContinuationTokenSerializerMockRecorder) SerializeContinuationToken(ulid, objType any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeContinuationToken", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).SerializeContinuationToken), ulid, objType)
-}
-
 // MockOpenFGADatastore is a mock of OpenFGADatastore interface.
 type MockOpenFGADatastore struct {
 	ctrl     *gomock.Controller

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/pkg/encoder"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -35,7 +37,7 @@ var (
 	}
 )
 
-func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore, tokenSerializer storage.ContinuationTokenSerializer) {
+func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore, tokenSerializer encoder.ContinuationTokenSerializer) {
 	ctx := context.Background()
 
 	const numOfWrites = 300
@@ -1729,7 +1731,7 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 // readChanges calls ReadChanges. It reads everything from the store, pageSize changes at a time.
 // Along the way, it makes assertions on the changes seen. It returns all changes seen.
 // It reads changes starting from a specific time, by converting the timestamp into a continuation token.
-func readChangesWithStartTime(t *testing.T, tokenSerializer storage.ContinuationTokenSerializer, ds storage.OpenFGADatastore, storeID string, pageSize int, startTime time.Time, desc bool) []*openfgav1.TupleChange {
+func readChangesWithStartTime(t *testing.T, tokenSerializer encoder.ContinuationTokenSerializer, ds storage.OpenFGADatastore, storeID string, pageSize int, startTime time.Time, desc bool) []*openfgav1.TupleChange {
 	t.Helper()
 	var (
 		tupleChanges      []*openfgav1.TupleChange
@@ -1739,7 +1741,7 @@ func readChangesWithStartTime(t *testing.T, tokenSerializer storage.Continuation
 	)
 	if !startTime.IsZero() {
 		ulidST := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy())
-		continuationToken, _ = tokenSerializer.SerializeContinuationToken(ulidST.String(), "")
+		continuationToken, _ = tokenSerializer.Serialize(ulidST.String(), "")
 	}
 	for {
 		opts := storage.ReadChangesOptions{

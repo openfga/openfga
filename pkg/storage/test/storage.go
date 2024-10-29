@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/encoder"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -26,7 +28,7 @@ var (
 	}
 )
 
-func RunAllTests(t *testing.T, ds storage.OpenFGADatastore, tokenSerializer storage.ContinuationTokenSerializer) {
+func RunAllTests(t *testing.T, ds storage.OpenFGADatastore, tokenSerializer encoder.ContinuationTokenSerializer) {
 	t.Run("TestDatastoreIsReady", func(t *testing.T) {
 		status, err := ds.IsReady(context.Background())
 		require.NoError(t, err)

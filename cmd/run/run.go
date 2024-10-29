@@ -50,6 +50,7 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -371,7 +372,9 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 	}
 }
 
-func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, storage.ContinuationTokenSerializer, error) {
+func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, encoder.ContinuationTokenSerializer, error) {
+	// SQL Token Serializer by default
+	tokenSerializer := sqlcommon.NewSQLContinuationTokenSerializer()
 	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
@@ -382,6 +385,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithContinuationTokenSerializer(tokenSerializer),
 	}
 
 	if config.Datastore.Metrics.Enabled {
@@ -390,13 +394,12 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 
 	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
 
-	tokenSerializer := dsCfg.TokenSerializer
-
 	var datastore storage.OpenFGADatastore
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		tokenSerializer = storage.NewStringContinuationTokenSerializer()
+		// override for "memory" datastore
+		tokenSerializer = encoder.NewStringContinuationTokenSerializer()
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
@@ -423,7 +426,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	}
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
-	// hack no??
+
 	return datastore, tokenSerializer, nil
 }
 
@@ -616,7 +619,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
-		server.WithTokenSerializer(continuationTokenSerializer),
+		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),

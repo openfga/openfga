@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -146,7 +147,7 @@ type MemoryBackend struct {
 	mutexAssertions sync.RWMutex
 
 	// ContinuationTokenSerializer required to serialize the token
-	tokenSerializer storage.ContinuationTokenSerializer
+	tokenSerializer encoder.ContinuationTokenSerializer
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
@@ -169,7 +170,7 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgav1.Store, 0),
 		assertions:                    make(map[string][]*openfgav1.Assertion, 0),
-		tokenSerializer:               storage.NewStringContinuationTokenSerializer(),
+		tokenSerializer:               encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -194,7 +195,7 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 }
 
 // WithContinuationTokenSerializer returns a [StorageOption] that sets the token serializer for the [MemoryBackend].
-func WithContinuationTokenSerializer(tokenSerializer storage.ContinuationTokenSerializer) StorageOption {
+func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) StorageOption {
 	return func(ds *MemoryBackend) { ds.tokenSerializer = tokenSerializer }
 }
 
@@ -235,7 +236,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	var err error
 	if options.Pagination.From != "" {
 		var concreteToken string
-		concreteToken, typeInToken, err = s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
+		concreteToken, typeInToken, err = s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, errors.InvalidContinuationToken
 		}
@@ -298,7 +299,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		last = change.Ulid
 	}
 
-	continuationToken, _ := s.tokenSerializer.SerializeContinuationToken(last.String(), objectType)
+	continuationToken, _ := s.tokenSerializer.Serialize(last.String(), objectType)
 
 	return res, continuationToken, nil
 }

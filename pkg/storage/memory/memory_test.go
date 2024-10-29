@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -15,13 +13,15 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestMemdbStorage(t *testing.T) {
-	tokenSerializer := storage.NewStringContinuationTokenSerializer()
+	tokenSerializer := encoder.NewStringContinuationTokenSerializer()
 	ds := New(WithContinuationTokenSerializer(tokenSerializer))
 	test.RunAllTests(t, ds, tokenSerializer)
 }

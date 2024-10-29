@@ -134,7 +134,7 @@ func TestReadChangesQuery(t *testing.T) {
 		filter := storage.ReadChangesFilter{}
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().SerializeContinuationToken(gomock.Cond(func(actualUlid string) bool {
+		mockTokenSerializer.EXPECT().Serialize(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true
@@ -185,7 +185,7 @@ func TestReadChangesQuery(t *testing.T) {
 		filter := storage.ReadChangesFilter{}
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().SerializeContinuationToken(gomock.Any(), "").Times(0)
+		mockTokenSerializer.EXPECT().Serialize(gomock.Any(), "").Times(0)
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
@@ -219,7 +219,7 @@ func TestReadChangesQuery(t *testing.T) {
 		expectedUlid := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy()).String()
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().SerializeContinuationToken(gomock.Cond(func(actualUlid string) bool {
+		mockTokenSerializer.EXPECT().Serialize(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true

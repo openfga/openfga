@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openfga/openfga/pkg/encoder"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -31,7 +33,7 @@ type Config struct {
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
 	// for serializing the read changes token
-	TokenSerializer storage.ContinuationTokenSerializer
+	TokenSerializer encoder.ContinuationTokenSerializer
 
 	MaxOpenConns    int
 	MaxIdleConns    int
@@ -66,8 +68,8 @@ func WithLogger(l logger.Logger) DatastoreOption {
 	}
 }
 
-// WithTokenSerializer returns a DatastoreOption that sets the TokenSerializer in the Config.
-func WithTokenSerializer(tokenSerializer storage.ContinuationTokenSerializer) DatastoreOption {
+// WithContinuationTokenSerializer returns a DatastoreOption that sets the TokenSerializer in the Config.
+func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.TokenSerializer = tokenSerializer
 	}
@@ -187,17 +189,17 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 	return &token, nil
 }
 
-func NewSQLContinuationTokenSerializer() storage.ContinuationTokenSerializer {
+func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
 	return &SQLContinuationTokenSerializer{}
 }
 
 type SQLContinuationTokenSerializer struct{}
 
-func (s *SQLContinuationTokenSerializer) SerializeContinuationToken(ulid string, objType string) ([]byte, error) {
+func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
 	return MarshallContToken(NewContToken(ulid, objType))
 }
 
-func (s *SQLContinuationTokenSerializer) DeserializeContinuationToken(continuationToken string) (ulid string, objType string, err error) {
+func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
 	token, err := UnmarshallContToken(continuationToken)
 	if err != nil {
 		return "", "", err

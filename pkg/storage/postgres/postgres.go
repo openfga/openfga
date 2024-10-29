@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openfga/openfga/pkg/encoder"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
@@ -40,7 +42,7 @@ type Datastore struct {
 	db                     *sql.DB
 	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
-	tokenSerializer        storage.ContinuationTokenSerializer
+	tokenSerializer        encoder.ContinuationTokenSerializer
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
@@ -219,7 +221,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 	}
 
 	if options != nil && options.Pagination.From != "" {
-		token, _, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, err
 		}
@@ -438,7 +440,7 @@ func (s *Datastore) ReadAuthorizationModels(
 		OrderBy("authorization_model_id desc")
 
 	if options.Pagination.From != "" {
-		token, _, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -474,7 +476,7 @@ func (s *Datastore) ReadAuthorizationModels(
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > options.Pagination.PageSize {
 		numModelIDs = options.Pagination.PageSize
-		token, err = s.tokenSerializer.SerializeContinuationToken(modelID, "")
+		token, err = s.tokenSerializer.Serialize(modelID, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -603,7 +605,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		OrderBy("id")
 
 	if options.Pagination.From != "" {
-		token, _, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -642,7 +644,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if len(stores) > options.Pagination.PageSize {
-		contToken, err := s.tokenSerializer.SerializeContinuationToken(id, "")
+		contToken, err := s.tokenSerializer.Serialize(id, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -757,7 +759,7 @@ func (s *Datastore) ReadChanges(
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if options.Pagination.From != "" {
-		token, objectType, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
+		token, objectType, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -829,7 +831,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := s.tokenSerializer.SerializeContinuationToken(ulid, objectTypeFilter)
+	contToken, err := s.tokenSerializer.Serialize(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
