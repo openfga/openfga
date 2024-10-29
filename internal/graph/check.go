@@ -1275,8 +1275,9 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 		}
 	}
 
-	req.GetRequestMetadata().DatastoreQueryCount = res.GetResolutionMetadata().DatastoreQueryCount
-	return c.recursiveMatchUserUserset(ctx, req, mapping, usersetFromObject, usersetFromUser)
+	newReq := req.clone()
+	newReq.GetRequestMetadata().DatastoreQueryCount = res.GetResolutionMetadata().DatastoreQueryCount
+	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
 }
 
 func (c *LocalChecker) nestedTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {

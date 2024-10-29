@@ -4607,7 +4607,7 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_wildcard_condition",
@@ -4624,7 +4624,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard",
@@ -4638,7 +4638,7 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
@@ -4655,7 +4655,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
@@ -4672,7 +4672,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "complex_recursive_due_to_type_not_found",

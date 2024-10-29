@@ -11,10 +11,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -119,7 +117,11 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
-		return nil, nil, translateError(resolveCheckRequest.GetRequestMetadata(), err)
+		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+			return nil, nil, &ThrottledError{Cause: err}
+		}
+
+		return nil, nil, err
 	}
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
@@ -127,13 +129,13 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
-		return serverErrors.ValidationError(err)
+		return &InvalidRelationError{Cause: err}
 	}
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
 	for _, ctxTuple := range contextualTuples.GetTupleKeys() {
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
+			return &InvalidTupleError{Cause: err}
 		}
 	}
 	return nil
@@ -153,20 +155,4 @@ func buildCheckContext(ctx context.Context, typesys *typesystem.TypeSystem, data
 		),
 	)
 	return ctx
-}
-
-func translateError(reqMetadata *graph.ResolveCheckRequestMetadata, err error) error {
-	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		return serverErrors.AuthorizationModelResolutionTooComplex
-	}
-
-	if errors.Is(err, condition.ErrEvaluationFailed) {
-		return serverErrors.ValidationError(err)
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) && reqMetadata.WasThrottled.Load() {
-		return serverErrors.ThrottledTimeout
-	}
-
-	return serverErrors.HandleError("", err)
 }

@@ -1125,12 +1125,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	const methodName = "check"
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, serverErrors.ThrottledTimeout) {
+		finalErr := commands.CheckCommandErrorToServerError(err)
+		if errors.Is(finalErr, serverErrors.ThrottledTimeout) {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
 		// and add a wrapper helper that automatically injects the service name tag?
-		return nil, err
+		return nil, finalErr
 	}
 
 	span.SetAttributes(
