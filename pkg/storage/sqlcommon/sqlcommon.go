@@ -30,6 +30,8 @@ type Config struct {
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
+	// for serializing the read changes token
+	TokenSerializer storage.ContinuationTokenSerializer
 
 	MaxOpenConns    int
 	MaxIdleConns    int
@@ -61,6 +63,13 @@ func WithPassword(password string) DatastoreOption {
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.Logger = l
+	}
+}
+
+// WithTokenSerializer returns a DatastoreOption that sets the TokenSerializer in the Config.
+func WithTokenSerializer(tokenSerializer storage.ContinuationTokenSerializer) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.TokenSerializer = tokenSerializer
 	}
 }
 
@@ -133,6 +142,10 @@ func NewConfig(opts ...DatastoreOption) *Config {
 		cfg.Logger = logger.NewNoopLogger()
 	}
 
+	if cfg.TokenSerializer == nil {
+		cfg.TokenSerializer = NewSQLContinuationTokenSerializer()
+	}
+
 	if cfg.MaxTuplesPerWriteField == 0 {
 		cfg.MaxTuplesPerWriteField = storage.DefaultMaxTuplesPerWrite
 	}
@@ -172,6 +185,24 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 		return nil, storage.ErrInvalidContinuationToken
 	}
 	return &token, nil
+}
+
+func NewSQLContinuationTokenSerializer() storage.ContinuationTokenSerializer {
+	return &SQLContinuationTokenSerializer{}
+}
+
+type SQLContinuationTokenSerializer struct{}
+
+func (s *SQLContinuationTokenSerializer) SerializeContinuationToken(ulid string, objType string) ([]byte, error) {
+	return MarshallContToken(NewContToken(ulid, objType))
+}
+
+func (s *SQLContinuationTokenSerializer) DeserializeContinuationToken(continuationToken string) (ulid string, objType string, err error) {
+	token, err := UnmarshallContToken(continuationToken)
+	if err != nil {
+		return "", "", err
+	}
+	return token.Ulid, token.ObjectType, nil
 }
 
 // SQLTupleIterator is a struct that implements the storage.TupleIterator

@@ -4,6 +4,8 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -317,9 +319,32 @@ type ChangelogBackend interface {
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
 	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
 	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error)
+}
 
-	// SerializeReadChangesContToken serializes the continuation token into a format readable by ReadChanges
-	SerializeReadChangesContToken(ulid string, objType string) ([]byte, error)
+type ContinuationTokenSerializer interface {
+	// SerializeContinuationToken serializes the continuation token into a format readable by ReadChanges
+	SerializeContinuationToken(ulid string, objType string) ([]byte, error)
+
+	// DeserializeContinuationToken deserializes the continuation token into a format readable by ReadChanges
+	DeserializeContinuationToken(continuationToken string) (ulid string, objType string, err error)
+}
+
+// StringContinuationTokenSerializer is a ContinuationTokenSerializer that serializes the continuation token as a string.
+type StringContinuationTokenSerializer struct{}
+
+// NewStringContinuationTokenSerializer returns a new instance of StringContinuationTokenSerializer.
+func NewStringContinuationTokenSerializer() ContinuationTokenSerializer {
+	return &StringContinuationTokenSerializer{}
+}
+
+// SerializeContinuationToken serializes the continuation token into a format readable by ReadChanges.
+func (ts *StringContinuationTokenSerializer) SerializeContinuationToken(ulid string, objType string) ([]byte, error) {
+	return []byte(fmt.Sprintf("%s|%s", ulid, objType)), nil
+}
+
+func (ts *StringContinuationTokenSerializer) DeserializeContinuationToken(continuationToken string) (ulid string, objType string, err error) {
+	tokenParts := strings.Split(continuationToken, "|")
+	return tokenParts[0], tokenParts[1], nil
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting

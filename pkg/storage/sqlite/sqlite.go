@@ -42,6 +42,7 @@ type Datastore struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	logger                 logger.Logger
+	tokenSerializer        storage.ContinuationTokenSerializer
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
@@ -112,12 +113,17 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		}
 	}
 
+	if cfg.TokenSerializer == nil {
+		cfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
+	}
+
 	stbl := sq.StatementBuilder.RunWith(db)
 
 	return &Datastore{
 		stbl:                   stbl,
 		db:                     db,
 		logger:                 cfg.Logger,
+		tokenSerializer:        cfg.TokenSerializer,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
@@ -649,11 +655,11 @@ func (s *Datastore) ReadAuthorizationModels(
 		OrderBy("authorization_model_id desc")
 
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
-		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
+		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -679,7 +685,7 @@ func (s *Datastore) ReadAuthorizationModels(
 		}
 
 		if options.Pagination.PageSize > 0 && len(models) >= options.Pagination.PageSize {
-			token, err = sqlcommon.MarshallContToken(sqlcommon.NewContToken(modelID, ""))
+			token, err = s.tokenSerializer.SerializeContinuationToken(modelID, "")
 			if err != nil {
 				return nil, nil, err
 			}
@@ -846,11 +852,11 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		OrderBy("id")
 
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
-		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
+		sb = sb.Where(sq.GtOrEq{"id": token})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -885,7 +891,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if len(stores) > options.Pagination.PageSize {
-		contToken, err := sqlcommon.MarshallContToken(sqlcommon.NewContToken(id, ""))
+		contToken, err := s.tokenSerializer.SerializeContinuationToken(id, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1003,15 +1009,15 @@ func (s *Datastore) ReadChanges(
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, objectType, err := s.tokenSerializer.DeserializeContinuationToken(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
-		if token.ObjectType != objectTypeFilter {
+		if objectType != objectTypeFilter {
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		sb = sqlcommon.AddFromUlid(sb, token.Ulid, options.SortDesc)
+		sb = sqlcommon.AddFromUlid(sb, token, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -1077,7 +1083,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := s.SerializeReadChangesContToken(ulid, objectTypeFilter)
+	contToken, err := s.tokenSerializer.SerializeContinuationToken(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1151,8 +1157,4 @@ func isBusyError(err error) bool {
 
 	_, ok := busyErrors[sqliteErr.Code()]
 	return ok
-}
-
-func (s *Datastore) SerializeReadChangesContToken(ulid string, objType string) ([]byte, error) {
-	return sqlcommon.MarshallContToken(sqlcommon.NewContToken(ulid, objType))
 }

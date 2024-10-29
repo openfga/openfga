@@ -371,7 +371,7 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 	}
 }
 
-func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, error) {
+func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, storage.ContinuationTokenSerializer, error) {
 	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
@@ -382,6 +382,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithTokenSerializer(sqlcommon.NewSQLContinuationTokenSerializer()),
 	}
 
 	if config.Datastore.Metrics.Enabled {
@@ -397,29 +398,34 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+			memory.WithContinuationTokenSerializer(dsCfg.TokenSerializer),
 		}
 		datastore = memory.New(opts...)
 	case "mysql":
+		dsCfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return nil, fmt.Errorf("initialize mysql datastore: %w", err)
+			return nil, nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
+		dsCfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
+			return nil, nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	case "sqlite":
+		dsCfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return nil, fmt.Errorf("initialize sqlite datastore: %w", err)
+			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
+		return nil, nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
-	return datastore, nil
+	// hack no??
+	return datastore, dsCfg.TokenSerializer, nil
 }
 
 func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.Authenticator, error) {
@@ -462,7 +468,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	datastore, err := s.datastoreConfig(config)
+	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {
 		return err
 	}
@@ -611,6 +617,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
