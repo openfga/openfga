@@ -3,17 +3,20 @@ package commands
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/cachecontroller"
-	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestBatchCheckCommand(t *testing.T) {
@@ -67,8 +70,8 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		result, err := cmd.Execute(context.Background(), params)
-		//err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
-		//log.Printf("justin results: %+v", result)
+		// err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
+		// log.Printf("justin results: %+v", result)
 		//log.Printf("justin results1: %+v", result["fakeid1"])
 		require.NoError(t, err)
 		require.Equal(t, len(result), numChecks)
@@ -96,7 +99,6 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		_, err := cmd.Execute(context.Background(), params)
 		require.Error(t, err)
-
 	})
 }
 

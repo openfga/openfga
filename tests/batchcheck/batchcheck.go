@@ -4,20 +4,24 @@ package batchcheck
 import (
 	"context"
 	"fmt"
-	"github.com/oklog/ulid/v2"
-	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
 	"math"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
+
+	batchchecktest "github.com/openfga/openfga/internal/test/batchcheck"
+
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"sigs.k8s.io/yaml"
 
+	"github.com/openfga/openfga/pkg/typesystem"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/tests/check"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+
+	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/tests/check"
 )
 
 const writeMaxChunkSize = 40
@@ -56,7 +60,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 				test := test
 				runTest(t, test, client, false)
 				// TODO: context tuple tests
-				//runTest(t, test, client, true)
+				// runTest(t, test, client, true)
 			}
 		})
 	})
@@ -138,12 +142,12 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 						t.Skipf("batch check integration error testing is handled in ____")
 					}
 
-					correlationId := ulid.Make().String()
+					correlationID := ulid.Make().String()
 					require.NoError(t, err)
 
-					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationId)
+					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationID)
 					protoChecks = append(protoChecks, item)
-					expectedResults[correlationId] = assertion.Expectation
+					expectedResults[correlationID] = assertion.Expectation
 				}
 
 				resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
@@ -155,9 +159,9 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 
 				result := resp.GetResult()
 
-				for correlationId, expected := range expectedResults {
-					allowed := result[correlationId].GetAllowed()
-					require.Equal(t, allowed, expected)
+				for correlationID, expected := range expectedResults {
+					allowed := result[correlationID].GetAllowed()
+					require.Equal(t, expected, allowed)
 				}
 			})
 		}

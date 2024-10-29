@@ -1,13 +1,15 @@
 package batchcheck
 
 import (
+	"testing"
+	"time"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.uber.org/goleak"
+
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/tests"
-	"go.uber.org/goleak"
-	"testing"
-	"time"
 )
 
 func TestBatchCheckMemory(t *testing.T) {

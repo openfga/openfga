@@ -29,24 +29,6 @@ tests:
               relation: viewer
               user: user:badger
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -104,31 +86,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: writer
-                    user: user:aardvark
-                  correlationID: aardvark2
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvark3
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: aardvark2
-                allowed: false
-              - correlationID: aardvark3
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -191,24 +148,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-            expectation:
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: aardvarkId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -272,24 +211,6 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-            expectation:
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: aardvarkId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -359,31 +280,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -450,31 +346,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -528,17 +399,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -585,24 +445,6 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -661,24 +503,6 @@ tests:
               relation: can_view
               object: folder:b
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: folder:a
-                    relation: can_view
-                    user: user:anne
-                  correlationID: anneId
-                - tupleKey:
-                    object: folder:b
-                    relation: can_view
-                    user: user:anne
-                  correlationID: anneIdB
-            expectation:
-              - correlationID: anneId
-                allowed: true
-              - correlationID: anneIdB
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:anne
@@ -750,31 +574,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -841,31 +640,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -926,17 +700,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -995,17 +758,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1072,24 +824,6 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1194,31 +928,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1318,31 +1027,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1424,24 +1108,6 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1510,31 +1176,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1627,38 +1268,6 @@ tests:
               relation: viewer
               user: user:duck
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
-              - correlationID: duckId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1764,45 +1373,6 @@ tests:
               relation: viewer
               user: user:duck
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId1
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId2
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId1
-                allowed: true
-              - correlationID: badgerId2
-                allowed: false
-              - correlationID: cheetahId
-                allowed: true
-              - correlationID: duckId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -1905,31 +1475,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2028,45 +1573,6 @@ tests:
               relation: viewer
               user: user:eagle
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-                - tupleKey:
-                    object: document:5
-                    relation: viewer
-                    user: user:eagle
-                  correlationID: eagleId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
-              - correlationID: duckId
-                allowed: false
-              - correlationID: eagleId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2203,52 +1709,6 @@ tests:
               relation: viewer
               user: user:fox
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-                - tupleKey:
-                    object: document:5
-                    relation: viewer
-                    user: user:eagle
-                  correlationID: eagleId
-                - tupleKey:
-                    object: document:6
-                    relation: viewer
-                    user: user:fox
-                  correlationID: foxId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: false
-              - correlationID: duckId
-                allowed: false
-              - correlationID: eagleId
-                allowed: false
-              - correlationID: foxId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2394,52 +1854,6 @@ tests:
               relation: viewer
               user: user:fox
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-                - tupleKey:
-                    object: document:5
-                    relation: viewer
-                    user: user:eagle
-                  correlationID: eagleId
-                - tupleKey:
-                    object: document:6
-                    relation: viewer
-                    user: user:fox
-                  correlationID: foxId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
-              - correlationID: duckId
-                allowed: false
-              - correlationID: eagleId
-                allowed: false
-              - correlationID: foxId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2533,31 +1947,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2637,31 +2026,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2754,31 +2118,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2877,45 +2216,6 @@ tests:
               relation: viewer
               user: user:eagle
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-                - tupleKey:
-                    object: document:5
-                    relation: viewer
-                    user: user:eagle
-                  correlationID: eagleId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: false
-              - correlationID: duckId
-                allowed: true
-              - correlationID: eagleId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3018,31 +2318,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3144,45 +2419,6 @@ tests:
               relation: viewer
               user: user:eagle
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-                - tupleKey:
-                    object: document:5
-                    relation: viewer
-                    user: user:eagle
-                  correlationID: eagleId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: false
-              - correlationID: duckId
-                allowed: false
-              - correlationID: eagleId
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3301,38 +2537,6 @@ tests:
               relation: viewer
               user: user:duck
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-                - tupleKey:
-                    object: document:4
-                    relation: viewer
-                    user: user:duck
-                  correlationID: duckId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: true
-              - correlationID: cheetahId
-                allowed: true
-              - correlationID: duckId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3424,31 +2628,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: false
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3537,31 +2716,6 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: aardvarkId
-                - tupleKey:
-                    object: document:2
-                    relation: viewer
-                    user: user:badger
-                  correlationID: badgerId
-                - tupleKey:
-                    object: document:3
-                    relation: viewer
-                    user: user:cheetah
-                  correlationID: cheetahId
-            expectation:
-              - correlationID: aardvarkId
-                allowed: true
-              - correlationID: badgerId
-                allowed: false
-              - correlationID: cheetahId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3629,24 +2783,6 @@ tests:
               relation: blocked
               user: group:1#member
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: group:1
-                    relation: member
-                    user: user:will
-                  correlationID: willId
-                - tupleKey:
-                    object: group:1
-                    relation: blocked
-                    user: group:1#member
-                  correlationID: groupId
-            expectation:
-              - correlationID: willId
-                allowed: false
-              - correlationID: groupId
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:will
@@ -3705,24 +2841,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: group:x#member
-                  correlationID: id1
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: id2
-            expectation:
-              - correlationID: id1
-                allowed: true
-              - correlationID: id2
-                allowed: true
         listObjectsAssertions:
           - request:
               user: group:x#member
@@ -3779,24 +2897,6 @@ tests:
               relation: viewer
               user: user:*
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:public
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: id1
-                - tupleKey:
-                    object: document:public
-                    relation: viewer
-                    user: user:*
-                  correlationID: id2
-            expectation:
-              - correlationID: id1
-                allowed: true
-              - correlationID: id2
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -3839,17 +2939,6 @@ tests:
               relation: viewer
               user: user:jon
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:jon
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -3880,17 +2969,6 @@ tests:
               relation: viewer
               user: user:jon
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:jon
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -3923,17 +3001,6 @@ tests:
               relation: viewer
               user: user:jon
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:jon
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -3962,17 +3029,6 @@ tests:
               relation: viewer
               user: user:jon
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:jon
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -4010,17 +3066,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:public
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -4077,17 +3122,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -4116,17 +3150,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: false
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -4160,17 +3183,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:1
-                    relation: viewer
-                    user: user:aardvark
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -4215,17 +3227,6 @@ tests:
               relation: viewer
               user: user2:bob
             expectation: true
-        batchCheckAssertions:
-          - request:
-              checks:
-                - tupleKey:
-                    object: document:public
-                    relation: viewer
-                    user: user2:bob
-                  correlationID: id1
-            expectation:
-              - correlationID: id1
-                allowed: true
         listObjectsAssertions:
           - request:
               user: user2:bob
