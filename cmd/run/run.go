@@ -382,7 +382,6 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-		sqlcommon.WithTokenSerializer(sqlcommon.NewSQLContinuationTokenSerializer()),
 	}
 
 	if config.Datastore.Metrics.Enabled {
@@ -391,30 +390,30 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 
 	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
 
+	tokenSerializer := dsCfg.TokenSerializer
+
 	var datastore storage.OpenFGADatastore
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
+		tokenSerializer = storage.NewStringContinuationTokenSerializer()
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			memory.WithContinuationTokenSerializer(dsCfg.TokenSerializer),
+			memory.WithContinuationTokenSerializer(tokenSerializer),
 		}
 		datastore = memory.New(opts...)
 	case "mysql":
-		dsCfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		dsCfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	case "sqlite":
-		dsCfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
@@ -425,7 +424,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 	// hack no??
-	return datastore, dsCfg.TokenSerializer, nil
+	return datastore, tokenSerializer, nil
 }
 
 func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.Authenticator, error) {
