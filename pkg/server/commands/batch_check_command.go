@@ -23,6 +23,7 @@ import (
 type BatchCheckQuery struct {
 	cacheController     cachecontroller.CacheController
 	checkResolver       graph.CheckResolver
+	checkCommand        *CheckQuery
 	datastore           storage.RelationshipTupleReader
 	logger              logger.Logger
 	maxChecksAllowed    uint32
@@ -71,13 +72,23 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 
 func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
-		logger:              logger.NewNoopLogger(),
-		datastore:           datastore,
+		cacheController:     cachecontroller.NewNoopCacheController(),
 		checkResolver:       checkResolver,
-		typesys:             typesys,
+		datastore:           datastore,
+		logger:              logger.NewNoopLogger(),
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
+		typesys:             typesys,
 	}
+
+	// This check query will be run against every check in the batch
+	cmd.checkCommand = NewCheckCommand(
+		cmd.datastore,
+		cmd.checkResolver,
+		cmd.typesys,
+		WithCheckCommandLogger(cmd.logger),
+		WithCacheController(cmd.cacheController),
+	)
 
 	for _, opt := range opts {
 		opt(cmd)
@@ -91,15 +102,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			fmt.Errorf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
 		)
 	}
-
-	// This check query will be run against every check in the batch
-	checkQuery := NewCheckCommand(
-		bq.datastore,
-		bq.checkResolver,
-		bq.typesys,
-		WithCheckCommandLogger(bq.logger),
-		WithCacheController(bq.cacheController),
-	)
 
 	// the keys to this map are the correlation_id associated with each check
 	var resultMap = map[string]*BatchCheckOutcome{}
@@ -123,7 +125,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 			start := time.Now()
 
-			response, _, err := checkQuery.Execute(ctx, checkParams)
+			response, _, err := bq.checkCommand.Execute(ctx, checkParams)
 
 			lock.Lock()
 			resultMap[check.GetCorrelationId()] = &BatchCheckOutcome{
