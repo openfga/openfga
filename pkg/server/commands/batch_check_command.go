@@ -137,7 +137,5 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		})
 	}
 
-	_ = pool.Wait()
-
 	return resultMap, nil
 }
