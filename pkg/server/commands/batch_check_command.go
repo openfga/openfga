@@ -92,6 +92,10 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		)
 	}
 
+	if err := validateNoDuplicateCorrelationIds(params.Checks); err != nil {
+		return nil, err
+	}
+
 	// This check query will be run against every check in the batch
 	checkQuery := NewCheckCommand(
 		bq.datastore,
@@ -138,4 +142,20 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	}
 
 	return resultMap, nil
+}
+
+func validateNoDuplicateCorrelationIds(checks []*openfgav1.BatchCheckItem) error {
+	seen := map[string]bool{}
+
+	for _, check := range checks {
+		if seen[check.GetCorrelationId()] {
+			return errors.ValidationError(
+				fmt.Errorf("received duplicate correlation id: %s", check.GetCorrelationId()),
+			)
+		}
+
+		seen[check.GetCorrelationId()] = true
+	}
+
+	return nil
 }
