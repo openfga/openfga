@@ -32,7 +32,7 @@ func (s *mockTracingServer) Export(context.Context, *otlpcollector.ExportTraceSe
 func NewMockTracingServer(t testing.TB, port int) *mockTracingServer {
 	mockServer := &mockTracingServer{exportCount: 0, server: grpc.NewServer()}
 	otlpcollector.RegisterTraceServiceServer(mockServer.server, mockServer)
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	require.NoError(t, err)
 	t.Cleanup(mockServer.server.GracefulStop)
 

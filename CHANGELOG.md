@@ -13,12 +13,25 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
 * Add access control experimental feature [#1913](https://github.com/openfga/openfga/pull/1913)
 
+### Changed
+* Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
+  Note: In assertions, they are still restricted to `20` per assertion
+
 ### Performance
 * Improve check performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2025](https://github.com/openfga/openfga/pull/2025)
+* Extend Iterator Cache with ReadStartingWithUser results and corresponding invalidations in the Cache Controller. [#2035](https://github.com/openfga/openfga/pull/2035)
 
 ### Fixed
+* Goroutine leak when ListObjects or StreamedListObjects call cannot be completed within REQUEST_TIMEOUT. [#2030](https://github.com/openfga/openfga/pull/2030)
 * Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 * Fixed incorrect dispatch counts in List Objects [2013](https://github.com/openfga/openfga/pull/2013)
+* Internal error for check where model has nested userset with publicly assignable wildcard. [#2049](https://github.com/openfga/openfga/pull/2049) 
+
+### Breaking changes
+* The storage adapter `ListStores`'s parameter ListStoresOptions allows filtering by `IDs` [#1913](https://github.com/openfga/openfga/pull/1913)
+  If you are using a custom storage adapter, `ListStores` now expects `ListStoresOptions` parameter that accepts passing in a list of IDs.
+  See the following adapter [change](https://github.com/openfga/openfga/pull/1913/files#diff-8b98b331c5d4acbeb7274c68973d20900daaed47c8d8f3e62ba39284379166bbR86-R87) and the following [change](https://github.com/openfga/openfga/pull/1913/files#diff-087f50fca2d7eab21b8d342dbbf8fb0de6d405f85b51334b3801d2c34d810ff9L582-L587) for a sample storage adapter implementation.
+  If you are not using OpenFGA as a library with a custom storage adapter, this will not affect you. (for example, if you are using OpenFGA through our published docker images, you are not affected).
 
 ## [1.6.2] - 2024-10-03
 

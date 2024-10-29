@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -20,6 +21,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+var errInvalidClientID = errors.New("rpc error: code = InvalidArgument desc = client ID not found in context")
 
 type storeAndModel struct {
 	id      string
@@ -74,42 +77,37 @@ const (
 			define writer: [application] or admin
 			define admin: [application] or creator or admin from system
 		`
-	testStoreModel = `
-			model
-				schema 1.1
-
-			type channel
-			relations
-				define commenter: [user, workspace#member] or writer
-				define parent_workspace: [workspace]
-				define writer: [user, workspace#member]
-
-			type user
-
-			type workspace
-			relations
-				define channels_admin: [user] or legacy_admin
-				define guest: [user]
-				define legacy_admin: [user]
-				define member: [user] or legacy_admin or channels_admin
-		`
-	module1 = "module1"
-	module2 = "module2"
 )
 
 func testStoreModelWithModule() []*openfgav1.TypeDefinition {
 	// Add a module to the test store
-	typeDef := language.MustTransformDSLToProto(testStoreModel).GetTypeDefinitions()
-	for _, td := range typeDef {
-		if td.GetType() == "workspace" {
-			td.Metadata.Module = module1
-		}
-		if td.GetType() == "channel" {
-			td.Metadata.Module = module2
-		}
+	typeDefs := []*openfgav1.TypeDefinition{{
+		Type: "user",
+	}}
+
+	// Add as many modules as necessary (we do this dynamically in case the max modules changes)
+	for moduleIndex := range authz.MaxModulesInRequest + 1 {
+		typeDefs = append(typeDefs, &openfgav1.TypeDefinition{
+			Type: fmt.Sprintf("module%v", moduleIndex),
+			Metadata: &openfgav1.Metadata{
+				Module: fmt.Sprintf("module%v", moduleIndex),
+				Relations: map[string]*openfgav1.RelationMetadata{
+					"member": {
+						DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+							{Type: "user"},
+						},
+					},
+				},
+			},
+			Relations: map[string]*openfgav1.Userset{
+				"member": {
+					Userset: &openfgav1.Userset_This{},
+				},
+			},
+		})
 	}
 
-	return typeDef
+	return typeDefs
 }
 
 func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) *authzSettings {
@@ -223,8 +221,8 @@ func TestListObjects(t *testing.T) {
 		_, err = openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
-			Type:                 "workspace",
-			Relation:             "guest",
+			Type:                 "module1",
+			Relation:             "member",
 			User:                 "user:ben",
 		})
 		require.NoError(t, err)
@@ -243,7 +241,7 @@ func TestListObjects(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -256,12 +254,12 @@ func TestListObjects(t *testing.T) {
 			_, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_list_objects", func(t *testing.T) {
@@ -271,13 +269,13 @@ func TestListObjects(t *testing.T) {
 			listObjectsResponse, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			})
 			require.NoError(t, err)
 
-			require.Equal(t, []string{"workspace:1"}, listObjectsResponse.GetObjects())
+			require.Equal(t, []string{"module1:1"}, listObjectsResponse.GetObjects())
 		})
 	})
 }
@@ -301,8 +299,8 @@ func TestStreamedListObjects(t *testing.T) {
 		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
-			Type:                 "workspace",
-			Relation:             "guest",
+			Type:                 "module1",
+			Relation:             "member",
 			User:                 "user:ben",
 		}, NewMockStreamServer(context.Background()))
 		require.NoError(t, err)
@@ -320,7 +318,7 @@ func TestStreamedListObjects(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -334,13 +332,12 @@ func TestStreamedListObjects(t *testing.T) {
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			}, server)
-			require.Error(t, err)
 
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_streamed_list_objects", func(t *testing.T) {
@@ -351,8 +348,8 @@ func TestStreamedListObjects(t *testing.T) {
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			}, server)
 			require.NoError(t, err)
@@ -380,8 +377,8 @@ func TestRead(t *testing.T) {
 			StoreId: settings.testData.id,
 			TupleKey: &openfgav1.ReadRequestTupleKey{
 				User:     "user:anne",
-				Relation: "guest",
-				Object:   "workspace:1",
+				Relation: "member",
+				Object:   "module1:1",
 			},
 		})
 		require.NoError(t, err)
@@ -400,7 +397,7 @@ func TestRead(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -414,12 +411,12 @@ func TestRead(t *testing.T) {
 				StoreId: settings.testData.id,
 				TupleKey: &openfgav1.ReadRequestTupleKey{
 					User:     "user:ben",
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_read", func(t *testing.T) {
@@ -430,14 +427,14 @@ func TestRead(t *testing.T) {
 				StoreId: settings.testData.id,
 				TupleKey: &openfgav1.ReadRequestTupleKey{
 					User:     "user:ben",
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 			require.NoError(t, err)
 
 			require.Len(t, readResponse.GetTuples(), 1)
-			require.Equal(t, tuple.NewTupleKey("workspace:1", "guest", "user:ben"), readResponse.GetTuples()[0].GetKey())
+			require.Equal(t, tuple.NewTupleKey("module1:1", "member", "user:ben"), readResponse.GetTuples()[0].GetKey())
 		})
 	})
 }
@@ -463,7 +460,7 @@ func TestWrite(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -488,81 +485,160 @@ func TestWrite(t *testing.T) {
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
 					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+						tuple.NewTupleKey("module1:1", "member", "user:ben"),
 					},
 				},
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_write", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallWrite)
 
-			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("workspace:1", "guest", "user:ben"))
+			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("module1:1", "member", "user:ben"))
 		})
 
 		t.Run("errors_when_not_authorized_for_all_modules", func(t *testing.T) {
+			tuples := []*openfgav1.TupleKey{}
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%v:1", index+1), "member", "user:ben"))
+				// Keep one w/o access
+				if index != 0 {
+					settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, fmt.Sprintf("module%d", index+1)), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+				}
+			}
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
-					},
-				},
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{
-							User:     "user:ben",
-							Relation: "commenter",
-							Object:   "channel:1",
-						},
-					},
+					TupleKeys: tuples,
 				},
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_write_for_modules", func(t *testing.T) {
+			tuples := []*openfgav1.TupleKey{}
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module2), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%v:1", index+1), "member", "user:ben"))
+				// grant access to all modules
+				settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, fmt.Sprintf("module%d", index+1)), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+			}
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("channel:1", "commenter", "user:ben"),
-					},
+					TupleKeys: tuples,
 				},
 			})
 			require.NoError(t, err)
 
+			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			for _, tuple := range tuples {
+				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
+					User:     tuple.GetUser(),
+					Relation: tuple.GetRelation(),
+					Object:   tuple.GetObject(),
+				})
+			}
+
 			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
-					},
-				},
 				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{
-							User:     "user:ben",
-							Relation: "commenter",
-							Object:   "channel:1",
-						},
-					},
+					TupleKeys: tuplesInDelete,
 				},
 			})
+			require.NoError(t, err)
+		})
+
+		t.Run("errors_when_sending_more_than_max_modules", func(t *testing.T) {
+			tuples := []*openfgav1.TupleKey{}
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+
+			for index := range authz.MaxModulesInRequest + 1 {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%d:1", index), "member", "user:ben"))
+				// grant access to all modules
+				settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, fmt.Sprintf("module%d", index+1)), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+			}
+
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: tuples,
+				},
+			})
+
+			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, len(tuples)), err)
+
+			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			for _, tuple := range tuples {
+				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
+					User:     tuple.GetUser(),
+					Relation: tuple.GetRelation(),
+					Object:   tuple.GetObject(),
+				})
+			}
+
+			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: tuplesInDelete,
+				},
+			})
+
+			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, len(tuplesInDelete)), err)
+		})
+
+		t.Run("success_when_sending_more_than_max_modules_with_store_level_write_permission", func(t *testing.T) {
+			tuples := []*openfgav1.TupleKey{}
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+
+			// grant access to the store
+			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("store:%s", settings.testData.id), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest + 1 {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%d:1", index), "member", "user:ben"))
+			}
+
+			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: tuples,
+				},
+			})
+
+			require.NoError(t, err)
+
+			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			for _, tuple := range tuples {
+				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
+					User:     tuple.GetUser(),
+					Relation: tuple.GetRelation(),
+					Object:   tuple.GetObject(),
+				})
+			}
+
+			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: tuplesInDelete,
+				},
+			})
+
 			require.NoError(t, err)
 		})
 	})
@@ -596,24 +672,31 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
+		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
+
+			err := openfga.checkCreateStoreAuthz(ctx)
+			require.NoError(t, err)
+		})
+
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkCreateStoreAuthz(context.Background())
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkCreateStoreAuthz(ctx)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkCreateStoreAuthz(ctx)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -633,7 +716,7 @@ func TestCheckAuthz(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
-	t.Run("check_no_authz", func(t *testing.T) {
+	t.Run("authz_disabled_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
@@ -645,7 +728,7 @@ func TestCheckAuthz(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("check_with_authz", func(t *testing.T) {
+	t.Run("authz_enabled", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
@@ -665,29 +748,29 @@ func TestCheckAuthz(t *testing.T) {
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkAuthz(context.Background(), settings.testData.id, authz.Check)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+
+			require.EqualError(t, err, errInvalidClientID.Error())
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "ID"})
 			err := openfga.checkAuthz(ctx, settings.testData.id, "invalid api method")
-			require.Error(t, err)
-			require.Equal(t, authz.ErrUnknownAPIMethod.Error(), err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnknownAPIMethod)
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
@@ -695,6 +778,80 @@ func TestCheckAuthz(t *testing.T) {
 			settings.addAuthForRelation(ctx, t, authz.CanCallCheck)
 
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
+			require.NoError(t, err)
+		})
+	})
+}
+
+func TestGetAccessibleStores(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("authz_disabled_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		_, err := openfga.getAccessibleStores(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("authz_enabled", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
+
+			_, err := openfga.getAccessibleStores(ctx)
+			require.NoError(t, err)
+		})
+
+		t.Run("error_with_no_client_id_found", func(t *testing.T) {
+			_, err := openfga.getAccessibleStores(context.Background())
+
+			require.EqualError(t, err, errInvalidClientID.Error())
+		})
+
+		t.Run("error_with_empty_client_id", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
+			_, err := openfga.getAccessibleStores(ctx)
+
+			require.EqualError(t, err, errInvalidClientID.Error())
+		})
+
+		t.Run("error_when_AuthorizeListStores_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.getAccessibleStores(ctx)
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
+
+		t.Run("authz_is_valid", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.rootData.id,
+				AuthorizationModelId: settings.rootData.modelID,
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("system:fga", authz.CanCallListStores, fmt.Sprintf("application:%s", settings.clientID)),
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			_, err = openfga.getAccessibleStores(ctx)
 			require.NoError(t, err)
 		})
 	})
@@ -742,6 +899,13 @@ func TestCheckWriteAuthz(t *testing.T) {
 
 		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
 
+		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
+			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
+
+			err := openfga.checkWriteAuthz(ctx, &openfgav1.WriteRequest{}, typesys)
+			require.NoError(t, err)
+		})
+
 		t.Run("error_when_GetModulesForWriteRequest_errors", func(t *testing.T) {
 			err := openfga.checkWriteAuthz(context.Background(), &openfgav1.WriteRequest{
 				StoreId: settings.testData.id,
@@ -760,24 +924,24 @@ func TestCheckWriteAuthz(t *testing.T) {
 				StoreId: settings.testData.id,
 				Deletes: &openfgav1.WriteRequestDeletes{
 					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "workspace:2", Relation: "guest", User: "user:jon"},
+						{Object: "module1:2", Relation: "member", User: "user:jon"},
 					},
 				},
 			}, typesys)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("authz_is_valid", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, "module1"), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
 
 			err := openfga.checkWriteAuthz(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Deletes: &openfgav1.WriteRequestDeletes{
 					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "workspace:2", Relation: "guest", User: "user:jon"},
+						{Object: "module1:2", Relation: "member", User: "user:jon"},
 					},
 				},
 			}, typesys)
@@ -793,7 +957,7 @@ func TestCheck(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
-	t.Run("check_no_authz_should_succeed", func(t *testing.T) {
+	t.Run("authz_disabled_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
@@ -816,7 +980,7 @@ func TestCheck(t *testing.T) {
 		require.True(t, checkResponse.GetAllowed())
 	})
 
-	t.Run("check_with_authz", func(t *testing.T) {
+	t.Run("authz_enabled", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
 			WithDatastore(ds),
 		)
@@ -838,23 +1002,23 @@ func TestCheck(t *testing.T) {
 					Object:   fmt.Sprintf("store:%s", settings.testData.id),
 				},
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_check", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, "writer")
 			settings.addAuthForRelation(ctx, t, authz.CanCallCheck)
-			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("workspace:1", "guest", "user:ben"))
+			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("module1:1", "member", "user:ben"))
 
 			checkResponse, err := openfga.Check(ctx, &openfgav1.CheckRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					User:     "user:ben",
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 
@@ -957,12 +1121,12 @@ func TestExpand(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				TupleKey: &openfgav1.ExpandRequestTupleKey{
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_expand", func(t *testing.T) {
@@ -973,15 +1137,15 @@ func TestExpand(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				TupleKey: &openfgav1.ExpandRequestTupleKey{
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 			require.NoError(t, err)
 			require.Equal(t, &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
 					Root: &openfgav1.UsersetTree_Node{
-						Name: "workspace:1#guest",
+						Name: "module1:1#member",
 						Value: &openfgav1.UsersetTree_Node_Leaf{
 							Leaf: &openfgav1.UsersetTree_Leaf{
 								Value: &openfgav1.UsersetTree_Leaf_Users{
@@ -1047,8 +1211,8 @@ func TestReadAuthorizationModel(t *testing.T) {
 					Id:      settings.testData.modelID,
 				},
 			)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readAuthorizationModel", func(t *testing.T) {
@@ -1116,8 +1280,8 @@ func TestReadAuthorizationModels(t *testing.T) {
 					StoreId: settings.testData.id,
 				},
 			)
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readAuthorizationModels", func(t *testing.T) {
@@ -1157,7 +1321,7 @@ func TestWriteAssertions(t *testing.T) {
 
 		assertions := []*openfgav1.Assertion{
 			{
-				TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+				TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
 				Expectation: false,
 			},
 		}
@@ -1194,7 +1358,7 @@ func TestWriteAssertions(t *testing.T) {
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			assertions := []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+					TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
 					Expectation: false,
 				},
 			}
@@ -1204,14 +1368,14 @@ func TestWriteAssertions(t *testing.T) {
 				AuthorizationModelId: settings.testData.modelID,
 				Assertions:           assertions,
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_writeAssertions", func(t *testing.T) {
 			assertions := []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+					TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
 					Expectation: false,
 				},
 			}
@@ -1288,8 +1452,8 @@ func TestReadAssertions(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readAssertions", func(t *testing.T) {
@@ -1361,8 +1525,8 @@ func TestReadChanges(t *testing.T) {
 				Type:     "user",
 				PageSize: wrapperspb.Int32(50),
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_readChanges", func(t *testing.T) {
@@ -1428,8 +1592,8 @@ func TestCreateStore(t *testing.T) {
 			_, err := openfga.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 				Name: name,
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_createStore", func(t *testing.T) {
@@ -1486,8 +1650,8 @@ func TestDeleteStore(t *testing.T) {
 			_, err := openfga.DeleteStore(ctx, &openfgav1.DeleteStoreRequest{
 				StoreId: settings.testData.id,
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_deleteStore", func(t *testing.T) {
@@ -1543,8 +1707,8 @@ func TestGetStore(t *testing.T) {
 			_, err := openfga.GetStore(ctx, &openfgav1.GetStoreRequest{
 				StoreId: settings.testData.id,
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_getStore", func(t *testing.T) {
@@ -1602,8 +1766,8 @@ func TestListStores(t *testing.T) {
 				PageSize:          wrapperspb.Int32(1),
 				ContinuationToken: "",
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_listStores", func(t *testing.T) {
@@ -1649,10 +1813,10 @@ func TestListUsers(t *testing.T) {
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
 			Object: &openfgav1.Object{
-				Type: "workspace",
+				Type: "module1",
 				Id:   "1",
 			},
-			Relation: "guest",
+			Relation: "member",
 			UserFilters: []*openfgav1.UserTypeFilter{
 				{Type: "user"},
 			},
@@ -1677,16 +1841,16 @@ func TestListUsers(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Object: &openfgav1.Object{
-					Type: "workspace",
+					Type: "module1",
 					Id:   "1",
 				},
-				Relation: "guest",
+				Relation: "member",
 				UserFilters: []*openfgav1.UserTypeFilter{
 					{Type: "user"},
 				},
 			})
-			require.Error(t, err)
-			require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("successfully_call_listUsers", func(t *testing.T) {
@@ -1706,10 +1870,10 @@ func TestListUsers(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Object: &openfgav1.Object{
-					Type: "workspace",
+					Type: "module1",
 					Id:   "1",
 				},
-				Relation: "guest",
+				Relation: "member",
 				UserFilters: []*openfgav1.UserTypeFilter{
 					{Type: "user"},
 				},
