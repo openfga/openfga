@@ -92,7 +92,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		)
 	}
 
-	if err := validateNoDuplicateCorrelationIds(params.Checks); err != nil {
+	if err := validateNoDuplicateCorrelationIDs(params.Checks); err != nil {
 		return nil, err
 	}
 
