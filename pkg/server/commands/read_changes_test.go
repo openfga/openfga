@@ -133,14 +133,19 @@ func TestReadChangesQuery(t *testing.T) {
 
 		filter := storage.ReadChangesFilter{}
 
-		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Cond(func(actualUlid string) bool {
+		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
+		mockTokenSerializer.EXPECT().SerializeContinuationToken(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true
 		}), "").Return([]byte(startTimeToken), nil).Times(1)
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
-		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
+		cmd := NewReadChangesQuery(
+			mockDatastore,
+			WithReadChangesQueryEncoder(mockEncoder),
+			WithContinuationTokenSerializer(mockTokenSerializer),
+		)
 
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
 			StoreId:           reqStore,
@@ -179,7 +184,8 @@ func TestReadChangesQuery(t *testing.T) {
 
 		filter := storage.ReadChangesFilter{}
 
-		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Any(), "").Times(0)
+		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
+		mockTokenSerializer.EXPECT().SerializeContinuationToken(gomock.Any(), "").Times(0)
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
@@ -212,13 +218,14 @@ func TestReadChangesQuery(t *testing.T) {
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		expectedUlid := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy()).String()
 
-		mockDatastore.EXPECT().SerializeReadChangesContToken(gomock.Cond(func(actualUlid string) bool {
+		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
+		mockTokenSerializer.EXPECT().SerializeContinuationToken(gomock.Cond(func(actualUlid string) bool {
 			// Check if the ulid is valid - first 10 characters of ulid should match
 			assert.Equal(t, expectedUlid[:10], actualUlid[:10])
 			return true
 		}), "").Return(nil, errors.New("continuation token error")).Times(1)
 
-		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder))
+		cmd := NewReadChangesQuery(mockDatastore, WithReadChangesQueryEncoder(mockEncoder), WithContinuationTokenSerializer(mockTokenSerializer))
 
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadChangesRequest{
 			StoreId:           reqStore,

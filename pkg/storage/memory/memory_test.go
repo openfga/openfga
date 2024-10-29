@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
@@ -19,8 +21,15 @@ import (
 )
 
 func TestMemdbStorage(t *testing.T) {
-	ds := New()
-	test.RunAllTests(t, ds)
+	tokenSerializer := storage.NewStringContinuationTokenSerializer()
+	ds := New(WithContinuationTokenSerializer(tokenSerializer))
+	test.RunAllTests(t, ds, tokenSerializer)
+}
+
+func TestMemdbStorageWithSqlTokenSerializer(t *testing.T) {
+	tokenSerializer := sqlcommon.NewSQLContinuationTokenSerializer()
+	ds := New(WithContinuationTokenSerializer(tokenSerializer))
+	t.Run("TestReadChanges", func(t *testing.T) { test.ReadChangesTest(t, ds, tokenSerializer) })
 }
 
 func TestStaticTupleIterator(t *testing.T) {

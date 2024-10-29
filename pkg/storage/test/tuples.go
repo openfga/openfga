@@ -35,7 +35,7 @@ var (
 	}
 )
 
-func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore, tokenSerializer storage.ContinuationTokenSerializer) {
 	ctx := context.Background()
 
 	const numOfWrites = 300
@@ -96,7 +96,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		// No assertions on the contents of the response, just on the length.
 
 		t.Run("start_time_page_size_1", func(t *testing.T) {
-			changes := readChangesWithStartTime(t, datastore, storeID, 1, startTime, false)
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, 1, startTime, false)
 			assert.Len(t, changes, len(writtenTuplesAfter))
 			for _, change := range changes {
 				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
@@ -104,7 +104,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		})
 
 		t.Run("start_time_page_size_default", func(t *testing.T) {
-			changes := readChangesWithStartTime(t, datastore, storeID, storage.DefaultPageSize, startTime, false)
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, storage.DefaultPageSize, startTime, false)
 			assert.Len(t, changes, len(writtenTuplesAfter))
 			for _, change := range changes {
 				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
@@ -112,12 +112,12 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		})
 
 		t.Run("start_time_zero", func(t *testing.T) {
-			changes := readChangesWithStartTime(t, datastore, storeID, numOfWrites, time.Time{}, false)
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, numOfWrites, time.Time{}, false)
 			assert.Len(t, changes, len(writtenTuplesBefore)+len(writtenTuplesAfter))
 		})
 
 		t.Run("start_time_desc", func(t *testing.T) {
-			changes := readChangesWithStartTime(t, datastore, storeID, 1, startTime, true)
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, 1, startTime, true)
 			assert.Len(t, changes, len(writtenTuplesBefore))
 			for _, change := range changes {
 				assert.Equal(t, "user:before", change.GetTupleKey().GetUser())
@@ -1729,7 +1729,7 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 // readChanges calls ReadChanges. It reads everything from the store, pageSize changes at a time.
 // Along the way, it makes assertions on the changes seen. It returns all changes seen.
 // It reads changes starting from a specific time, by converting the timestamp into a continuation token.
-func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID string, pageSize int, startTime time.Time, desc bool) []*openfgav1.TupleChange {
+func readChangesWithStartTime(t *testing.T, tokenSerializer storage.ContinuationTokenSerializer, ds storage.OpenFGADatastore, storeID string, pageSize int, startTime time.Time, desc bool) []*openfgav1.TupleChange {
 	t.Helper()
 	var (
 		tupleChanges      []*openfgav1.TupleChange
@@ -1739,7 +1739,7 @@ func readChangesWithStartTime(t *testing.T, ds storage.OpenFGADatastore, storeID
 	)
 	if !startTime.IsZero() {
 		ulidST := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy())
-		continuationToken, _ = ds.SerializeReadChangesContToken(ulidST.String(), "")
+		continuationToken, _ = tokenSerializer.SerializeContinuationToken(ulidST.String(), "")
 	}
 	for {
 		opts := storage.ReadChangesOptions{
