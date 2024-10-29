@@ -70,9 +70,38 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		result, err := cmd.Execute(context.Background(), params)
-		// err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
-		// log.Printf("justin results: %+v", result)
-		//log.Printf("justin results1: %+v", result["fakeid1"])
+		require.NoError(t, err)
+		require.Equal(t, len(result), numChecks)
+	})
+
+	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
+		numChecks := 10
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		var ids []string
+		for i := 0; i < numChecks; i++ {
+			correlationID := fmt.Sprintf("fakeid%d", i)
+			ids = append(ids, correlationID) // todo here
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: correlationID,
+			}
+		}
+
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(numChecks).
+			Return(nil, nil)
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		result, err := cmd.Execute(context.Background(), params)
 		require.NoError(t, err)
 		require.Equal(t, len(result), numChecks)
 	})
@@ -100,10 +129,31 @@ func TestBatchCheckCommand(t *testing.T) {
 		_, err := cmd.Execute(context.Background(), params)
 		require.Error(t, err)
 	})
+
+	t.Run("fails_with_validation_error_if_duplicated_correlation_ids", func(t *testing.T) {
+		numChecks := 2
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: "hardcoded_id",
+			}
+		}
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		_, err := cmd.Execute(context.Background(), params)
+		require.ErrorContains(t, err, "hardcoded_id")
+	})
 }
 
-// simple test case for lots of tuples, under limit
-// then test case for over limit
 // then some where we assert a specific allowed true and allowed false
 // then some where we hit a known error for individual check (like bad relation?)
-// I kinda need a "assert check was called N times" test
